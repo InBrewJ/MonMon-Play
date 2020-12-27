@@ -1,0 +1,41 @@
+@import play.mvc.Http.Request
+@(incomings: Seq[Incoming])(implicit request: Http.Request)
+@main("MonMonIncomings") {
+<script
+        type="text/javascript"
+        src='@routes.Assets.at("javascripts/index.js")'
+></script>
+
+@partials.header()
+@partials.navbar()
+
+<div class="w3-content w3-center" style="max-width: 1500px">
+    <div class="w3-row">
+        <div class="w3-half">
+            <p><b> These are apparently your incomings:</b></p>
+
+            <ul id="incomings">
+                @for(i <- incomings) {
+                <li>@i.name, (@{i.`type`}), @i.netValue, @i.incomingMonthDay</li>
+                }
+            </ul>
+
+        </div>
+        <div class="w3-half w3-padding-64">
+            <form method="POST" action="@routes.IncomingController.addIncoming()">
+                @helper.CSRF.formField
+                <input placeholder="Incoming name" type="text" name="name" />
+                <br />
+                <input placeholder="type" type="text" name="type" />
+                <br />
+                <input placeholder="how much?" type="number" step="0.01" name="netValue" />
+                <br />
+                <input placeholder="What day of month?" step="1" min="1" max="31" type="number" name="incomingMonthDay" />
+                <br />
+                <button>Add Incoming</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+}
