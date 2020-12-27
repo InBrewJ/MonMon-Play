@@ -1,6 +1,6 @@
 # MonMon-Play
 
-- A port of my personal finace GSheet using the Play Framework for Java
+- A port of my personal finance GSheet using the Play Framework for Java
 
 # Extends :: play-java-jpa-example
 
