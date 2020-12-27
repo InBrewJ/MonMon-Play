@@ -15,6 +15,15 @@ public class Incoming {
     public Float grossValue;
     public Float netValue;
     public int incomingMonthDay;
+    public boolean isPayDay = false;
+
+    public boolean isPayDay() {
+        return isPayDay;
+    }
+
+    public void setPayDay(boolean payDay) {
+        isPayDay = payDay;
+    }
 
     public Float getGrossValue() {
         return grossValue;

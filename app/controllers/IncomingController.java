@@ -3,6 +3,8 @@ package controllers;
 import models.Incoming;
 import models.IncomingRepository;
 import play.data.FormFactory;
+import play.data.Form;
+import play.i18n.MessagesApi;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
@@ -29,10 +31,14 @@ public class IncomingController extends Controller {
     private final FormFactory formFactory;
     private final IncomingRepository incomingRepository;
     private final HttpExecutionContext ec;
+    private final Form<Incoming> form;
+    private MessagesApi messagesApi;
 
     @Inject
-    public IncomingController(FormFactory formFactory, IncomingRepository incomingRepository, HttpExecutionContext ec) {
+    public IncomingController(FormFactory formFactory, MessagesApi messagesApi, IncomingRepository incomingRepository, HttpExecutionContext ec) {
         this.formFactory = formFactory;
+        this.messagesApi = messagesApi;
+        this.form = formFactory.form(Incoming.class);
         this.incomingRepository = incomingRepository;
         this.ec = ec;
     }
@@ -49,11 +55,13 @@ public class IncomingController extends Controller {
 
     public Result listIncomings(Http.Request request) throws ExecutionException, InterruptedException {
         List<Incoming> incomings = repoListToList(incomingRepository.list());
-        return ok(views.html.incomings.render(asScala(incomings), request));
+        return ok(views.html.incomings.render(asScala(incomings), this.form, request, messagesApi.preferred(request) ));
     }
 
     public CompletionStage<Result> addIncoming(final Http.Request request) {
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
+        System.out.println(incoming.getName());
+        System.out.println(incoming.isPayDay());
         return incomingRepository
                 .add(incoming)
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());

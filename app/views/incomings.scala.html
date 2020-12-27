@@ -1,5 +1,6 @@
 @import play.mvc.Http.Request
-@(incomings: Seq[Incoming])(implicit request: Http.Request)
+@import helper._
+@(incomings: Seq[Incoming], form: Form[Incoming])(implicit request: Http.Request,  messages: play.i18n.Messages)
 @main("MonMonIncomings") {
 <script
         type="text/javascript"
@@ -16,7 +17,7 @@
 
             <ul id="incomings">
                 @for(i <- incomings) {
-                <li>@i.name, (@{i.`type`}), @i.netValue, @i.incomingMonthDay</li>
+                <li>@i.name, (@{i.`type`}), @i.netValue, @i.incomingMonthDay, payday: @i.isPayDay</li>
                 }
             </ul>
 
@@ -31,6 +32,8 @@
                 <input placeholder="how much?" type="number" step="0.01" name="netValue" />
                 <br />
                 <input placeholder="What day of month?" step="1" min="1" max="31" type="number" name="incomingMonthDay" />
+                <br />
+                @checkbox(field = form("isPayDay"))
                 <br />
                 <button>Add Incoming</button>
             </form>
