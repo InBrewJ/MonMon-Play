@@ -1,0 +1,18 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+# Home page
+GET     /                            controllers.OutgoingController.index(req: Request)
+POST    /outgoing                    controllers.OutgoingController.addOutgoing(req: Request)
+GET     /outgoings                   controllers.OutgoingController.getOutgoings()
+
+# Accounts
+POST    /account                     controllers.AccountController.addAccount(req: Request)
+GET     /accounts                    controllers.AccountController.getAccounts()
+GET     /accountTypes                controllers.AccountController.numTypes()
+
+# Payday details
+
+# Map static resources from the /public folder to the /assets URL path
+GET     /assets/*file               controllers.Assets.at(path="/public", file)

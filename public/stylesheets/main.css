@@ -1,0 +1,9 @@
+#ticker {
+    padding: 1em;
+    text-align: center;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    background: #555;
+    color: #f1f1f1;
+}
