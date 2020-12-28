@@ -4,6 +4,7 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import java.util.List;
 
 @Entity
 public class Incoming {
@@ -71,6 +72,10 @@ public class Incoming {
 
     public void setIncomingMonthDay(int incomingMonthDay) {
         this.incomingMonthDay = incomingMonthDay;
+    }
+
+    public static Float getTotalIncomings(List<Incoming> incomings) {
+        return incomings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.netValue, Float::sum);
     }
 
 }

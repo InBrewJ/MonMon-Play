@@ -7,11 +7,12 @@ import play.mvc.Http;
 import play.mvc.Result;
 
 import javax.inject.Inject;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
+import static models.Incoming.getTotalIncomings;
+import static models.Outgoing.getTotalOutgoings;
 
 public class SpogController extends Controller {
     private final IncomingRepository incomingRepository;
@@ -27,21 +28,18 @@ public class SpogController extends Controller {
         this.ec = ec;
     }
 
-    private Float getTotalOutgoings(List<Outgoing> outgoings) {
-        return outgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
-    }
-
-    private Float getTotalIncomings(List<Incoming> incomings) {
-        return incomings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.netValue, Float::sum);
-    }
-
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         // This should show things like:
-        // - amount left per day
-        // - savings plans and targets
+        // - MAX amount left per day
+        // - MAX amount left per week
+        // - yearly outgoings
+        // - yearly surplus (how much left to live on)
+        // - rent as % of wages
+        // - desired % of wages as savings (with a 0-100% slider!)
+        // - savings plans and targets (might need an extra set of models/controllers/views)
         // - balance entry (which will eventually be automated)
         // - current status compared to the breadline
-        // But, for now, show income - outcome
+        // But, for now, show income - outgoings
         Float outgoingTotal = getTotalOutgoings(repoListToList(outgoingRepository.list()));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
         Float surplus = round2(incomingTotal - outgoingTotal);

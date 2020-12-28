@@ -1,6 +1,7 @@
 package models;
 
 import javax.persistence.*;
+import java.util.List;
 
 @Entity
 public class Outgoing {
@@ -52,5 +53,9 @@ public class Outgoing {
 
     public void setFromAccount(int fromAccount) {
         this.fromAccount = fromAccount;
+    }
+
+    public static Float getTotalOutgoings(List<Outgoing> outgoings) {
+        return outgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 }

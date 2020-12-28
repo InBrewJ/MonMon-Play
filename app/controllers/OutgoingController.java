@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
+import static models.Outgoing.getTotalOutgoings;
 import static play.libs.Json.toJson;
 import static play.libs.Scala.asScala;
 
@@ -42,10 +43,6 @@ public class OutgoingController extends Controller {
         this.outgoingRepository = outgoingRepository;
         this.accountRepository = accountRepository;
         this.ec = ec;
-    }
-
-    private Float getTotalOutgoings(List<Outgoing> outgoings) {
-        return outgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
