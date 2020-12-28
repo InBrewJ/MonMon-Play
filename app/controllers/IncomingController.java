@@ -12,6 +12,7 @@ import play.mvc.Result;
 
 import javax.inject.Inject;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -60,8 +61,6 @@ public class IncomingController extends Controller {
 
     public CompletionStage<Result> addIncoming(final Http.Request request) {
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
-        System.out.println(incoming.getName());
-        System.out.println(incoming.isPayDay());
         return incomingRepository
                 .add(incoming)
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());

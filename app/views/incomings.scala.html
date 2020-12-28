@@ -1,6 +1,6 @@
 @import play.mvc.Http.Request
 @import helper._
-@(incomings: Seq[Incoming], form: Form[Incoming])(implicit request: Http.Request,  messages: play.i18n.Messages)
+@(incomings: Seq[Incoming], incomingForm: Form[Incoming])(implicit request: Http.Request,  messages: play.i18n.Messages)
 @main("MonMonIncomings") {
 <script
         type="text/javascript"
@@ -17,13 +17,14 @@
 
             <ul id="incomings">
                 @for(i <- incomings) {
-                <li>@i.name, (@{i.`type`}), @i.netValue, @i.incomingMonthDay, payday: @i.isPayDay</li>
+                    <li>@i.name, (@{i.`type`}), @i.netValue, @i.incomingMonthDay, payday: @i.isPayDay</li>
                 }
             </ul>
 
         </div>
         <div class="w3-half w3-padding-64">
             <form method="POST" action="@routes.IncomingController.addIncoming()">
+<!--                Need error handling for all forms-->
                 @helper.CSRF.formField
                 <input placeholder="Incoming name" type="text" name="name" />
                 <br />
@@ -31,9 +32,11 @@
                 <br />
                 <input placeholder="how much?" type="number" step="0.01" name="netValue" />
                 <br />
+<!--                Ideally these constraints should be on the model-->
                 <input placeholder="What day of month?" step="1" min="1" max="31" type="number" name="incomingMonthDay" />
                 <br />
-                @checkbox(field = form("isPayDay"))
+<!--                This checkbox needs to be disabled (or even hidden) if we already have a payday incoming-->
+                @checkbox(incomingForm("payDay"), Symbol("_label") -> "Is this Payday?")
                 <br />
                 <button>Add Incoming</button>
             </form>

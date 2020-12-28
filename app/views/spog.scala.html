@@ -1,0 +1,22 @@
+@import play.mvc.Http.Request
+@import helper._
+@(surplus: Float)(implicit request: Http.Request)
+@main("MonMonIncomings") {
+<script
+        type="text/javascript"
+        src='@routes.Assets.at("javascripts/index.js")'
+></script>
+
+@partials.header()
+@partials.navbar()
+
+<div class="w3-content w3-center" style="max-width: 1500px">
+    <div class="w3-row">
+        <div class="w3-full">
+            <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
+            <p>Surplus: £@surplus</p>
+        </div>
+    </div>
+</div>
+
+}

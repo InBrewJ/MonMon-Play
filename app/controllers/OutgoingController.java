@@ -45,8 +45,8 @@ public class OutgoingController extends Controller {
         this.ec = ec;
     }
 
-    private Double round2(Double val) {
-        return new BigDecimal(val).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    private Float round2(Float val) {
+        return new BigDecimal(val).setScale(2, RoundingMode.HALF_UP).floatValue();
     }
 
     private Float getTotalOutgoings(List<Outgoing> outgoings) {
@@ -60,7 +60,7 @@ public class OutgoingController extends Controller {
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         this.accounts = repoListToList(accountRepository.list());
         this.outgoings = repoListToList(outgoingRepository.list());
-        this.outgoingTotal = getTotalOutgoings(this.outgoings);
+        this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
         return ok(views.html.index.render(asScala(accounts), asScala(outgoings), this.outgoingTotal, request));
     }
 

@@ -15,14 +15,14 @@ public class Incoming {
     public Float grossValue;
     public Float netValue;
     public int incomingMonthDay;
-    public boolean isPayDay = false;
+    public boolean payDay = false;
 
     public boolean isPayDay() {
-        return isPayDay;
+        return payDay;
     }
 
     public void setPayDay(boolean payDay) {
-        isPayDay = payDay;
+        this.payDay = payDay;
     }
 
     public Float getGrossValue() {
