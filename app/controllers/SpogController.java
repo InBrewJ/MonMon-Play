@@ -7,13 +7,11 @@ import play.mvc.Http;
 import play.mvc.Result;
 
 import javax.inject.Inject;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+
+import static helpers.MathHelpers.round2;
+import static helpers.ModelHelpers.repoListToList;
 
 public class SpogController extends Controller {
     private final IncomingRepository incomingRepository;
@@ -33,16 +31,8 @@ public class SpogController extends Controller {
         return outgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 
-    private Float round2(Float val) {
-        return new BigDecimal(val).setScale(2, RoundingMode.HALF_UP).floatValue();
-    }
-
     private Float getTotalIncomings(List<Incoming> incomings) {
         return incomings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.netValue, Float::sum);
-    }
-
-    private <T> List<T> repoListToList(CompletionStage<Stream<T>> in) throws ExecutionException, InterruptedException {
-        return in.toCompletableFuture().get().collect(Collectors.toList());
     }
 
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {

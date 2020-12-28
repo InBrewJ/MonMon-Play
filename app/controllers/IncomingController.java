@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static helpers.ModelHelpers.repoListToList;
 import static play.libs.Json.toJson;
 import static play.libs.Scala.asScala;
 
@@ -42,10 +43,6 @@ public class IncomingController extends Controller {
         this.form = formFactory.form(Incoming.class);
         this.incomingRepository = incomingRepository;
         this.ec = ec;
-    }
-
-    private <T> List<T> repoListToList(CompletionStage<Stream<T>> in) throws ExecutionException, InterruptedException {
-        return in.toCompletableFuture().get().collect(Collectors.toList());
     }
 
     public CompletionStage<Result> getIncomings() {

@@ -1,6 +1,8 @@
 package models;
 
 import javax.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 public class Account {
@@ -12,6 +14,9 @@ public class Account {
     public String name;
     public String nickname;
     public String type;
+
+    @OneToMany(mappedBy = "account")
+    public List<Balance> balances = new ArrayList<>();
 
     public Long getId() {
         return id;
