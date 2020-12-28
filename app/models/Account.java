@@ -1,5 +1,7 @@
 package models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.persistence.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,8 +17,13 @@ public class Account {
     public String nickname;
     public String type;
 
-    @OneToMany(mappedBy = "account")
+    @OneToMany(fetch = FetchType.EAGER, mappedBy = "account")
+    @Column(nullable = true)
     public List<Balance> balances = new ArrayList<>();
+
+    public List<Balance> getBalances() {
+        return balances;
+    }
 
     public Long getId() {
         return id;

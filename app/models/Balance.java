@@ -1,5 +1,7 @@
 package models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.persistence.*;
 
 @Entity
@@ -11,7 +13,8 @@ public class Balance {
     public Double value;
 
     @ManyToOne
-    @JoinColumn(name="ACCOUNT_ID")
+    @JoinColumn(name="account_id")
+    @JsonIgnore
     public Account account;
 
     public Long getId() {
@@ -36,5 +39,13 @@ public class Balance {
 
     public void setValue(Double value) {
         this.value = value;
+    }
+
+    public Account getAccount() {
+        return account;
+    }
+
+    public void setAccount(Account account) {
+        this.account = account;
     }
 }

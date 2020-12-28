@@ -64,7 +64,7 @@
         <input placeholder="what day?" type="number" name="outgoingDay" />
         <br />
         <label for="fromAccount">From account: </label>
-        <select id="fromAccount" name="fromAccount">
+        <select id="fromAccount" name="account_id">
           @for(a <- accounts) {
             <option value="@a.id">@a.name (@{a.`type`})</option>
           }

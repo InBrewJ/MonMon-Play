@@ -18,6 +18,12 @@ POST    /incoming                     controllers.IncomingController.addIncoming
 GET     /incomings                    controllers.IncomingController.getIncomings()
 GET     /myIncomings                  controllers.IncomingController.listIncomings(req: Request)
 
+# Balances
+
+POST    /balance                     controllers.BalanceController.addBalance(req: Request)
+GET     /balances                    controllers.BalanceController.getBalances()
+GET     /myBalances                  controllers.BalanceController.listBalances(req: Request)
+
 # SPOG ('Single Pane of Glass')
 GET     /spog                         controllers.SpogController.index(req: Request)
 
