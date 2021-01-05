@@ -5,6 +5,7 @@ import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
+import viewModels.Spog;
 
 import javax.inject.Inject;
 import java.util.concurrent.ExecutionException;
@@ -43,6 +44,8 @@ public class SpogController extends Controller {
         Float outgoingTotal = getTotalOutgoings(repoListToList(outgoingRepository.list()));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
         Float surplus = round2(incomingTotal - outgoingTotal);
-        return ok(views.html.spog.render(surplus, request));
+        int suggestedIncomeAsSavings = 20;
+        Spog spogVm = new Spog(surplus, 29, suggestedIncomeAsSavings);
+        return ok(views.html.spog.render(spogVm, request));
     }
 }

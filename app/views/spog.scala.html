@@ -1,6 +1,7 @@
 @import play.mvc.Http.Request
 @import helper._
-@(surplus: Float)(implicit request: Http.Request)
+@import viewModels._
+@(spogVm: Spog)(implicit request: Http.Request)
 @main("MonMonIncomings") {
 <script
         type="text/javascript"
@@ -12,9 +13,9 @@
 
 <div class="w3-content w3-center" style="max-width: 1500px">
     <div class="w3-row">
-        <div class="w3-full">
+        <div class="w3-half">
             <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
-            <p>Surplus: £@surplus</p>
+            <p>Surplus: £@spogVm.getSurplus()</p>
             <p>
                 // This should show things like: <br/>
                 // - MAX amount left per day <br/>
@@ -26,7 +27,18 @@
                 // - savings plans and targets (might need an extra set of models/controllers/views) <br/>
                 // - balance entry (which will eventually be automated) <br/>
                 // - current status compared to the breadline <br/>
-                // But, for now, show income - outgoings (i.e. £@surplus) <br/>
+                // But, for now, show income - outgoings (i.e. £@spogVm.getSurplus()) <br/>
+            </p>
+        </div>
+        <div class="w3-half">
+            <p>Next payday: <span id="next-payday-ddmmyyyy">@spogVm.getNextPayDate()</span></p>
+            <p>That is, <span id="next-pay-days-from-now">@spogVm.getDaysUntilNextPayday()</span> days away</p>
+            <p>Savings Slider</p>
+            <div class="slidecontainer">
+                <input type="range" min="0" max="100" value="@spogVm.getPercentageIncomeAsSavings()" class="slider" id="savings-slider">
+            </div>
+            <p>
+                <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings
             </p>
         </div>
     </div>

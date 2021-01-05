@@ -14,4 +14,5 @@ public interface IncomingRepository {
     CompletionStage<Incoming> add(Incoming incoming);
 
     CompletionStage<Stream<Incoming>> list();
+
 }
