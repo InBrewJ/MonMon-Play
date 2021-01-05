@@ -35,6 +35,11 @@ public class JPAIncomingRepository implements IncomingRepository {
         return supplyAsync(() -> wrap(em -> list(em)), executionContext);
     }
 
+    @Override
+    public int getNextPayDay() {
+        return 29;
+    }
+
     private <T> T wrap(Function<EntityManager, T> function) {
         return jpaApi.withTransaction(function);
     }
@@ -48,4 +53,5 @@ public class JPAIncomingRepository implements IncomingRepository {
         List<Incoming> incomings = em.createQuery("select i from Incoming i", Incoming.class).getResultList();
         return incomings.stream();
     }
+
 }

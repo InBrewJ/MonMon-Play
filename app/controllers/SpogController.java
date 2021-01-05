@@ -45,7 +45,8 @@ public class SpogController extends Controller {
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
         Float surplus = round2(incomingTotal - outgoingTotal);
         int suggestedIncomeAsSavings = 20;
-        Spog spogVm = new Spog(surplus, 29, suggestedIncomeAsSavings);
+        int nextPayDay = incomingRepository.getNextPayDay();
+        Spog spogVm = new Spog(surplus, nextPayDay, suggestedIncomeAsSavings);
         return ok(views.html.spog.render(spogVm, request));
     }
 }

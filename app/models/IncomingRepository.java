@@ -15,4 +15,5 @@ public interface IncomingRepository {
 
     CompletionStage<Stream<Incoming>> list();
 
+    int getNextPayDay();
 }
