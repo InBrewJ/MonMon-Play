@@ -3,6 +3,7 @@ package models;
 import com.google.inject.ImplementedBy;
 
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Stream;
 
 /**
@@ -15,5 +16,5 @@ public interface IncomingRepository {
 
     CompletionStage<Stream<Incoming>> list();
 
-    int getNextPayDay();
+    int getNextPayDay() throws ExecutionException, InterruptedException;
 }

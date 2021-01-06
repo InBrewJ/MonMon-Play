@@ -5,7 +5,9 @@ import play.db.jpa.JPAApi;
 import javax.inject.Inject;
 import javax.persistence.EntityManager;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -37,7 +39,20 @@ public class JPAIncomingRepository implements IncomingRepository {
 
     @Override
     public int getNextPayDay() {
-        return 29;
+        CompletableFuture<List<Incoming>> incomings = supplyAsync(() -> wrap(em -> em.createQuery("select i from Incoming i where PAYDAY = true", Incoming.class).setMaxResults(1).getResultList()), executionContext);
+        try {
+            List<Incoming> first = incomings.get();
+            int theDay = first.get(0).getIncomingMonthDay();
+            System.out.println("Found: " + theDay + " as payday");
+            return theDay;
+        } catch (InterruptedException e) {
+            System.out.println("Finding payday future was: InterruptedException");
+        } catch (ExecutionException e) {
+            System.out.println("Finding payday future was: ExecutionException");
+        } catch (IndexOutOfBoundsException e) {
+            System.out.println("Finding payday future was: IndexOutOfBoundsException, probably no results found");
+        }
+        return 1;
     }
 
     private <T> T wrap(Function<EntityManager, T> function) {
