@@ -12,11 +12,9 @@ import play.mvc.Result;
 
 import javax.inject.Inject;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static helpers.ModelHelpers.repoListToList;
 import static play.libs.Json.toJson;

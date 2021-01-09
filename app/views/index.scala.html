@@ -1,6 +1,6 @@
 @import play.mvc.Http.Request
 @import helper._
-@(accounts: Seq[Account], outgoings: Seq[Outgoing], outgoingTotal: Float)(implicit request: Http.Request)
+@(accounts: Seq[Account], outgoings: Seq[Outgoing], outgoingTotal: Float, outgoingForm: Form[Outgoing])(implicit request: Http.Request, messages: play.i18n.Messages)
 @main("MonMon") {
 <script
   type="text/javascript"
@@ -70,6 +70,8 @@
             <option value="@a.id">@a.name (@{a.`type`})</option>
           }
         </select>
+        @checkbox(outgoingForm("isBills"), Symbol("_label") -> "Bills?")
+        @checkbox(outgoingForm("isRent"), Symbol("_label") -> "Rent?")
         <br /><br />
         <button>Add Outgoing</button>
       </form>

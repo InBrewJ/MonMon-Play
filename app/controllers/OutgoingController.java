@@ -1,10 +1,9 @@
 package controllers;
 
-import models.Account;
-import models.AccountRepository;
-import models.Outgoing;
-import models.OutgoingRepository;
+import models.*;
+import play.data.Form;
 import play.data.FormFactory;
+import play.i18n.MessagesApi;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
@@ -36,12 +35,16 @@ public class OutgoingController extends Controller {
     private List<Account> accounts;
     private List<Outgoing> outgoings;
     private Float outgoingTotal;
+    private final Form<Outgoing> form;
+    private MessagesApi messagesApi;
 
     @Inject
-    public OutgoingController(FormFactory formFactory, OutgoingRepository outgoingRepository, AccountRepository accountRepository, HttpExecutionContext ec) throws ExecutionException, InterruptedException {
+    public OutgoingController(FormFactory formFactory, MessagesApi messagesApi, OutgoingRepository outgoingRepository, AccountRepository accountRepository, HttpExecutionContext ec) throws ExecutionException, InterruptedException {
         this.formFactory = formFactory;
         this.outgoingRepository = outgoingRepository;
         this.accountRepository = accountRepository;
+        this.form = formFactory.form(Outgoing.class);
+        this.messagesApi = messagesApi;
         this.ec = ec;
     }
 
@@ -49,7 +52,7 @@ public class OutgoingController extends Controller {
         this.accounts = repoListToList(accountRepository.list());
         this.outgoings = repoListToList(outgoingRepository.list());
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
-        return ok(views.html.index.render(asScala(accounts), asScala(outgoings), this.outgoingTotal, request));
+        return ok(views.html.index.render(asScala(accounts), asScala(outgoings), this.outgoingTotal, this.form, request, messagesApi.preferred(request)));
     }
 
     public CompletionStage<Result> addOutgoing(final Http.Request request) {
