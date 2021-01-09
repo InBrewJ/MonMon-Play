@@ -38,7 +38,10 @@
                 <input type="range" min="0" max="100" value="@spogVm.getPercentageIncomeAsSavings()" class="slider" id="savings-slider">
             </div>
             <p>
-                <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings
+                <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings pcm
+            </p>
+            <p>
+                That is, <span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>
             </p>
         </div>
     </div>

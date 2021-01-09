@@ -30,23 +30,12 @@ public class SpogController extends Controller {
     }
 
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
-        // This should show things like:
-        // - MAX amount left per day
-        // - MAX amount left per week
-        // - yearly outgoings
-        // - yearly surplus (how much left to live on)
-        // - rent as % of wages
-        // - desired % of wages as savings (with a 0-100% slider!)
-        // - savings plans and targets (might need an extra set of models/controllers/views)
-        // - balance entry (which will eventually be automated)
-        // - current status compared to the breadline
-        // But, for now, show income - outgoings
         Float outgoingTotal = getTotalOutgoings(repoListToList(outgoingRepository.list()));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
         Float surplus = round2(incomingTotal - outgoingTotal);
         int suggestedIncomeAsSavings = 20;
         int nextPayDay = incomingRepository.getNextPayDay();
-        Spog spogVm = new Spog(surplus, nextPayDay, suggestedIncomeAsSavings);
+        Spog spogVm = new Spog(surplus, nextPayDay, suggestedIncomeAsSavings, incomingTotal);
         return ok(views.html.spog.render(spogVm, request));
     }
 }
