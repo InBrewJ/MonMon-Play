@@ -14,6 +14,24 @@ public class Outgoing {
     public Float cost;
     public int outgoingDay;
     public int fromAccount;
+    public boolean bill = false;
+    public boolean rent = false;
+
+    public boolean isBill() {
+        return bill;
+    }
+
+    public void setBill(boolean bill) {
+        this.bill = bill;
+    }
+
+    public boolean isRent() {
+        return rent;
+    }
+
+    public void setRent(boolean rent) {
+        this.rent = rent;
+    }
 
     public Long getId() {
         return id;
