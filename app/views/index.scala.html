@@ -70,8 +70,8 @@
             <option value="@a.id">@a.name (@{a.`type`})</option>
           }
         </select>
-        @checkbox(outgoingForm("isBills"), Symbol("_label") -> "Bills?")
-        @checkbox(outgoingForm("isRent"), Symbol("_label") -> "Rent?")
+        @checkbox(outgoingForm("bill"), Symbol("_label") -> "Bills?")
+        @checkbox(outgoingForm("rent"), Symbol("_label") -> "Rent?")
         <br /><br />
         <button>Add Outgoing</button>
       </form>
