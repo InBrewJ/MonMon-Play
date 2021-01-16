@@ -55,7 +55,7 @@ public class BalanceController extends Controller {
         // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
         int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
         List<Account> accounts = repoListToList(accountRepository.list());
-        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm).collect(Collectors.toList());
+        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
         balance.setAccount(desiredAccount.get(0));
         return balanceRepository
                 .add(balance)
