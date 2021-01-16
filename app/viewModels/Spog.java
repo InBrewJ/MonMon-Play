@@ -13,8 +13,8 @@ public class Spog {
     public Spog(Float surplus, int nextPayday, int percentageIncomeAsSavings, Float incomingTotal) {
         this.surplus = surplus;
         this.nextPayday = nextPayday;
-        this.daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday);
-        this.nextPayDate = this.calculateNextPaydayDate(nextPayday);
+        this.daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday, LocalDate.now());
+        this.nextPayDate = this.calculateNextPaydayDate(nextPayday, LocalDate.now());
         this.percentageIncomeAsSavings = percentageIncomeAsSavings;
         this.incomingTotal = incomingTotal;
     }
@@ -27,8 +27,8 @@ public class Spog {
         return nextPayDate;
     }
 
-    private LocalDate calculateNextPaydayDate(int nextPayday) {
-        LocalDate possiblePayDate = LocalDate.now();
+    private LocalDate calculateNextPaydayDate(int nextPayday, LocalDate from) {
+        LocalDate possiblePayDate = from;
         boolean found = false;
         while(!found) {
             possiblePayDate = possiblePayDate.plusDays(1);
@@ -37,8 +37,8 @@ public class Spog {
         return possiblePayDate;
     }
 
-    private int calculateDaysUntilNextPayday(int nextPayday) {
-        LocalDate possiblePayDate = LocalDate.now();
+    private int calculateDaysUntilNextPayday(int nextPayday, LocalDate from) {
+        LocalDate possiblePayDate = from;
         boolean found = false;
         int count = 0;
         while(!found) {
