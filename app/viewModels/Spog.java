@@ -2,6 +2,8 @@ package viewModels;
 
 import java.time.LocalDate;
 
+import static helpers.MathHelpers.round2;
+
 public class Spog {
     private final Float surplus;
     private final int nextPayday;
@@ -18,18 +20,18 @@ public class Spog {
 
     public Spog(Float surplus, int nextPayday, int percentageIncomeAsSavings, Float incomingTotal, Float outgoingTotal) {
         LocalDate now = LocalDate.now();
-        this.surplus = surplus;
+        this.surplus = round2(surplus);
         this.nextPayday = nextPayday;
         this.daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday, now);
         this.nextPayDate = this.calculateNextPaydayDate(nextPayday, now);
         this.percentageIncomeAsSavings = percentageIncomeAsSavings;
         this.incomingTotal = incomingTotal;
         this.daysBetweenPaydays = this.calculateDaysBetweenPaydays(nextPayday, now);
-        this.maxPerDay = surplus / this.daysBetweenPaydays;
-        this.maxPerWeek = this.maxPerDay * 7;
-        this.yearlySurplus = surplus * 12;
-        this.yearlyOutgoings = outgoingTotal * 12;
-        this.yearlyTakehome = incomingTotal * 12;
+        this.maxPerDay = round2(surplus / this.daysBetweenPaydays);
+        this.maxPerWeek = round2(this.maxPerDay * 7);
+        this.yearlySurplus = round2(surplus * 12);
+        this.yearlyOutgoings = round2(outgoingTotal * 12);
+        this.yearlyTakehome = round2(incomingTotal * 12);
     }
 
 
