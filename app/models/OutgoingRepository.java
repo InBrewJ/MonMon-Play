@@ -18,7 +18,11 @@ public interface OutgoingRepository {
 
     CompletionStage<Stream<Outgoing>> rents();
 
+    CompletionStage<Stream<Outgoing>> bills();
+
     CompletionStage<Stream<Outgoing>> alreadyPaid(LocalDate asOf, int paydayDay);
+
+    CompletionStage<Stream<Outgoing>> yetToPay(LocalDate asOf, int paydayDay);
 
     // For the future...
     //    CompletionStage<Stream<Outgoing>> bills();

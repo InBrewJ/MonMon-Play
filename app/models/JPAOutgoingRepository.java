@@ -43,8 +43,18 @@ public class JPAOutgoingRepository implements OutgoingRepository {
     }
 
     @Override
+    public CompletionStage<Stream<Outgoing>> bills() {
+        return supplyAsync(() -> wrap(em -> bills(em)), executionContext);
+    }
+
+    @Override
     public CompletionStage<Stream<Outgoing>> alreadyPaid(LocalDate asOf, int paydayDay) {
         return supplyAsync(() -> wrap(em -> alreadyPaid(em, asOf, paydayDay)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<Stream<Outgoing>> yetToPay(LocalDate asOf, int paydayDay) {
+        return supplyAsync(() -> wrap(em -> yetToPay(em, asOf, paydayDay)), executionContext);
     }
 
     private <T> T wrap(Function<EntityManager, T> function) {
@@ -66,20 +76,27 @@ public class JPAOutgoingRepository implements OutgoingRepository {
         return outgoings.stream();
     }
 
+    private Stream<Outgoing> bills(EntityManager em) {
+        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p WHERE BILL = true", Outgoing.class).getResultList();
+        return outgoings.stream();
+    }
+
+    private Stream<Outgoing> yetToPay(EntityManager em, LocalDate asOf, int paydayDay) {
+        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p", Outgoing.class).getResultList();
+        List<Outgoing> paid = this.findAlreadyPaid(outgoings, asOf, paydayDay);
+        outgoings.removeAll(paid);
+        return outgoings.stream();
+    }
+
     private Stream<Outgoing> alreadyPaid(EntityManager em, LocalDate asOf, int paydayDay) {
         List<Outgoing> outgoings = em.createQuery("select p from Outgoing p", Outgoing.class).getResultList();
+        List<Outgoing> paid = this.findAlreadyPaid(outgoings, asOf, paydayDay);
+        return paid.stream();
+    }
+
+    private List<Outgoing> findAlreadyPaid(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
         List<Outgoing> found = new ArrayList<>();
-        int dayOfasOf = asOf.getDayOfMonth();
-
-        // Naive idea:
-        // count back to last payday
-        // get starting date
-        // count up until asOf
-        // at each step, find outgoing O(n) with that day -> remove it from the list
-        // return the reduced list
-
-        LocalDate lastPaydayDate = findLastPaydayDate(asOf, paydayDay);
-        LocalDate searchDate = lastPaydayDate;
+        LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);
         do {
             for (Outgoing o: outgoings) {
                 if (o.getOutgoingDay() == searchDate.getDayOfMonth()) {
@@ -87,9 +104,8 @@ public class JPAOutgoingRepository implements OutgoingRepository {
                 }
             }
             searchDate = searchDate.plusDays(1);
-        } while (searchDate.getDayOfMonth() != asOf.getDayOfMonth());
-        outgoings.removeAll(found);
-        return found.stream();
+        } while (searchDate.getDayOfMonth() != asOf.getDayOfMonth() + 1);
+        return found;
     }
 
     LocalDate findLastPaydayDate(LocalDate asOf, int payday) {

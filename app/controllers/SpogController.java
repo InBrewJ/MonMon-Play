@@ -44,6 +44,14 @@ public class SpogController extends Controller {
         for (Outgoing o: completedOutgoings) {
             System.out.println("Already paid :: " + o.getName() + " on " + o.getOutgoingDay());
         }
+        List<Outgoing> pendingOutgoings = repoListToList(outgoingRepository.yetToPay(LocalDate.now(), nextPayDay));
+        for (Outgoing o: pendingOutgoings) {
+            System.out.println("Pending :: " + o.getName() + " on " + o.getOutgoingDay());
+        }
+        List<Outgoing> bills = repoListToList(outgoingRepository.bills());
+        for (Outgoing o: bills) {
+            System.out.println("Bill :: " + o.getName() + " on " + o.getOutgoingDay());
+        }
         // Scratch end
         Spog spogVm = new Spog(surplus, nextPayDay, suggestedIncomeAsSavings, incomingTotal, outgoingTotal, rentCost);
         return ok(views.html.spog.render(spogVm, request));
