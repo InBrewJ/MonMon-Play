@@ -8,6 +8,7 @@ import play.mvc.Result;
 import viewModels.Spog;
 
 import javax.inject.Inject;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -34,10 +35,16 @@ public class SpogController extends Controller {
         Float outgoingTotal = getTotalOutgoings(repoListToList(outgoingRepository.list()));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
         List<Outgoing> rents = repoListToList(outgoingRepository.rents());
-        Float rentCost = rents.get(0).cost;
+        Float rentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
         Float surplus = round2(incomingTotal - outgoingTotal);
         int suggestedIncomeAsSavings = 20;
         int nextPayDay = incomingRepository.getNextPayDay();
+        // Scratch
+        List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(LocalDate.now(), nextPayDay));
+        for (Outgoing o: completedOutgoings) {
+            System.out.println("Already paid :: " + o.getName() + " on " + o.getOutgoingDay());
+        }
+        // Scratch end
         Spog spogVm = new Spog(surplus, nextPayDay, suggestedIncomeAsSavings, incomingTotal, outgoingTotal, rentCost);
         return ok(views.html.spog.render(spogVm, request));
     }
