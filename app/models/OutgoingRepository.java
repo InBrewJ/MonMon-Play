@@ -14,4 +14,10 @@ public interface OutgoingRepository {
     CompletionStage<Outgoing> add(Outgoing outgoing);
 
     CompletionStage<Stream<Outgoing>> list();
+
+    CompletionStage<Stream<Outgoing>> rents();
+
+    // For the future...
+    //    CompletionStage<Stream<Outgoing>> bills();
+
 }

@@ -8,6 +8,7 @@ public class Spog {
     private final Float surplus;
     private final int nextPayday;
     private final int percentageIncomeAsSavings;
+    private final Float percentageIncomeAsRent;
     private final int daysUntilNextPayday;
     private final int daysBetweenPaydays;
     private final Float incomingTotal;
@@ -17,9 +18,12 @@ public class Spog {
     private final Float yearlyOutgoings;
     private final LocalDate nextPayDate;
     private final Float yearlyTakehome;
+    private final Float rentCost;
 
-    public Spog(Float surplus, int nextPayday, int percentageIncomeAsSavings, Float incomingTotal, Float outgoingTotal) {
+    public Spog(Float surplus, int nextPayday, int percentageIncomeAsSavings, Float incomingTotal, Float outgoingTotal, Float
+                rentCost) {
         LocalDate now = LocalDate.now();
+        this.rentCost = rentCost;
         this.surplus = round2(surplus);
         this.nextPayday = nextPayday;
         this.daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday, now);
@@ -32,11 +36,18 @@ public class Spog {
         this.yearlySurplus = round2(surplus * 12);
         this.yearlyOutgoings = round2(outgoingTotal * 12);
         this.yearlyTakehome = round2(incomingTotal * 12);
+        this.percentageIncomeAsRent = this.calculatePercentageIncomeAsRent();
     }
 
+    private Float calculatePercentageIncomeAsRent() {
+        return round2((this.rentCost / this.incomingTotal) * 100);
+    }
 
     private int calculateDaysBetweenPaydays(int nextPayday, LocalDate now) {
-        // if NOW is in the same month as the payday...
+        // from today, count back to last payday
+        // from today, count forward to next payday
+        // add the two together
+        // boom
         return 31;
     }
 
@@ -60,6 +71,10 @@ public class Spog {
             if (possiblePayDate.getDayOfMonth() == nextPayday) found = true;
         }
         return count;
+    }
+
+    public Float getPercentageIncomeAsRent() {
+        return percentageIncomeAsRent;
     }
 
     public int getDaysUntilNextPayday() {
@@ -108,5 +123,9 @@ public class Spog {
 
     public Float getYearlyTakehome() {
         return yearlyTakehome;
+    }
+
+    public Float getRentCost() {
+        return rentCost;
     }
 }

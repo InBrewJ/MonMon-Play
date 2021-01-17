@@ -35,6 +35,11 @@ public class JPAOutgoingRepository implements OutgoingRepository {
         return supplyAsync(() -> wrap(em -> list(em)), executionContext);
     }
 
+    @Override
+    public CompletionStage<Stream<Outgoing>> rents() {
+        return supplyAsync(() -> wrap(em -> rents(em)), executionContext);
+    }
+
     private <T> T wrap(Function<EntityManager, T> function) {
         return jpaApi.withTransaction(function);
     }
@@ -46,6 +51,11 @@ public class JPAOutgoingRepository implements OutgoingRepository {
 
     private Stream<Outgoing> list(EntityManager em) {
         List<Outgoing> outgoings = em.createQuery("select p from Outgoing p ORDER BY OUTGOINGDAY", Outgoing.class).getResultList();
+        return outgoings.stream();
+    }
+
+    private Stream<Outgoing> rents(EntityManager em) {
+        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p WHERE RENT = true", Outgoing.class).getResultList();
         return outgoings.stream();
     }
 }

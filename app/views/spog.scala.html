@@ -18,12 +18,12 @@
             <p>Surplus pcm: £@spogVm.getSurplus()</p>
             <p>
                 // This should show things like: <br/>
-                // - MAX amount left per day  -> £@spogVm.getMaxPerDay()<br/>
+                // - MAX amount left per day (between paydays) -> £@spogVm.getMaxPerDay()<br/>
                 // - MAX amount left per week -> £@spogVm.getMaxPerWeek() <br/>
                 // - yearly takehome -> £@spogVm.getYearlyTakehome()  <br/>
                 // - yearly outgoings -> £@spogVm.getYearlyOutgoings()  <br/>
                 // - yearly surplus (how much left to live on) -> £@spogVm.getYearlySurplus() <br/>
-                // - rent as % of wages <br/>
+                // - rent as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
                 // - balance view (which will eventually be automated) <br/>
                 // - current status compared to the breadline <br/>
                 // But, for now, show income - outgoings (i.e. £@spogVm.getSurplus()) <br/>
@@ -37,7 +37,7 @@
                 <input type="range" min="0" max="100" value="@spogVm.getPercentageIncomeAsSavings()" class="slider" id="savings-slider">
             </div>
             <p>
-                <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings pcm
+                <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings + payoff pcm
             </p>
             <p>
                 That is, <span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>
