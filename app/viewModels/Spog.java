@@ -44,11 +44,10 @@ public class Spog {
     }
 
     private int calculateDaysBetweenPaydays(int nextPayday, LocalDate now) {
-        // from today, count back to last payday
-        // from today, count forward to next payday
-        // add the two together
-        // boom
-        return 31;
+        int daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday, now);
+        int daysSinceLastPayday = this.calculateDaysSinceLastPayday(nextPayday, now);
+        int daysBetweenPayDays = daysUntilNextPayday + daysSinceLastPayday;
+        return daysBetweenPayDays;
     }
 
     private LocalDate calculateNextPaydayDate(int nextPayday, LocalDate from) {
@@ -69,6 +68,18 @@ public class Spog {
             possiblePayDate = possiblePayDate.plusDays(1);
             count++;
             if (possiblePayDate.getDayOfMonth() == nextPayday) found = true;
+        }
+        return count;
+    }
+
+    private int calculateDaysSinceLastPayday(int lastPayday, LocalDate from) {
+        LocalDate possiblePayDate = from;
+        boolean found = false;
+        int count = 0;
+        while(!found) {
+            possiblePayDate = possiblePayDate.minusDays(1);
+            count++;
+            if (possiblePayDate.getDayOfMonth() == lastPayday) found = true;
         }
         return count;
     }
