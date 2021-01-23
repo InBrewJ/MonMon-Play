@@ -77,6 +77,7 @@ public class SpogController extends Controller {
         System.out.println("natwest credit id : " + natwestCreditId);
         //
         Account natwestD = new Account();
+        natwestD.setName("Natwest Debit");
         natwestD.setNickname("main overflow");
         back = this.accountRepository.add(natwestD);
         long natwestDebitId = back.toCompletableFuture().get().getId();
@@ -130,6 +131,13 @@ public class SpogController extends Controller {
         fitbit.setName("Fitbit premium");
         fitbit.setFromAccount((int) halifaxDebitId);
         this.outgoingRepository.add(fitbit);
+        //
+        Outgoing nuranow = new Outgoing();
+        nuranow.setCost(9.99f);
+        nuranow.setOutgoingDay(28);
+        nuranow.setName("Nuraphones");
+        nuranow.setFromAccount((int) natwestCreditId);
+        this.outgoingRepository.add(nuranow);
         return ok("Seeded");
     }
 }
