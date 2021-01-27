@@ -104,7 +104,7 @@ public class JPAOutgoingRepository implements OutgoingRepository {
                 }
             }
             searchDate = searchDate.plusDays(1);
-        } while (searchDate.getDayOfMonth() != asOf.getDayOfMonth() + 1);
+        } while (searchDate.getDayOfMonth() != asOf.plusDays(1).getDayOfMonth());
         return found;
     }
 
