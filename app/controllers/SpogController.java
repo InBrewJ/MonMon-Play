@@ -15,6 +15,7 @@ import java.util.concurrent.ExecutionException;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
+import static helpers.TimeHelpers.generateUnixTimestamp;
 import static models.Incoming.getTotalIncomings;
 import static models.Outgoing.getTotalOutgoings;
 
@@ -64,17 +65,19 @@ public class SpogController extends Controller {
         // wtf is this
         // should probably be able to
         // do this in a separate class
-        // with hibernate native things
-        //
-        //
+        // with hibernate native things...
+        // at least this way it's decoupled
+        // from anything the database side of ORM
+        // and even, to some extent, even hibernate
+        // Accounts
         CompletionStage<Account> back;
+        Account natwestCFullAccount;
         Account natwestC = new Account();
         natwestC.setName("Natwest Credit");
         natwestC.setType("Credit");
         natwestC.setNickname("The grad one");
-        back = this.accountRepository.add(natwestC);
-        long natwestCreditId = back.toCompletableFuture().get().getId();
-        System.out.println("natwest credit id : " + natwestCreditId);
+        natwestCFullAccount = this.accountRepository.add(natwestC).toCompletableFuture().get();
+        long natwestCreditId = natwestCFullAccount.getId();
         //
         Account natwestD = new Account();
         natwestD.setName("Natwest Debit");
@@ -83,25 +86,26 @@ public class SpogController extends Controller {
         long natwestDebitId = back.toCompletableFuture().get().getId();
         //
         Account lloyds = new Account();
+        Account lloydsFullAccount;
         lloyds.setName("Lloyds");
         natwestD.setNickname("salary in / bill account");
-        back = this.accountRepository.add(lloyds);
-        long lloydsDebitId = back.toCompletableFuture().get().getId();
+        lloydsFullAccount = this.accountRepository.add(lloyds).toCompletableFuture().get();
+        long lloydsDebitId = lloydsFullAccount.getId();
         //
         Account halifax = new Account();
         halifax.setName("Halifax");
         natwestD.setNickname("daily driver");
         back = this.accountRepository.add(halifax);
         long halifaxDebitId = back.toCompletableFuture().get().getId();
-        //
+        // Incomings
         Incoming salary = new Incoming();
         salary.setName("ovo");
-        salary.setNetValue(2800f);
+        salary.setNetValue(2859.79f);
         salary.setPayDay(true);
         salary.setIncomingMonthDay(29);
         salary.setType("salary");
         this.incomingRepository.add(salary);
-        //
+        // Outgoings
         Outgoing rent = new Outgoing();
         rent.setRent(true);
         rent.setCost(1700f);
@@ -111,12 +115,20 @@ public class SpogController extends Controller {
         this.outgoingRepository.add(rent);
         //
         Outgoing water = new Outgoing();
-        water.setRent(true);
+        water.setBill(true);
         water.setCost(28.81f);
         water.setOutgoingDay(1);
         water.setName("Water bill");
         water.setFromAccount((int) lloydsDebitId);
         this.outgoingRepository.add(water);
+        //
+        Outgoing councilTax = new Outgoing();
+        councilTax.setBill(true);
+        councilTax.setCost(149f);
+        councilTax.setOutgoingDay(1);
+        councilTax.setName("Council tax");
+        councilTax.setFromAccount((int) lloydsDebitId);
+        this.outgoingRepository.add(councilTax);
         //
         Outgoing spotify = new Outgoing();
         spotify.setCost(9.99f);
@@ -138,6 +150,19 @@ public class SpogController extends Controller {
         nuranow.setName("Nuraphones");
         nuranow.setFromAccount((int) natwestCreditId);
         this.outgoingRepository.add(nuranow);
+        // Balances
+        Balance natwestCreditBalance = new Balance();
+        natwestCreditBalance.setAccount(natwestCFullAccount);
+        natwestCreditBalance.setValue(-400d);
+        natwestCreditBalance.setTimestamp(generateUnixTimestamp());
+        this.balanceRepository.add(natwestCreditBalance);
+        //
+        Balance lloydsBalance = new Balance();
+        lloydsBalance.setAccount(lloydsFullAccount);
+        lloydsBalance.setValue(47.49d);
+        lloydsBalance.setTimestamp(generateUnixTimestamp());
+        this.balanceRepository.add(lloydsBalance);
+
         return ok("Seeded");
     }
 }
