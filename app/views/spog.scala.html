@@ -13,37 +13,44 @@
 
 <div class="w3-content w3-center" style="max-width: 1500px">
     <div class="w3-row">
-        <div class="w3-half">
-            <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
-            <p>Surplus pcm: £@spogVm.getSurplus()</p>
-            <p>Already paid out: £@spogVm.getCompletedOutgoings()</p>
-            <p>Left to pay out: £@spogVm.getRemainingOutgoings()</p>
-            <p>
-                // This should show things like: <br/>
-                // - MAX amount left per day (between paydays) -> £@spogVm.getMaxPerDay()<br/>
-                // - MAX amount left per week -> £@spogVm.getMaxPerWeek() <br/>
-                // - yearly takehome -> £@spogVm.getYearlyTakehome()  <br/>
-                // - yearly outgoings -> £@spogVm.getYearlyOutgoings()  <br/>
-                // - yearly surplus (how much left to live on) -> £@spogVm.getYearlySurplus() <br/>
-                // - rent as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
-                // - balance view (which will eventually be automated) <br/>
-                // - current status compared to the breadline <br/>
-                // But, for now, show income - outgoings (i.e. £@spogVm.getSurplus()) <br/>
-            </p>
-        </div>
-        <div class="w3-half">
-            <p>Next payday: <span id="next-payday-ddmmyyyy">@spogVm.getNextPayDate()</span></p>
-            <p>That is, <span id="next-pay-days-from-now">@spogVm.getDaysUntilNextPayday()</span> days away</p>
-            <p>Savings Slider</p>
-            <div class="slidecontainer">
-                <input type="range" min="0" max="100" value="@spogVm.getPercentageIncomeAsSavings()" class="slider" id="savings-slider">
+        <div class="w3-half w3-padding">
+            <div class="w3-card w3-padding">
+                <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
+                <p>Surplus pcm: £@spogVm.getSurplus()</p>
+                <p>Already paid out: £@spogVm.getCompletedOutgoings()</p>
+                <p>Left to pay out: £@spogVm.getPendingOutgoings()</p>
+                <p>
+                    // This should show things like: <br/>
+                    // - MAX amount left per day (between paydays) -> £@spogVm.getMaxPerDay()<br/>
+                    // - MAX amount left per week -> £@spogVm.getMaxPerWeek() <br/>
+                    // - yearly takehome -> £@spogVm.getYearlyTakehome()  <br/>
+                    // - yearly outgoings -> £@spogVm.getYearlyOutgoings()  <br/>
+                    // - yearly surplus (how much left to live on) -> £@spogVm.getYearlySurplus() <br/>
+                    // - rent as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
+                    // - balance view (which will eventually be automated) <br/>
+                    // - current status compared to the breadline <br/>
+                    // But, for now, show income - outgoings (i.e. £@spogVm.getSurplus()) <br/>
+                </p>
             </div>
-            <p>
-                <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings + payoff pcm
-            </p>
-            <p>
-                That is, <span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>
-            </p>
+            <div class="w3-card w3-padding">
+                <p>Next payday: <span id="next-payday-ddmmyyyy">@spogVm.getNextPayDate()</span></p>
+                <p>That is, <span id="next-pay-days-from-now">@spogVm.getDaysUntilNextPayday()</span> days away</p>
+                <p>Savings Slider</p>
+                <div class="slidecontainer">
+                    <input type="range" min="0" max="100" value="@spogVm.getPercentageIncomeAsSavings()" class="slider" id="savings-slider">
+                </div>
+                <p>
+                    <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings + payoff pcm
+                </p>
+                <p>
+                    That is, <span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>
+                </p>
+            </div>
+        </div>
+        <div class="w3-half w3-padding">
+            <div class="w3-card w3-padding">
+                Accounts fam
+            </div>
         </div>
     </div>
 </div>
