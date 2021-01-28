@@ -1,5 +1,7 @@
 package models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.persistence.*;
 import java.util.List;
 
@@ -13,9 +15,13 @@ public class Outgoing {
     public String name;
     public Float cost;
     public int outgoingDay;
-    public int fromAccount;
     public boolean bill = false;
     public boolean rent = false;
+
+    @ManyToOne
+    @JoinColumn(name="account_id")
+    @JsonIgnore
+    public Account account;
 
     public boolean isBill() {
         return bill;
@@ -65,15 +71,15 @@ public class Outgoing {
         this.outgoingDay = outgoingDay;
     }
 
-    public int getFromAccount() {
-        return fromAccount;
-    }
-
-    public void setFromAccount(int fromAccount) {
-        this.fromAccount = fromAccount;
-    }
-
     public static Float getTotalOutgoings(List<Outgoing> outgoings) {
         return outgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+    }
+
+    public Account getAccount() {
+        return account;
+    }
+
+    public void setAccount(Account account) {
+        this.account = account;
     }
 }

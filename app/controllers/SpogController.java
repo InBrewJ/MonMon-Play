@@ -83,20 +83,18 @@ public class SpogController extends Controller {
         natwestD.setName("Natwest Debit");
         natwestD.setNickname("main overflow");
         back = this.accountRepository.add(natwestD);
-        long natwestDebitId = back.toCompletableFuture().get().getId();
         //
         Account lloyds = new Account();
         Account lloydsFullAccount;
         lloyds.setName("Lloyds");
         natwestD.setNickname("salary in / bill account");
         lloydsFullAccount = this.accountRepository.add(lloyds).toCompletableFuture().get();
-        long lloydsDebitId = lloydsFullAccount.getId();
         //
         Account halifax = new Account();
+        Account halifaxFullAccount;
         halifax.setName("Halifax");
         natwestD.setNickname("daily driver");
-        back = this.accountRepository.add(halifax);
-        long halifaxDebitId = back.toCompletableFuture().get().getId();
+        halifaxFullAccount = this.accountRepository.add(halifax).toCompletableFuture().get();
         // Incomings
         Incoming salary = new Incoming();
         salary.setName("ovo");
@@ -111,7 +109,7 @@ public class SpogController extends Controller {
         rent.setCost(1700f);
         rent.setOutgoingDay(1);
         rent.setName("Rent");
-        rent.setFromAccount((int) lloydsDebitId);
+        rent.setAccount(lloydsFullAccount);
         this.outgoingRepository.add(rent);
         //
         Outgoing water = new Outgoing();
@@ -119,7 +117,7 @@ public class SpogController extends Controller {
         water.setCost(28.81f);
         water.setOutgoingDay(1);
         water.setName("Water bill");
-        water.setFromAccount((int) lloydsDebitId);
+        water.setAccount(lloydsFullAccount);
         this.outgoingRepository.add(water);
         //
         Outgoing councilTax = new Outgoing();
@@ -127,28 +125,28 @@ public class SpogController extends Controller {
         councilTax.setCost(149f);
         councilTax.setOutgoingDay(1);
         councilTax.setName("Council tax");
-        councilTax.setFromAccount((int) lloydsDebitId);
+        councilTax.setAccount(lloydsFullAccount);
         this.outgoingRepository.add(councilTax);
         //
         Outgoing spotify = new Outgoing();
         spotify.setCost(9.99f);
         spotify.setOutgoingDay(18);
         spotify.setName("Spotify");
-        spotify.setFromAccount((int) natwestCreditId);
+        spotify.setAccount(natwestCFullAccount);
         this.outgoingRepository.add(spotify);
         //
         Outgoing fitbit = new Outgoing();
         fitbit.setCost(7.99f);
         fitbit.setOutgoingDay(18);
         fitbit.setName("Fitbit premium");
-        fitbit.setFromAccount((int) halifaxDebitId);
+        fitbit.setAccount(halifaxFullAccount);
         this.outgoingRepository.add(fitbit);
         //
         Outgoing nuranow = new Outgoing();
         nuranow.setCost(9.99f);
         nuranow.setOutgoingDay(28);
         nuranow.setName("Nuraphones");
-        nuranow.setFromAccount((int) natwestCreditId);
+        nuranow.setAccount(natwestCFullAccount);
         this.outgoingRepository.add(nuranow);
         // Balances
         Balance natwestCreditBalance = new Balance();

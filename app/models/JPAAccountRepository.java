@@ -1,5 +1,6 @@
 package models;
 
+import org.hibernate.annotations.QueryHints;
 import play.db.jpa.JPAApi;
 
 import javax.inject.Inject;
@@ -45,7 +46,20 @@ public class JPAAccountRepository implements AccountRepository {
     }
 
     private Stream<Account> list(EntityManager em) {
-        List<Account> accounts = em.createQuery("select a from Account a ORDER BY a.type DESC", Account.class).getResultList();
+        // https://stackoverflow.com/questions/30088649/how-to-use-multiple-join-fetch-in-one-jpql-query
+        // This is to solve all sorts of horrid double fetch and cartesian product problems
+        // But it works! Woohoo!
+        List<Account> accounts = em.createQuery(
+                "select distinct a from Account a left join fetch a.outgoings ORDER BY a.type DESC",
+                Account.class)
+                .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
+                .getResultList();
+        accounts = em.createQuery(
+                "select distinct a from Account a left join fetch a.balances WHERE a in :accounts ORDER BY a.type DESC",
+                Account.class)
+                .setParameter("accounts", accounts)
+                .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
+                .getResultList();
         return accounts.stream();
     }
 }
