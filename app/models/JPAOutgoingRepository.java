@@ -94,9 +94,12 @@ public class JPAOutgoingRepository implements OutgoingRepository {
         return paid.stream();
     }
 
+    // MWM-17 - pull these functions out so they can be used to
+    // figure out which outgoings have been paid/unpaid per account
+
     private List<Outgoing> findAlreadyPaid(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
         List<Outgoing> found = new ArrayList<>();
-        LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);
+        LocalDate searchDate = this.findLastPaydayDate(asOf, paydayDay);
         do {
             for (Outgoing o: outgoings) {
                 if (o.getOutgoingDay() == searchDate.getDayOfMonth()) {
@@ -108,7 +111,7 @@ public class JPAOutgoingRepository implements OutgoingRepository {
         return found;
     }
 
-    LocalDate findLastPaydayDate(LocalDate asOf, int payday) {
+    private LocalDate findLastPaydayDate(LocalDate asOf, int payday) {
         LocalDate possiblePayDate = asOf;
         while(possiblePayDate.getDayOfMonth() != payday) {
             possiblePayDate = possiblePayDate.minusDays(1);

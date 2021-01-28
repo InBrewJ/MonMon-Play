@@ -48,16 +48,28 @@ public class SpogController extends Controller {
         for (Outgoing o: completedOutgoings) {
             System.out.println("Already paid :: " + o.getName() + " on " + o.getOutgoingDay());
         }
+        System.out.println("C_Outgoings sum: " + completedOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum));
         List<Outgoing> pendingOutgoings = repoListToList(outgoingRepository.yetToPay(LocalDate.now(), nextPayDay));
         for (Outgoing o: pendingOutgoings) {
             System.out.println("Pending :: " + o.getName() + " on " + o.getOutgoingDay());
         }
+        System.out.println("P_Outgoings sum: " + pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum));
         List<Outgoing> bills = repoListToList(outgoingRepository.bills());
         for (Outgoing o: bills) {
             System.out.println("Bill :: " + o.getName() + " on " + o.getOutgoingDay());
         }
+        Float completedOutgoingsSum = completedOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+        Float pendingOutgoingsSum = pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         // Scratch end
-        Spog spogVm = new Spog(surplus, nextPayDay, suggestedIncomeAsSavings, incomingTotal, outgoingTotal, rentCost);
+        Spog spogVm = new Spog(
+                surplus,
+                nextPayDay,
+                suggestedIncomeAsSavings,
+                incomingTotal,
+                outgoingTotal,
+                rentCost,
+                completedOutgoingsSum,
+                pendingOutgoingsSum);
         return ok(views.html.spog.render(spogVm, request));
     }
 

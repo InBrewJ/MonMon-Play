@@ -19,9 +19,17 @@ public class Spog {
     private final LocalDate nextPayDate;
     private final Float yearlyTakehome;
     private final Float rentCost;
+    private final Float completedOutgoings;
+    private final Float pendingOutgoings;
 
-    public Spog(Float surplus, int nextPayday, int percentageIncomeAsSavings, Float incomingTotal, Float outgoingTotal, Float
-                rentCost) {
+    public Spog(Float surplus,
+                int nextPayday,
+                int percentageIncomeAsSavings,
+                Float incomingTotal,
+                Float outgoingTotal,
+                Float rentCost,
+                Float completedOutgoingsSum,
+                Float pendingOutgoingsSum) {
         LocalDate now = LocalDate.now();
         this.rentCost = rentCost;
         this.surplus = round2(surplus);
@@ -37,6 +45,8 @@ public class Spog {
         this.yearlyOutgoings = round2(outgoingTotal * 12);
         this.yearlyTakehome = round2(incomingTotal * 12);
         this.percentageIncomeAsRent = this.calculatePercentageIncomeAsRent();
+        this.completedOutgoings = completedOutgoingsSum;
+        this.pendingOutgoings = pendingOutgoingsSum;
     }
 
     private Float calculatePercentageIncomeAsRent() {
@@ -138,5 +148,13 @@ public class Spog {
 
     public Float getRentCost() {
         return rentCost;
+    }
+
+    public Float getCompletedOutgoings() {
+        return completedOutgoings;
+    }
+
+    public Float getPendingOutgoings() {
+        return pendingOutgoings;
     }
 }
