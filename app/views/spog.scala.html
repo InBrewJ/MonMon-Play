@@ -11,9 +11,9 @@
 @partials.header()
 @partials.navbar()
 
-<div class="w3-content w3-center" style="max-width: 1500px">
+<div class="w3-content" style="max-width: 1500px">
     <div class="w3-row">
-        <div class="w3-half w3-padding">
+        <div class="w3-half w3-padding w3-center">
             <div class="w3-card w3-padding">
                 <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
                 <p>Surplus pcm: £@spogVm.getSurplus()</p>
@@ -49,7 +49,20 @@
         </div>
         <div class="w3-half w3-padding">
             <div class="w3-card w3-padding">
-                Accounts fam
+                <p><b>Account status</b></p>
+                <ul>
+                    @for(a <- spogVm.getAllAccounts()) {
+                    <li>@a.name (@{a.`type`})
+                        <ul>
+                            @for(o <- a.outgoings) {
+                                <li>
+                                    @o.name (@o.cost) (out on (@o.outgoingDay))
+                                </li>
+                            }
+                        </ul>
+                    </li>
+                    }
+                </ul>
             </div>
         </div>
     </div>

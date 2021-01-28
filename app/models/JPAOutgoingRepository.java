@@ -5,12 +5,12 @@ import play.db.jpa.JPAApi;
 import javax.inject.Inject;
 import javax.persistence.EntityManager;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
+import static helpers.ModelHelpers.findAlreadyPaid;
 import static java.util.concurrent.CompletableFuture.supplyAsync;
 
 /**
@@ -83,39 +83,14 @@ public class JPAOutgoingRepository implements OutgoingRepository {
 
     private Stream<Outgoing> yetToPay(EntityManager em, LocalDate asOf, int paydayDay) {
         List<Outgoing> outgoings = em.createQuery("select p from Outgoing p", Outgoing.class).getResultList();
-        List<Outgoing> paid = this.findAlreadyPaid(outgoings, asOf, paydayDay);
+        List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
         outgoings.removeAll(paid);
         return outgoings.stream();
     }
 
     private Stream<Outgoing> alreadyPaid(EntityManager em, LocalDate asOf, int paydayDay) {
         List<Outgoing> outgoings = em.createQuery("select p from Outgoing p", Outgoing.class).getResultList();
-        List<Outgoing> paid = this.findAlreadyPaid(outgoings, asOf, paydayDay);
+        List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
         return paid.stream();
-    }
-
-    // MWM-17 - pull these functions out so they can be used to
-    // figure out which outgoings have been paid/unpaid per account
-
-    private List<Outgoing> findAlreadyPaid(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
-        List<Outgoing> found = new ArrayList<>();
-        LocalDate searchDate = this.findLastPaydayDate(asOf, paydayDay);
-        do {
-            for (Outgoing o: outgoings) {
-                if (o.getOutgoingDay() == searchDate.getDayOfMonth()) {
-                    found.add(o);
-                }
-            }
-            searchDate = searchDate.plusDays(1);
-        } while (searchDate.getDayOfMonth() != asOf.plusDays(1).getDayOfMonth());
-        return found;
-    }
-
-    private LocalDate findLastPaydayDate(LocalDate asOf, int payday) {
-        LocalDate possiblePayDate = asOf;
-        while(possiblePayDate.getDayOfMonth() != payday) {
-            possiblePayDate = possiblePayDate.minusDays(1);
-        }
-        return possiblePayDate;
     }
 }

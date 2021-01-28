@@ -61,6 +61,7 @@ public class SpogController extends Controller {
         Float completedOutgoingsSum = completedOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         Float pendingOutgoingsSum = pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         // Scratch end
+        List<Account> allAccounts = repoListToList(this.accountRepository.list());
         Spog spogVm = new Spog(
                 surplus,
                 nextPayDay,
@@ -69,7 +70,8 @@ public class SpogController extends Controller {
                 outgoingTotal,
                 rentCost,
                 completedOutgoingsSum,
-                pendingOutgoingsSum);
+                pendingOutgoingsSum,
+                allAccounts);
         return ok(views.html.spog.render(spogVm, request));
     }
 

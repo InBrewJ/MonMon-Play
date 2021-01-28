@@ -24,7 +24,4 @@ public interface OutgoingRepository {
 
     CompletionStage<Stream<Outgoing>> yetToPay(LocalDate asOf, int paydayDay);
 
-    // For the future...
-    //    CompletionStage<Stream<Outgoing>> bills();
-
 }

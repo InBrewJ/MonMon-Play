@@ -1,6 +1,9 @@
 package viewModels;
 
+import models.Account;
+
 import java.time.LocalDate;
+import java.util.List;
 
 import static helpers.MathHelpers.round2;
 
@@ -22,6 +25,8 @@ public class Spog {
     private final Float completedOutgoings;
     private final Float pendingOutgoings;
 
+    private final List<Account> allAccounts;
+
     public Spog(Float surplus,
                 int nextPayday,
                 int percentageIncomeAsSavings,
@@ -29,7 +34,8 @@ public class Spog {
                 Float outgoingTotal,
                 Float rentCost,
                 Float completedOutgoingsSum,
-                Float pendingOutgoingsSum) {
+                Float pendingOutgoingsSum,
+                List<Account> allAccounts) {
         LocalDate now = LocalDate.now();
         this.rentCost = rentCost;
         this.surplus = round2(surplus);
@@ -47,6 +53,7 @@ public class Spog {
         this.percentageIncomeAsRent = this.calculatePercentageIncomeAsRent();
         this.completedOutgoings = completedOutgoingsSum;
         this.pendingOutgoings = pendingOutgoingsSum;
+        this.allAccounts = allAccounts;
     }
 
     private Float calculatePercentageIncomeAsRent() {
@@ -156,5 +163,9 @@ public class Spog {
 
     public Float getPendingOutgoings() {
         return pendingOutgoings;
+    }
+
+    public List<Account> getAllAccounts() {
+        return allAccounts;
     }
 }
