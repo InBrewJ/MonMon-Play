@@ -15,6 +15,12 @@ public class ModelHelpers {
         return in.toCompletableFuture().get().collect(Collectors.toList());
     }
 
+    public static List<Outgoing> findYetToPay(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
+        List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
+        outgoings.removeAll(paid);
+        return outgoings;
+    }
+
     public static List<Outgoing> findAlreadyPaid(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
         List<Outgoing> found = new ArrayList<>();
         LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);

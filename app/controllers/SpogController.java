@@ -95,18 +95,28 @@ public class SpogController extends Controller {
         //
         Account natwestD = new Account();
         natwestD.setName("Natwest Debit");
+        natwestD.setType("Debit");
         natwestD.setNickname("main overflow");
         back = this.accountRepository.add(natwestD);
+        //
+        Account vanquis = new Account();
+        Account vanquisFullAccount;
+        vanquis.setName("Vanquis");
+        vanquis.setType("Credit");
+        vanquis.setNickname("The builder");
+        vanquisFullAccount = this.accountRepository.add(vanquis).toCompletableFuture().get();
         //
         Account lloyds = new Account();
         Account lloydsFullAccount;
         lloyds.setName("Lloyds");
+        lloyds.setType("Debit");
         natwestD.setNickname("salary in / bill account");
         lloydsFullAccount = this.accountRepository.add(lloyds).toCompletableFuture().get();
         //
         Account halifax = new Account();
         Account halifaxFullAccount;
         halifax.setName("Halifax");
+        halifax.setType("Debit");
         natwestD.setNickname("daily driver");
         halifaxFullAccount = this.accountRepository.add(halifax).toCompletableFuture().get();
         // Incomings
@@ -114,7 +124,7 @@ public class SpogController extends Controller {
         salary.setName("ovo");
         salary.setNetValue(2859.79f);
         salary.setPayDay(true);
-        salary.setIncomingMonthDay(29);
+        salary.setIncomingMonthDay(26);
         salary.setType("salary");
         this.incomingRepository.add(salary);
         // Outgoings
@@ -163,17 +173,33 @@ public class SpogController extends Controller {
         nuranow.setAccount(natwestCFullAccount);
         this.outgoingRepository.add(nuranow);
         // Balances
-        Balance natwestCreditBalance = new Balance();
-        natwestCreditBalance.setAccount(natwestCFullAccount);
-        natwestCreditBalance.setValue(-400d);
-        natwestCreditBalance.setTimestamp(generateUnixTimestamp());
-        this.balanceRepository.add(natwestCreditBalance);
+        Balance natwestCreditBalance0 = new Balance();
+        natwestCreditBalance0.setAccount(natwestCFullAccount);
+        natwestCreditBalance0.setValue(-500d);
+        natwestCreditBalance0.setTimestamp(generateUnixTimestamp()-86400);
+        this.balanceRepository.add(natwestCreditBalance0);
+        Balance natwestCreditBalance1 = new Balance();
+        natwestCreditBalance1.setAccount(natwestCFullAccount);
+        natwestCreditBalance1.setValue(-123d);
+        natwestCreditBalance1.setTimestamp(generateUnixTimestamp());
+        this.balanceRepository.add(natwestCreditBalance1);
         //
         Balance lloydsBalance = new Balance();
         lloydsBalance.setAccount(lloydsFullAccount);
         lloydsBalance.setValue(47.49d);
         lloydsBalance.setTimestamp(generateUnixTimestamp());
         this.balanceRepository.add(lloydsBalance);
+        //
+        Balance vanquisBalance = new Balance();
+        vanquisBalance.setAccount(vanquisFullAccount);
+        vanquisBalance.setValue(-200d);
+        vanquisBalance.setTimestamp(generateUnixTimestamp());
+        this.balanceRepository.add(vanquisBalance);
+        Balance vanquisBalance1 = new Balance();
+        vanquisBalance1.setAccount(vanquisFullAccount);
+        vanquisBalance1.setValue(-800d);
+        vanquisBalance1.setTimestamp(generateUnixTimestamp()-(2*86400));
+        this.balanceRepository.add(vanquisBalance1);
 
         return ok("Seeded");
     }

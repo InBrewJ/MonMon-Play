@@ -1,11 +1,17 @@
 package viewModels;
 
 import models.Account;
+import models.Balance;
 
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import static helpers.MathHelpers.round2;
+import static helpers.ModelHelpers.findAlreadyPaid;
+import static helpers.ModelHelpers.findYetToPay;
 
 public class Spog {
     private final Float surplus;
@@ -165,7 +171,24 @@ public class Spog {
         return pendingOutgoings;
     }
 
-    public List<Account> getAllAccounts() {
-        return allAccounts;
+    public HashMap<Account, AccountStatus> getAllAccounts() {
+        HashMap<Account, AccountStatus> accountsAndPendings = new LinkedHashMap<>();
+        for (Account a : allAccounts) {
+            Float alreadyPaidSum = findAlreadyPaid(a.outgoings, LocalDate.now(), nextPayday)
+                            .stream()
+                            .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+            Float yetToPaySum = findYetToPay(a.outgoings, LocalDate.now(), nextPayday)
+                    .stream()
+                    .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+            Double latestBalance;
+            try {
+                a.balances.sort(Comparator.comparing(Balance::getTimestamp).reversed());
+                latestBalance = a.balances.get(0).getValue();
+            } catch (Exception e) {
+                latestBalance = 0d;
+            }
+            accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, latestBalance));
+        }
+        return accountsAndPendings;
     }
 }
