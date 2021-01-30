@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
+import static java.lang.Integer.parseInt;
 import static models.Outgoing.getTotalOutgoings;
 import static play.libs.Json.toJson;
 import static play.libs.Scala.asScala;
@@ -55,8 +56,16 @@ public class OutgoingController extends Controller {
         return ok(views.html.index.render(asScala(accounts), asScala(outgoings), this.outgoingTotal, this.form, request, messagesApi.preferred(request)));
     }
 
-    public CompletionStage<Result> addOutgoing(final Http.Request request) {
+    public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
+        // weird, roundabout stuff for now...
+        // because need to get the account_id from the form
+        // or do something like:
+        // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
+        int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
+        List<Account> accounts = repoListToList(accountRepository.list());
+        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
+        outgoing.setAccount(desiredAccount.get(0));
         return outgoingRepository
                 .add(outgoing)
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());

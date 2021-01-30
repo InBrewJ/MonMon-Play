@@ -15,9 +15,13 @@ public class Account {
     public String nickname;
     public String type;
 
-    @OneToMany(fetch = FetchType.EAGER, mappedBy = "account")
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "account")
     @Column(nullable = true)
     public List<Balance> balances = new ArrayList<>();
+
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "account")
+    @Column(nullable = true)
+    public List<Outgoing> outgoings = new ArrayList<>();
 
     public List<Balance> getBalances() {
         return balances;

@@ -1,8 +1,17 @@
 package viewModels;
 
+import models.Account;
+import models.Balance;
+
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 
 import static helpers.MathHelpers.round2;
+import static helpers.ModelHelpers.findAlreadyPaid;
+import static helpers.ModelHelpers.findYetToPay;
 
 public class Spog {
     private final Float surplus;
@@ -19,9 +28,20 @@ public class Spog {
     private final LocalDate nextPayDate;
     private final Float yearlyTakehome;
     private final Float rentCost;
+    private final Float completedOutgoings;
+    private final Float pendingOutgoings;
 
-    public Spog(Float surplus, int nextPayday, int percentageIncomeAsSavings, Float incomingTotal, Float outgoingTotal, Float
-                rentCost) {
+    private final List<Account> allAccounts;
+
+    public Spog(Float surplus,
+                int nextPayday,
+                int percentageIncomeAsSavings,
+                Float incomingTotal,
+                Float outgoingTotal,
+                Float rentCost,
+                Float completedOutgoingsSum,
+                Float pendingOutgoingsSum,
+                List<Account> allAccounts) {
         LocalDate now = LocalDate.now();
         this.rentCost = rentCost;
         this.surplus = round2(surplus);
@@ -37,6 +57,9 @@ public class Spog {
         this.yearlyOutgoings = round2(outgoingTotal * 12);
         this.yearlyTakehome = round2(incomingTotal * 12);
         this.percentageIncomeAsRent = this.calculatePercentageIncomeAsRent();
+        this.completedOutgoings = completedOutgoingsSum;
+        this.pendingOutgoings = pendingOutgoingsSum;
+        this.allAccounts = allAccounts;
     }
 
     private Float calculatePercentageIncomeAsRent() {
@@ -138,5 +161,34 @@ public class Spog {
 
     public Float getRentCost() {
         return rentCost;
+    }
+
+    public Float getCompletedOutgoings() {
+        return completedOutgoings;
+    }
+
+    public Float getPendingOutgoings() {
+        return pendingOutgoings;
+    }
+
+    public HashMap<Account, AccountStatus> getAllAccounts() {
+        HashMap<Account, AccountStatus> accountsAndPendings = new LinkedHashMap<>();
+        for (Account a : allAccounts) {
+            Float alreadyPaidSum = findAlreadyPaid(a.outgoings, LocalDate.now(), nextPayday)
+                            .stream()
+                            .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+            Float yetToPaySum = findYetToPay(a.outgoings, LocalDate.now(), nextPayday)
+                    .stream()
+                    .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+            Double latestBalance;
+            try {
+                a.balances.sort(Comparator.comparing(Balance::getTimestamp).reversed());
+                latestBalance = a.balances.get(0).getValue();
+            } catch (Exception e) {
+                latestBalance = 0d;
+            }
+            accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, latestBalance));
+        }
+        return accountsAndPendings;
     }
 }
