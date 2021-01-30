@@ -88,35 +88,35 @@ public class SpogController extends Controller {
         Account natwestCFullAccount;
         Account natwestC = new Account();
         natwestC.setName("Natwest Credit");
-        natwestC.setType("Credit");
+        natwestC.setType(Account.AccountType.CREDIT);
         natwestC.setNickname("The grad one");
         natwestCFullAccount = this.accountRepository.add(natwestC).toCompletableFuture().get();
         long natwestCreditId = natwestCFullAccount.getId();
         //
         Account natwestD = new Account();
         natwestD.setName("Natwest Debit");
-        natwestD.setType("Debit");
+        natwestD.setType(Account.AccountType.DEBIT);
         natwestD.setNickname("main overflow");
         back = this.accountRepository.add(natwestD);
         //
         Account vanquis = new Account();
         Account vanquisFullAccount;
         vanquis.setName("Vanquis");
-        vanquis.setType("Credit");
+        vanquis.setType(Account.AccountType.CREDIT);
         vanquis.setNickname("The builder");
         vanquisFullAccount = this.accountRepository.add(vanquis).toCompletableFuture().get();
         //
         Account lloyds = new Account();
         Account lloydsFullAccount;
         lloyds.setName("Lloyds");
-        lloyds.setType("Debit");
+        lloyds.setType(Account.AccountType.DEBIT_SHARED_BILLS);
         natwestD.setNickname("salary in / bill account");
         lloydsFullAccount = this.accountRepository.add(lloyds).toCompletableFuture().get();
         //
         Account halifax = new Account();
         Account halifaxFullAccount;
         halifax.setName("Halifax");
-        halifax.setType("Debit");
+        halifax.setType(Account.AccountType.DEBIT);
         natwestD.setNickname("daily driver");
         halifaxFullAccount = this.accountRepository.add(halifax).toCompletableFuture().get();
         // Incomings
@@ -175,29 +175,29 @@ public class SpogController extends Controller {
         // Balances
         Balance natwestCreditBalance0 = new Balance();
         natwestCreditBalance0.setAccount(natwestCFullAccount);
-        natwestCreditBalance0.setValue(-500d);
+        natwestCreditBalance0.setValue(500d);
         natwestCreditBalance0.setTimestamp(generateUnixTimestamp()-86400);
         this.balanceRepository.add(natwestCreditBalance0);
         Balance natwestCreditBalance1 = new Balance();
         natwestCreditBalance1.setAccount(natwestCFullAccount);
-        natwestCreditBalance1.setValue(-123d);
+        natwestCreditBalance1.setValue(359d);
         natwestCreditBalance1.setTimestamp(generateUnixTimestamp());
         this.balanceRepository.add(natwestCreditBalance1);
         //
         Balance lloydsBalance = new Balance();
         lloydsBalance.setAccount(lloydsFullAccount);
-        lloydsBalance.setValue(47.49d);
+        lloydsBalance.setValue(2026.49d);
         lloydsBalance.setTimestamp(generateUnixTimestamp());
         this.balanceRepository.add(lloydsBalance);
         //
         Balance vanquisBalance = new Balance();
         vanquisBalance.setAccount(vanquisFullAccount);
-        vanquisBalance.setValue(-200d);
+        vanquisBalance.setValue(200d);
         vanquisBalance.setTimestamp(generateUnixTimestamp());
         this.balanceRepository.add(vanquisBalance);
         Balance vanquisBalance1 = new Balance();
         vanquisBalance1.setAccount(vanquisFullAccount);
-        vanquisBalance1.setValue(-800d);
+        vanquisBalance1.setValue(800d);
         vanquisBalance1.setTimestamp(generateUnixTimestamp()-(2*86400));
         this.balanceRepository.add(vanquisBalance1);
 

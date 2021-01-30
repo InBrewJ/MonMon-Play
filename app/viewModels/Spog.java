@@ -4,10 +4,7 @@ import models.Account;
 import models.Balance;
 
 import java.time.LocalDate;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.*;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.findAlreadyPaid;
@@ -66,15 +63,26 @@ public class Spog {
 
     private Double calculateAdjustedLeftPerDay() {
         HashMap<Account, AccountStatus> accountsMap = this.getAllAccounts();
-        System.out.println("Days until next payday :: " + this.daysUntilNextPayday);
-        // TODO: implement actual account types: DEBIT | CREDIT | SAVINGS | ...
-        // so that we can show amount left in <TYPE> accounts
-        Double totalAvailable = 0d;
-        for (AccountStatus as : accountsMap.values()) {
-            totalAvailable += as.getAdjustedAvailable();
+        Double totalAvailableDebit = 0d;
+        Double totalAvailableCredit = 0d;
+        for (Map.Entry<Account, AccountStatus> pair : accountsMap.entrySet()) {
+            Account a = pair.getKey();
+            AccountStatus as = pair.getValue();
+            Account.AccountType accountType = a.getType();
+            switch (accountType) {
+                case DEBIT:
+                    totalAvailableDebit += as.getAdjustedAvailable();
+                    break;
+                case CREDIT:
+                    totalAvailableCredit += as.getAdjustedAvailable();
+                    break;
+                default:
+                    break;
+            }
         }
-        System.out.println("totalAvailable :: " + totalAvailable);
-        return round2(totalAvailable / this.daysUntilNextPayday);
+        System.out.println("totalAvailableDebit :: " + totalAvailableDebit);
+        System.out.println("totalAvailableCredit :: " + totalAvailableCredit);
+        return round2(totalAvailableDebit / this.daysUntilNextPayday);
     }
 
     private Float calculatePercentageIncomeAsRent() {
