@@ -30,6 +30,7 @@ public class Spog {
     private final Float rentCost;
     private final Float completedOutgoings;
     private final Float pendingOutgoings;
+    private final Double adjustedLeftPerDay;
 
     private final List<Account> allAccounts;
 
@@ -60,6 +61,20 @@ public class Spog {
         this.completedOutgoings = completedOutgoingsSum;
         this.pendingOutgoings = pendingOutgoingsSum;
         this.allAccounts = allAccounts;
+        this.adjustedLeftPerDay = this.calculateAdjustedLeftPerDay();
+    }
+
+    private Double calculateAdjustedLeftPerDay() {
+        HashMap<Account, AccountStatus> accountsMap = this.getAllAccounts();
+        System.out.println("Days until next payday :: " + this.daysUntilNextPayday);
+        // TODO: implement actual account types: DEBIT | CREDIT | SAVINGS | ...
+        // so that we can show amount left in <TYPE> accounts
+        Double totalAvailable = 0d;
+        for (AccountStatus as : accountsMap.values()) {
+            totalAvailable += as.getAdjustedAvailable();
+        }
+        System.out.println("totalAvailable :: " + totalAvailable);
+        return round2(totalAvailable / this.daysUntilNextPayday);
     }
 
     private Float calculatePercentageIncomeAsRent() {
@@ -169,6 +184,10 @@ public class Spog {
 
     public Float getPendingOutgoings() {
         return pendingOutgoings;
+    }
+
+    public Double getAdjustedLeftPerDay() {
+        return adjustedLeftPerDay;
     }
 
     public HashMap<Account, AccountStatus> getAllAccounts() {

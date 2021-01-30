@@ -16,21 +16,24 @@
         <div class="w3-half w3-padding w3-center">
             <div class="w3-card w3-padding">
                 <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
+                <p>
+                    <b>
+                        Left per day after outgoings: £@spogVm.getAdjustedLeftPerDay()
+                    </b>
+                </p>
                 <p>Surplus pcm: £@spogVm.getSurplus()</p>
                 <p>Already paid out: £@spogVm.getCompletedOutgoings()</p>
                 <p>Left to pay out: £@spogVm.getPendingOutgoings()</p>
                 <p>
-                    // This should show things like: <br/>
-                    // - This month, there are @spogVm.getDaysBetweenPaydays days between paydays <br/>
-                    // - MAX amount left per day (between paydays) -> £@spogVm.getMaxPerDay()<br/>
-                    // - MAX amount left per week -> £@spogVm.getMaxPerWeek() <br/>
-                    // - yearly takehome -> £@spogVm.getYearlyTakehome()  <br/>
-                    // - yearly outgoings -> £@spogVm.getYearlyOutgoings()  <br/>
-                    // - yearly surplus (how much left to live on) -> £@spogVm.getYearlySurplus() <br/>
-                    // - rent as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
-                    // - balance view (which will eventually be automated) <br/>
-                    // - current status compared to the breadline <br/>
-                    // But, for now, show income - outgoings (i.e. £@spogVm.getSurplus()) <br/>
+                    This should show things like: <br/>
+                     - This month, there are @spogVm.getDaysBetweenPaydays days between paydays <br/>
+                     - MAX per day available (between paydays) -> £@spogVm.getMaxPerDay()<br/>
+                     - MAX per week available -> £@spogVm.getMaxPerWeek() <br/>
+                     - yearly takehome -> £@spogVm.getYearlyTakehome()  <br/>
+                     - yearly outgoings -> £@spogVm.getYearlyOutgoings()  <br/>
+                     - yearly surplus (how much left to live on) -> £@spogVm.getYearlySurplus() <br/>
+                     - rent as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
+                    But, for now, show income - outgoings (i.e. £@spogVm.getSurplus()) <br/>
                 </p>
             </div>
             <div class="w3-card w3-padding">
