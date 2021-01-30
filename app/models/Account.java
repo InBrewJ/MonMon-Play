@@ -7,13 +7,23 @@ import java.util.List;
 @Entity
 public class Account {
 
+    public enum AccountType {
+        DEBIT,
+        CREDIT,
+        LONG_TERM_SAVINGS,
+        SHORT_TERM_SAVINGS,
+        DEBIT_SHARED_BILLS
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     public Long id;
 
     public String name;
     public String nickname;
-    public String type;
+
+    @Enumerated(EnumType.STRING)
+    public AccountType type;
 
     @OneToMany(fetch = FetchType.LAZY, mappedBy = "account")
     @Column(nullable = true)
@@ -43,11 +53,11 @@ public class Account {
         this.name = name;
     }
 
-    public String getType() {
+    public AccountType getType() {
         return type;
     }
 
-    public void setType(String type) {
+    public void setType(AccountType type) {
         this.type = type;
     }
 
