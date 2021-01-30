@@ -122,7 +122,7 @@ public class SpogController extends Controller {
         // Incomings
         Incoming salary = new Incoming();
         salary.setName("ovo");
-        salary.setNetValue(2859.79f);
+        salary.setNetValue(2839.04f);
         salary.setPayDay(true);
         salary.setIncomingMonthDay(26);
         salary.setType("salary");
