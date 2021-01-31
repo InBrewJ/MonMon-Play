@@ -1,0 +1,32 @@
+@import play.mvc.Http.Request
+@import helper._
+@import viewModels._
+@()(implicit request: Http.Request)
+@main("MonMonSharing is caring") {
+<script
+        type="text/javascript"
+        src='@routes.Assets.at("javascripts/index.js")'
+></script>
+
+@partials.header()
+@partials.navbar()
+
+<div class="w3-content" style="max-width: 1500px">
+    <div class="w3-row">
+        <div class="w3-half w3-padding w3-center">
+            <div class="w3-card w3-padding w3-margin">
+               Shared
+            </div>
+            <div class="w3-card w3-padding w3-margin">
+              Outgoings
+            </div>
+        </div>
+        <div class="w3-half w3-padding">
+            <div class="w3-card w3-padding w3-margin">
+                Here
+            </div>
+        </div>
+    </div>
+</div>
+
+}

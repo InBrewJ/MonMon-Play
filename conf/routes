@@ -28,5 +28,8 @@ GET     /myBalances                  controllers.BalanceController.listBalances(
 GET     /spog                         controllers.SpogController.index(req: Request)
 GET     /spog/seed                    controllers.SpogController.seed(req: Request)
 
+# Sharing (shared outgoings and tings)
+GET     /mySharedOutgoings            controllers.PlanController.sharedOutgoings(req: Request)
+
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.at(path="/public", file)

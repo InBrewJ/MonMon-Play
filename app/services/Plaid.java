@@ -1,4 +1,4 @@
 package services;
 
-public class Plaid {
+public class Plaid implements RealtimeBalance {
 }
