@@ -17,11 +17,20 @@ public class Outgoing {
     public int outgoingDay;
     public boolean bill = false;
     public boolean rent = false;
+    public boolean hiddenFromTotal = false;
 
     @ManyToOne
     @JoinColumn(name="account_id")
     @JsonIgnore
     public Account account;
+
+    public boolean isHiddenFromTotal() {
+        return hiddenFromTotal;
+    }
+
+    public void setHiddenFromTotal(boolean hiddenFromTotal) {
+        this.hiddenFromTotal = hiddenFromTotal;
+    }
 
     public boolean isBill() {
         return bill;
@@ -74,8 +83,20 @@ public class Outgoing {
     // MWM-29
     // Add 'hidden outgoing' flag to Outgoing
     // and filter before reducing here...
+    // we could also have other static methods here
+    // that take things like bill share/rent share into account.
+    // God, this needs tests
     public static Float getTotalOutgoings(List<Outgoing> outgoings) {
-        return outgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+        return outgoings
+                .stream()
+                .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+    }
+
+    public static Float getTotalOutgoingsWithoutHidden(List<Outgoing> outgoings) {
+        return outgoings
+                .stream()
+                .filter(o -> !o.isHiddenFromTotal())
+                .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 
     public Account getAccount() {
