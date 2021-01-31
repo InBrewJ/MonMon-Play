@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
@@ -24,25 +25,60 @@ public class SpogController extends Controller {
     private final OutgoingRepository outgoingRepository;
     private final AccountRepository accountRepository;
     private final BalanceRepository balanceRepository;
+    private final PlanRepository planRepository;
     private final HttpExecutionContext ec;
 
     @Inject
-    public SpogController(OutgoingRepository outgoingRepository, AccountRepository accountRepository, IncomingRepository incomingRepository, BalanceRepository balanceRepository, HttpExecutionContext ec) {
+    public SpogController(PlanRepository planRepository, OutgoingRepository outgoingRepository, AccountRepository accountRepository, IncomingRepository incomingRepository, BalanceRepository balanceRepository, HttpExecutionContext ec) {
         this.incomingRepository = incomingRepository;
         this.accountRepository = accountRepository;
         this.outgoingRepository = outgoingRepository;
         this.balanceRepository = balanceRepository;
+        this.planRepository = planRepository;
         this.ec = ec;
     }
 
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
-        Float outgoingTotal = getTotalOutgoings(repoListToList(outgoingRepository.list()));
+        // Plans affect how total outgoings and rent values appear
+        List<Plan> allPlans = repoListToList(planRepository.list());
+        Plan firstRentShare = !allPlans.isEmpty() ?
+                allPlans
+                        .stream()
+                        .filter(p -> p.getType() == Plan.PlanType.RENT_SHARE)
+                        .collect(Collectors.toList())
+                        .get(0) : null;
+        Plan firstBillShare = !allPlans.isEmpty() ?
+                allPlans
+                        .stream()
+                        .filter(p -> p.getType() == Plan.PlanType.BILL_SHARE)
+                        .collect(Collectors.toList())
+                        .get(0) : null;
+        //
+        List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list());
+        // MWM-28 if a bill share exists, find the bills in all outgoings and divide here
+        for (Outgoing o : allOutgoings) {
+            if (firstBillShare != null && o.isBill() ) {
+                o.setCost(o.getCost() * firstBillShare.getSplit());
+            }
+            if (firstRentShare != null && o.isRent() ) {
+                o.setCost(o.getCost() * firstRentShare.getSplit());
+            }
+        }
+
+        Float outgoingTotal = round2(getTotalOutgoings(allOutgoings));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
         List<Outgoing> rents = repoListToList(outgoingRepository.rents());
         Float rentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
+        if (firstRentShare != null) {
+            System.out.println("Rent share : " + firstRentShare.getSplit());
+            rentCost = rentCost * firstRentShare.getSplit();
+        }
+
         Float surplus = round2(incomingTotal - outgoingTotal);
         int suggestedIncomeAsSavings = 20;
         int nextPayDay = incomingRepository.getNextPayDay();
+
+
         // Scratch
         List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(LocalDate.now(), nextPayDay));
         for (Outgoing o: completedOutgoings) {
@@ -61,6 +97,7 @@ public class SpogController extends Controller {
         Float completedOutgoingsSum = completedOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         Float pendingOutgoingsSum = pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         // Scratch end
+
         List<Account> allAccounts = repoListToList(this.accountRepository.list());
         Spog spogVm = new Spog(
                 surplus,
@@ -94,10 +131,12 @@ public class SpogController extends Controller {
         long natwestCreditId = natwestCFullAccount.getId();
         //
         Account natwestD = new Account();
+        Account natwestDFullAccount;
         natwestD.setName("Natwest Debit");
         natwestD.setType(Account.AccountType.DEBIT);
         natwestD.setNickname("main overflow");
-        back = this.accountRepository.add(natwestD);
+        natwestDFullAccount = this.accountRepository.add(natwestD).toCompletableFuture().get();
+        long natwestDebitId = natwestDFullAccount.getId();
         //
         Account vanquis = new Account();
         Account vanquisFullAccount;
@@ -190,9 +229,21 @@ public class SpogController extends Controller {
         lloydsBalance.setTimestamp(generateUnixTimestamp());
         this.balanceRepository.add(lloydsBalance);
         //
+        Balance halifaxBalance = new Balance();
+        halifaxBalance.setAccount(halifaxFullAccount);
+        halifaxBalance.setValue(320.49d);
+        halifaxBalance.setTimestamp(generateUnixTimestamp());
+        this.balanceRepository.add(halifaxBalance);
+        //
+        Balance natwestBalance = new Balance();
+        natwestBalance.setAccount(natwestDFullAccount);
+        natwestBalance.setValue(353d);
+        natwestBalance.setTimestamp(generateUnixTimestamp()-86400);
+        this.balanceRepository.add(natwestBalance);
+        //
         Balance vanquisBalance = new Balance();
         vanquisBalance.setAccount(vanquisFullAccount);
-        vanquisBalance.setValue(200d);
+        vanquisBalance.setValue(799.23d);
         vanquisBalance.setTimestamp(generateUnixTimestamp());
         this.balanceRepository.add(vanquisBalance);
         Balance vanquisBalance1 = new Balance();

@@ -2,7 +2,7 @@
 @import helper._
 @import viewModels._
 @(spogVm: Spog)(implicit request: Http.Request)
-@main("MonMonIncomings") {
+@main("MonMonSPOG") {
 <script
         type="text/javascript"
         src='@routes.Assets.at("javascripts/index.js")'
@@ -22,19 +22,31 @@
                         Left per day after outgoings in DEBIT: £@spogVm.getAdjustedLeftPerDay()
                     </b>
                 </p>
-                <p>Surplus pcm: £@spogVm.getSurplus()</p>
                 <p>Already paid out: £@spogVm.getCompletedOutgoings()</p>
                 <p>Left to pay out: £@spogVm.getPendingOutgoings()</p>
                 <hr>
                 <p>
-                     - This month, there are @spogVm.getDaysBetweenPaydays days between paydays <br/>
-                     - MAX per day available (between paydays) -> £@spogVm.getMaxPerDay()<br/>
-                     - MAX per week available -> £@spogVm.getMaxPerWeek() <br/>
+                    This month, there are @spogVm.getDaysBetweenPaydays days between paydays
+                </p>
+                <hr>
+                <p>
+                    - MAX per day available (between paydays) -> £@spogVm.getMaxPerDay()<br/>
+                    - MAX per week available -> £@spogVm.getMaxPerWeek() <br/>
+                    - MAX per month available -> £@spogVm.getSurplus()<br/>
+                    - rent (with sharing) as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
+                    - outgoings (with sharing) as % of wages -> @spogVm.getPercentageIncomeAsOutgoings()%
+                </p>
+                <hr>
+                <p>
+                    - monthly takehome -> £@spogVm.getIncomingTotal()  <br/>
+                    - monthly outgoings (with sharing) -> £@spogVm.getOutgoingTotal()  <br/>
+                </p>
+                <hr>
+                <p>
                      - yearly takehome -> £@spogVm.getYearlyTakehome()  <br/>
                      - yearly outgoings -> £@spogVm.getYearlyOutgoings()  <br/>
                      - yearly surplus (how much left to live on) -> £@spogVm.getYearlySurplus() <br/>
-                     - rent as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
-                    But, for now, show income - outgoings (i.e. £@spogVm.getSurplus()) <br/>
+
                 </p>
             </div>
             <div class="w3-card w3-padding w3-margin">

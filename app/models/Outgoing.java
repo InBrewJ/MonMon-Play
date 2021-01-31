@@ -71,6 +71,9 @@ public class Outgoing {
         this.outgoingDay = outgoingDay;
     }
 
+    // MWM-29
+    // Add 'hidden outgoing' flag to Outgoing
+    // and filter before reducing here...
     public static Float getTotalOutgoings(List<Outgoing> outgoings) {
         return outgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
