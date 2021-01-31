@@ -1,7 +1,7 @@
 @import play.mvc.Http.Request
 @import helper._
 @(balances: Seq[Balance], balanceForm: Form[Balance], accounts: Seq[Account])(implicit request: Http.Request,  messages: play.i18n.Messages)
-@main("MonMonIncomings") {
+@main("MonMonBalances") {
 <script
         type="text/javascript"
         src='@routes.Assets.at("javascripts/index.js")'
@@ -11,16 +11,16 @@
 @partials.navbar()
 
 <div class="w3-content w3-center" style="max-width: 1500px">
-    <div class="w3-row">
+    <div class="w3-row w3-padding">
         <div class="w3-half">
-            <p><b> These are apparently your balances:</b></p>
-
-            <ul id="incomings">
-                @for(b <- balances) {
-                    <li>@b.value, @b.timestamp, (@b.account) ( -> @b.account.getName()) </li>
-                }
-            </ul>
-
+            <div class="w3-card w3-padding">
+                <p><b> These are apparently your balances:</b></p>
+                <ul id="incomings">
+                    @for(b <- balances) {
+                        <li>@b.value, @b.timestamp, (@b.account) ( -> @b.account.getName()) </li>
+                    }
+                </ul>
+            </div>
         </div>
         <div class="w3-half w3-padding-64">
             <form method="POST" action="@routes.BalanceController.addBalance()">

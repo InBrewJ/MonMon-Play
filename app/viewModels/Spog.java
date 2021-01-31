@@ -15,9 +15,11 @@ public class Spog {
     private final int nextPayday;
     private final int percentageIncomeAsSavings;
     private final Float percentageIncomeAsRent;
+    private final Float percentageIncomeAsOutgoings;
     private final int daysUntilNextPayday;
     private final int daysBetweenPaydays;
     private final Float incomingTotal;
+    private final Float outgoingTotal;
     private final Float maxPerDay;
     private final Float maxPerWeek;
     private final Float yearlySurplus;
@@ -41,6 +43,7 @@ public class Spog {
                 Float pendingOutgoingsSum,
                 List<Account> allAccounts) {
         LocalDate now = LocalDate.now();
+        this.outgoingTotal = outgoingTotal;
         this.rentCost = rentCost;
         this.surplus = round2(surplus);
         this.nextPayday = nextPayday;
@@ -55,6 +58,7 @@ public class Spog {
         this.yearlyOutgoings = round2(outgoingTotal * 12);
         this.yearlyTakehome = round2(incomingTotal * 12);
         this.percentageIncomeAsRent = this.calculatePercentageIncomeAsRent();
+        this.percentageIncomeAsOutgoings = this.calculatePercentageIncomeAsOutgoings();
         this.completedOutgoings = completedOutgoingsSum;
         this.pendingOutgoings = pendingOutgoingsSum;
         this.allAccounts = allAccounts;
@@ -87,6 +91,10 @@ public class Spog {
 
     private Float calculatePercentageIncomeAsRent() {
         return round2((this.rentCost / this.incomingTotal) * 100);
+    }
+
+    private Float calculatePercentageIncomeAsOutgoings() {
+        return round2((this.outgoingTotal / this.incomingTotal) * 100);
     }
 
     private int calculateDaysBetweenPaydays(int nextPayday, LocalDate now) {
@@ -128,6 +136,10 @@ public class Spog {
             if (possiblePayDate.getDayOfMonth() == lastPayday) found = true;
         }
         return count;
+    }
+
+    public Float getPercentageIncomeAsOutgoings() {
+        return percentageIncomeAsOutgoings;
     }
 
     public Float getPercentageIncomeAsRent() {
@@ -196,6 +208,10 @@ public class Spog {
 
     public Double getAdjustedLeftPerDay() {
         return adjustedLeftPerDay;
+    }
+
+    public Float getOutgoingTotal() {
+        return outgoingTotal;
     }
 
     public HashMap<Account, AccountStatus> getAllAccounts() {

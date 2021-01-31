@@ -94,10 +94,12 @@ public class SpogController extends Controller {
         long natwestCreditId = natwestCFullAccount.getId();
         //
         Account natwestD = new Account();
+        Account natwestDFullAccount;
         natwestD.setName("Natwest Debit");
         natwestD.setType(Account.AccountType.DEBIT);
         natwestD.setNickname("main overflow");
-        back = this.accountRepository.add(natwestD);
+        natwestDFullAccount = this.accountRepository.add(natwestD).toCompletableFuture().get();
+        long natwestDebitId = natwestDFullAccount.getId();
         //
         Account vanquis = new Account();
         Account vanquisFullAccount;
@@ -190,9 +192,21 @@ public class SpogController extends Controller {
         lloydsBalance.setTimestamp(generateUnixTimestamp());
         this.balanceRepository.add(lloydsBalance);
         //
+        Balance halifaxBalance = new Balance();
+        halifaxBalance.setAccount(halifaxFullAccount);
+        halifaxBalance.setValue(320.49d);
+        halifaxBalance.setTimestamp(generateUnixTimestamp());
+        this.balanceRepository.add(halifaxBalance);
+        //
+        Balance natwestBalance = new Balance();
+        natwestBalance.setAccount(natwestDFullAccount);
+        natwestBalance.setValue(353d);
+        natwestBalance.setTimestamp(generateUnixTimestamp()-86400);
+        this.balanceRepository.add(natwestBalance);
+        //
         Balance vanquisBalance = new Balance();
         vanquisBalance.setAccount(vanquisFullAccount);
-        vanquisBalance.setValue(200d);
+        vanquisBalance.setValue(799.23d);
         vanquisBalance.setTimestamp(generateUnixTimestamp());
         this.balanceRepository.add(vanquisBalance);
         Balance vanquisBalance1 = new Balance();

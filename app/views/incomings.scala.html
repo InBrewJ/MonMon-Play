@@ -11,18 +11,20 @@
 @partials.navbar()
 
 <div class="w3-content w3-center" style="max-width: 1500px">
-    <div class="w3-row">
+    <div class="w3-row w3-padding">
         <div class="w3-half">
-            <p><b> These are apparently your incomings:</b></p>
+            <div class="w3-card w3-padding">
+                <p><b> These are apparently your incomings:</b></p>
 
-            <ul id="incomings">
-                @for(i <- incomings) {
+                <ul id="incomings">
+                    @for(i <- incomings) {
                     <li>@i.name, (@{i.`type`}), @i.netValue, @i.incomingMonthDay, payday: @i.isPayDay</li>
-                }
-            </ul>
+                    }
+                </ul>
+            </div>
 
         </div>
-        <div class="w3-half w3-padding-64">
+        <div class="w3-half w3-padding">
             <form method="POST" action="@routes.IncomingController.addIncoming()">
 <!--                Need error handling for all forms-->
                 @helper.CSRF.formField
