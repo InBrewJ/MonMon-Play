@@ -74,4 +74,12 @@ public class Plan {
     public void setNotes(String notes) {
         this.notes = notes;
     }
+
+    public PlanScope getScope() {
+        return scope;
+    }
+
+    public void setScope(PlanScope scope) {
+        this.scope = scope;
+    }
 }

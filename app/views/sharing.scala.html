@@ -1,7 +1,7 @@
 @import play.mvc.Http.Request
 @import helper._
 @import viewModels._
-@()(implicit request: Http.Request)
+@(plans: Seq[Plan], planForm: Form[Plan])(implicit request: Http.Request)
 @main("MonMonSharing is caring") {
 <script
         type="text/javascript"
@@ -15,15 +15,36 @@
     <div class="w3-row">
         <div class="w3-half w3-padding w3-center">
             <div class="w3-card w3-padding w3-margin">
-               Shared
-            </div>
-            <div class="w3-card w3-padding w3-margin">
-              Outgoings
+                <p><b> These are apparently your plans:</b></p>
+                <ul id="plans">
+                    @for(p <- plans) {
+                    <li>@{p.`type`} (@p.split) (@p.scope)</li>
+                    }
+                </ul>
             </div>
         </div>
         <div class="w3-half w3-padding">
             <div class="w3-card w3-padding w3-margin">
-                Here
+                <form method="POST" action="@routes.PlanController.addPlan()">
+                    @helper.CSRF.formField
+                    <select id="type" name="type">
+                        <option value="BILL_SHARE">Bill Sharing</option>
+                        <option value="RENT_SHARE">Rent Sharing</option>
+                    </select>
+                    <br />
+                    <select style="visibility: hidden;" id="scope" name="scope">
+                        <option value="THIS_MONTH_ONLY">Just this month</option>
+                        <option value="TWO_PLUS_MONTH">More frequently</option>
+                        <option selected value="PERMANENT">Forever</option>
+                    </select>
+                    <br />
+                    <input placeholder="How many people share?" type="number" name="humanSplit" />
+                    <br />
+                    <br />
+                    <textarea id="notes" name="notes" rows="4" cols="50">Any notes?</textarea>
+                    <br />
+                    <button>Add Plan</button>
+                </form>
             </div>
         </div>
     </div>
