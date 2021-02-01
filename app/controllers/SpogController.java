@@ -19,6 +19,7 @@ import static helpers.ModelHelpers.repoListToList;
 import static helpers.TimeHelpers.generateUnixTimestamp;
 import static models.Incoming.getTotalIncomings;
 import static models.Outgoing.getTotalOutgoings;
+import static models.Outgoing.getTotalOutgoingsWithoutHidden;
 
 public class SpogController extends Controller {
     private final IncomingRepository incomingRepository;
@@ -65,7 +66,7 @@ public class SpogController extends Controller {
             }
         }
 
-        Float outgoingTotal = round2(getTotalOutgoings(allOutgoings));
+        Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
         List<Outgoing> rents = repoListToList(outgoingRepository.rents());
         Float rentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
@@ -75,9 +76,8 @@ public class SpogController extends Controller {
         }
 
         Float surplus = round2(incomingTotal - outgoingTotal);
-        int suggestedIncomeAsSavings = 20;
+        int suggestedIncomeAsSavings = 46;
         int nextPayDay = incomingRepository.getNextPayDay();
-
 
         // Scratch
         List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(LocalDate.now(), nextPayDay));
@@ -121,7 +121,6 @@ public class SpogController extends Controller {
         // from anything the database side of ORM
         // and even, to some extent, even hibernate
         // Accounts
-        CompletionStage<Account> back;
         Account natwestCFullAccount;
         Account natwestC = new Account();
         natwestC.setName("Natwest Credit");
@@ -166,7 +165,9 @@ public class SpogController extends Controller {
         salary.setIncomingMonthDay(26);
         salary.setType("salary");
         this.incomingRepository.add(salary);
+        // Incomings end
         // Outgoings
+        // Rent and bills
         Outgoing rent = new Outgoing();
         rent.setRent(true);
         rent.setCost(1700f);
@@ -175,9 +176,17 @@ public class SpogController extends Controller {
         rent.setAccount(lloydsFullAccount);
         this.outgoingRepository.add(rent);
         //
+        Outgoing virgin = new Outgoing();
+        virgin.setBill(true);
+        virgin.setCost(27f);
+        virgin.setOutgoingDay(3);
+        virgin.setName("Virgin media");
+        virgin.setAccount(lloydsFullAccount);
+        this.outgoingRepository.add(virgin);
+        //
         Outgoing water = new Outgoing();
         water.setBill(true);
-        water.setCost(28.81f);
+        water.setCost(28.62f);
         water.setOutgoingDay(1);
         water.setName("Water bill");
         water.setAccount(lloydsFullAccount);
@@ -191,12 +200,97 @@ public class SpogController extends Controller {
         councilTax.setAccount(lloydsFullAccount);
         this.outgoingRepository.add(councilTax);
         //
+        Outgoing ovoEnergy = new Outgoing();
+        ovoEnergy.setBill(true);
+        ovoEnergy.setCost(75f);
+        ovoEnergy.setOutgoingDay(1);
+        ovoEnergy.setName("Ovo Gaz e Luce");
+        ovoEnergy.setAccount(lloydsFullAccount);
+        this.outgoingRepository.add(ovoEnergy);
+        // Rest of outgoings
+        Outgoing audible = new Outgoing();
+        audible.setCost(7.99f);
+        audible.setOutgoingDay(10);
+        audible.setName("Audible");
+        audible.setAccount(natwestCFullAccount);
+        this.outgoingRepository.add(audible);
+        //
+        Outgoing yousician = new Outgoing();
+        yousician.setCost(12.99f);
+        yousician.setOutgoingDay(13);
+        yousician.setName("Yousician");
+        yousician.setAccount(natwestCFullAccount);
+        this.outgoingRepository.add(yousician);
+        //
+        Outgoing savingsPayoff = new Outgoing();
+        savingsPayoff.setCost(1305.96f);
+        savingsPayoff.setOutgoingDay(26);
+        savingsPayoff.setName("Savings/Payoff");
+        savingsPayoff.setAccount(lloydsFullAccount);
+        this.outgoingRepository.add(savingsPayoff);
+        //
+        Outgoing natwestCreditPayoff = new Outgoing();
+        natwestCreditPayoff.setCost(13.92f);
+        natwestCreditPayoff.setOutgoingDay(15);
+        natwestCreditPayoff.setName("Natwest Credit Card");
+        natwestCreditPayoff.setAccount(natwestDFullAccount);
+        this.outgoingRepository.add(natwestCreditPayoff);
+        //
+        Outgoing MSOffice = new Outgoing();
+        MSOffice.setCost(9.48f);
+        MSOffice.setOutgoingDay(10);
+        MSOffice.setName("MS Office (gps)");
+        MSOffice.setAccount(natwestCFullAccount);
+        this.outgoingRepository.add(MSOffice);
+        //
+        Outgoing o2bill = new Outgoing();
+        o2bill.setCost(57.46f);
+        o2bill.setOutgoingDay(18);
+        o2bill.setName("O2 bill");
+        o2bill.setAccount(natwestDFullAccount);
+        this.outgoingRepository.add(o2bill);
+        //
         Outgoing spotify = new Outgoing();
         spotify.setCost(9.99f);
         spotify.setOutgoingDay(18);
         spotify.setName("Spotify");
         spotify.setAccount(natwestCFullAccount);
         this.outgoingRepository.add(spotify);
+        //
+        Outgoing netflix = new Outgoing();
+        netflix.setCost(9.99f);
+        netflix.setOutgoingDay(21);
+        netflix.setName("Netflix");
+        netflix.setAccount(natwestCFullAccount);
+        this.outgoingRepository.add(netflix);
+        //
+        Outgoing medium = new Outgoing();
+        medium.setCost(3.87f);
+        medium.setOutgoingDay(21);
+        medium.setName("Medium");
+        medium.setAccount(natwestCFullAccount);
+        this.outgoingRepository.add(medium);
+        //
+        Outgoing nuranow = new Outgoing();
+        nuranow.setCost(9.99f);
+        nuranow.setOutgoingDay(28);
+        nuranow.setName("Nuraphones");
+        nuranow.setAccount(natwestCFullAccount);
+        this.outgoingRepository.add(nuranow);
+        //
+        Outgoing urawizardSite = new Outgoing();
+        urawizardSite.setCost(6f);
+        urawizardSite.setOutgoingDay(6);
+        urawizardSite.setName("urawizard.com");
+        urawizardSite.setAccount(natwestCFullAccount);
+        this.outgoingRepository.add(urawizardSite);
+        //
+        Outgoing guardian = new Outgoing();
+        guardian.setCost(11.99f);
+        guardian.setOutgoingDay(7);
+        guardian.setName("Guardian w/Crosswords");
+        guardian.setAccount(natwestCFullAccount);
+        this.outgoingRepository.add(guardian);
         //
         Outgoing fitbit = new Outgoing();
         fitbit.setCost(7.99f);
@@ -205,12 +299,22 @@ public class SpogController extends Controller {
         fitbit.setAccount(halifaxFullAccount);
         this.outgoingRepository.add(fitbit);
         //
-        Outgoing nuranow = new Outgoing();
-        nuranow.setCost(9.99f);
-        nuranow.setOutgoingDay(28);
-        nuranow.setName("Nuraphones");
-        nuranow.setAccount(natwestCFullAccount);
-        this.outgoingRepository.add(nuranow);
+        Outgoing LISA = new Outgoing();
+        LISA.setCost(204f);
+        LISA.setOutgoingDay(8);
+        LISA.setName("Moneybox LISA");
+        LISA.setAccount(halifaxFullAccount);
+        LISA.setHiddenFromTotal(true);
+        this.outgoingRepository.add(LISA);
+        //
+        Outgoing StocksAndShares = new Outgoing();
+        StocksAndShares.setCost(70f);
+        StocksAndShares.setOutgoingDay(8);
+        StocksAndShares.setName("Moneybox S+S");
+        StocksAndShares.setAccount(halifaxFullAccount);
+        StocksAndShares.setHiddenFromTotal(true);
+        this.outgoingRepository.add(StocksAndShares);
+        //
         // Balances
         Balance natwestCreditBalance0 = new Balance();
         natwestCreditBalance0.setAccount(natwestCFullAccount);
