@@ -15,6 +15,20 @@
     <div class="w3-row">
         <div class="w3-half w3-padding w3-center">
             <div class="w3-card w3-padding w3-margin">
+                <p>Next payday: <span id="next-payday-ddmmyyyy">@spogVm.getNextPayDate()</span></p>
+                <p>That is, <span id="next-pay-days-from-now">@spogVm.getDaysUntilNextPayday()</span> days away</p>
+                <p>Savings Slider</p>
+                <div class="slidecontainer">
+                    <input type="range" min="0" max="100" value="@spogVm.getPercentageIncomeAsSavings()" class="slider" id="savings-slider">
+                </div>
+                <p>
+                    <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings + payoff pcm
+                </p>
+                <p>
+                    That is, <span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>
+                </p>
+            </div>
+            <div class="w3-card w3-padding w3-margin">
                 <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
                 <hr>
                 <p>
@@ -49,40 +63,26 @@
 
                 </p>
             </div>
-            <div class="w3-card w3-padding w3-margin">
-                <p>Next payday: <span id="next-payday-ddmmyyyy">@spogVm.getNextPayDate()</span></p>
-                <p>That is, <span id="next-pay-days-from-now">@spogVm.getDaysUntilNextPayday()</span> days away</p>
-                <p>Savings Slider</p>
-                <div class="slidecontainer">
-                    <input type="range" min="0" max="100" value="@spogVm.getPercentageIncomeAsSavings()" class="slider" id="savings-slider">
-                </div>
-                <p>
-                    <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings + payoff pcm
-                </p>
-                <p>
-                    That is, <span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>
-                </p>
-            </div>
         </div>
         <div class="w3-half w3-padding">
             <div class="w3-card w3-padding w3-margin">
                 <p><b>Account Overview</b></p>
                 <ul>
-                    @for((a, sum) <- spogVm.getAllAccounts()) {
+                    @for((a, status) <- spogVm.getAccountStatusMap()) {
                     <li>@a.name (@{a.`type`})
                         <ul>
                             <li>
-                                £@sum.getAlreadyPaid() already gone out
+                                £@status.getAlreadyPaid() already gone out
                             </li>
                             <li>
-                                £@sum.getPending() still needed
+                                £@status.getPending() still needed
                             </li>
                             <li>
-                                £@sum.getLatestBalance() available
+                                £@status.getLatestBalance() available
                             </li>
                             <li>
                                 <b>
-                                    £@sum.getAdjustedAvailable() is what you <i>actually</i> have left
+                                    £@status.getAdjustedAvailable() is what you <i>actually</i> have left
                                 </b>
                             </li>
                         </ul>

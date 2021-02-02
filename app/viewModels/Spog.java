@@ -30,8 +30,8 @@ public class Spog {
     private final Float completedOutgoings;
     private final Float pendingOutgoings;
     private final Double adjustedLeftPerDay;
-
     private final List<Account> allAccounts;
+    private final HashMap<Account, AccountStatus> accountStatusMap;
 
     public Spog(Float surplus,
                 int nextPayday,
@@ -62,11 +62,12 @@ public class Spog {
         this.completedOutgoings = completedOutgoingsSum;
         this.pendingOutgoings = pendingOutgoingsSum;
         this.allAccounts = allAccounts;
+        this.accountStatusMap = this.getAccountStatusMap(this.allAccounts);
         this.adjustedLeftPerDay = this.calculateAdjustedLeftPerDay();
     }
 
     private Double calculateAdjustedLeftPerDay() {
-        HashMap<Account, AccountStatus> accountsMap = this.getAllAccounts();
+        HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap();
         Double totalAvailableDebit = 0d;
         Double totalAvailableCredit = 0d;
         for (Map.Entry<Account, AccountStatus> pair : accountsMap.entrySet()) {
@@ -214,9 +215,9 @@ public class Spog {
         return outgoingTotal;
     }
 
-    public HashMap<Account, AccountStatus> getAllAccounts() {
+    public HashMap<Account, AccountStatus> getAccountStatusMap(List<Account> accounts) {
         HashMap<Account, AccountStatus> accountsAndPendings = new LinkedHashMap<>();
-        for (Account a : allAccounts) {
+        for (Account a : accounts) {
             Float alreadyPaidSum = findAlreadyPaid(a.outgoings, LocalDate.now(), nextPayday)
                             .stream()
                             .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
@@ -233,5 +234,9 @@ public class Spog {
             accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, latestBalance));
         }
         return accountsAndPendings;
+    }
+
+    public HashMap<Account, AccountStatus> getAccountStatusMap() {
+        return accountStatusMap;
     }
 }

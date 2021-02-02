@@ -294,7 +294,7 @@ public class SpogController extends Controller {
         //
         Outgoing fitbit = new Outgoing();
         fitbit.setCost(7.99f);
-        fitbit.setOutgoingDay(18);
+        fitbit.setOutgoingDay(1);
         fitbit.setName("Fitbit premium");
         fitbit.setAccount(halifaxFullAccount);
         this.outgoingRepository.add(fitbit);
