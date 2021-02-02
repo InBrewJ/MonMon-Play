@@ -32,14 +32,34 @@
             <form method="POST" action="@routes.IncomingController.addIncoming()">
 <!--                Need error handling for all forms-->
                 @helper.CSRF.formField
-                <input placeholder="Incoming name" type="text" name="name" />
+                <input
+                        placeholder="Incoming name"
+                        type="text"
+                        name="name"
+                        value='@incomingForm.field("name").value()' />
                 <br />
-                <input placeholder="type" type="text" name="type" />
+                <input
+                        placeholder="type"
+                        type="text"
+                        name="type"
+                        value='@incomingForm.field("type").value()'/>
                 <br />
-                <input placeholder="how much?" type="number" step="0.01" name="netValue" />
+                <input
+                        placeholder="how much?"
+                        type="number"
+                        step="0.01"
+                        name="netValue"
+                        value='@incomingForm.field("netValue").value()'/>
                 <br />
 <!--                Ideally these constraints should be on the model-->
-                <input placeholder="What day of month?" step="1" min="1" max="31" type="number" name="incomingMonthDay" />
+                <input
+                        placeholder="What day of month?"
+                        step="1"
+                        min="1"
+                        max="31"
+                        type="number"
+                        name="incomingMonthDay"
+                        value='@incomingForm.field("incomingMonthDay").value()'/>
                 <br />
 <!--                This checkbox needs to be disabled (or even hidden) if we already have a payday incoming-->
                 @checkbox(incomingForm("payDay"), Symbol("_label") -> "Is this Payday?")

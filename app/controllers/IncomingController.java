@@ -57,7 +57,32 @@ public class IncomingController extends Controller {
 
     public Result listIncomings(Http.Request request) throws ExecutionException, InterruptedException {
         List<Incoming> incomings = repoListToList(incomingRepository.list());
-        return ok(views.html.incomings.render(asScala(incomings), this.form, request, messagesApi.preferred(request) ));
+        // MWM-15 playing around with form pre-filling
+        // seems to work fine
+        // We need a separate method in the controller to:
+        // - find an Incoming by id
+        // - prefill the form
+        // - POST the data back (again with the id, maybe a hidden field?)
+        //     - the id will also be in the URL, don't forget
+        // - form data will go to a generic Incoming update method
+        //     - this will find the model and update it, just like archive
+        // Then boom, done.
+        // Then, how to make it more generic for all the models...
+        Incoming toFill = new Incoming();
+        toFill.setName("Super Ovo");
+        toFill.setNetValue(1000000f);
+        toFill.setType("Salary");
+        toFill.setIncomingMonthDay(1);
+        toFill.setPayDay(false);
+        Form<Incoming> populatedForm = this.form.fill(toFill);
+        System.out.println("prefilled name: " + populatedForm.field("name").value());
+        //
+        return ok(views.html.incomings.render(
+                asScala(incomings),
+                populatedForm,
+                request,
+                messagesApi.preferred(request))
+        );
     }
 
     public CompletionStage<Result> addIncoming(final Http.Request request) {
