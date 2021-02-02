@@ -15,6 +15,7 @@ GET     /accountTypes                controllers.AccountController.numTypes()
 # Incoming details
 
 POST    /incoming                     controllers.IncomingController.addIncoming(req: Request)
+GET     /binIncoming/:id               controllers.IncomingController.removeIncoming(id: Int, req: Request)
 GET     /incomings                    controllers.IncomingController.getIncomings()
 GET     /myIncomings                  controllers.IncomingController.listIncomings(req: Request)
 

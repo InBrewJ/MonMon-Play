@@ -60,4 +60,9 @@ public class IncomingController extends Controller {
                 .add(incoming)
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
+
+    public Result removeIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        System.out.println("Deleting Incoming with id : " + id);
+        return this.listIncomings(request);
+    }
 }
