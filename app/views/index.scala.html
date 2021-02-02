@@ -49,9 +49,9 @@
     <div class="w3-card w3-padding">
       <div class="w3-half">
         <p><b> These are apparently your outgoings:</b></p>
-        <ul id="outgoings">
+        <ul id="outgoings" class="w3-left-align">
           @for(o <- outgoings) {
-          <li>@o.name -> £@o.cost, goes out on @o.outgoingDay of the month</li>
+          <li>Out on @o.outgoingDay of the month -> @o.name -> £@o.cost </li>
           }
         </ul>
         <p id="total">Total: £@outgoingTotal</p>

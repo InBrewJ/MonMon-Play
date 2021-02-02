@@ -14,7 +14,11 @@ public interface IncomingRepository {
 
     CompletionStage<Incoming> add(Incoming incoming);
 
+    CompletionStage<Incoming> archive(int incomingId);
+
     CompletionStage<Stream<Incoming>> list();
+
+    CompletionStage<Stream<Incoming>> listComplete();
 
     int getNextPayDay() throws ExecutionException, InterruptedException;
 }

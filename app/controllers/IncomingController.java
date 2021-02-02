@@ -49,6 +49,12 @@ public class IncomingController extends Controller {
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
+    public CompletionStage<Result> getIncomingsComplete() {
+        return incomingRepository
+                .listComplete()
+                .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
+    }
+
     public Result listIncomings(Http.Request request) throws ExecutionException, InterruptedException {
         List<Incoming> incomings = repoListToList(incomingRepository.list());
         return ok(views.html.incomings.render(asScala(incomings), this.form, request, messagesApi.preferred(request) ));
@@ -61,8 +67,11 @@ public class IncomingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
 
-    public Result removeIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+    public CompletionStage<Result> archiveIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Deleting Incoming with id : " + id);
-        return this.listIncomings(request);
+        // perhaps just update an 'archived' field here
+        return incomingRepository
+                .archive(id)
+                .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
 }

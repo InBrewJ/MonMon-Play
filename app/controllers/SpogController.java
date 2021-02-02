@@ -10,7 +10,6 @@ import viewModels.Spog;
 import javax.inject.Inject;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -18,7 +17,6 @@ import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
 import static helpers.TimeHelpers.generateUnixTimestamp;
 import static models.Incoming.getTotalIncomings;
-import static models.Outgoing.getTotalOutgoings;
 import static models.Outgoing.getTotalOutgoingsWithoutHidden;
 
 public class SpogController extends Controller {
@@ -30,7 +28,13 @@ public class SpogController extends Controller {
     private final HttpExecutionContext ec;
 
     @Inject
-    public SpogController(PlanRepository planRepository, OutgoingRepository outgoingRepository, AccountRepository accountRepository, IncomingRepository incomingRepository, BalanceRepository balanceRepository, HttpExecutionContext ec) {
+    public SpogController(
+            PlanRepository planRepository,
+            OutgoingRepository outgoingRepository,
+            AccountRepository accountRepository,
+            IncomingRepository incomingRepository,
+            BalanceRepository balanceRepository,
+            HttpExecutionContext ec) {
         this.incomingRepository = incomingRepository;
         this.accountRepository = accountRepository;
         this.outgoingRepository = outgoingRepository;
@@ -355,6 +359,17 @@ public class SpogController extends Controller {
         vanquisBalance1.setValue(800d);
         vanquisBalance1.setTimestamp(generateUnixTimestamp()-(2*86400));
         this.balanceRepository.add(vanquisBalance1);
+        // Plans
+        Plan rentSharePlan = new Plan();
+        rentSharePlan.setSplit(0.5f);
+        rentSharePlan.setType(Plan.PlanType.RENT_SHARE);
+        rentSharePlan.setScope(Plan.PlanScope.PERMANENT);
+        this.planRepository.add(rentSharePlan);
+        Plan billSharePlan = new Plan();
+        billSharePlan.setSplit(0.5f);
+        billSharePlan.setType(Plan.PlanType.BILL_SHARE);
+        billSharePlan.setScope(Plan.PlanScope.PERMANENT);
+        this.planRepository.add(billSharePlan);
 
         return ok("Seeded");
     }

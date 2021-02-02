@@ -33,8 +33,18 @@ public class JPAIncomingRepository implements IncomingRepository {
     }
 
     @Override
+    public CompletionStage<Incoming> archive(int incomingId) {
+        return supplyAsync(() -> wrap(em -> archive(em, incomingId)), executionContext);
+    }
+
+    @Override
     public CompletionStage<Stream<Incoming>> list() {
         return supplyAsync(() -> wrap(em -> list(em)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<Stream<Incoming>> listComplete() {
+        return supplyAsync(() -> wrap(em -> listComplete(em)), executionContext);
     }
 
     @Override
@@ -64,7 +74,20 @@ public class JPAIncomingRepository implements IncomingRepository {
         return incoming;
     }
 
+    private Incoming archive(EntityManager em, int incomingId) {
+        Incoming toArchive = em.find(Incoming.class, (long)incomingId);
+        System.out.println("Archiving :: " + toArchive.getName());
+        toArchive.setArchived(true);
+        em.persist(toArchive);
+        return toArchive;
+    }
+
     private Stream<Incoming> list(EntityManager em) {
+        List<Incoming> incomings = em.createQuery("select i from Incoming i WHERE i.archived = false", Incoming.class).getResultList();
+        return incomings.stream();
+    }
+
+    private Stream<Incoming> listComplete(EntityManager em) {
         List<Incoming> incomings = em.createQuery("select i from Incoming i", Incoming.class).getResultList();
         return incomings.stream();
     }

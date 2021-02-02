@@ -91,10 +91,12 @@ public class Spog {
     }
 
     private Float calculatePercentageIncomeAsRent() {
+        if (this.rentCost == 0f || this.incomingTotal == 0f) return 0f;
         return round2((this.rentCost / this.incomingTotal) * 100);
     }
 
     private Float calculatePercentageIncomeAsOutgoings() {
+        if (this.outgoingTotal == 0f || this.incomingTotal == 0f) return 0f;
         return round2((this.outgoingTotal / this.incomingTotal) * 100);
     }
 

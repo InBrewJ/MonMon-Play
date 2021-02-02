@@ -16,6 +16,7 @@ public class Incoming {
     public Float grossValue;
     public Float netValue;
     public int incomingMonthDay;
+    public boolean archived = false;
     public boolean payDay = false;
 
     public boolean isPayDay() {
@@ -74,7 +75,16 @@ public class Incoming {
         this.incomingMonthDay = incomingMonthDay;
     }
 
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
+
     public static Float getTotalIncomings(List<Incoming> incomings) {
+        if (incomings.isEmpty()) return 0f;
         return incomings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.netValue, Float::sum);
     }
 
