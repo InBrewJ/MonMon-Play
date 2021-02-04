@@ -20,8 +20,13 @@
                     @for(i <- incomings) {
                     <li>
                         @i.name, (@{i.`type`}), @i.netValue, @i.incomingMonthDay, payday: @i.isPayDay
-                        <a href="/editIncoming/@i.id">Edit</a>&nbsp;&nbsp;
-                        <a href="/binIncoming/@i.id">Archive</a>
+                        &nbsp;
+                        <a href="/editIncoming/@i.id">
+                            <i class="fas fa-pen"></i>
+                        </a>&nbsp;
+                        <a href="/binIncoming/@i.id">
+                            <i class="fas fa-trash-alt"></i>
+                        </a>
                     </li>
                     }
                 </ul>

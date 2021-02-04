@@ -108,8 +108,7 @@ public class JPAIncomingRepository implements IncomingRepository {
     private Incoming findById(EntityManager em,  int incomingId) {
         TypedQuery<Incoming> query = em.createQuery(
                 "select i from Incoming i WHERE i.id = :id" , Incoming.class);
-        Incoming incoming = query.setParameter("id", (long)incomingId).getSingleResult();
-        return incoming;
+        return query.setParameter("id", (long)incomingId).getSingleResult();
     }
 
     private Stream<Incoming> list(EntityManager em) {
