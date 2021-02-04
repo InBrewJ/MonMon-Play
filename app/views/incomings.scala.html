@@ -1,6 +1,6 @@
 @import play.mvc.Http.Request
 @import helper._
-@(incomings: Seq[Incoming], incomingForm: Form[Incoming])(implicit request: Http.Request,  messages: play.i18n.Messages)
+@(incomings: Seq[Incoming], incomingForm: Form[Incoming], editing: Boolean)(implicit request: Http.Request,  messages: play.i18n.Messages)
 @main("MonMonIncomings") {
 <script
         type="text/javascript"
@@ -29,7 +29,7 @@
 
         </div>
         <div class="w3-half w3-padding">
-            <form method="POST" action="@routes.IncomingController.addIncoming()">
+            <form method="POST" action='@{ if (editing) routes.IncomingController.updateIncoming(request.path().split("/")(2).toInt) else routes.IncomingController.addIncoming()}'>
 <!--                Need error handling for all forms-->
                 @helper.CSRF.formField
                 <input
@@ -61,10 +61,11 @@
                         name="incomingMonthDay"
                         value='@incomingForm.field("incomingMonthDay").value()'/>
                 <br />
-<!--                This checkbox needs to be disabled (or even hidden) if we already have a payday incoming-->
+<!--                This checkbox SHOULD to be disabled (or even hidden) if we already have a payday incoming -->
+<!--                Or should it? What if a month has more than one payday? -->
                 @checkbox(incomingForm("payDay"), Symbol("_label") -> "Is this Payday?")
                 <br />
-                <button>Add Incoming</button>
+                <button>@{ if (editing) "Amend" else "Add"} Incoming</button>
             </form>
         </div>
     </div>
