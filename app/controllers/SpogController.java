@@ -46,18 +46,30 @@ public class SpogController extends Controller {
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         // Plans affect how total outgoings and rent values appear
         List<Plan> allPlans = repoListToList(planRepository.list());
-        Plan firstRentShare = !allPlans.isEmpty() ?
-                allPlans
-                        .stream()
-                        .filter(p -> p.getType() == Plan.PlanType.RENT_SHARE)
-                        .collect(Collectors.toList())
-                        .get(0) : null;
-        Plan firstBillShare = !allPlans.isEmpty() ?
-                allPlans
-                        .stream()
-                        .filter(p -> p.getType() == Plan.PlanType.BILL_SHARE)
-                        .collect(Collectors.toList())
-                        .get(0) : null;
+        Plan firstRentShare = null;
+        Plan firstBillShare = null;
+        try {
+            firstRentShare = !allPlans.isEmpty() ?
+                    allPlans
+                            .stream()
+                            .filter(p -> p.getType() == Plan.PlanType.RENT_SHARE)
+                            .collect(Collectors.toList())
+                            .get(0) : null;
+        } catch (Exception e) {
+            System.out.println("No RENT_SHARE found");
+        }
+
+        try {
+            firstBillShare = !allPlans.isEmpty() ?
+                    allPlans
+                            .stream()
+                            .filter(p -> p.getType() == Plan.PlanType.BILL_SHARE)
+                            .collect(Collectors.toList())
+                            .get(0) : null;
+        } catch (Exception e) {
+            System.out.println("No BILL_SHARE found");
+        }
+
         //
         List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list());
         // MWM-28 if a bill share exists, find the bills in all outgoings and divide here

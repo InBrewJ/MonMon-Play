@@ -40,8 +40,8 @@ public class Plan {
     public PlanScope scope;
 
     public Float split;
-
     public String notes;
+    public boolean archived = false;
 
     public Long getId() {
         return id;
@@ -81,5 +81,13 @@ public class Plan {
 
     public void setScope(PlanScope scope) {
         this.scope = scope;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 }

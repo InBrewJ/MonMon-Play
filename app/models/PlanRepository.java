@@ -13,5 +13,9 @@ import java.util.stream.Stream;
 public interface PlanRepository {
     CompletionStage<Plan> add(Plan plan);
 
+    CompletionStage<Plan> archive(int planId);
+
     CompletionStage<Stream<Plan>> list();
+
+    CompletionStage<Stream<Plan>> listComplete();
 }
