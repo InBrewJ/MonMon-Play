@@ -51,7 +51,15 @@
         <p><b> These are apparently your outgoings:</b></p>
         <ul id="outgoings" class="w3-left-align">
           @for(o <- outgoings) {
-          <li>Out on @o.outgoingDay of the month -> @o.name -> £@o.cost </li>
+          <li>
+            Out on @o.outgoingDay of the month -> @o.name -> £@o.cost
+            <a href="/editOutgoing/@o.id">
+              <i class="fas fa-pen"></i>
+            </a>&nbsp;
+            <a href="/binOutgoings/@o.id">
+              <i class="fas fa-trash-alt"></i>
+            </a>
+          </li>
           }
         </ul>
         <p id="total">Total: £@outgoingTotal</p>
