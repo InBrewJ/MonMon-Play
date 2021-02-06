@@ -222,9 +222,11 @@ public class Spog {
         for (Account a : accounts) {
             Float alreadyPaidSum = findAlreadyPaid(a.outgoings, LocalDate.now(), nextPayday)
                             .stream()
+                            .filter(o -> !o.isArchived())
                             .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
             Float yetToPaySum = findYetToPay(a.outgoings, LocalDate.now(), nextPayday)
                     .stream()
+                    .filter(o -> !o.isArchived())
                     .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
             Double latestBalance;
             try {
