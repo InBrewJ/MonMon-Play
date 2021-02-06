@@ -14,4 +14,12 @@ public interface AccountRepository {
     CompletionStage<Account> add(Account account);
 
     CompletionStage<Stream<Account>> list();
+
+    CompletionStage<Stream<Account>> listComplete();
+
+    CompletionStage<Account> archive(int accountId);
+
+    CompletionStage<Account> findById(int accountId);
+
+    CompletionStage<Account> update(int accountId, Account account);
 }

@@ -2,6 +2,7 @@ package controllers;
 
 import models.Account;
 import models.AccountRepository;
+import models.Outgoing;
 import play.data.FormFactory;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
@@ -40,15 +41,25 @@ public class AccountController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
-    public CompletionStage<Result> getAccounts() {
+    public CompletionStage<Result> getAccountsComplete() {
         return accountRepository
-                .list()
+                .listComplete()
                 .thenApplyAsync(accountStream -> ok(toJson(accountStream.collect(Collectors.toList()))), ec.current());
     }
 
-    public Result numTypes() {
-//        returns the number of each type of account
-        return ok("40 of each! And the time is: " + LocalTime.now().toString());
+    public CompletionStage<Result> archiveAccount(int id,final Http.Request request) {
+        System.out.println("Deleting account with id : " + id);
+        // perhaps just update an 'archived' field here
+        return accountRepository
+                .archive(id)
+                .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
+    }
+
+    public CompletionStage<Result> updateAccount(int id, final Http.Request request) {
+        Account account = formFactory.form(Account.class).bindFromRequest(request).get();
+        return accountRepository
+                .update(id, account)
+                .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
 }

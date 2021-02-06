@@ -44,6 +44,12 @@ public class PlanController extends Controller {
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
+    public CompletionStage<Result> getPlansComplete() {
+        return planRepository
+                .listComplete()
+                .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
+    }
+
     public CompletionStage<Result> addPlan(final Http.Request request) {
         Plan plan = formFactory.form(Plan.class).bindFromRequest(request).get();
         int humanSplitFromForm = parseInt(request.body().asFormUrlEncoded().get("humanSplit")[0]);
@@ -58,5 +64,12 @@ public class PlanController extends Controller {
     public Result sharedOutgoings(final Http.Request request) throws ExecutionException, InterruptedException {
         List<Plan> plans = repoListToList(planRepository.list());
         return ok(views.html.sharing.render(asScala(plans), this.form, request));
+    }
+
+    public CompletionStage<Result> archivePlan(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        System.out.println("Archiving plan with id : " + id);
+        return planRepository
+                .archive(id)
+                .thenApplyAsync(p -> redirect(routes.PlanController.sharedOutgoings()), ec.current());
     }
 }

@@ -31,6 +31,24 @@ public class JPAPlanRepository implements PlanRepository {
         return supplyAsync(() -> wrap(em -> list(em)), executionContext);
     }
 
+    @Override
+    public CompletionStage<Plan> archive(int planId) {
+        return supplyAsync(() -> wrap(em -> archive(em, planId)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<Stream<Plan>> listComplete() {
+        return supplyAsync(() -> wrap(em -> listComplete(em)), executionContext);
+    }
+
+    private Plan archive(EntityManager em, int planId) {
+        Plan toArchive = em.find(Plan.class, (long)planId);
+        System.out.println("Archiving :: " + toArchive.getType());
+        toArchive.setArchived(true);
+        em.persist(toArchive);
+        return toArchive;
+    }
+
     private <T> T wrap(Function<EntityManager, T> function) {
         return jpaApi.withTransaction(function);
     }
@@ -40,8 +58,13 @@ public class JPAPlanRepository implements PlanRepository {
         return plan;
     }
 
-    private Stream<Plan> list(EntityManager em) {
+    private Stream<Plan> listComplete(EntityManager em) {
         List<Plan> plans = em.createQuery("select p from Plan p", Plan.class).getResultList();
+        return plans.stream();
+    }
+
+    private Stream<Plan> list(EntityManager em) {
+        List<Plan> plans = em.createQuery("select p from Plan p WHERE p.archived = false", Plan.class).getResultList();
         return plans.stream();
     }
 }

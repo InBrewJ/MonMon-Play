@@ -91,10 +91,12 @@ public class Spog {
     }
 
     private Float calculatePercentageIncomeAsRent() {
+        if (this.rentCost == 0f || this.incomingTotal == 0f) return 0f;
         return round2((this.rentCost / this.incomingTotal) * 100);
     }
 
     private Float calculatePercentageIncomeAsOutgoings() {
+        if (this.outgoingTotal == 0f || this.incomingTotal == 0f) return 0f;
         return round2((this.outgoingTotal / this.incomingTotal) * 100);
     }
 
@@ -220,9 +222,11 @@ public class Spog {
         for (Account a : accounts) {
             Float alreadyPaidSum = findAlreadyPaid(a.outgoings, LocalDate.now(), nextPayday)
                             .stream()
+                            .filter(o -> !o.isArchived())
                             .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
             Float yetToPaySum = findYetToPay(a.outgoings, LocalDate.now(), nextPayday)
                     .stream()
+                    .filter(o -> !o.isArchived())
                     .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
             Double latestBalance;
             try {

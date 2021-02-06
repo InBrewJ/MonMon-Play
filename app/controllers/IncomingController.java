@@ -49,15 +49,59 @@ public class IncomingController extends Controller {
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
+    public CompletionStage<Result> getIncomingsComplete() {
+        return incomingRepository
+                .listComplete()
+                .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
+    }
+
     public Result listIncomings(Http.Request request) throws ExecutionException, InterruptedException {
         List<Incoming> incomings = repoListToList(incomingRepository.list());
-        return ok(views.html.incomings.render(asScala(incomings), this.form, request, messagesApi.preferred(request) ));
+        return ok(views.html.incomings.render(
+                asScala(incomings),
+                this.form,
+                false,
+                request,
+                messagesApi.preferred(request))
+        );
+    }
+
+    public Result listIncomingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
+        List<Incoming> incomings = repoListToList(incomingRepository.list());
+        Incoming found = incomingRepository.findById(id).toCompletableFuture().get();
+        Form<Incoming> prefilledForm = this.form.fill(found);
+        System.out.println("prefilled name: " + prefilledForm.field("name").value());
+        //
+        return ok(views.html.incomings.render(
+                asScala(incomings),
+                prefilledForm,
+                true,
+                request,
+                messagesApi.preferred(request))
+        );
+    }
+
+    public CompletionStage<Result> updateIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        System.out.println("Updating Incoming with id : " + id);
+        Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
+        // Update all fields here
+        return incomingRepository
+                .update(id, incoming)
+                .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
 
     public CompletionStage<Result> addIncoming(final Http.Request request) {
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
         return incomingRepository
                 .add(incoming)
+                .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
+    }
+
+    public CompletionStage<Result> archiveIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        System.out.println("Deleting Incoming with id : " + id);
+        // perhaps just update an 'archived' field here
+        return incomingRepository
+                .archive(id)
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
 }

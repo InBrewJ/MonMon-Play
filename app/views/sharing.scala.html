@@ -18,7 +18,12 @@
                 <p><b> These are apparently your plans:</b></p>
                 <ul id="plans">
                     @for(p <- plans) {
-                    <li>@{p.`type`} (@p.split) (@p.scope)</li>
+                    <li>
+                        @{p.`type`} (you pay ~@p.split) (@p.scope)
+                        <a href="/binPlan/@p.id">
+                            <i class="fas fa-trash-alt"></i>
+                        </a>
+                    </li>
                     }
                 </ul>
             </div>
