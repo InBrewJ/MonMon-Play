@@ -5,8 +5,9 @@
 # Home page (sort of - atm this is weird + janky view model)
 GET     /                            controllers.OutgoingController.index(req: Request)
 POST    /outgoing                    controllers.OutgoingController.addOutgoing(req: Request)
-GET     /outgoings                   controllers.OutgoingController.getOutgoings()
+GET     /outgoings                   controllers.OutgoingController.getOutgoingsComplete()
 GET     /editOutgoing/:id            controllers.OutgoingController.listOutgoingsWithPrefill(id: Int, req: Request)
+GET     /binOutgoing/:id             controllers.OutgoingController.archiveOutgoing(id: Int, req: Request)
 POST    /updateOutgoing              controllers.OutgoingController.updateOutgoing(id: Int, req: Request)
 
 # Accounts

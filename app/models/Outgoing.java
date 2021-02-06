@@ -17,6 +17,7 @@ public class Outgoing {
     public int outgoingDay;
     public boolean bill = false;
     public boolean rent = false;
+    public boolean archived = false;
     public boolean hiddenFromTotal = false;
 
     @ManyToOne
@@ -78,6 +79,14 @@ public class Outgoing {
 
     public void setOutgoingDay(int outgoingDay) {
         this.outgoingDay = outgoingDay;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 
     // MWM-29

@@ -19,7 +19,7 @@
                 <ul id="plans">
                     @for(p <- plans) {
                     <li>
-                        @{p.`type`} (@p.split) (@p.scope)
+                        @{p.`type`} (you pay ~@p.split) (@p.scope)
                         <a href="/binPlan/@p.id">
                             <i class="fas fa-trash-alt"></i>
                         </a>

@@ -99,6 +99,14 @@ public class OutgoingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
+    public CompletionStage<Result> archiveOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        System.out.println("Deleting outgoing with id : " + id);
+        // perhaps just update an 'archived' field here
+        return outgoingRepository
+                .archive(id)
+                .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
+    }
+
     public Result listOutgoingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
         Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
@@ -122,6 +130,12 @@ public class OutgoingController extends Controller {
     public CompletionStage<Result> getOutgoings() {
         return outgoingRepository
                 .list()
+                .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
+    }
+
+    public CompletionStage<Result> getOutgoingsComplete() {
+        return outgoingRepository
+                .listComplete()
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
     }
 

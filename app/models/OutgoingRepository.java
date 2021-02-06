@@ -16,7 +16,11 @@ public interface OutgoingRepository {
 
     CompletionStage<Stream<Outgoing>> list();
 
+    CompletionStage<Stream<Outgoing>> listComplete();
+
     CompletionStage<Outgoing> update(int outgoingId, Outgoing outgoing);
+
+    CompletionStage<Outgoing> archive(int outgoingId);
 
     CompletionStage<Outgoing> findById(int outgoingId);
 

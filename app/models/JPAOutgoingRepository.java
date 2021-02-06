@@ -39,6 +39,11 @@ public class JPAOutgoingRepository implements OutgoingRepository {
     }
 
     @Override
+    public CompletionStage<Stream<Outgoing>> listComplete() {
+        return supplyAsync(() -> wrap(em -> listComplete(em)), executionContext);
+    }
+
+    @Override
     public CompletionStage<Stream<Outgoing>> rents() {
         return supplyAsync(() -> wrap(em -> rents(em)), executionContext);
     }
@@ -56,6 +61,11 @@ public class JPAOutgoingRepository implements OutgoingRepository {
     @Override
     public CompletionStage<Outgoing> update(int outgoingId, Outgoing outgoing) {
         return supplyAsync(() -> wrap(em -> update(em, outgoingId, outgoing)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<Outgoing> archive(int outgoingId) {
+        return supplyAsync(() -> wrap(em -> archive(em, outgoingId)), executionContext);
     }
 
     @Override
@@ -78,6 +88,11 @@ public class JPAOutgoingRepository implements OutgoingRepository {
     }
 
     private Stream<Outgoing> list(EntityManager em) {
+        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p  where p.archived = false ORDER BY OUTGOINGDAY", Outgoing.class).getResultList();
+        return outgoings.stream();
+    }
+
+    private Stream<Outgoing> listComplete(EntityManager em) {
         List<Outgoing> outgoings = em.createQuery("select p from Outgoing p ORDER BY OUTGOINGDAY", Outgoing.class).getResultList();
         return outgoings.stream();
     }
@@ -101,13 +116,21 @@ public class JPAOutgoingRepository implements OutgoingRepository {
         return toUpdate;
     }
 
+    private Outgoing archive(EntityManager em, int outgoingId) {
+        Outgoing toArchive = em.find(Outgoing.class, (long)outgoingId);
+        System.out.println("Archiving :: " + toArchive.getName());
+        toArchive.setArchived(true);
+        em.persist(toArchive);
+        return toArchive;
+    }
+
     private Stream<Outgoing> rents(EntityManager em) {
-        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p WHERE RENT = true", Outgoing.class).getResultList();
+        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p WHERE RENT = true and archived = false", Outgoing.class).getResultList();
         return outgoings.stream();
     }
 
     private Stream<Outgoing> bills(EntityManager em) {
-        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p WHERE BILL = true", Outgoing.class).getResultList();
+        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p WHERE BILL = true and archived = false", Outgoing.class).getResultList();
         return outgoings.stream();
     }
 
