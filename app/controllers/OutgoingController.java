@@ -53,7 +53,17 @@ public class OutgoingController extends Controller {
         this.accounts = repoListToList(accountRepository.list());
         this.outgoings = repoListToList(outgoingRepository.list());
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
-        return ok(views.html.index.render(asScala(accounts), asScala(outgoings), this.outgoingTotal, this.form, request, messagesApi.preferred(request)));
+        return ok(
+                views.html.index.render(
+                        asScala(accounts),
+                        asScala(outgoings),
+                        this.outgoingTotal,
+                        this.form,
+                        false,
+                        request,
+                        messagesApi.preferred(request)
+                )
+        );
     }
 
     public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
@@ -69,6 +79,44 @@ public class OutgoingController extends Controller {
         return outgoingRepository
                 .add(outgoing)
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
+    }
+
+    public CompletionStage<Result> updateOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        System.out.println("Updating outgoing with id : " + id);
+        Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
+        // weird, roundabout stuff for now...
+        // STILL LAME -> need to figure this one out...
+        // because need to get the account_id from the form
+        // or do something like:
+        // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
+        int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
+        List<Account> accounts = repoListToList(accountRepository.list());
+        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
+        outgoing.setAccount(desiredAccount.get(0));
+        // Update all fields here
+        return outgoingRepository
+                .update(id, outgoing)
+                .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
+    }
+
+    public Result listOutgoingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
+        List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
+        Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
+        Form<Outgoing> prefilledForm = this.form.fill(found);
+        this.accounts = repoListToList(accountRepository.list());
+        this.outgoings = repoListToList(outgoingRepository.list());
+        this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
+        return ok(
+                views.html.index.render(
+                        asScala(accounts),
+                        asScala(outgoings),
+                        this.outgoingTotal,
+                        prefilledForm,
+                        true,
+                        request,
+                        messagesApi.preferred(request)
+                )
+        );
     }
 
     public CompletionStage<Result> getOutgoings() {

@@ -34,7 +34,12 @@
 
         </div>
         <div class="w3-half w3-padding">
-            <form method="POST" action='@{ if (editing) routes.IncomingController.updateIncoming(request.path().split("/")(2).toInt) else routes.IncomingController.addIncoming()}'>
+            <form method="POST" action='@{
+                if (editing)
+                    routes.IncomingController.updateIncoming(request.path().split("/")(2).toInt)
+                else
+                    routes.IncomingController.addIncoming()
+            }'>
 <!--                Need error handling for all forms-->
                 @helper.CSRF.formField
                 <input
