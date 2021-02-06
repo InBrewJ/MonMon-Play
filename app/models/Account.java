@@ -33,6 +33,8 @@ public class Account {
     @Column(nullable = true)
     public List<Outgoing> outgoings = new ArrayList<>();
 
+    public boolean archived = false;
+
     public List<Balance> getBalances() {
         return balances;
     }
@@ -69,5 +71,11 @@ public class Account {
         this.nickname = nickname;
     }
 
+    public boolean isArchived() {
+        return archived;
+    }
 
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
 }

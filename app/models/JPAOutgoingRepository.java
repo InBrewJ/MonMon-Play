@@ -135,14 +135,14 @@ public class JPAOutgoingRepository implements OutgoingRepository {
     }
 
     private Stream<Outgoing> yetToPay(EntityManager em, LocalDate asOf, int paydayDay) {
-        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p", Outgoing.class).getResultList();
+        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p where archived = false", Outgoing.class).getResultList();
         List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
         outgoings.removeAll(paid);
         return outgoings.stream();
     }
 
     private Stream<Outgoing> alreadyPaid(EntityManager em, LocalDate asOf, int paydayDay) {
-        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p", Outgoing.class).getResultList();
+        List<Outgoing> outgoings = em.createQuery("select p from Outgoing p where archived = false", Outgoing.class).getResultList();
         List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
         return paid.stream();
     }

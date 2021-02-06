@@ -22,11 +22,30 @@ editing: Boolean
     <div class="w3-card w3-padding">
       <div class="w3-half">
         <p><b> These are apparently your bank accounts:</b></p>
-        <ul id="accounts">
+        <table class="w3-left-align w3-table w3-striped">
+          <tr>
+            <th>name</th>
+            <th>type</th>
+            <th></th> <!-- edit -->
+            <th></th> <!-- archive -->
+          </tr>
           @for(a <- accounts) {
-          <li>@a.name (@{a.`type`})</li>
+            <tr>
+                <td>@a.name</td>
+                <td>@{a.`type`}</td>
+              <td class="w3-center">
+                <!-- <a href="/editAccount/@a.id">
+                  <i class="fas fa-pen"></i>
+                </a> -->
+              </td>
+              <td class="w3-center">
+                <a href="/binAccount/@a.id">
+                  <i class="fas fa-trash-alt"></i>
+                </a>
+              </td>
+            </tr>
           }
-        </ul>
+        </table>
       </div>
       <div class="w3-half w3-padding-64">
         <form method="POST" action="@routes.AccountController.addAccount()">
@@ -37,6 +56,7 @@ editing: Boolean
           <br />
           <select id="type" name="type">
             <option value="DEBIT">Debit</option>
+            <option value="DEBIT_SHARED_BILLS">Bills only</option>
             <option value="CREDIT">Credit</option>
             <option value="SHORT_TERM_SAVINGS">Savings (short term)</option>
             <option value="LONG_TERM_SAVINGS">Savings (long term)</option>
@@ -59,29 +79,29 @@ editing: Boolean
         <p id="total">Total: £@outgoingTotal</p>
         <table class="w3-left-align w3-table w3-striped">
           <tr>
-            <th>outgoingDay</th>
+            <th>Outgoing day</th>
             <th>name</th>
             <th>cost</th>
-            <th>account</th>
-            <th>edit</th>
-            <th>archive</th>
+            <th>from account</th>
+            <th></th>
+            <th></th>
           </tr>
           @for(o <- outgoings) {
             <tr>
-              <th>@o.outgoingDay</th>
-              <th>@o.name</th>
-              <th>£@o.cost</th>
-              <th>@o.account.name</th>
-              <th class="w3-center">
+              <td class="w3-center">@o.outgoingDay</td>
+              <td>@o.name</td>
+              <td>£@o.cost</td>
+              <td>@o.account.name (@{o.account.`type`})</td>
+              <td class="w3-center">
                 <a href="/editOutgoing/@o.id">
                   <i class="fas fa-pen"></i>
                 </a>&nbsp;
-              </th>
-              <th class="w3-center">
+              </td>
+              <td class="w3-center">
                 <a href="/binOutgoing/@o.id">
                   <i class="fas fa-trash-alt"></i>
                 </a>
-              </th>
+              </td>
             </tr>
           }
         </table>
