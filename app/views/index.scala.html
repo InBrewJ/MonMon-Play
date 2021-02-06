@@ -56,21 +56,35 @@ editing: Boolean
     <div class="w3-card w3-padding">
       <div class="w3-half">
         <p><b> These are apparently your outgoings:</b></p>
-        <ul id="outgoings" class="w3-left-align">
-          @for(o <- outgoings) {
-          <li>
-            Out on @o.outgoingDay of the month -> @o.name -> £@o.cost
-            <a href="/editOutgoing/@o.id">
-              <i class="fas fa-pen"></i>
-            </a>&nbsp;
-            <a href="/binOutgoing/@o.id">
-              <i class="fas fa-trash-alt"></i>
-            </a>
-            <hr/>
-          </li>
-          }
-        </ul>
         <p id="total">Total: £@outgoingTotal</p>
+        <table class="w3-left-align w3-table w3-striped">
+          <tr>
+            <th>outgoingDay</th>
+            <th>name</th>
+            <th>cost</th>
+            <th>account</th>
+            <th>edit</th>
+            <th>archive</th>
+          </tr>
+          @for(o <- outgoings) {
+            <tr>
+              <th>@o.outgoingDay</th>
+              <th>@o.name</th>
+              <th>£@o.cost</th>
+              <th>@o.account.name</th>
+              <th class="w3-center">
+                <a href="/editOutgoing/@o.id">
+                  <i class="fas fa-pen"></i>
+                </a>&nbsp;
+              </th>
+              <th class="w3-center">
+                <a href="/binOutgoing/@o.id">
+                  <i class="fas fa-trash-alt"></i>
+                </a>
+              </th>
+            </tr>
+          }
+        </table>
       </div>
 
 

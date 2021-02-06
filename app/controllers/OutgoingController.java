@@ -66,16 +66,23 @@ public class OutgoingController extends Controller {
         );
     }
 
-    public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
-        Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
+    private Account getAccountFromFormRequest(Http.Request request) throws ExecutionException, InterruptedException {
         // weird, roundabout stuff for now...
         // because need to get the account_id from the form
         // or do something like:
         // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
+        // This implementation is essentially the same thing as the SO answer above, it's
+        // just defined here rather than in the global scope
+        // It could be improved with an accountRepository.findById() method, though
         int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
         List<Account> accounts = repoListToList(accountRepository.list());
         List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
-        outgoing.setAccount(desiredAccount.get(0));
+        return desiredAccount.get(0);
+    }
+
+    public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
+        Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
+        outgoing.setAccount(getAccountFromFormRequest(request));
         return outgoingRepository
                 .add(outgoing)
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
@@ -84,15 +91,7 @@ public class OutgoingController extends Controller {
     public CompletionStage<Result> updateOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Updating outgoing with id : " + id);
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
-        // weird, roundabout stuff for now...
-        // STILL LAME -> need to figure this one out...
-        // because need to get the account_id from the form
-        // or do something like:
-        // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
-        int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
-        List<Account> accounts = repoListToList(accountRepository.list());
-        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
-        outgoing.setAccount(desiredAccount.get(0));
+        outgoing.setAccount(getAccountFromFormRequest(request));
         // Update all fields here
         return outgoingRepository
                 .update(id, outgoing)
@@ -100,7 +99,7 @@ public class OutgoingController extends Controller {
     }
 
     public CompletionStage<Result> archiveOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
-        System.out.println("Deleting outgoing with id : " + id);
+        System.out.println("Archiving outgoing with id : " + id);
         // perhaps just update an 'archived' field here
         return outgoingRepository
                 .archive(id)
