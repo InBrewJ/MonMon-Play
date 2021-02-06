@@ -36,15 +36,17 @@ public class OutgoingController extends Controller {
     private List<Account> accounts;
     private List<Outgoing> outgoings;
     private Float outgoingTotal;
-    private final Form<Outgoing> form;
-    private MessagesApi messagesApi;
+    private final Form<Outgoing> outgoingForm;
+    private final Form<Account> accountForm;
+    private final MessagesApi messagesApi;
 
     @Inject
     public OutgoingController(FormFactory formFactory, MessagesApi messagesApi, OutgoingRepository outgoingRepository, AccountRepository accountRepository, HttpExecutionContext ec) throws ExecutionException, InterruptedException {
         this.formFactory = formFactory;
         this.outgoingRepository = outgoingRepository;
         this.accountRepository = accountRepository;
-        this.form = formFactory.form(Outgoing.class);
+        this.outgoingForm = formFactory.form(Outgoing.class);
+        this.accountForm = formFactory.form(Account.class);
         this.messagesApi = messagesApi;
         this.ec = ec;
     }
@@ -58,7 +60,9 @@ public class OutgoingController extends Controller {
                         asScala(accounts),
                         asScala(outgoings),
                         this.outgoingTotal,
-                        this.form,
+                        this.outgoingForm,
+                        false,
+                        this.accountForm,
                         false,
                         request,
                         messagesApi.preferred(request)
@@ -109,7 +113,7 @@ public class OutgoingController extends Controller {
     public Result listOutgoingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
         Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
-        Form<Outgoing> prefilledForm = this.form.fill(found);
+        Form<Outgoing> prefilledOutgoingForm = this.outgoingForm.fill(found);
         this.accounts = repoListToList(accountRepository.list());
         this.outgoings = repoListToList(outgoingRepository.list());
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
@@ -118,7 +122,31 @@ public class OutgoingController extends Controller {
                         asScala(accounts),
                         asScala(outgoings),
                         this.outgoingTotal,
-                        prefilledForm,
+                        prefilledOutgoingForm,
+                        true,
+                        this.accountForm,
+                        false,
+                        request,
+                        messagesApi.preferred(request)
+                )
+        );
+    }
+
+    public Result listAccountsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
+        List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
+        Account found = accountRepository.findById(id).toCompletableFuture().get();
+        Form<Account> prefilledAccountForm = this.accountForm.fill(found);
+        this.accounts = repoListToList(accountRepository.list());
+        this.outgoings = repoListToList(outgoingRepository.list());
+        this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
+        return ok(
+                views.html.index.render(
+                        asScala(accounts),
+                        asScala(outgoings),
+                        this.outgoingTotal,
+                        this.outgoingForm,
+                        false,
+                        prefilledAccountForm,
                         true,
                         request,
                         messagesApi.preferred(request)

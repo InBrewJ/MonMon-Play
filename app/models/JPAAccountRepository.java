@@ -33,6 +33,11 @@ public class JPAAccountRepository implements AccountRepository {
     }
 
     @Override
+    public CompletionStage<Account> update(int accountId, Account account) {
+        return supplyAsync(() -> wrap(em -> update(em, accountId, account)), executionContext);
+    }
+
+    @Override
     public CompletionStage<Stream<Account>> list() {
         return supplyAsync(() -> wrap(em -> list(em)), executionContext);
     }
@@ -59,6 +64,15 @@ public class JPAAccountRepository implements AccountRepository {
     private Account insert(EntityManager em, Account account) {
         em.persist(account);
         return account;
+    }
+
+    private Account update(EntityManager em, int accountId, Account account) {
+        Account toUpdate = em.find(Account.class, (long)accountId);
+        toUpdate.setName(account.getName());
+        toUpdate.setNickname(account.getNickname());
+        toUpdate.setType(account.getType());
+        em.persist(toUpdate);
+        return toUpdate;
     }
 
     private Account findById(EntityManager em,  int accountId) {

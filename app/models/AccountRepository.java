@@ -20,4 +20,6 @@ public interface AccountRepository {
     CompletionStage<Account> archive(int accountId);
 
     CompletionStage<Account> findById(int accountId);
+
+    CompletionStage<Account> update(int accountId, Account account);
 }

@@ -6,7 +6,9 @@ accounts: Seq[Account],
 outgoings: Seq[Outgoing],
 outgoingTotal: Float,
 outgoingForm: Form[Outgoing],
-editing: Boolean
+editingOutgoing: Boolean,
+accountForm: Form[Account],
+editingAccount: Boolean
 )(implicit request: Http.Request, messages: play.i18n.Messages)
 @main("MonMon") {
 <script
@@ -26,6 +28,7 @@ editing: Boolean
           <tr>
             <th>name</th>
             <th>type</th>
+            <th>nickname</th>
             <th></th> <!-- edit -->
             <th></th> <!-- archive -->
           </tr>
@@ -33,36 +36,83 @@ editing: Boolean
             <tr>
                 <td>@a.name</td>
                 <td>@{a.`type`}</td>
-              <td class="w3-center">
-                <!-- <a href="/editAccount/@a.id">
-                  <i class="fas fa-pen"></i>
-                </a> -->
-              </td>
-              <td class="w3-center">
-                <a href="/binAccount/@a.id">
-                  <i class="fas fa-trash-alt"></i>
-                </a>
-              </td>
+                <td>@a.nickname</td>
+                <td class="w3-center">
+                  <a href="/editAccount/@a.id">
+                    <i class="fas fa-pen"></i>
+                  </a>
+                </td>
+                <td class="w3-center">
+                  <a href="/binAccount/@a.id">
+                    <i class="fas fa-trash-alt"></i>
+                  </a>
+                </td>
             </tr>
           }
         </table>
       </div>
       <div class="w3-half w3-padding-64">
-        <form method="POST" action="@routes.AccountController.addAccount()">
+
+        <form method="POST" action='@{
+            if (editingAccount)
+              routes.AccountController.updateAccount(request.path().split("/")(2).toInt)
+            else
+              routes.AccountController.addAccount()
+        }'>
           @helper.CSRF.formField
-          <input placeholder="account name" type="text" name="name" />
+          <input
+                  placeholder="account name"
+                  type="text"
+                  name="name"
+                  value='@accountForm.field("name").value()'
+          />
           <br />
-          <input placeholder="nickname" type="text" name="nickname" />
+          <input
+                  placeholder="nickname"
+                  type="text"
+                  name="nickname"
+                  value='@accountForm.field("nickname").value()'
+          />
           <br />
           <select id="type" name="type">
-            <option value="DEBIT">Debit</option>
-            <option value="DEBIT_SHARED_BILLS">Bills only</option>
-            <option value="CREDIT">Credit</option>
-            <option value="SHORT_TERM_SAVINGS">Savings (short term)</option>
-            <option value="LONG_TERM_SAVINGS">Savings (long term)</option>
+            <option
+                    @{
+                      if(accountForm.field("type").value().getOrElse(0).toString == "DEBIT") "selected"
+                    }
+                    value="DEBIT">
+              Debit
+            </option>
+            <option
+                    @{
+                      if(accountForm.field("type").value().getOrElse(0).toString == "DEBIT_SHARED_BILLS") "selected"
+                    }
+                    value="DEBIT_SHARED_BILLS">
+              Bills only
+            </option>
+            <option
+                    @{
+                      if(accountForm.field("type").value().getOrElse(0).toString == "CREDIT") "selected"
+                    }
+                    value="CREDIT">
+              Credit
+            </option>
+            <option
+                    @{
+                       if(accountForm.field("type").value().getOrElse(0).toString == "SHORT_TERM_SAVINGS") "selected"
+                    }
+                    value="SHORT_TERM_SAVINGS">
+              Savings (short term)
+            </option>
+            <option
+                    @{
+                       if(accountForm.field("type").value().getOrElse(0).toString == "LONG_TERM_SAVINGS") "selected"
+                    }
+                    value="LONG_TERM_SAVINGS">
+              Savings (long term)
+            </option>
           </select>
           <br /><br />
-          <button>Add Account</button>
+          <button>@{ if (editingAccount) "Amend" else "Add"} Account</button>
         </form>
       </div>
       <div class="w3-row">
@@ -110,7 +160,7 @@ editing: Boolean
 
       <div class="w3-half w3-padding-64">
         <form method="POST" action='@{
-                if (editing)
+                if (editingOutgoing)
                     routes.OutgoingController.updateOutgoing(request.path().split("/")(2).toInt)
                 else
                     routes.OutgoingController.addOutgoing()
@@ -154,7 +204,7 @@ editing: Boolean
           @checkbox(outgoingForm("rent"), Symbol("_label") -> "Rent?")
           @checkbox(outgoingForm("hiddenFromTotal"), Symbol("_label") -> "Scheduled savings payment?")
           <br /><br />
-          <button>@{ if (editing) "Amend" else "Add"} Outgoing</button>
+          <button>@{ if (editingOutgoing) "Amend" else "Add"} Outgoing</button>
         </form>
       </div>
       <div class="w3-row">

@@ -14,7 +14,8 @@ POST    /updateOutgoing              controllers.OutgoingController.updateOutgoi
 POST    /account                     controllers.AccountController.addAccount(req: Request)
 GET     /accounts                    controllers.AccountController.getAccountsComplete()
 GET     /binAccount/:id              controllers.AccountController.archiveAccount(id: Int, req: Request)
-#POST    /updateAccount               controllers.AccountController.updateOutgoing(id: Int, req: Request)
+GET     /editAccount/:id             controllers.OutgoingController.listAccountsWithPrefill(id: Int, req: Request)
+POST    /updateAccount               controllers.AccountController.updateAccount(id: Int, req: Request)
 
 # Incoming details
 

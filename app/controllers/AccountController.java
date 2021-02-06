@@ -2,6 +2,7 @@ package controllers;
 
 import models.Account;
 import models.AccountRepository;
+import models.Outgoing;
 import play.data.FormFactory;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
@@ -51,6 +52,13 @@ public class AccountController extends Controller {
         // perhaps just update an 'archived' field here
         return accountRepository
                 .archive(id)
+                .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
+    }
+
+    public CompletionStage<Result> updateAccount(int id, final Http.Request request) {
+        Account account = formFactory.form(Account.class).bindFromRequest(request).get();
+        return accountRepository
+                .update(id, account)
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
