@@ -39,8 +39,18 @@ GET     /spog/seed                    controllers.SpogController.seed(req: Reque
 # Sharing (shared outgoings and tings)
 GET     /mySharedOutgoings            controllers.PlanController.sharedOutgoings(req: Request)
 POST    /plan                         controllers.PlanController.addPlan(req: Request)
-GET     /binPlan/:id              controllers.PlanController.archivePlan(id: Int, req: Request)
+GET     /binPlan/:id                  controllers.PlanController.archivePlan(id: Int, req: Request)
 GET     /plans                        controllers.PlanController.getPlansComplete()
+
+# Auth + Authz (via keycloak, see SecurityModule)
+GET     /oidc/index.html            controllers.SpogController.oidcIndex(req: Request)
+GET     /protected/index.html       controllers.SpogController.protectedIndex(req: Request)
+GET     /callback                   @org.pac4j.play.CallbackController.callback(request: Request)
+POST    /callback                   @org.pac4j.play.CallbackController.callback(request: Request)
+GET     /logout                     @org.pac4j.play.LogoutController.logout(request: Request)
+GET     /centralLogout              controllers.CentralLogoutController.logout(request: Request)
+GET     /forceLogin                 controllers.SpogController.forceLogin(request: Request)
+
 
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.at(path="/public", file)

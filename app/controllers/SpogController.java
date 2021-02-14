@@ -1,10 +1,17 @@
 package controllers;
 
 import models.*;
+import org.pac4j.core.context.session.SessionStore;
+import org.pac4j.core.exception.TechnicalException;
+import org.pac4j.core.exception.http.HttpAction;
+import org.pac4j.core.profile.ProfileManager;
+import org.pac4j.core.profile.UserProfile;
+import org.pac4j.core.util.Pac4jConstants;
+import org.pac4j.play.PlayWebContext;
+import org.pac4j.play.http.PlayHttpActionAdapter;
+import org.pac4j.play.java.Secure;
 import play.libs.concurrent.HttpExecutionContext;
-import play.mvc.Controller;
-import play.mvc.Http;
-import play.mvc.Result;
+import play.mvc.*;
 import viewModels.Spog;
 
 import javax.inject.Inject;
@@ -12,6 +19,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+
+import org.pac4j.core.client.Client;
+import org.pac4j.core.config.Config;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
@@ -41,6 +51,44 @@ public class SpogController extends Controller {
         this.balanceRepository = balanceRepository;
         this.planRepository = planRepository;
         this.ec = ec;
+    }
+
+    @Inject
+    private Config config;
+
+    @Inject
+    private SessionStore playSessionStore;
+
+    @Secure
+    public Result protectedIndex(Http.Request request) {
+        return protectedIndexView(request);
+    }
+
+    public Result forceLogin(Http.Request request) {
+        final PlayWebContext context = new PlayWebContext(request);
+        final Client client = config.getClients().findClient(context.getRequestParameter(Pac4jConstants.DEFAULT_CLIENT_NAME_PARAMETER).get()).get();
+        try {
+            final HttpAction action = client.getRedirectionAction(context, playSessionStore).get();
+            return PlayHttpActionAdapter.INSTANCE.adapt(action, context);
+        } catch (final HttpAction e) {
+            throw new TechnicalException(e);
+        }
+    }
+
+    private Result protectedIndexView(Http.Request request) {
+        // profiles
+        return ok(views.html.protectedIndex.render(getProfiles(request)));
+    }
+
+    private List<UserProfile> getProfiles(Http.Request request) {
+        final PlayWebContext context = new PlayWebContext(request);
+        final ProfileManager profileManager = new ProfileManager(context, playSessionStore);
+        return profileManager.getProfiles();
+    }
+
+    @Secure(clients = "OidcClient")
+    public Result oidcIndex(Http.Request request) {
+        return protectedIndexView(request);
     }
 
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
