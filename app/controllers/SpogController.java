@@ -83,7 +83,13 @@ public class SpogController extends Controller {
     private List<UserProfile> getProfiles(Http.Request request) {
         final PlayWebContext context = new PlayWebContext(request);
         final ProfileManager profileManager = new ProfileManager(context, playSessionStore);
-        return profileManager.getProfiles();
+        List<UserProfile> profiles = profileManager.getProfiles();
+        System.out.println("Profiles:");
+        for (UserProfile up: profiles) {
+            System.out.println(up.getUsername());
+            System.out.println(up.getId());
+        }
+        return profiles;
     }
 
     @Secure(clients = "OidcClient")
