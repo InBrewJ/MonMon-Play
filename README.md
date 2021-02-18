@@ -1,6 +1,43 @@
 # MonMon-Play
 
-- A port of my personal finance GSheet using the Play Framework for Java
+- A port of my personal finance GSheet using the Play Framework for Java using:
+    - Java 11
+    - Play 2.8.7
+    - Pac4j 5.0.0
+    - Keycloak 12.0.2
+    - And, eventually, PostgreSQL! (for now, everything is within a h2 database)
+    
+- Hard dependencies:
+    - Java 9
+    - Docker
+    - sbt
+    - The will to tinker
+
+## How to run locally
+
+- Start up Keycloak
+
+```
+./run_boh.sh
+```
+
+- Provision Keycloak
+
+```
+cd auth
+./realm_setup.sh
+cd -
+```
+
+- (Missing step) Add users to the realm
+
+- Run the Play app
+
+```
+sbt run
+```
+
+
 
 ## Auth
 

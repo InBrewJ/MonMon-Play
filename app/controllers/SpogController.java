@@ -91,6 +91,7 @@ public class SpogController extends Controller {
         return protectedIndexView(request);
     }
 
+    @Secure(clients = "OidcClient")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         // Plans affect how total outgoings and rent values appear
         List<Plan> allPlans = repoListToList(planRepository.list());
