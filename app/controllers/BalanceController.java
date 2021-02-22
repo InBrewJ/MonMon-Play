@@ -1,6 +1,7 @@
 package controllers;
 
 import models.*;
+import org.pac4j.play.java.Secure;
 import play.data.Form;
 import play.data.FormFactory;
 import play.i18n.MessagesApi;
@@ -46,6 +47,7 @@ public class BalanceController extends Controller {
         this.ec = ec;
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> addBalance(final Http.Request request) throws ExecutionException, InterruptedException {
         Balance balance = formFactory.form(Balance.class).bindFromRequest(request).get();
         balance.setTimestamp(generateUnixTimestamp());
@@ -62,12 +64,14 @@ public class BalanceController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.BalanceController.listBalances()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> getBalances() {
         return balanceRepository
                 .list()
                 .thenApplyAsync(balanceStream -> ok(toJson(balanceStream.collect(Collectors.toList()))), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public Result listBalances(Http.Request request) throws ExecutionException, InterruptedException {
         List<Balance> balances = repoListToList(balanceRepository.list());
         List<Account> accounts = repoListToList(accountRepository.list());

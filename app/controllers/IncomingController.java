@@ -2,6 +2,7 @@ package controllers;
 
 import models.Incoming;
 import models.IncomingRepository;
+import org.pac4j.play.java.Secure;
 import play.data.FormFactory;
 import play.data.Form;
 import play.i18n.MessagesApi;
@@ -43,18 +44,21 @@ public class IncomingController extends Controller {
         this.ec = ec;
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> getIncomings() {
         return incomingRepository
                 .list()
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> getIncomingsComplete() {
         return incomingRepository
                 .listComplete()
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public Result listIncomings(Http.Request request) throws ExecutionException, InterruptedException {
         List<Incoming> incomings = repoListToList(incomingRepository.list());
         return ok(views.html.incomings.render(
@@ -66,6 +70,7 @@ public class IncomingController extends Controller {
         );
     }
 
+    @Secure(clients = "OidcClient")
     public Result listIncomingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         List<Incoming> incomings = repoListToList(incomingRepository.list());
         Incoming found = incomingRepository.findById(id).toCompletableFuture().get();
@@ -81,6 +86,7 @@ public class IncomingController extends Controller {
         );
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> updateIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Updating Incoming with id : " + id);
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
@@ -90,6 +96,7 @@ public class IncomingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> addIncoming(final Http.Request request) {
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
         return incomingRepository
@@ -97,6 +104,7 @@ public class IncomingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> archiveIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Deleting Incoming with id : " + id);
         // perhaps just update an 'archived' field here

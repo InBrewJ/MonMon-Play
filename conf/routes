@@ -11,6 +11,7 @@ GET     /binOutgoing/:id             controllers.OutgoingController.archiveOutgo
 POST    /updateOutgoing              controllers.OutgoingController.updateOutgoing(id: Int, req: Request)
 
 # Accounts
++ nocsrf
 POST    /account                     controllers.AccountController.addAccount(req: Request)
 GET     /accounts                    controllers.AccountController.getAccountsComplete()
 GET     /binAccount/:id              controllers.AccountController.archiveAccount(id: Int, req: Request)

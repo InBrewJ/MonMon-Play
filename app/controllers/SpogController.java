@@ -1,5 +1,6 @@
 package controllers;
 
+import helpers.UserHelpers;
 import models.*;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.exception.TechnicalException;
@@ -26,6 +27,7 @@ import org.pac4j.core.config.Config;
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
 import static helpers.TimeHelpers.generateUnixTimestamp;
+import static helpers.UserHelpers.getAuthProfiles;
 import static models.Incoming.getTotalIncomings;
 import static models.Outgoing.getTotalOutgoingsWithoutHidden;
 
@@ -77,19 +79,7 @@ public class SpogController extends Controller {
 
     private Result protectedIndexView(Http.Request request) {
         // profiles
-        return ok(views.html.protectedIndex.render(getProfiles(request)));
-    }
-
-    private List<UserProfile> getProfiles(Http.Request request) {
-        final PlayWebContext context = new PlayWebContext(request);
-        final ProfileManager profileManager = new ProfileManager(context, playSessionStore);
-        List<UserProfile> profiles = profileManager.getProfiles();
-        System.out.println("Profiles:");
-        for (UserProfile up: profiles) {
-            System.out.println(up.getUsername());
-            System.out.println(up.getId());
-        }
-        return profiles;
+        return ok(views.html.protectedIndex.render(getAuthProfiles(playSessionStore, request)));
     }
 
     @Secure(clients = "OidcClient")
@@ -183,6 +173,9 @@ public class SpogController extends Controller {
         return ok(views.html.spog.render(spogVm, request));
     }
 
+    // Ideally, seed should only be possible by someone
+    // with a well defined role. Maybe an admin/seeder
+    @Secure(clients = "OidcClient")
     public Result seed(final Http.Request request) throws ExecutionException, InterruptedException {
         // wtf is this
         // should probably be able to

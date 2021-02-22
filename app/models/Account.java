@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@Table(indexes = @Index(columnList = "userId"))
 public class Account {
 
     public enum AccountType {
@@ -18,6 +19,9 @@ public class Account {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     public Long id;
+
+    @Column(name = "userId")
+    public String userId;
 
     public String name;
     public String nickname;
@@ -37,6 +41,14 @@ public class Account {
 
     public List<Balance> getBalances() {
         return balances;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public Long getId() {

@@ -1,6 +1,7 @@
 package controllers;
 
 import models.*;
+import org.pac4j.play.java.Secure;
 import play.data.Form;
 import play.data.FormFactory;
 import play.i18n.MessagesApi;
@@ -51,6 +52,7 @@ public class OutgoingController extends Controller {
         this.ec = ec;
     }
 
+    @Secure(clients = "OidcClient")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         this.accounts = repoListToList(accountRepository.list());
         this.outgoings = repoListToList(outgoingRepository.list());
@@ -84,6 +86,7 @@ public class OutgoingController extends Controller {
         return desiredAccount.get(0);
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
         outgoing.setAccount(getAccountFromFormRequest(request));
@@ -92,6 +95,7 @@ public class OutgoingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> updateOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Updating outgoing with id : " + id);
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
@@ -102,6 +106,7 @@ public class OutgoingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> archiveOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Archiving outgoing with id : " + id);
         // perhaps just update an 'archived' field here
@@ -110,6 +115,7 @@ public class OutgoingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public Result listOutgoingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
         Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
@@ -132,6 +138,7 @@ public class OutgoingController extends Controller {
         );
     }
 
+    @Secure(clients = "OidcClient")
     public Result listAccountsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
         Account found = accountRepository.findById(id).toCompletableFuture().get();
@@ -154,12 +161,14 @@ public class OutgoingController extends Controller {
         );
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> getOutgoings() {
         return outgoingRepository
                 .list()
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> getOutgoingsComplete() {
         return outgoingRepository
                 .listComplete()

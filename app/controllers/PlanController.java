@@ -3,6 +3,7 @@ package controllers;
 import models.Incoming;
 import models.Plan;
 import models.PlanRepository;
+import org.pac4j.play.java.Secure;
 import play.data.Form;
 import play.data.FormFactory;
 import play.i18n.MessagesApi;
@@ -38,18 +39,21 @@ public class PlanController extends Controller {
         this.ec = ec;
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> getPlans() {
         return planRepository
                 .list()
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> getPlansComplete() {
         return planRepository
                 .listComplete()
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> addPlan(final Http.Request request) {
         Plan plan = formFactory.form(Plan.class).bindFromRequest(request).get();
         int humanSplitFromForm = parseInt(request.body().asFormUrlEncoded().get("humanSplit")[0]);
@@ -61,11 +65,13 @@ public class PlanController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.PlanController.sharedOutgoings()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public Result sharedOutgoings(final Http.Request request) throws ExecutionException, InterruptedException {
         List<Plan> plans = repoListToList(planRepository.list());
         return ok(views.html.sharing.render(asScala(plans), this.form, request));
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> archivePlan(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Archiving plan with id : " + id);
         return planRepository

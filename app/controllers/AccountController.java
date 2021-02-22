@@ -3,17 +3,21 @@ package controllers;
 import models.Account;
 import models.AccountRepository;
 import models.Outgoing;
+import org.pac4j.core.context.session.SessionStore;
+import org.pac4j.play.java.Secure;
 import play.data.FormFactory;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
+import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 import java.time.LocalTime;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
+import static helpers.UserHelpers.getSimpleUserProfile;
 import static play.libs.Json.toJson;
 
 /**
@@ -28,25 +32,36 @@ public class AccountController extends Controller {
     private final HttpExecutionContext ec;
 
     @Inject
+    private SessionStore playSessionStore;
+
+    @Inject
     public AccountController(FormFactory formFactory, AccountRepository accountRepository, HttpExecutionContext ec) {
         this.formFactory = formFactory;
         this.accountRepository = accountRepository;
         this.ec = ec;
     }
 
+    // This doesn't work because of something to do with CSRF protection:
+    // HM.
+    // https://docs.spring.io/spring-security/site/docs/4.2.x/reference/html/appendix-faq.html#appendix-faq-forbidden-csrf
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> addAccount(final Http.Request request) {
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        account.setUserId(sup.getUserId());
         return accountRepository
                 .add(account)
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> getAccountsComplete() {
         return accountRepository
                 .listComplete()
                 .thenApplyAsync(accountStream -> ok(toJson(accountStream.collect(Collectors.toList()))), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> archiveAccount(int id,final Http.Request request) {
         System.out.println("Deleting account with id : " + id);
         // perhaps just update an 'archived' field here
@@ -55,6 +70,7 @@ public class AccountController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
     public CompletionStage<Result> updateAccount(int id, final Http.Request request) {
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
         return accountRepository
