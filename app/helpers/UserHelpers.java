@@ -31,7 +31,7 @@ public class UserHelpers {
             sup.setUsername(firstUp.getUsername());
             sup.setUserEmail(firstUp.getAttribute("email").toString());
         } else {
-            sup.setUserId("userId: error");
+            sup.setUserId(null);
             sup.setUsername("username: error");
             sup.setUserEmail("email: error");
         }

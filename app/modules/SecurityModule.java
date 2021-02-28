@@ -83,6 +83,7 @@ public class SecurityModule extends AbstractModule {
 
     @Provides @Singleton
     protected Config provideConfig(OidcClient oidcClient) {
+        System.out.println("provideConfig called!");
 
         final Clients clients = new Clients(baseUrl + "/callback", oidcClient);
 
@@ -90,7 +91,7 @@ public class SecurityModule extends AbstractModule {
         PlayHttpActionAdapter.INSTANCE.getResults().put(HttpConstants.FORBIDDEN, forbidden(views.html.error403.render().toString()).as((HttpConstants.HTML_CONTENT_TYPE)));
 
         final Config config = new Config(clients);
-//        config.addAuthorizer("admin", new RequireAnyRoleAuthorizer("ROLE_ADMIN"));
+        config.addAuthorizer("admin", new RequireAnyRoleAuthorizer("ROLE_ADMIN"));
         return config;
     }
 }

@@ -53,7 +53,7 @@ public class PlanController extends Controller {
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addPlan(final Http.Request request) {
         Plan plan = formFactory.form(Plan.class).bindFromRequest(request).get();
         int humanSplitFromForm = parseInt(request.body().asFormUrlEncoded().get("humanSplit")[0]);
@@ -71,7 +71,7 @@ public class PlanController extends Controller {
         return ok(views.html.sharing.render(asScala(plans), this.form, request));
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archivePlan(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Archiving plan with id : " + id);
         return planRepository

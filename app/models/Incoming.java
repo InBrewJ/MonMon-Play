@@ -1,16 +1,18 @@
 package models;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
+import javax.persistence.*;
 import java.util.List;
 
 @Entity
+@Table(indexes = @Index(columnList = "userId"))
 public class Incoming {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     public Long id;
+
+    @Column(name = "userId")
+    public String userId;
+
     public String name;
     public String type; // should be an enum of, say, PAYCHECK | ONEOFF | ..., but not yet
     public Float grossValue;
@@ -18,6 +20,14 @@ public class Incoming {
     public int incomingMonthDay;
     public boolean archived = false;
     public boolean payDay = false;
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
 
     public boolean isPayDay() {
         return payDay;

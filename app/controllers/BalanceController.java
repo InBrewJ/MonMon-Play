@@ -47,7 +47,7 @@ public class BalanceController extends Controller {
         this.ec = ec;
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addBalance(final Http.Request request) throws ExecutionException, InterruptedException {
         Balance balance = formFactory.form(Balance.class).bindFromRequest(request).get();
         balance.setTimestamp(generateUnixTimestamp());

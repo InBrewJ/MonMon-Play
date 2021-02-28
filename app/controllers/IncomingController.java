@@ -86,7 +86,7 @@ public class IncomingController extends Controller {
         );
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Updating Incoming with id : " + id);
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
@@ -96,7 +96,7 @@ public class IncomingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addIncoming(final Http.Request request) {
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
         return incomingRepository
@@ -104,7 +104,7 @@ public class IncomingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Deleting Incoming with id : " + id);
         // perhaps just update an 'archived' field here

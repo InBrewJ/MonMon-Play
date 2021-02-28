@@ -43,8 +43,12 @@ public class AccountController extends Controller {
 
     // This doesn't work because of something to do with CSRF protection:
     // HM.
-    // https://docs.spring.io/spring-security/site/docs/4.2.x/reference/html/appendix-faq.html#appendix-faq-forbidden-csrf
-    @Secure(clients = "OidcClient")
+    // Turns out that pac4j has its own csrf protection. We can either send the pac4j
+    // token along in the request or turn it off on pac4j?
+    // This is done by adding a list of "authorizers". By default,
+    // pac4j adds the csrfFilter if no "authorizers" are defined...
+    // #RTFM
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addAccount(final Http.Request request) {
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
@@ -61,7 +65,7 @@ public class AccountController extends Controller {
                 .thenApplyAsync(accountStream -> ok(toJson(accountStream.collect(Collectors.toList()))), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveAccount(int id,final Http.Request request) {
         System.out.println("Deleting account with id : " + id);
         // perhaps just update an 'archived' field here
@@ -70,7 +74,7 @@ public class AccountController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateAccount(int id, final Http.Request request) {
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
         return accountRepository

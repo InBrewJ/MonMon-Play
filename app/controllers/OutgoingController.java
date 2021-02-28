@@ -86,7 +86,7 @@ public class OutgoingController extends Controller {
         return desiredAccount.get(0);
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
         outgoing.setAccount(getAccountFromFormRequest(request));
@@ -95,7 +95,7 @@ public class OutgoingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Updating outgoing with id : " + id);
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
@@ -106,7 +106,7 @@ public class OutgoingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Archiving outgoing with id : " + id);
         // perhaps just update an 'archived' field here

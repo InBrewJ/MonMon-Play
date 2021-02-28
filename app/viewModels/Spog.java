@@ -104,7 +104,7 @@ public class Spog {
         int daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday, now);
         int daysSinceLastPayday = this.calculateDaysSinceLastPayday(nextPayday, now);
         int daysBetweenPayDays = daysUntilNextPayday + daysSinceLastPayday;
-        return daysBetweenPayDays;
+        return Math.min(daysBetweenPayDays, 31);
     }
 
     private LocalDate calculateNextPaydayDate(int nextPayday, LocalDate from) {
@@ -124,11 +124,12 @@ public class Spog {
         while(!found) {
             possiblePayDate = possiblePayDate.plusDays(1);
             count++;
-            if (possiblePayDate.getDayOfMonth() == nextPayday) found = true;
+            if (possiblePayDate.getDayOfMonth() == nextPayday || count == 31) found = true;
         }
         return count;
     }
 
+    // What about Feburary, genius? There is no 31 in February
     private int calculateDaysSinceLastPayday(int lastPayday, LocalDate from) {
         LocalDate possiblePayDate = from;
         boolean found = false;
