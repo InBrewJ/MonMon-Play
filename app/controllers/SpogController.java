@@ -13,6 +13,7 @@ import org.pac4j.play.http.PlayHttpActionAdapter;
 import org.pac4j.play.java.Secure;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.*;
+import viewModels.SimpleUserProfile;
 import viewModels.Spog;
 
 import javax.inject.Inject;
@@ -28,6 +29,7 @@ import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
 import static helpers.TimeHelpers.generateUnixTimestamp;
 import static helpers.UserHelpers.getAuthProfiles;
+import static helpers.UserHelpers.getSimpleUserProfile;
 import static models.Incoming.getTotalIncomings;
 import static models.Outgoing.getTotalOutgoingsWithoutHidden;
 
@@ -91,6 +93,7 @@ public class SpogController extends Controller {
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         // Plans affect how total outgoings and rent values appear
         List<Plan> allPlans = repoListToList(planRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Plan firstRentShare = null;
         Plan firstBillShare = null;
         try {
@@ -159,7 +162,7 @@ public class SpogController extends Controller {
         Float pendingOutgoingsSum = pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         // Scratch end
 
-        List<Account> allAccounts = repoListToList(this.accountRepository.list());
+        List<Account> allAccounts = repoListToList(this.accountRepository.list(sup.getUserId()));
         Spog spogVm = new Spog(
                 surplus,
                 nextPayDay,
@@ -177,6 +180,7 @@ public class SpogController extends Controller {
     // with a well defined role. Maybe an admin/seeder
     @Secure(clients = "OidcClient")
     public Result seed(final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         // wtf is this
         // should probably be able to
         // do this in a separate class
@@ -190,6 +194,7 @@ public class SpogController extends Controller {
         natwestC.setName("Natwest Credit");
         natwestC.setType(Account.AccountType.CREDIT);
         natwestC.setNickname("The grad one");
+        natwestC.setUserId(sup.getUserId());
         natwestCFullAccount = this.accountRepository.add(natwestC).toCompletableFuture().get();
         long natwestCreditId = natwestCFullAccount.getId();
         //
@@ -198,6 +203,7 @@ public class SpogController extends Controller {
         natwestD.setName("Natwest Debit");
         natwestD.setType(Account.AccountType.DEBIT);
         natwestD.setNickname("main overflow");
+        natwestD.setUserId(sup.getUserId());
         natwestDFullAccount = this.accountRepository.add(natwestD).toCompletableFuture().get();
         long natwestDebitId = natwestDFullAccount.getId();
         //
@@ -206,12 +212,14 @@ public class SpogController extends Controller {
         vanquis.setName("Vanquis");
         vanquis.setType(Account.AccountType.CREDIT);
         vanquis.setNickname("The builder");
+        vanquis.setUserId(sup.getUserId());
         vanquisFullAccount = this.accountRepository.add(vanquis).toCompletableFuture().get();
         //
         Account lloyds = new Account();
         Account lloydsFullAccount;
         lloyds.setName("Lloyds");
         lloyds.setType(Account.AccountType.DEBIT_SHARED_BILLS);
+        lloyds.setUserId(sup.getUserId());
         natwestD.setNickname("salary in / bill account");
         lloydsFullAccount = this.accountRepository.add(lloyds).toCompletableFuture().get();
         //
@@ -219,7 +227,8 @@ public class SpogController extends Controller {
         Account halifaxFullAccount;
         halifax.setName("Halifax");
         halifax.setType(Account.AccountType.DEBIT);
-        natwestD.setNickname("daily driver");
+        halifax.setNickname("daily driver");
+        halifax.setUserId(sup.getUserId());
         halifaxFullAccount = this.accountRepository.add(halifax).toCompletableFuture().get();
         // Incomings
         Incoming salary = new Incoming();
@@ -228,6 +237,7 @@ public class SpogController extends Controller {
         salary.setPayDay(true);
         salary.setIncomingMonthDay(26);
         salary.setType("salary");
+        salary.setUserId(sup.getUserId());
         this.incomingRepository.add(salary);
         // Incomings end
         // Outgoings
@@ -238,6 +248,7 @@ public class SpogController extends Controller {
         rent.setOutgoingDay(1);
         rent.setName("Rent");
         rent.setAccount(lloydsFullAccount);
+        rent.setUserId(sup.getUserId());
         this.outgoingRepository.add(rent);
         //
         Outgoing virgin = new Outgoing();
@@ -246,6 +257,7 @@ public class SpogController extends Controller {
         virgin.setOutgoingDay(3);
         virgin.setName("Virgin media");
         virgin.setAccount(lloydsFullAccount);
+        virgin.setUserId(sup.getUserId());
         this.outgoingRepository.add(virgin);
         //
         Outgoing water = new Outgoing();
@@ -254,6 +266,7 @@ public class SpogController extends Controller {
         water.setOutgoingDay(1);
         water.setName("Water bill");
         water.setAccount(lloydsFullAccount);
+        water.setUserId(sup.getUserId());
         this.outgoingRepository.add(water);
         //
         Outgoing councilTax = new Outgoing();
@@ -262,6 +275,7 @@ public class SpogController extends Controller {
         councilTax.setOutgoingDay(1);
         councilTax.setName("Council tax");
         councilTax.setAccount(lloydsFullAccount);
+        councilTax.setUserId(sup.getUserId());
         this.outgoingRepository.add(councilTax);
         //
         Outgoing ovoEnergy = new Outgoing();
@@ -270,6 +284,7 @@ public class SpogController extends Controller {
         ovoEnergy.setOutgoingDay(1);
         ovoEnergy.setName("Ovo Gaz e Luce");
         ovoEnergy.setAccount(lloydsFullAccount);
+        ovoEnergy.setUserId(sup.getUserId());
         this.outgoingRepository.add(ovoEnergy);
         // Rest of outgoings
         Outgoing audible = new Outgoing();
@@ -277,6 +292,7 @@ public class SpogController extends Controller {
         audible.setOutgoingDay(10);
         audible.setName("Audible");
         audible.setAccount(natwestCFullAccount);
+        audible.setUserId(sup.getUserId());
         this.outgoingRepository.add(audible);
         //
         Outgoing yousician = new Outgoing();
@@ -284,6 +300,7 @@ public class SpogController extends Controller {
         yousician.setOutgoingDay(13);
         yousician.setName("Yousician");
         yousician.setAccount(natwestCFullAccount);
+        yousician.setUserId(sup.getUserId());
         this.outgoingRepository.add(yousician);
         //
         Outgoing savingsPayoff = new Outgoing();
@@ -291,6 +308,7 @@ public class SpogController extends Controller {
         savingsPayoff.setOutgoingDay(26);
         savingsPayoff.setName("Savings/Payoff");
         savingsPayoff.setAccount(lloydsFullAccount);
+        savingsPayoff.setUserId(sup.getUserId());
         this.outgoingRepository.add(savingsPayoff);
         //
         Outgoing natwestCreditPayoff = new Outgoing();
@@ -298,6 +316,7 @@ public class SpogController extends Controller {
         natwestCreditPayoff.setOutgoingDay(15);
         natwestCreditPayoff.setName("Natwest Credit Card");
         natwestCreditPayoff.setAccount(natwestDFullAccount);
+        natwestCreditPayoff.setUserId(sup.getUserId());
         this.outgoingRepository.add(natwestCreditPayoff);
         //
         Outgoing MSOffice = new Outgoing();
@@ -305,6 +324,7 @@ public class SpogController extends Controller {
         MSOffice.setOutgoingDay(10);
         MSOffice.setName("MS Office (gps)");
         MSOffice.setAccount(natwestCFullAccount);
+        MSOffice.setUserId(sup.getUserId());
         this.outgoingRepository.add(MSOffice);
         //
         Outgoing o2bill = new Outgoing();
@@ -312,6 +332,7 @@ public class SpogController extends Controller {
         o2bill.setOutgoingDay(18);
         o2bill.setName("O2 bill");
         o2bill.setAccount(natwestDFullAccount);
+        o2bill.setUserId(sup.getUserId());
         this.outgoingRepository.add(o2bill);
         //
         Outgoing spotify = new Outgoing();
@@ -319,6 +340,7 @@ public class SpogController extends Controller {
         spotify.setOutgoingDay(18);
         spotify.setName("Spotify");
         spotify.setAccount(natwestCFullAccount);
+        spotify.setUserId(sup.getUserId());
         this.outgoingRepository.add(spotify);
         //
         Outgoing netflix = new Outgoing();
@@ -326,6 +348,7 @@ public class SpogController extends Controller {
         netflix.setOutgoingDay(21);
         netflix.setName("Netflix");
         netflix.setAccount(natwestCFullAccount);
+        netflix.setUserId(sup.getUserId());
         this.outgoingRepository.add(netflix);
         //
         Outgoing medium = new Outgoing();
@@ -333,6 +356,7 @@ public class SpogController extends Controller {
         medium.setOutgoingDay(21);
         medium.setName("Medium");
         medium.setAccount(natwestCFullAccount);
+        medium.setUserId(sup.getUserId());
         this.outgoingRepository.add(medium);
         //
         Outgoing nuranow = new Outgoing();
@@ -340,6 +364,7 @@ public class SpogController extends Controller {
         nuranow.setOutgoingDay(28);
         nuranow.setName("Nuraphones");
         nuranow.setAccount(natwestCFullAccount);
+        nuranow.setUserId(sup.getUserId());
         this.outgoingRepository.add(nuranow);
         //
         Outgoing urawizardSite = new Outgoing();
@@ -347,6 +372,7 @@ public class SpogController extends Controller {
         urawizardSite.setOutgoingDay(6);
         urawizardSite.setName("urawizard.com");
         urawizardSite.setAccount(natwestCFullAccount);
+        urawizardSite.setUserId(sup.getUserId());
         this.outgoingRepository.add(urawizardSite);
         //
         Outgoing guardian = new Outgoing();
@@ -354,6 +380,7 @@ public class SpogController extends Controller {
         guardian.setOutgoingDay(7);
         guardian.setName("Guardian w/Crosswords");
         guardian.setAccount(natwestCFullAccount);
+        guardian.setUserId(sup.getUserId());
         this.outgoingRepository.add(guardian);
         //
         Outgoing fitbit = new Outgoing();
@@ -361,6 +388,7 @@ public class SpogController extends Controller {
         fitbit.setOutgoingDay(1);
         fitbit.setName("Fitbit premium");
         fitbit.setAccount(halifaxFullAccount);
+        fitbit.setUserId(sup.getUserId());
         this.outgoingRepository.add(fitbit);
         //
         Outgoing LISA = new Outgoing();
@@ -369,6 +397,7 @@ public class SpogController extends Controller {
         LISA.setName("Moneybox LISA");
         LISA.setAccount(halifaxFullAccount);
         LISA.setHiddenFromTotal(true);
+        LISA.setUserId(sup.getUserId());
         this.outgoingRepository.add(LISA);
         //
         Outgoing StocksAndShares = new Outgoing();
@@ -377,6 +406,7 @@ public class SpogController extends Controller {
         StocksAndShares.setName("Moneybox S+S");
         StocksAndShares.setAccount(halifaxFullAccount);
         StocksAndShares.setHiddenFromTotal(true);
+        StocksAndShares.setUserId(sup.getUserId());
         this.outgoingRepository.add(StocksAndShares);
         //
         // Balances
@@ -384,51 +414,60 @@ public class SpogController extends Controller {
         natwestCreditBalance0.setAccount(natwestCFullAccount);
         natwestCreditBalance0.setValue(500d);
         natwestCreditBalance0.setTimestamp(generateUnixTimestamp()-86400);
+        natwestCreditBalance0.setUserId(sup.getUserId());
         this.balanceRepository.add(natwestCreditBalance0);
         Balance natwestCreditBalance1 = new Balance();
         natwestCreditBalance1.setAccount(natwestCFullAccount);
         natwestCreditBalance1.setValue(359d);
         natwestCreditBalance1.setTimestamp(generateUnixTimestamp());
+        natwestCreditBalance1.setUserId(sup.getUserId());
         this.balanceRepository.add(natwestCreditBalance1);
         //
         Balance lloydsBalance = new Balance();
         lloydsBalance.setAccount(lloydsFullAccount);
         lloydsBalance.setValue(2026.49d);
         lloydsBalance.setTimestamp(generateUnixTimestamp());
+        lloydsBalance.setUserId(sup.getUserId());
         this.balanceRepository.add(lloydsBalance);
         //
         Balance halifaxBalance = new Balance();
         halifaxBalance.setAccount(halifaxFullAccount);
         halifaxBalance.setValue(320.49d);
         halifaxBalance.setTimestamp(generateUnixTimestamp());
+        halifax.setUserId(sup.getUserId());
         this.balanceRepository.add(halifaxBalance);
         //
         Balance natwestBalance = new Balance();
         natwestBalance.setAccount(natwestDFullAccount);
         natwestBalance.setValue(353d);
         natwestBalance.setTimestamp(generateUnixTimestamp()-86400);
+        natwestBalance.setUserId(sup.getUserId());
         this.balanceRepository.add(natwestBalance);
         //
         Balance vanquisBalance = new Balance();
         vanquisBalance.setAccount(vanquisFullAccount);
         vanquisBalance.setValue(799.23d);
         vanquisBalance.setTimestamp(generateUnixTimestamp());
+        vanquisBalance.setUserId(sup.getUserId());
         this.balanceRepository.add(vanquisBalance);
         Balance vanquisBalance1 = new Balance();
         vanquisBalance1.setAccount(vanquisFullAccount);
         vanquisBalance1.setValue(800d);
         vanquisBalance1.setTimestamp(generateUnixTimestamp()-(2*86400));
+        vanquisBalance1.setUserId(sup.getUserId());
         this.balanceRepository.add(vanquisBalance1);
         // Plans
         Plan rentSharePlan = new Plan();
         rentSharePlan.setSplit(0.5f);
         rentSharePlan.setType(Plan.PlanType.RENT_SHARE);
         rentSharePlan.setScope(Plan.PlanScope.PERMANENT);
+        rentSharePlan.setUserId(sup.getUserId());
         this.planRepository.add(rentSharePlan);
         Plan billSharePlan = new Plan();
         billSharePlan.setSplit(0.5f);
         billSharePlan.setType(Plan.PlanType.BILL_SHARE);
         billSharePlan.setScope(Plan.PlanScope.PERMANENT);
+        billSharePlan.setUserId(sup.getUserId());
         this.planRepository.add(billSharePlan);
 
         return ok("Seeded");

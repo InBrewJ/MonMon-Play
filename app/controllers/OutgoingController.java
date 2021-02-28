@@ -1,6 +1,7 @@
 package controllers;
 
 import models.*;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
 import play.data.Form;
 import play.data.FormFactory;
@@ -9,6 +10,7 @@ import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
+import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 import java.util.List;
@@ -18,6 +20,7 @@ import java.util.stream.Collectors;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
+import static helpers.UserHelpers.getSimpleUserProfile;
 import static java.lang.Integer.parseInt;
 import static models.Outgoing.getTotalOutgoings;
 import static play.libs.Json.toJson;
@@ -42,6 +45,9 @@ public class OutgoingController extends Controller {
     private final MessagesApi messagesApi;
 
     @Inject
+    private SessionStore playSessionStore;
+
+    @Inject
     public OutgoingController(FormFactory formFactory, MessagesApi messagesApi, OutgoingRepository outgoingRepository, AccountRepository accountRepository, HttpExecutionContext ec) throws ExecutionException, InterruptedException {
         this.formFactory = formFactory;
         this.outgoingRepository = outgoingRepository;
@@ -54,7 +60,8 @@ public class OutgoingController extends Controller {
 
     @Secure(clients = "OidcClient")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
-        this.accounts = repoListToList(accountRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
         this.outgoings = repoListToList(outgoingRepository.list());
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
         return ok(
@@ -81,7 +88,8 @@ public class OutgoingController extends Controller {
         // just defined here rather than in the global scope
         // It could be improved with an accountRepository.findById() method, though
         int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
-        List<Account> accounts = repoListToList(accountRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
         List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
         return desiredAccount.get(0);
     }
@@ -120,7 +128,8 @@ public class OutgoingController extends Controller {
         List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
         Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
         Form<Outgoing> prefilledOutgoingForm = this.outgoingForm.fill(found);
-        this.accounts = repoListToList(accountRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
         this.outgoings = repoListToList(outgoingRepository.list());
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
         return ok(
@@ -143,7 +152,8 @@ public class OutgoingController extends Controller {
         List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
         Account found = accountRepository.findById(id).toCompletableFuture().get();
         Form<Account> prefilledAccountForm = this.accountForm.fill(found);
-        this.accounts = repoListToList(accountRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
         this.outgoings = repoListToList(outgoingRepository.list());
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
         return ok(
@@ -162,14 +172,14 @@ public class OutgoingController extends Controller {
     }
 
     @Secure(clients = "OidcClient")
-    public CompletionStage<Result> getOutgoings() {
+    public CompletionStage<Result> getOutgoings(final Http.Request request) {
         return outgoingRepository
                 .list()
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
     }
 
     @Secure(clients = "OidcClient")
-    public CompletionStage<Result> getOutgoingsComplete() {
+    public CompletionStage<Result> getOutgoingsComplete(final Http.Request request) {
         return outgoingRepository
                 .listComplete()
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());

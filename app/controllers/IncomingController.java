@@ -52,7 +52,7 @@ public class IncomingController extends Controller {
     }
 
     @Secure(clients = "OidcClient")
-    public CompletionStage<Result> getIncomingsComplete() {
+    public CompletionStage<Result> getIncomingsComplete(final Http.Request request) {
         return incomingRepository
                 .listComplete()
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());

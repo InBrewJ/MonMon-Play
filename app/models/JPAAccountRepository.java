@@ -38,13 +38,13 @@ public class JPAAccountRepository implements AccountRepository {
     }
 
     @Override
-    public CompletionStage<Stream<Account>> list() {
-        return supplyAsync(() -> wrap(em -> list(em)), executionContext);
+    public CompletionStage<Stream<Account>> list(String userId) {
+        return supplyAsync(() -> wrap(em -> list(em, userId)), executionContext);
     }
 
     @Override
-    public CompletionStage<Stream<Account>> listComplete() {
-        return supplyAsync(() -> wrap(em -> listComplete(em)), executionContext);
+    public CompletionStage<Stream<Account>> listComplete(String userId) {
+        return supplyAsync(() -> wrap(em -> listComplete(em, userId)), executionContext);
     }
 
     @Override
@@ -89,13 +89,14 @@ public class JPAAccountRepository implements AccountRepository {
         return toArchive;
     }
 
-    private Stream<Account> list(EntityManager em) {
+    private Stream<Account> list(EntityManager em, String userId) {
         // https://stackoverflow.com/questions/30088649/how-to-use-multiple-join-fetch-in-one-jpql-query
         // This is to solve all sorts of horrid double fetch and cartesian product problems
         // But it works! Woohoo!
         List<Account> accounts = em.createQuery(
-                "select distinct a from Account a left join fetch a.outgoings where a.archived = false ORDER BY a.type DESC",
+                "select distinct a from Account a left join fetch a.outgoings where a.archived = false and a.userId = :userId ORDER BY a.type DESC",
                 Account.class)
+                .setParameter("userId", userId)
                 .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
                 .getResultList();
         accounts = em.createQuery(
@@ -107,13 +108,14 @@ public class JPAAccountRepository implements AccountRepository {
         return accounts.stream();
     }
 
-    private Stream<Account> listComplete(EntityManager em) {
+    private Stream<Account> listComplete(EntityManager em, String userId) {
         // https://stackoverflow.com/questions/30088649/how-to-use-multiple-join-fetch-in-one-jpql-query
         // This is to solve all sorts of horrid double fetch and cartesian product problems
         // But it works! Woohoo!
         List<Account> accounts = em.createQuery(
-                "select distinct a from Account a left join fetch a.outgoings ORDER BY a.type DESC",
+                "select distinct a from Account a left join fetch a.outgoings WHERE a.userId = :userId ORDER BY a.type DESC",
                 Account.class)
+                .setParameter("userId", userId)
                 .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
                 .getResultList();
         accounts = em.createQuery(

@@ -5,15 +5,14 @@
 # Home page (sort of - atm this is weird + janky view model)
 GET     /                            controllers.OutgoingController.index(req: Request)
 POST    /outgoing                    controllers.OutgoingController.addOutgoing(req: Request)
-GET     /outgoings                   controllers.OutgoingController.getOutgoingsComplete()
+GET     /outgoings                   controllers.OutgoingController.getOutgoingsComplete(req: Request)
 GET     /editOutgoing/:id            controllers.OutgoingController.listOutgoingsWithPrefill(id: Int, req: Request)
 GET     /binOutgoing/:id             controllers.OutgoingController.archiveOutgoing(id: Int, req: Request)
 POST    /updateOutgoing              controllers.OutgoingController.updateOutgoing(id: Int, req: Request)
 
 # Accounts
-+ nocsrf
 POST    /account                     controllers.AccountController.addAccount(req: Request)
-GET     /accounts                    controllers.AccountController.getAccountsComplete()
+GET     /accounts                    controllers.AccountController.getAccountsComplete(req: Request)
 GET     /binAccount/:id              controllers.AccountController.archiveAccount(id: Int, req: Request)
 GET     /editAccount/:id             controllers.OutgoingController.listAccountsWithPrefill(id: Int, req: Request)
 POST    /updateAccount               controllers.AccountController.updateAccount(id: Int, req: Request)
@@ -24,13 +23,13 @@ POST    /incoming                     controllers.IncomingController.addIncoming
 POST    /updateIncoming               controllers.IncomingController.updateIncoming(id: Int, req: Request)
 GET     /binIncoming/:id              controllers.IncomingController.archiveIncoming(id: Int, req: Request)
 GET     /editIncoming/:id             controllers.IncomingController.listIncomingsWithPrefill(id: Int, req: Request)
-GET     /incomings                    controllers.IncomingController.getIncomingsComplete()
+GET     /incomings                    controllers.IncomingController.getIncomingsComplete(req: Request)
 GET     /myIncomings                  controllers.IncomingController.listIncomings(req: Request)
 
 # Balances (doesn't really need an 'archive for now')
 
 POST    /balance                     controllers.BalanceController.addBalance(req: Request)
-GET     /balances                    controllers.BalanceController.getBalances()
+GET     /balances                    controllers.BalanceController.getBalances(req: Request)
 GET     /myBalances                  controllers.BalanceController.listBalances(req: Request)
 
 # SPOG ('Single Pane of Glass')
@@ -41,9 +40,9 @@ GET     /spog/seed                    controllers.SpogController.seed(req: Reque
 GET     /mySharedOutgoings            controllers.PlanController.sharedOutgoings(req: Request)
 POST    /plan                         controllers.PlanController.addPlan(req: Request)
 GET     /binPlan/:id                  controllers.PlanController.archivePlan(id: Int, req: Request)
-GET     /plans                        controllers.PlanController.getPlansComplete()
+GET     /plans                        controllers.PlanController.getPlansComplete(req: Request)
 
-# Auth + Authz (via keycloak, see SecurityModule)
+# Auth + Authz (via pac4j / keycloak / OpenIDConnect, see SecurityModule)
 GET     /oidc/index.html            controllers.SpogController.oidcIndex(req: Request)
 GET     /protected/index.html       controllers.SpogController.protectedIndex(req: Request)
 GET     /callback                   @org.pac4j.play.CallbackController.callback(request: Request)

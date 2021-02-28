@@ -47,7 +47,7 @@ public class PlanController extends Controller {
     }
 
     @Secure(clients = "OidcClient")
-    public CompletionStage<Result> getPlansComplete() {
+    public CompletionStage<Result> getPlansComplete(final Http.Request request) {
         return planRepository
                 .listComplete()
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());

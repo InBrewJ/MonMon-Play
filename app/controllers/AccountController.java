@@ -59,14 +59,15 @@ public class AccountController extends Controller {
     }
 
     @Secure(clients = "OidcClient")
-    public CompletionStage<Result> getAccountsComplete() {
+    public CompletionStage<Result> getAccountsComplete(final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         return accountRepository
-                .listComplete()
+                .listComplete(sup.getUserId())
                 .thenApplyAsync(accountStream -> ok(toJson(accountStream.collect(Collectors.toList()))), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
-    public CompletionStage<Result> archiveAccount(int id,final Http.Request request) {
+    public CompletionStage<Result> archiveAccount(int id, final Http.Request request) {
         System.out.println("Deleting account with id : " + id);
         // perhaps just update an 'archived' field here
         return accountRepository
