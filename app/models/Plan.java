@@ -3,6 +3,7 @@ package models;
 import javax.persistence.*;
 
 @Entity
+@Table(indexes = @Index(columnList = "userId"))
 public class Plan {
 
     // A lot of this might be a YAGNI thing
@@ -33,6 +34,9 @@ public class Plan {
     @GeneratedValue(strategy = GenerationType.AUTO)
     public Long id;
 
+    @Column(name = "userId")
+    public String userId;
+
     @Enumerated(EnumType.STRING)
     public PlanType type;
 
@@ -42,6 +46,14 @@ public class Plan {
     public Float split;
     public String notes;
     public boolean archived = false;
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
 
     public Long getId() {
         return id;

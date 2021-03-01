@@ -13,9 +13,9 @@ public interface AccountRepository {
 
     CompletionStage<Account> add(Account account);
 
-    CompletionStage<Stream<Account>> list();
+    CompletionStage<Stream<Account>> list(String userId);
 
-    CompletionStage<Stream<Account>> listComplete();
+    CompletionStage<Stream<Account>> listComplete(String userId);
 
     CompletionStage<Account> archive(int accountId);
 

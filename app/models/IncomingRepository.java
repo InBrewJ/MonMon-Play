@@ -20,9 +20,9 @@ import java.util.stream.Stream;
 
     CompletionStage<Incoming> findById(int incomingId);
 
-    CompletionStage<Stream<Incoming>> list();
+    CompletionStage<Stream<Incoming>> list(String userId);
 
-    CompletionStage<Stream<Incoming>> listComplete();
+    CompletionStage<Stream<Incoming>> listComplete(String userId);
 
-    int getNextPayDay() throws ExecutionException, InterruptedException;
+    int getNextPayDay(String userId) throws ExecutionException, InterruptedException;
 }

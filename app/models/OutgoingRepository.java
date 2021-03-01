@@ -14,9 +14,9 @@ public interface OutgoingRepository {
 
     CompletionStage<Outgoing> add(Outgoing outgoing);
 
-    CompletionStage<Stream<Outgoing>> list();
+    CompletionStage<Stream<Outgoing>> list(String userId);
 
-    CompletionStage<Stream<Outgoing>> listComplete();
+    CompletionStage<Stream<Outgoing>> listComplete(String userId);
 
     CompletionStage<Outgoing> update(int outgoingId, Outgoing outgoing);
 
@@ -24,12 +24,12 @@ public interface OutgoingRepository {
 
     CompletionStage<Outgoing> findById(int outgoingId);
 
-    CompletionStage<Stream<Outgoing>> rents();
+    CompletionStage<Stream<Outgoing>> rents(String userId);
 
-    CompletionStage<Stream<Outgoing>> bills();
+    CompletionStage<Stream<Outgoing>> bills(String userId);
 
-    CompletionStage<Stream<Outgoing>> alreadyPaid(LocalDate asOf, int paydayDay);
+    CompletionStage<Stream<Outgoing>> alreadyPaid(LocalDate asOf, int paydayDay, String userId);
 
-    CompletionStage<Stream<Outgoing>> yetToPay(LocalDate asOf, int paydayDay);
+    CompletionStage<Stream<Outgoing>> yetToPay(LocalDate asOf, int paydayDay, String userId);
 
 }

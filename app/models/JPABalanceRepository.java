@@ -31,8 +31,8 @@ public class JPABalanceRepository implements BalanceRepository {
     }
 
     @Override
-    public CompletionStage<Stream<Balance>> list() {
-        return supplyAsync(() -> wrap(em -> list(em)), executionContext);
+    public CompletionStage<Stream<Balance>> list(String userId) {
+        return supplyAsync(() -> wrap(em -> list(em, userId)), executionContext);
     }
 
     private <T> T wrap(Function<EntityManager, T> function) {
@@ -44,8 +44,11 @@ public class JPABalanceRepository implements BalanceRepository {
         return balance;
     }
 
-    private Stream<Balance> list(EntityManager em) {
-        List<Balance> balances = em.createQuery("select b from Balance b ORDER BY b.timestamp DESC", Balance.class).getResultList();
+    private Stream<Balance> list(EntityManager em, String userId) {
+        List<Balance> balances = em
+                .createQuery("select b from Balance b WHERE userId = :userId ORDER BY b.timestamp DESC", Balance.class)
+                .setParameter("userId", userId)
+                .getResultList();
         return balances.stream();
     }
 }

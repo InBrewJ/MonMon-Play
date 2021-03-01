@@ -1,3 +1,5 @@
+resolvers += "Typesafe repository" at "https://repo.typesafe.com/typesafe/ivy-releases/"
+
 // The Play plugin
 addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.8.7")
 

@@ -6,11 +6,15 @@ import javax.persistence.*;
 import java.util.List;
 
 @Entity
+@Table(indexes = @Index(columnList = "userId"))
 public class Outgoing {
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     public Long id;
+
+    @Column(name = "userId")
+    public String userId;
 
     public String name;
     public Float cost;
@@ -24,6 +28,14 @@ public class Outgoing {
     @JoinColumn(name="account_id")
     @JsonIgnore
     public Account account;
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
 
     public boolean isHiddenFromTotal() {
         return hiddenFromTotal;

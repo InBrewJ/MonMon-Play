@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import javax.persistence.*;
 
 @Entity
+@Table(indexes = @Index(columnList = "userId"))
 public class Balance {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
@@ -17,8 +18,19 @@ public class Balance {
     @JsonIgnore
     public Account account;
 
+    @Column(name = "userId")
+    public String userId;
+
     public Long getId() {
         return id;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public void setId(Long id) {
