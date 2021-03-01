@@ -14,6 +14,7 @@ import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -79,21 +80,6 @@ public class OutgoingController extends Controller {
         );
     }
 
-    private Account getAccountFromFormRequest(Http.Request request) throws ExecutionException, InterruptedException {
-        // weird, roundabout stuff for now...
-        // because need to get the account_id from the form
-        // or do something like:
-        // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
-        // This implementation is essentially the same thing as the SO answer above, it's
-        // just defined here rather than in the global scope
-        // It could be improved with an accountRepository.findById() method, though
-        int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
-        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
-        return desiredAccount.get(0);
-    }
-
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
@@ -108,9 +94,14 @@ public class OutgoingController extends Controller {
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
         System.out.println("Updating outgoing with id : " + id);
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
         outgoing.setAccount(getAccountFromFormRequest(request));
-        // Update all fields here
+        if (!outgoing.getUserId().equals(sup.getUserId())) {
+            CompletableFuture.runAsync(() -> {
+                forbidden(views.html.error403.render());
+            });
+        }
         return outgoingRepository
                 .update(id, outgoing)
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
@@ -134,6 +125,9 @@ public class OutgoingController extends Controller {
         this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
         this.outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
+        if (!found.getUserId().equals(sup.getUserId())) {
+            return forbidden(views.html.error403.render());
+        }
         return ok(
                 views.html.index.render(
                         asScala(accounts),
@@ -158,6 +152,9 @@ public class OutgoingController extends Controller {
         this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
         this.outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
+        if (!found.getUserId().equals(sup.getUserId())) {
+            return forbidden(views.html.error403.render());
+        }
         return ok(
                 views.html.index.render(
                         asScala(accounts),
@@ -187,6 +184,21 @@ public class OutgoingController extends Controller {
         return outgoingRepository
                 .listComplete(sup.getUserId())
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
+    }
+
+    // weird, roundabout stuff for now...
+    // because need to get the account_id from the form
+    // or do something like:
+    // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
+    // This implementation is essentially the same thing as the SO answer above, it's
+    // just defined here rather than in the global scope
+    // It could be improved with an accountRepository.findById() method, though
+    private Account getAccountFromFormRequest(Http.Request request) throws ExecutionException, InterruptedException {
+        int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
+        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
+        return desiredAccount.get(0);
     }
 
 }

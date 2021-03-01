@@ -15,6 +15,7 @@ import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -84,6 +85,9 @@ public class IncomingController extends Controller {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Incoming> incomings = repoListToList(incomingRepository.list(sup.getUserId()));
         Incoming found = incomingRepository.findById(id).toCompletableFuture().get();
+        if (!found.getUserId().equals(sup.getUserId())) {
+            return forbidden(views.html.error403.render());
+        }
         Form<Incoming> prefilledForm = this.form.fill(found);
         System.out.println("prefilled name: " + prefilledForm.field("name").value());
         //
@@ -98,9 +102,14 @@ public class IncomingController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         System.out.println("Updating Incoming with id : " + id);
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
-        // Update all fields here
+        if (!incoming.getUserId().equals(sup.getUserId())) {
+            CompletableFuture.runAsync(() -> {
+                forbidden(views.html.error403.render());
+            });
+        }
         return incomingRepository
                 .update(id, incoming)
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());

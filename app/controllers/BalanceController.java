@@ -15,6 +15,7 @@ import viewModels.SimpleUserProfile;
 import javax.inject.Inject;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -53,19 +54,27 @@ public class BalanceController extends Controller {
         this.ec = ec;
     }
 
+    // weird, roundabout stuff for now...
+    // because need to get the account_id from the form
+    // or do something like:
+    // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addBalance(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Balance balance = formFactory.form(Balance.class).bindFromRequest(request).get();
         balance.setTimestamp(generateUnixTimestamp());
-        // weird, roundabout stuff for now...
-        // because need to get the account_id from the form
-        // or do something like:
-        // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
         int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("account_id")[0]);
         List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
-        balance.setAccount(desiredAccount.get(0));
+        Account desiredAccount = accounts
+                .stream()
+                .filter(account -> account.getId() == accountIdFromForm  )
+                .collect(Collectors.toList()).get(0);
+        if (!desiredAccount.getUserId().equals(sup.getUserId())) {
+            CompletableFuture.runAsync(() -> {
+                forbidden(views.html.error403.render());
+            });
+        }
+        balance.setAccount(desiredAccount);
         balance.setUserId(sup.getUserId());
         return balanceRepository
                 .add(balance)
