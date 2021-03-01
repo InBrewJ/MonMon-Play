@@ -13,5 +13,5 @@ public interface BalanceRepository {
 
     CompletionStage<Balance> add(Balance balance);
 
-    CompletionStage<Stream<Balance>> list();
+    CompletionStage<Stream<Balance>> list(String userId);
 }
