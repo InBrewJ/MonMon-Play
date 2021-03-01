@@ -108,7 +108,9 @@ public class IncomingController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addIncoming(final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
+        incoming.setUserId(sup.getUserId());
         return incomingRepository
                 .add(incoming)
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());

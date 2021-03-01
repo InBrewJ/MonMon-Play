@@ -66,6 +66,7 @@ public class BalanceController extends Controller {
         List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
         List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
         balance.setAccount(desiredAccount.get(0));
+        balance.setUserId(sup.getUserId());
         return balanceRepository
                 .add(balance)
                 .thenApplyAsync(p -> redirect(routes.BalanceController.listBalances()), ec.current());

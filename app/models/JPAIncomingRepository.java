@@ -63,7 +63,7 @@ public class JPAIncomingRepository implements IncomingRepository {
         CompletableFuture<List<Incoming>> incomings = supplyAsync(
                 () -> wrap(
                         em -> em
-                                .createQuery("select i from Incoming i where userId = :userId PAYDAY = true and i.archived = false", Incoming.class)
+                                .createQuery("select i from Incoming i where userId = :userId and PAYDAY = true and i.archived = false", Incoming.class)
                                 .setParameter("userId", userId)
                                 .setMaxResults(1)
                                 .getResultList()

@@ -93,7 +93,7 @@ public class SpogController extends Controller {
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         // Plans affect how total outgoings and rent values appear
-        List<Plan> allPlans = repoListToList(planRepository.list());
+        List<Plan> allPlans = repoListToList(planRepository.list(sup.getUserId()));
         Plan firstRentShare = null;
         Plan firstBillShare = null;
         try {

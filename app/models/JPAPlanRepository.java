@@ -27,8 +27,8 @@ public class JPAPlanRepository implements PlanRepository {
     }
 
     @Override
-    public CompletionStage<Stream<Plan>> list() {
-        return supplyAsync(() -> wrap(em -> list(em)), executionContext);
+    public CompletionStage<Stream<Plan>> list(String userId) {
+        return supplyAsync(() -> wrap(em -> list(em, userId)), executionContext);
     }
 
     @Override
@@ -37,8 +37,8 @@ public class JPAPlanRepository implements PlanRepository {
     }
 
     @Override
-    public CompletionStage<Stream<Plan>> listComplete() {
-        return supplyAsync(() -> wrap(em -> listComplete(em)), executionContext);
+    public CompletionStage<Stream<Plan>> listComplete(String userId) {
+        return supplyAsync(() -> wrap(em -> listComplete(em, userId)), executionContext);
     }
 
     private Plan archive(EntityManager em, int planId) {
@@ -58,13 +58,19 @@ public class JPAPlanRepository implements PlanRepository {
         return plan;
     }
 
-    private Stream<Plan> listComplete(EntityManager em) {
-        List<Plan> plans = em.createQuery("select p from Plan p", Plan.class).getResultList();
+    private Stream<Plan> listComplete(EntityManager em, String userId) {
+        List<Plan> plans = em
+                .createQuery("select p from Plan p WHERE userId = :userId", Plan.class)
+                .setParameter("userId", userId)
+                .getResultList();
         return plans.stream();
     }
 
-    private Stream<Plan> list(EntityManager em) {
-        List<Plan> plans = em.createQuery("select p from Plan p WHERE p.archived = false", Plan.class).getResultList();
+    private Stream<Plan> list(EntityManager em, String userId) {
+        List<Plan> plans = em
+                .createQuery("select p from Plan p WHERE p.archived = false and userId = :userId", Plan.class)
+                .setParameter("userId", userId)
+                .getResultList();
         return plans.stream();
     }
 }

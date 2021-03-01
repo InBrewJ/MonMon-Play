@@ -15,7 +15,7 @@ public interface PlanRepository {
 
     CompletionStage<Plan> archive(int planId);
 
-    CompletionStage<Stream<Plan>> list();
+    CompletionStage<Stream<Plan>> list(String userId);
 
-    CompletionStage<Stream<Plan>> listComplete();
+    CompletionStage<Stream<Plan>> listComplete(String userId);
 }
