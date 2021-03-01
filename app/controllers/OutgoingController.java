@@ -62,7 +62,7 @@ public class OutgoingController extends Controller {
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        this.outgoings = repoListToList(outgoingRepository.list());
+        this.outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
         return ok(
                 views.html.index.render(
@@ -97,6 +97,8 @@ public class OutgoingController extends Controller {
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        outgoing.setUserId(sup.getUserId());
         outgoing.setAccount(getAccountFromFormRequest(request));
         return outgoingRepository
                 .add(outgoing)
@@ -125,12 +127,12 @@ public class OutgoingController extends Controller {
 
     @Secure(clients = "OidcClient")
     public Result listOutgoingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
-        List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        List<Outgoing> outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
         Form<Outgoing> prefilledOutgoingForm = this.outgoingForm.fill(found);
-        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        this.outgoings = repoListToList(outgoingRepository.list());
+        this.outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
         return ok(
                 views.html.index.render(
@@ -149,12 +151,12 @@ public class OutgoingController extends Controller {
 
     @Secure(clients = "OidcClient")
     public Result listAccountsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
-        List<Outgoing> outgoings = repoListToList(outgoingRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        List<Outgoing> outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         Account found = accountRepository.findById(id).toCompletableFuture().get();
         Form<Account> prefilledAccountForm = this.accountForm.fill(found);
-        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        this.outgoings = repoListToList(outgoingRepository.list());
+        this.outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
         return ok(
                 views.html.index.render(
@@ -173,15 +175,17 @@ public class OutgoingController extends Controller {
 
     @Secure(clients = "OidcClient")
     public CompletionStage<Result> getOutgoings(final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         return outgoingRepository
-                .list()
+                .list(sup.getUserId())
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
     }
 
     @Secure(clients = "OidcClient")
     public CompletionStage<Result> getOutgoingsComplete(final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         return outgoingRepository
-                .listComplete()
+                .listComplete(sup.getUserId())
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
     }
 

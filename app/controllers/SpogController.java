@@ -91,9 +91,9 @@ public class SpogController extends Controller {
 
     @Secure(clients = "OidcClient")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         // Plans affect how total outgoings and rent values appear
         List<Plan> allPlans = repoListToList(planRepository.list());
-        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Plan firstRentShare = null;
         Plan firstBillShare = null;
         try {
@@ -119,7 +119,7 @@ public class SpogController extends Controller {
         }
 
         //
-        List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list());
+        List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         // MWM-28 if a bill share exists, find the bills in all outgoings and divide here
         for (Outgoing o : allOutgoings) {
             if (firstBillShare != null && o.isBill() ) {
@@ -132,7 +132,7 @@ public class SpogController extends Controller {
 
         Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
-        List<Outgoing> rents = repoListToList(outgoingRepository.rents());
+        List<Outgoing> rents = repoListToList(outgoingRepository.rents(sup.getUserId()));
         Float rentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
         if (firstRentShare != null) {
             System.out.println("Rent share : " + firstRentShare.getSplit());
@@ -144,17 +144,17 @@ public class SpogController extends Controller {
         int nextPayDay = incomingRepository.getNextPayDay();
 
         // Scratch
-        List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(LocalDate.now(), nextPayDay));
+        List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(LocalDate.now(), nextPayDay, sup.getUserId()));
         for (Outgoing o: completedOutgoings) {
             System.out.println("Already paid :: " + o.getName() + " on " + o.getOutgoingDay());
         }
         System.out.println("C_Outgoings sum: " + completedOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum));
-        List<Outgoing> pendingOutgoings = repoListToList(outgoingRepository.yetToPay(LocalDate.now(), nextPayDay));
+        List<Outgoing> pendingOutgoings = repoListToList(outgoingRepository.yetToPay(LocalDate.now(), nextPayDay, sup.getUserId()));
         for (Outgoing o: pendingOutgoings) {
             System.out.println("Pending :: " + o.getName() + " on " + o.getOutgoingDay());
         }
         System.out.println("P_Outgoings sum: " + pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum));
-        List<Outgoing> bills = repoListToList(outgoingRepository.bills());
+        List<Outgoing> bills = repoListToList(outgoingRepository.bills(sup.getUserId()));
         for (Outgoing o: bills) {
             System.out.println("Bill :: " + o.getName() + " on " + o.getOutgoingDay());
         }
