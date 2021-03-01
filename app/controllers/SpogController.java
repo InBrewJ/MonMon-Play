@@ -131,7 +131,7 @@ public class SpogController extends Controller {
         }
 
         Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings));
-        Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list()));
+        Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list(sup.getUserId())));
         List<Outgoing> rents = repoListToList(outgoingRepository.rents(sup.getUserId()));
         Float rentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
         if (firstRentShare != null) {
@@ -141,7 +141,7 @@ public class SpogController extends Controller {
 
         Float surplus = round2(incomingTotal - outgoingTotal);
         int suggestedIncomeAsSavings = 46;
-        int nextPayDay = incomingRepository.getNextPayDay();
+        int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
 
         // Scratch
         List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(LocalDate.now(), nextPayDay, sup.getUserId()));

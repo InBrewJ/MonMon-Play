@@ -2,6 +2,7 @@ package controllers;
 
 import models.Incoming;
 import models.IncomingRepository;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
 import play.data.FormFactory;
 import play.data.Form;
@@ -10,6 +11,7 @@ import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
+import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 import java.util.List;
@@ -18,6 +20,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 import static helpers.ModelHelpers.repoListToList;
+import static helpers.UserHelpers.getSimpleUserProfile;
 import static play.libs.Json.toJson;
 import static play.libs.Scala.asScala;
 
@@ -36,6 +39,9 @@ public class IncomingController extends Controller {
     private MessagesApi messagesApi;
 
     @Inject
+    private SessionStore playSessionStore;
+
+    @Inject
     public IncomingController(FormFactory formFactory, MessagesApi messagesApi, IncomingRepository incomingRepository, HttpExecutionContext ec) {
         this.formFactory = formFactory;
         this.messagesApi = messagesApi;
@@ -45,22 +51,25 @@ public class IncomingController extends Controller {
     }
 
     @Secure(clients = "OidcClient")
-    public CompletionStage<Result> getIncomings() {
+    public CompletionStage<Result> getIncomings(final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         return incomingRepository
-                .list()
+                .list(sup.getUserId())
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
     @Secure(clients = "OidcClient")
     public CompletionStage<Result> getIncomingsComplete(final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         return incomingRepository
-                .listComplete()
+                .listComplete(sup.getUserId())
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
     @Secure(clients = "OidcClient")
     public Result listIncomings(Http.Request request) throws ExecutionException, InterruptedException {
-        List<Incoming> incomings = repoListToList(incomingRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        List<Incoming> incomings = repoListToList(incomingRepository.list(sup.getUserId()));
         return ok(views.html.incomings.render(
                 asScala(incomings),
                 this.form,
@@ -72,7 +81,8 @@ public class IncomingController extends Controller {
 
     @Secure(clients = "OidcClient")
     public Result listIncomingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
-        List<Incoming> incomings = repoListToList(incomingRepository.list());
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        List<Incoming> incomings = repoListToList(incomingRepository.list(sup.getUserId()));
         Incoming found = incomingRepository.findById(id).toCompletableFuture().get();
         Form<Incoming> prefilledForm = this.form.fill(found);
         System.out.println("prefilled name: " + prefilledForm.field("name").value());

@@ -49,18 +49,25 @@ public class JPAIncomingRepository implements IncomingRepository {
     }
 
     @Override
-    public CompletionStage<Stream<Incoming>> list() {
-        return supplyAsync(() -> wrap(em -> list(em)), executionContext);
+    public CompletionStage<Stream<Incoming>> list(String userId) {
+        return supplyAsync(() -> wrap(em -> list(em, userId)), executionContext);
     }
 
     @Override
-    public CompletionStage<Stream<Incoming>> listComplete() {
-        return supplyAsync(() -> wrap(em -> listComplete(em)), executionContext);
+    public CompletionStage<Stream<Incoming>> listComplete(String userId) {
+        return supplyAsync(() -> wrap(em -> listComplete(em, userId)), executionContext);
     }
 
     @Override
-    public int getNextPayDay() {
-        CompletableFuture<List<Incoming>> incomings = supplyAsync(() -> wrap(em -> em.createQuery("select i from Incoming i where PAYDAY = true and i.archived = false", Incoming.class).setMaxResults(1).getResultList()), executionContext);
+    public int getNextPayDay(String userId) {
+        CompletableFuture<List<Incoming>> incomings = supplyAsync(
+                () -> wrap(
+                        em -> em
+                                .createQuery("select i from Incoming i where userId = :userId PAYDAY = true and i.archived = false", Incoming.class)
+                                .setParameter("userId", userId)
+                                .setMaxResults(1)
+                                .getResultList()
+                ), executionContext);
         try {
             List<Incoming> first = incomings.get();
             int theDay = first.get(0).getIncomingMonthDay();
@@ -73,7 +80,7 @@ public class JPAIncomingRepository implements IncomingRepository {
         } catch (IndexOutOfBoundsException e) {
             System.out.println("Finding payday future was: IndexOutOfBoundsException, probably no results found");
         }
-        return 1;
+        return 1; // aka the default payday?
     }
 
     private <T> T wrap(Function<EntityManager, T> function) {
@@ -111,13 +118,19 @@ public class JPAIncomingRepository implements IncomingRepository {
         return query.setParameter("id", (long)incomingId).getSingleResult();
     }
 
-    private Stream<Incoming> list(EntityManager em) {
-        List<Incoming> incomings = em.createQuery("select i from Incoming i WHERE i.archived = false", Incoming.class).getResultList();
+    private Stream<Incoming> list(EntityManager em, String userId) {
+        List<Incoming> incomings = em
+                .createQuery("select i from Incoming i WHERE userId = :userId and i.archived = false", Incoming.class)
+                .setParameter("userId", userId)
+                .getResultList();
         return incomings.stream();
     }
 
-    private Stream<Incoming> listComplete(EntityManager em) {
-        List<Incoming> incomings = em.createQuery("select i from Incoming i", Incoming.class).getResultList();
+    private Stream<Incoming> listComplete(EntityManager em, String userId) {
+        List<Incoming> incomings = em
+                .createQuery("select i from Incoming i WHERE userId = :userId", Incoming.class)
+                .setParameter("userId", userId)
+                .getResultList();
         return incomings.stream();
     }
 
