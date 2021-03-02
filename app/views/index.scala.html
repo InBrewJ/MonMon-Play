@@ -1,15 +1,21 @@
-@import play.mvc.Http.Request
+@import play.mvc.Http.Request;
+@import org.pac4j.core.context.session._;
 @import play.libs.Scala.asScala;
 @import helper._
 @(
-accounts: Seq[Account],
-outgoings: Seq[Outgoing],
-outgoingTotal: Float,
-outgoingForm: Form[Outgoing],
-editingOutgoing: Boolean,
-accountForm: Form[Account],
-editingAccount: Boolean
-)(implicit request: Http.Request, messages: play.i18n.Messages)
+  accounts: Seq[Account],
+  outgoings: Seq[Outgoing],
+  outgoingTotal: Float,
+  outgoingForm: Form[Outgoing],
+  editingOutgoing: Boolean,
+  accountForm: Form[Account],
+  editingAccount: Boolean
+)(
+  implicit
+  request: Http.Request,
+  playSessionStore: SessionStore,
+  messages: play.i18n.Messages
+)
 @main("MonMon") {
 <script
   type="text/javascript"
@@ -17,6 +23,7 @@ editingAccount: Boolean
 ></script>
 
 @partials.header()
+@partials.userDetails()
 @partials.navbar()
 
 <div class="w3-content w3-center" style="max-width: 1500px">

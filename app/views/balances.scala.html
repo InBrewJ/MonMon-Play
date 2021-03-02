@@ -1,6 +1,15 @@
 @import play.mvc.Http.Request
+@import org.pac4j.core.context.session._;
 @import helper._
-@(balances: Seq[Balance], balanceForm: Form[Balance], accounts: Seq[Account])(implicit request: Http.Request,  messages: play.i18n.Messages)
+@(
+    balances: Seq[Balance],
+    balanceForm: Form[Balance],
+    accounts: Seq[Account]
+)(
+    implicit request: Http.Request,
+    playSessionStore: SessionStore,
+    messages: play.i18n.Messages
+)
 @main("MonMonBalances") {
 <script
         type="text/javascript"
@@ -8,6 +17,7 @@
 ></script>
 
 @partials.header()
+@partials.userDetails()
 @partials.navbar()
 
 <div class="w3-content w3-center" style="max-width: 1500px">

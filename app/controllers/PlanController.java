@@ -79,7 +79,14 @@ public class PlanController extends Controller {
     public Result sharedOutgoings(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Plan> plans = repoListToList(planRepository.list(sup.getUserId()));
-        return ok(views.html.sharing.render(asScala(plans), this.form, request));
+        return ok(
+                views.html.sharing.render(
+                        asScala(plans),
+                        this.form,
+                        request,
+                        playSessionStore
+                )
+        );
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")

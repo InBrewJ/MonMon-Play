@@ -1,7 +1,15 @@
 @import play.mvc.Http.Request
 @import helper._
+@import org.pac4j.core.context.session._;
 @import viewModels._
-@(plans: Seq[Plan], planForm: Form[Plan])(implicit request: Http.Request)
+@(
+    plans: Seq[Plan],
+    planForm: Form[Plan]
+)(
+    implicit
+    request: Http.Request,
+    playSessionStore: SessionStore,
+)
 @main("MonMonSharing is caring") {
 <script
         type="text/javascript"
@@ -9,6 +17,7 @@
 ></script>
 
 @partials.header()
+@partials.userDetails()
 @partials.navbar()
 
 <div class="w3-content" style="max-width: 1500px">

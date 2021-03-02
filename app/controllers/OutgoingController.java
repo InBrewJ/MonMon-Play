@@ -75,6 +75,7 @@ public class OutgoingController extends Controller {
                         this.accountForm,
                         false,
                         request,
+                        playSessionStore,
                         messagesApi.preferred(request)
                 )
         );
@@ -138,6 +139,7 @@ public class OutgoingController extends Controller {
                         this.accountForm,
                         false,
                         request,
+                        playSessionStore,
                         messagesApi.preferred(request)
                 )
         );
@@ -165,6 +167,7 @@ public class OutgoingController extends Controller {
                         prefilledAccountForm,
                         true,
                         request,
+                        playSessionStore,
                         messagesApi.preferred(request)
                 )
         );

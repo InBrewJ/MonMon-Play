@@ -94,7 +94,16 @@ public class BalanceController extends Controller {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Balance> balances = repoListToList(balanceRepository.list(sup.getUserId()));
         List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        return ok(views.html.balances.render(asScala(balances), this.form, asScala(accounts), request, messagesApi.preferred(request) ));
+        return ok(
+                views.html.balances.render(
+                        asScala(balances),
+                        this.form,
+                        asScala(accounts),
+                        request,
+                        playSessionStore,
+                        messagesApi.preferred(request)
+                )
+        );
     }
 
 }
