@@ -7,9 +7,14 @@ import org.pac4j.play.PlayWebContext;
 import play.mvc.Http;
 import viewModels.SimpleUserProfile;
 
+import javax.inject.Inject;
 import java.util.List;
 
 public class UserHelpers {
+
+    @Inject
+    private SessionStore playSessionStore;
+
     static public List<UserProfile> getAuthProfiles(SessionStore playSessionStore, Http.Request request) {
         final PlayWebContext context = new PlayWebContext(request);
         final ProfileManager profileManager = new ProfileManager(context, playSessionStore);

@@ -76,6 +76,7 @@ public class IncomingController extends Controller {
                 this.form,
                 false,
                 request,
+                playSessionStore,
                 messagesApi.preferred(request))
         );
     }
@@ -96,6 +97,7 @@ public class IncomingController extends Controller {
                 prefilledForm,
                 true,
                 request,
+                playSessionStore,
                 messagesApi.preferred(request))
         );
     }
@@ -105,11 +107,9 @@ public class IncomingController extends Controller {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         System.out.println("Updating Incoming with id : " + id);
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
-        if (!incoming.getUserId().equals(sup.getUserId())) {
-            CompletableFuture.runAsync(() -> {
-                forbidden(views.html.error403.render());
-            });
-        }
+        // Need to somehow check the userId vs the incoming to be archived
+        // Ideally there would be a way to keep from passing userId into
+        // incomingRepository?
         return incomingRepository
                 .update(id, incoming)
                 .thenApplyAsync(p -> redirect(routes.IncomingController.listIncomings()), ec.current());

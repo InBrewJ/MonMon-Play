@@ -1,7 +1,14 @@
 @import play.mvc.Http.Request
 @import helper._
 @import viewModels._
-@(spogVm: Spog)(implicit request: Http.Request)
+@import org.pac4j.core.context.session._;
+@(
+    spogVm: Spog
+)(
+    implicit
+    request: Http.Request,
+    playSessionStore: SessionStore
+)
 @main("MonMonSPOG") {
 <script
         type="text/javascript"
@@ -9,6 +16,7 @@
 ></script>
 
 @partials.header()
+@partials.userDetails()
 @partials.navbar()
 
 <div class="w3-content" style="max-width: 1500px">

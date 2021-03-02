@@ -1,5 +1,11 @@
 package helpers;
 
+import org.pac4j.core.context.session.SessionStore;
+import play.mvc.Http;
+import viewModels.SimpleUserProfile;
+
+import static helpers.UserHelpers.getSimpleUserProfile;
+
 public class UIHelpers {
 
     // MWM-35
@@ -9,7 +15,8 @@ public class UIHelpers {
     // https://www.playframework.com/documentation/2.8.x/JavaTemplates
     // https://alvinalexander.com/scala/how-use-twirl-templates-standalone-play-framework/
 
-    static public String userDetails() {
-        return "username: null";
+    static public String userDetails(SessionStore playSessionStore, Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        return sup.getUsername() + " (" + sup.getUserEmail() + ")";
     }
 }

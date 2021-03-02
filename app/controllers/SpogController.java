@@ -1,12 +1,9 @@
 package controllers;
 
-import helpers.UserHelpers;
 import models.*;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.exception.TechnicalException;
 import org.pac4j.core.exception.http.HttpAction;
-import org.pac4j.core.profile.ProfileManager;
-import org.pac4j.core.profile.UserProfile;
 import org.pac4j.core.util.Pac4jConstants;
 import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.http.PlayHttpActionAdapter;
@@ -68,6 +65,7 @@ public class SpogController extends Controller {
         return protectedIndexView(request);
     }
 
+    // pretty sure this doesn't work properly
     public Result forceLogin(Http.Request request) {
         final PlayWebContext context = new PlayWebContext(request);
         final Client client = config.getClients().findClient(context.getRequestParameter(Pac4jConstants.DEFAULT_CLIENT_NAME_PARAMETER).get()).get();
@@ -173,7 +171,7 @@ public class SpogController extends Controller {
                 completedOutgoingsSum,
                 pendingOutgoingsSum,
                 allAccounts);
-        return ok(views.html.spog.render(spogVm, request));
+        return ok(views.html.spog.render(spogVm, request, playSessionStore));
     }
 
     // Ideally, seed should only be possible by someone
