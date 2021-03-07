@@ -97,12 +97,11 @@ public class OutgoingController extends Controller {
         System.out.println("Updating outgoing with id : " + id);
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
+        System.out.println("Rent -> " + outgoing.isRent());
+        System.out.println("Bill -> " + outgoing.isBill());
+        System.out.println("Scheduled -> " + outgoing.isHiddenFromTotal());
         outgoing.setAccount(getAccountFromFormRequest(request));
-        if (!outgoing.getUserId().equals(sup.getUserId())) {
-            CompletableFuture.runAsync(() -> {
-                forbidden(views.html.error403.render());
-            });
-        }
+        // Need to somehow protect the POST here, see MWM-37
         return outgoingRepository
                 .update(id, outgoing)
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());

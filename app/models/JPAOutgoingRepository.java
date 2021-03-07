@@ -115,7 +115,7 @@ public class JPAOutgoingRepository implements OutgoingRepository {
         toUpdate.setHiddenFromTotal(outgoing.isHiddenFromTotal());
         toUpdate.setCost(outgoing.getCost());
         toUpdate.setBill(outgoing.isBill());
-        toUpdate.setRent(outgoing.isBill());
+        toUpdate.setRent(outgoing.isRent());
         toUpdate.setOutgoingDay(outgoing.getOutgoingDay());
         toUpdate.setAccount(outgoing.getAccount());
         em.persist(toUpdate);
