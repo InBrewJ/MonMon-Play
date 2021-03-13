@@ -19,9 +19,30 @@ public class Plan {
     // "Rent is shared between N people"
     // Plan.split = 1/N
 
+    // For 'MONTHLY_SAVINGS_GOAL' it'd be ideal
+    // if we had some sort of list of 'elements' in a 'plan'
+    // 'elements' could be some sort of configurable thing that
+    // could be used to plan what to do with the 'cost' of a plan
+    //
+    // For a simple way to decide how to allocate the MONTHLY_SAVINGS_GOAL,
+    // the element would have type 'outgoing' which would add extra outgoings
+    // as 'isHiddenFromTotal' or something. The ids of the 'outgoing' could
+    // be saved in the 'elements' of the plan
+    //
+    // There might also be a way to automatically allocate 'outgoing' 'elements'
+    // from a MONTHLY_SAVINGS_GOAL by the 'priority' of the 'element', e.g. to
+    // say things like 'I know I want to spend all of this money on savings, and I
+    // want the most money to go into this account, so give this element a high priority
+    // and adjust the cost of the other elements automatically
+    //
+    // 'elements' could also be 'things' you want to save for. This could pave the way
+    // for something like the 'Stuff for house' tab on the MonMon sheet. But this
+    // is just speculation. And over-speculation at that...
+
     public enum PlanType {
         BILL_SHARE,
-        RENT_SHARE
+        RENT_SHARE,
+        MONTHLY_SAVINGS_GOAL
     }
 
     public enum PlanScope {
@@ -44,6 +65,7 @@ public class Plan {
     public PlanScope scope;
 
     public Float split;
+    public Float cost;
     public String notes;
     public boolean archived = false;
 
@@ -101,5 +123,13 @@ public class Plan {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public Float getCost() {
+        return cost;
+    }
+
+    public void setCost(Float cost) {
+        this.cost = cost;
     }
 }

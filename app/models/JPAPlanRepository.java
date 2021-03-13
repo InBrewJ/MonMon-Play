@@ -27,6 +27,11 @@ public class JPAPlanRepository implements PlanRepository {
     }
 
     @Override
+    public CompletionStage<Plan> createOrReplace(String userId, Plan.PlanType type, Plan plan) {
+        return supplyAsync(() -> wrap(em -> createOrReplace(em, userId, type, plan)), executionContext);
+    }
+
+    @Override
     public CompletionStage<Stream<Plan>> list(String userId) {
         return supplyAsync(() -> wrap(em -> list(em, userId)), executionContext);
     }
@@ -56,6 +61,27 @@ public class JPAPlanRepository implements PlanRepository {
     private Plan insert(EntityManager em, Plan plan) {
         em.persist(plan);
         return plan;
+    }
+
+    private Plan createOrReplace(EntityManager em, String userId, Plan.PlanType type, Plan plan) {
+        Stream<Plan> plansByType = findByType(em, userId, type);
+        // If we find any plans, archive them
+        // Presumes that we can only have one type of plan
+        plansByType.forEach((Plan p) -> {
+            archive(em, Math.toIntExact(p.getId()));
+        });
+        // Once archived, add the new plan
+        insert(em, plan);
+        return plan;
+    }
+
+    private Stream<Plan> findByType(EntityManager em, String userId, Plan.PlanType type) {
+        List<Plan> plans = em
+                .createQuery("select p from Plan p WHERE p.archived = false and userId = :userId and type = :type", Plan.class)
+                .setParameter("userId", userId)
+                .setParameter("type", type)
+                .getResultList();
+        return plans.stream();
     }
 
     private Stream<Plan> listComplete(EntityManager em, String userId) {
