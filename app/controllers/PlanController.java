@@ -61,6 +61,20 @@ public class PlanController extends Controller {
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
+    @Secure(clients = "OidcClient")
+    public CompletionStage<Result> setBasicSavingsPlan(int percent, final Http.Request request) {
+        System.out.println("setting savings percentage to : " + percent);
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        Plan plan = new Plan();
+        plan.setType(Plan.PlanType.MONTHLY_SAVINGS_GOAL);
+        plan.setSplit((float)percent/100);
+        plan.setUserId(sup.getUserId());
+        plan.setScope(Plan.PlanScope.PERMANENT);
+        return planRepository
+                .createOrReplace(sup.getUserId(), Plan.PlanType.MONTHLY_SAVINGS_GOAL, plan)
+                .thenApplyAsync(p -> redirect(routes.PlanController.sharedOutgoings()), ec.current());
+    }
+
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addPlan(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
@@ -80,7 +94,7 @@ public class PlanController extends Controller {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Plan> plans = repoListToList(planRepository.list(sup.getUserId()));
         return ok(
-                views.html.sharing.render(
+                views.html.plans.render(
                         asScala(plans),
                         this.form,
                         request,

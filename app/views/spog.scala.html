@@ -10,10 +10,6 @@
     playSessionStore: SessionStore
 )
 @main("MonMonSPOG") {
-<script
-        type="text/javascript"
-        src='@routes.Assets.at("javascripts/index.js")'
-></script>
 
 @partials.header()
 @partials.userDetails()
@@ -35,6 +31,14 @@
                 <p>
                     That is, <span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>
                 </p>
+<!--                MWM-13 -->
+<!--                This might work better as a standard POST form-->
+<!--                The backend needs to find the next payday and add -->
+<!--                a new outgoing on that day -->
+<!--                    That outgoing will then be the basis for a savings plan-->
+<!--                    Should this type of outgoing be _derived_ from Outgoing?-->
+<!--                    Could this be some sort of Liskov Substitution thing?-->
+                <a id="savings-slider-val-target" href="/plans/updateSavingsPayoffPercentage?percent=@spogVm.getPercentageIncomeAsSavings()" class="w3-button w3-round w3-grey">Update savings plan</a>
             </div>
             <div class="w3-card w3-padding w3-margin">
                 <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
@@ -52,7 +56,7 @@
                 </p>
                 <hr>
                 <p>
-                    - MAX per day available (between paydays) -> £@spogVm.getMaxPerDay()<br/>
+                    - <b>MAX per day available (between paydays) -> £@spogVm.getMaxPerDay() </b><br/>
                     - MAX per week available -> £@spogVm.getMaxPerWeek() <br/>
                     - MAX per month available -> £@spogVm.getSurplus()<br/>
                     - rent (with sharing) as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>

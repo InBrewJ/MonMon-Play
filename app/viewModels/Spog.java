@@ -43,6 +43,7 @@ public class Spog {
                 Float pendingOutgoingsSum,
                 List<Account> allAccounts) {
         LocalDate now = LocalDate.now();
+        // takes savings plan into account, this seems lame
         this.outgoingTotal = outgoingTotal;
         this.rentCost = rentCost;
         this.surplus = round2(surplus);
@@ -54,7 +55,7 @@ public class Spog {
         this.daysBetweenPaydays = this.calculateDaysBetweenPaydays(nextPayday, now);
         this.maxPerDay = round2(surplus / this.daysBetweenPaydays);
         this.maxPerWeek = round2(this.maxPerDay * 7);
-        this.yearlySurplus = round2(surplus * 12);
+        this.yearlySurplus = round2((incomingTotal - outgoingTotal) * 12);
         this.yearlyOutgoings = round2(outgoingTotal * 12);
         this.yearlyTakehome = round2(incomingTotal * 12);
         this.percentageIncomeAsRent = this.calculatePercentageIncomeAsRent();

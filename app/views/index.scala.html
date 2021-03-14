@@ -17,10 +17,6 @@
   messages: play.i18n.Messages
 )
 @main("MonMon") {
-<script
-  type="text/javascript"
-  src='@routes.Assets.at("javascripts/index.js")'
-></script>
 
 @partials.header()
 @partials.userDetails()
@@ -209,7 +205,7 @@
           </select>
           @checkbox(outgoingForm("bill"), Symbol("_label") -> "Bills?")
           @checkbox(outgoingForm("rent"), Symbol("_label") -> "Rent?")
-          @checkbox(outgoingForm("hiddenFromTotal"), Symbol("_label") -> "Scheduled savings payment?")
+          @checkbox(outgoingForm("hiddenFromTotal"), Symbol("_label") -> "Payment comes out of savings plan?")
           <br /><br />
           <button>@{ if (editingOutgoing) "Amend" else "Add"} Outgoing</button>
         </form>

@@ -17,5 +17,7 @@ public interface PlanRepository {
 
     CompletionStage<Stream<Plan>> list(String userId);
 
+    CompletionStage<Plan> createOrReplace(String userId, Plan.PlanType type, Plan plan);
+
     CompletionStage<Stream<Plan>> listComplete(String userId);
 }

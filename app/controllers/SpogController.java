@@ -94,6 +94,19 @@ public class SpogController extends Controller {
         List<Plan> allPlans = repoListToList(planRepository.list(sup.getUserId()));
         Plan firstRentShare = null;
         Plan firstBillShare = null;
+        Plan firstMonthlySavingsGoal = null;
+
+        try {
+            firstMonthlySavingsGoal = !allPlans.isEmpty() ?
+                    allPlans
+                            .stream()
+                            .filter(p -> p.getType() == Plan.PlanType.MONTHLY_SAVINGS_GOAL)
+                            .collect(Collectors.toList())
+                            .get(0) : null;
+        } catch (Exception e) {
+            System.out.println("No MONTHLY_SAVINGS_GOAL found");
+        }
+
         try {
             firstRentShare = !allPlans.isEmpty() ?
                     allPlans
@@ -138,7 +151,11 @@ public class SpogController extends Controller {
         }
 
         Float surplus = round2(incomingTotal - outgoingTotal);
-        int suggestedIncomeAsSavings = 46;
+        int suggestedIncomeAsSavings = firstMonthlySavingsGoal != null ? (int)(firstMonthlySavingsGoal.getSplit() * 100) : 0;
+        Float savingsPlanCost = (((float)suggestedIncomeAsSavings / 100) * (incomingTotal));
+        System.out.println("suggestedIncomeAsSavings :: " + suggestedIncomeAsSavings / 100);
+        System.out.println("Savings plan cost :: " + savingsPlanCost);
+        surplus -= savingsPlanCost;
         int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
 
         // Scratch
