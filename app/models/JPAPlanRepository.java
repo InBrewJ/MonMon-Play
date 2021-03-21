@@ -94,7 +94,7 @@ public class JPAPlanRepository implements PlanRepository {
 
     private Stream<Plan> list(EntityManager em, String userId) {
         List<Plan> plans = em
-                .createQuery("select p from Plan p WHERE p.archived = false and userId = :userId", Plan.class)
+                .createQuery("select p from Plan p WHERE archived = FALSE and userId = :userId", Plan.class)
                 .setParameter("userId", userId)
                 .getResultList();
         return plans.stream();

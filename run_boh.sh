@@ -1,3 +1,8 @@
 # 'boh' = 'back of house'
 
-docker run -it -p 8080:8080 -e KEYCLOAK_USER=admin -e KEYCLOAK_PASSWORD=admin -e DB_VENDOR=h2 quay.io/keycloak/keycloak:12.0.2
+echo Starting services in docker-compose.yaml and seeding Postgres...
+
+docker-compose up -d --force-recreate  && \
+bash -c 'while ! docker exec -ti postgres sh -c "pg_isready -U postgres"; do sleep 1; done;' && \
+PGPASSFILE="./db/.pgpass" psql -U postgres -h localhost -p 5432 -d postgres -f ./db/seed.sql
+

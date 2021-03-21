@@ -230,14 +230,14 @@ public class Spog {
                     .stream()
                     .filter(o -> !o.isArchived())
                     .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
-            Double latestBalance;
+            Float latestBalance;
             try {
                 a.balances.sort(Comparator.comparing(Balance::getTimestamp).reversed());
                 latestBalance = a.balances.get(0).getValue();
             } catch (Exception e) {
-                latestBalance = 0d;
+                latestBalance = 0f;
             }
-            accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, latestBalance));
+            accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, (double)latestBalance));
         }
         return accountsAndPendings;
     }

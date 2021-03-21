@@ -11,7 +11,7 @@ public class Balance {
     @GeneratedValue(strategy = GenerationType.AUTO)
     public Long id;
     public Long timestamp; // this makes this time series data, for graphs and junk
-    public Double value;
+    public Float value;
 
     @ManyToOne
     @JoinColumn(name="account_id")
@@ -45,11 +45,11 @@ public class Balance {
         this.timestamp = timestamp;
     }
 
-    public Double getValue() {
+    public Float getValue() {
         return value;
     }
 
-    public void setValue(Double value) {
+    public void setValue(Float value) {
         this.value = value;
     }
 

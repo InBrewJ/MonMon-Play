@@ -10,6 +10,8 @@ lazy val root = (project in file("."))
     version := "1.0-SNAPSHOT",
     scalaVersion := "2.13.1",
     libraryDependencies ++= Seq(
+      "org.postgresql" % "postgresql" % "42.2.12",
+      javaJdbc,
       guice,
       javaJpa,
       ehcache,
