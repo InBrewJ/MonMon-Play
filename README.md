@@ -15,7 +15,7 @@
 
 ## How to run locally
 
-- Start up Keycloak
+- Start up Postgres, seed postgres and start Keycloak via docker-compose
 
 ```
 ./run_boh.sh
