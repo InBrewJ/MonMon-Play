@@ -18,7 +18,10 @@ public class Outgoing {
 
     public String name;
     public Float cost;
+
+    @Column(name = "OUTGOINGDAY")
     public int outgoingDay;
+
     public boolean bill = false;
     public boolean rent = false;
     public boolean archived = false;

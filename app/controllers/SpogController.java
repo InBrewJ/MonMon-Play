@@ -427,47 +427,47 @@ public class SpogController extends Controller {
         // Balances
         Balance natwestCreditBalance0 = new Balance();
         natwestCreditBalance0.setAccount(natwestCFullAccount);
-        natwestCreditBalance0.setValue(500d);
+        natwestCreditBalance0.setValue(500f);
         natwestCreditBalance0.setTimestamp(generateUnixTimestamp()-86400);
         natwestCreditBalance0.setUserId(sup.getUserId());
         this.balanceRepository.add(natwestCreditBalance0);
         Balance natwestCreditBalance1 = new Balance();
         natwestCreditBalance1.setAccount(natwestCFullAccount);
-        natwestCreditBalance1.setValue(359d);
+        natwestCreditBalance1.setValue(359f);
         natwestCreditBalance1.setTimestamp(generateUnixTimestamp());
         natwestCreditBalance1.setUserId(sup.getUserId());
         this.balanceRepository.add(natwestCreditBalance1);
         //
         Balance lloydsBalance = new Balance();
         lloydsBalance.setAccount(lloydsFullAccount);
-        lloydsBalance.setValue(2026.49d);
+        lloydsBalance.setValue(2026.49f);
         lloydsBalance.setTimestamp(generateUnixTimestamp());
         lloydsBalance.setUserId(sup.getUserId());
         this.balanceRepository.add(lloydsBalance);
         //
         Balance halifaxBalance = new Balance();
         halifaxBalance.setAccount(halifaxFullAccount);
-        halifaxBalance.setValue(320.49d);
+        halifaxBalance.setValue(320.49f);
         halifaxBalance.setTimestamp(generateUnixTimestamp());
         halifax.setUserId(sup.getUserId());
         this.balanceRepository.add(halifaxBalance);
         //
         Balance natwestBalance = new Balance();
         natwestBalance.setAccount(natwestDFullAccount);
-        natwestBalance.setValue(353d);
+        natwestBalance.setValue(353f);
         natwestBalance.setTimestamp(generateUnixTimestamp()-86400);
         natwestBalance.setUserId(sup.getUserId());
         this.balanceRepository.add(natwestBalance);
         //
         Balance vanquisBalance = new Balance();
         vanquisBalance.setAccount(vanquisFullAccount);
-        vanquisBalance.setValue(799.23d);
+        vanquisBalance.setValue(799.23f);
         vanquisBalance.setTimestamp(generateUnixTimestamp());
         vanquisBalance.setUserId(sup.getUserId());
         this.balanceRepository.add(vanquisBalance);
         Balance vanquisBalance1 = new Balance();
         vanquisBalance1.setAccount(vanquisFullAccount);
-        vanquisBalance1.setValue(800d);
+        vanquisBalance1.setValue(800f);
         vanquisBalance1.setTimestamp(generateUnixTimestamp()-(2*86400));
         vanquisBalance1.setUserId(sup.getUserId());
         this.balanceRepository.add(vanquisBalance1);
