@@ -1,0 +1,27 @@
+version: '3'
+services:
+  postgres:
+    container_name: postgres:11
+    image: postgres
+    environment:
+      - HOSTNAME=postgres
+      - POSTGRES_PASSWORD=docker
+    ports:
+      - 5432:5432
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    restart: always
+  keycloak:
+    container_name: keycloak
+    image: quay.io/keycloak/keycloak:12.0.2
+    environment:
+      - KEYCLOAK_USER=admin
+      - KEYCLOAK_PASSWORD=admin
+      - DB_VENDOR=h2
+    ports:
+      - 8080:8080
+    restart: always
+
+volumes:
+  db-data:
+    driver: local

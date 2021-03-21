@@ -89,7 +89,7 @@ public class JPAOutgoingRepository implements OutgoingRepository {
 
     private Stream<Outgoing> list(EntityManager em, String userId) {
         List<Outgoing> outgoings = em
-                .createQuery("select p from Outgoing p  where p.archived = false and userId = :userId ORDER BY OUTGOINGDAY", Outgoing.class)
+                .createQuery("select p from Outgoing p  where archived = false and userId = :userId ORDER BY OUTGOINGDAY", Outgoing.class)
                 .setParameter("userId", userId)
                 .getResultList();
         return outgoings.stream();
@@ -105,7 +105,7 @@ public class JPAOutgoingRepository implements OutgoingRepository {
 
     private Outgoing findById(EntityManager em,  int outgoingId) {
         TypedQuery<Outgoing> query = em.createQuery(
-                "select o from Outgoing o WHERE o.id = :id" , Outgoing.class);
+                "select o from Outgoing o WHERE .id = :id" , Outgoing.class);
         return query.setParameter("id", (long)outgoingId).getSingleResult();
     }
 

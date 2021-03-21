@@ -6,6 +6,7 @@ import play.db.jpa.JPAApi;
 import javax.inject.Inject;
 import javax.persistence.EntityManager;
 import javax.persistence.TypedQuery;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -93,37 +94,49 @@ public class JPAAccountRepository implements AccountRepository {
         // https://stackoverflow.com/questions/30088649/how-to-use-multiple-join-fetch-in-one-jpql-query
         // This is to solve all sorts of horrid double fetch and cartesian product problems
         // But it works! Woohoo!
-        List<Account> accounts = em.createQuery(
-                "select distinct a from Account a left join fetch a.outgoings where a.archived = false and a.userId = :userId ORDER BY a.type DESC",
-                Account.class)
-                .setParameter("userId", userId)
-                .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
-                .getResultList();
-        accounts = em.createQuery(
-                "select distinct a from Account a left join fetch a.balances WHERE a in :accounts ORDER BY a.type DESC",
-                Account.class)
-                .setParameter("accounts", accounts)
-                .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
-                .getResultList();
-        return accounts.stream();
+        try {
+            List<Account> accounts = em.createQuery(
+                    "select distinct a from Account a left join fetch a.outgoings where a.archived = false and a.userId = :userId ORDER BY a.type DESC",
+                    Account.class)
+                    .setParameter("userId", userId)
+                    .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
+                    .getResultList();
+            accounts = em.createQuery(
+                    "select distinct a from Account a left join fetch a.balances WHERE a in :accounts ORDER BY a.type DESC",
+                    Account.class)
+                    .setParameter("accounts", accounts)
+                    .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
+                    .getResultList();
+            return accounts.stream();
+        } catch (Exception e) {
+            System.out.println("Likely no accounts yet, returning the empty list");
+            List<Account> noAccounts = Collections.emptyList();
+            return noAccounts.stream();
+        }
     }
 
     private Stream<Account> listComplete(EntityManager em, String userId) {
         // https://stackoverflow.com/questions/30088649/how-to-use-multiple-join-fetch-in-one-jpql-query
         // This is to solve all sorts of horrid double fetch and cartesian product problems
         // But it works! Woohoo!
-        List<Account> accounts = em.createQuery(
-                "select distinct a from Account a left join fetch a.outgoings WHERE a.userId = :userId ORDER BY a.type DESC",
-                Account.class)
-                .setParameter("userId", userId)
-                .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
-                .getResultList();
-        accounts = em.createQuery(
-                "select distinct a from Account a left join fetch a.balances WHERE a in :accounts ORDER BY a.type DESC",
-                Account.class)
-                .setParameter("accounts", accounts)
-                .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
-                .getResultList();
-        return accounts.stream();
+        try {
+            List<Account> accounts = em.createQuery(
+                    "select distinct a from Account a left join fetch a.outgoings WHERE a.userId = :userId ORDER BY a.type DESC",
+                    Account.class)
+                    .setParameter("userId", userId)
+                    .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
+                    .getResultList();
+            accounts = em.createQuery(
+                    "select distinct a from Account a left join fetch a.balances WHERE a in :accounts ORDER BY a.type DESC",
+                    Account.class)
+                    .setParameter("accounts", accounts)
+                    .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
+                    .getResultList();
+            return accounts.stream();
+        } catch (Exception e) {
+            System.out.println("Likely no accounts yet, returning the empty list");
+            List<Account> noAccounts = Collections.emptyList();
+            return noAccounts.stream();
+        }
     }
 }

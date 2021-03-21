@@ -72,7 +72,7 @@ public class PlanController extends Controller {
         plan.setScope(Plan.PlanScope.PERMANENT);
         return planRepository
                 .createOrReplace(sup.getUserId(), Plan.PlanType.MONTHLY_SAVINGS_GOAL, plan)
-                .thenApplyAsync(p -> redirect(routes.PlanController.sharedOutgoings()), ec.current());
+                .thenApplyAsync(p -> redirect(routes.SpogController.index()), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
