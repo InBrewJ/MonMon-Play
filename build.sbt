@@ -1,4 +1,4 @@
-val playPac4jVersion = "11.0.0-PLAY2.8-RC2-SNAPSHOT"
+val playPac4jVersion = "11.0.0-PLAY2.8-RC2"
 val pac4jVersion = "5.0.0-RC2-SNAPSHOT"
 val playVersion = "2.8.7"
 val guiceVersion = "4.2.2"

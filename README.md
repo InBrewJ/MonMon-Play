@@ -37,7 +37,10 @@ cd -
 sbt run
 ```
 
+## How to deploy
 
+- Until the method is set, see this:
+    - https://blog.thomastoye.be/play-framework-ci-507b9e77d5b3
 
 ## Auth
 
@@ -94,6 +97,7 @@ docker run -it -p 8080:8080 -e KEYCLOAK_USER=admin -e KEYCLOAK_PASSWORD=admin -e
 
 ```
 $ sbt clean cleanFiles
+$ rm -fr ~/.ivy2/cache
 ```
 
 ### Useful links
