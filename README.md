@@ -88,6 +88,14 @@ docker run -it -p 8080:8080 -e KEYCLOAK_USER=admin -e KEYCLOAK_PASSWORD=admin -e
 
 - https://stackoverflow.com/questions/46381242/intellij-sbt-based-scala-project-does-not-build-with-java-9
 
+### sbt weirdness
+
+- To clear all caches and dependencies to test what happens in the case of a 'clean install' (like on CI)
+
+```
+$ sbt clean cleanFiles
+```
+
 ### Useful links
 
 - https://openid.net/connect/
