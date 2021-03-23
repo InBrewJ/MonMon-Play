@@ -8,7 +8,6 @@ jobs:
     docker:
       # specify the version you desire here
       - image: circleci/openjdk:11-jdk-node
-#      - image: circleci/
 
       # Specify service dependencies here if necessary
       # CircleCI maintains a library of pre-built images
@@ -39,5 +38,5 @@ jobs:
             - ~/.m2
           key: v1-dependencies--{{ checksum "build.sbt" }}
 
-      # run tests!
-      - run: cat /dev/null | sbt test:test
+      # We would run tests, but we have no tests just yet
+#      - run: cat /dev/null | sbt test:test
