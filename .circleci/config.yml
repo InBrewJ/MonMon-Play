@@ -31,16 +31,12 @@ jobs:
             # fallback to using the latest cache if no exact match is found
             - v1-dependencies-
 
-      - compile: cat /dev/null | sbt test:compile
-
-      - bundle: sbt dist
+      - run: cat /dev/null | sbt test:compile && sbt dist && echo "Sending to droplet..."
 
       - save_cache:
           paths:
             - ~/.m2
           key: v1-dependencies--{{ checksum "build.sbt" }}
-
-      - sendBundleToDroplet: echo "Sending to droplet..."
 
       # We would run tests, but we have no tests just yet
 #      - run: cat /dev/null | sbt test:test
