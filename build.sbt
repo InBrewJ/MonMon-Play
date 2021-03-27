@@ -1,3 +1,5 @@
+maintainer := "jason@urawizard.com"
+
 val playPac4jVersion = "11.0.0-PLAY2.8-RC2"
 val pac4jVersion = "5.0.0-RC2"
 val playVersion = "2.8.7"
