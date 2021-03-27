@@ -39,8 +39,15 @@ sbt run
 
 ## How to deploy
 
-- Until the method is set, see this:
-    - https://blog.thomastoye.be/play-framework-ci-507b9e77d5b3
+- At the moment, Monmon is deployed to a tiny droplet on DigitalOcean
+
+### Useful commands
+
+- See processes by memory usage:
+
+```
+ps -o pid,user,%mem,command ax | sort -b -k3 -r
+```
 
 ## Auth
 

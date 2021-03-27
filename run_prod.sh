@@ -2,5 +2,6 @@
 ## and unzip!
 
 cd /home/circle/app
-unzip unzip monmon-play-java--1.0-SNAPSHOT.zip -d ./monmon-play
+rm -rf ./monmon-play
+unzip monmon-play-java--1.0-SNAPSHOT.zip -d ./monmon-play
 nohup ./monmon-play/monmon-play-java--1.0-SNAPSHOT/bin/monmon-play-java- -Dplay.http.secret.key="41fa^pSzvve:iunSpW5HproHJ^EF5Ml1o[1Wfbc[[gOD?jHC;[t?j9Ms0S8=ve</" > ./monmon.out 2> ./monmon.err &

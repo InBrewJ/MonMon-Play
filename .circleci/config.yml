@@ -68,7 +68,7 @@ jobs:
             sbt test:compile
             sbt dist
             ./deploy.sh
-            ssh -o StrictHostKeyChecking=no -v circle@monmon.urawizard.com "./run_prod.sh"
+            ssh -o StrictHostKeyChecking=no -v circle@monmon.urawizard.com 'bash -s' < run_prod.sh
 
 workflows:
   version: 2
