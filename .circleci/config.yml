@@ -61,7 +61,14 @@ jobs:
       JVM_OPTS: -Xmx3200m
       TERM: dumb
     steps:
-      - run: echo "Run scp script here"
+      - checkout
+      - run:
+          name: Scratch deployer
+          command: |
+            sbt test:compile
+            sbt dist
+            ./deploy.sh
+            ssh -oStrictHostKeyChecking=no -v circle@monmon.urawizard.com "./run_prod.sh"
 
 workflows:
   version: 2
