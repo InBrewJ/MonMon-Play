@@ -1,6 +1,7 @@
 # Get into the /bin directory first!
 ## and unzip!
 
+export PATH=/home/circle/.sdkman/candidates/java/current/bin:$PATH
 cd /home/circle/app
 rm -rf ./monmon-play
 unzip monmon-play-java--1.0-SNAPSHOT.zip -d ./monmon-play
