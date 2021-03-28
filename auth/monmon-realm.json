@@ -620,7 +620,8 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "**********",
       "redirectUris": [
-        "http://localhost:9000/*"
+        "http://localhost:9000/*",
+        "https://monmon.urawizard.com/*"
       ],
       "webOrigins": [],
       "notBefore": 0,
