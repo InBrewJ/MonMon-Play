@@ -71,9 +71,9 @@ public class SecurityModule extends AbstractModule {
     @Provides @Singleton
     protected OidcClient provideOidcClient() {
         final OidcConfiguration oidcConfiguration = new OidcConfiguration();
-        oidcConfiguration.setClientId("monmon-web");
-        oidcConfiguration.setSecret("01c283f5-69ff-42e4-a080-971629656fbb");
-        oidcConfiguration.setDiscoveryURI("http://localhost:8080/auth/realms/monmon/.well-known/openid-configuration");
+        oidcConfiguration.setClientId(configuration.getString("oidc.clientId"));
+        oidcConfiguration.setSecret(configuration.getString("oidc.clientSecret"));
+        oidcConfiguration.setDiscoveryURI(configuration.getString("oidc.discoveryUri"));
         oidcConfiguration.addCustomParam("prompt", "consent");
         oidcConfiguration.setPreferredJwsAlgorithm(JWSAlgorithm.RS256);
         final OidcClient oidcClient = new OidcClient(oidcConfiguration);
