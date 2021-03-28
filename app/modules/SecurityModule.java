@@ -64,10 +64,6 @@ public class SecurityModule extends AbstractModule {
         bind(LogoutController.class).toInstance(logoutController);
     }
 
-//    oidc.discoveryUri = "http://localhost:8080/auth/realms/monmon/.well-known/openid-configuration"
-//    oidc.clientId = "monmon-web"
-//    oidc.clientSecret = "01c283f5-69ff-42e4-a080-971629656fbb"
-
     @Provides @Singleton
     protected OidcClient provideOidcClient() {
         final OidcConfiguration oidcConfiguration = new OidcConfiguration();

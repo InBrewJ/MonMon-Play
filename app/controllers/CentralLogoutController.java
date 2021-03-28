@@ -1,13 +1,19 @@
 package controllers;
 
+import com.typesafe.config.Config;
 import org.pac4j.play.LogoutController;
+import javax.inject.Inject;
 
 public class CentralLogoutController extends LogoutController {
 
-    public CentralLogoutController() {
-        setDefaultUrl("http://localhost:9000/?defaulturlafterlogoutafteridp");
+    private final Config config;
+
+    @Inject
+    public CentralLogoutController(Config config) {
+        this.config = config;
+        setDefaultUrl(config.getString("baseUrl") + "/?defaulturlafterlogoutafteridp");
         setLocalLogout(true);
         setCentralLogout(true);
-        setLogoutUrlPattern("http://localhost:9000/.*");
+        setLogoutUrlPattern(config.getString("baseUrl") + "/.*");
     }
 }
