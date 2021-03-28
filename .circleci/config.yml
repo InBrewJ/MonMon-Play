@@ -47,7 +47,7 @@ jobs:
       JVM_OPTS: -Xmx3200m
       TERM: dumb
     steps:
-      - run: echo "Look at these cool tests"
+      - run: echo "Look at these cool tests that do not exist"
 
   deploy:
     docker:
@@ -78,7 +78,7 @@ workflows:
           filters:
             branches:
               ignore:
-                - main
+                - java
       - test:
           requires:
             - build
@@ -89,7 +89,7 @@ workflows:
           filters:
             branches:
               only:
-                - MWM-11_deploy_with_circleCI
+                - java
       - deploy:
           requires:
             - build
