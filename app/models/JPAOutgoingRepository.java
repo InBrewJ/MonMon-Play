@@ -105,7 +105,7 @@ public class JPAOutgoingRepository implements OutgoingRepository {
 
     private Outgoing findById(EntityManager em,  int outgoingId) {
         TypedQuery<Outgoing> query = em.createQuery(
-                "select o from Outgoing o WHERE .id = :id" , Outgoing.class);
+                "select o from Outgoing o WHERE id = :id" , Outgoing.class);
         return query.setParameter("id", (long)outgoingId).getSingleResult();
     }
 

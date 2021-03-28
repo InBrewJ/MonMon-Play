@@ -37,7 +37,26 @@ cd -
 sbt run
 ```
 
+## How to deploy
 
+- At the moment, Monmon is deployed to a tiny droplet on DigitalOcean
+
+### Useful commands
+
+- See processes by memory usage:
+
+```
+ps -o pid,user,%mem,command ax | sort -b -k3 -r
+```
+
+- Install docker / docker-compose
+
+```
+ curl -fsSL https://get.docker.com -o get-docker.sh
+ sudo sh get-docker.sh
+ sudo curl -L "https://github.com/docker/compose/releases/download/1.28.6/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+ sudo chmod +x /usr/local/bin/docker-compose
+```
 
 ## Auth
 
@@ -54,6 +73,9 @@ docker run -it -p 8080:8080 -e KEYCLOAK_USER=admin -e KEYCLOAK_PASSWORD=admin -e
 - To get the client secret:
   - https://stackoverflow.com/questions/44752273/do-keycloak-clients-have-a-client-secret
   - set client access type to 'confidential'
+  
+- For running Keycloak behind a reverse proxy:
+    - https://itnext.io/nginx-as-reverse-proxy-in-front-of-keycloak-21e4b3f8ec53 
 
 ### Essentials for making OIDC work (with client/secret auth)
 
@@ -87,6 +109,15 @@ docker run -it -p 8080:8080 -e KEYCLOAK_USER=admin -e KEYCLOAK_PASSWORD=admin -e
 ```
 
 - https://stackoverflow.com/questions/46381242/intellij-sbt-based-scala-project-does-not-build-with-java-9
+
+### sbt weirdness
+
+- To clear all caches and dependencies to test what happens in the case of a 'clean install' (like on CI)
+
+```
+$ sbt clean cleanFiles
+$ rm -fr ~/.ivy2/cache
+```
 
 ### Useful links
 

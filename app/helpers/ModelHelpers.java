@@ -36,8 +36,18 @@ public class ModelHelpers {
     }
 
     public static LocalDate findLastPaydayDate(LocalDate asOf, int payday) {
+        // This should NOT be greater than a month ago!
+        // For example, if today is the 31st of March and we search
+        // for 31st Feb, we're going to go all the way back to the 31st Jan
+
         LocalDate possiblePayDate = asOf;
         while(possiblePayDate.getDayOfMonth() != payday) {
+            // If 'payday' is not in this month, return the last day
+            // of this month
+            int endOfThisMonth = possiblePayDate.lengthOfMonth();
+            if (payday > endOfThisMonth) {
+                return possiblePayDate.withDayOfMonth(endOfThisMonth);
+            }
             possiblePayDate = possiblePayDate.minusDays(1);
         }
         return possiblePayDate;
