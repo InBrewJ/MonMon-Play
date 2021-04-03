@@ -79,7 +79,7 @@ public class PlanController extends Controller {
     public CompletionStage<Result> addPlan(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Plan plan = formFactory.form(Plan.class).bindFromRequest(request).get();
-        int humanSplitFromForm = parseInt(request.body().asFormUrlEncoded().get("humanSplit")[0]);
+        Float humanSplitFromForm = Float.parseFloat(request.body().asFormUrlEncoded().get("humanSplit")[0]);
         Float split = (float)1 / (float)humanSplitFromForm;
         System.out.println("Split from number of humans :: " + split);
         plan.setSplit(split);

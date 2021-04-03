@@ -27,6 +27,9 @@ public class Spog {
     private final LocalDate nextPayDate;
     private final Float yearlyTakehome;
     private final Float rentCost;
+    private final Float remainderRentCost;
+    private final Float billsCost;
+    private final Float remainderBillsCost;
     private final Float completedOutgoings;
     private final Float pendingOutgoings;
     private final Double adjustedLeftPerDay;
@@ -39,6 +42,9 @@ public class Spog {
                 Float incomingTotal,
                 Float outgoingTotal,
                 Float rentCost,
+                Float remainderRentCost,
+                Float billsCost,
+                Float remainderBillsCost,
                 Float completedOutgoingsSum,
                 Float pendingOutgoingsSum,
                 List<Account> allAccounts) {
@@ -46,6 +52,9 @@ public class Spog {
         // takes savings plan into account, this seems lame
         this.outgoingTotal = outgoingTotal;
         this.rentCost = rentCost;
+        this.remainderRentCost = remainderRentCost;
+        this.billsCost = billsCost;
+        this.remainderBillsCost = remainderBillsCost;
         this.surplus = round2(surplus);
         this.nextPayday = nextPayday;
         this.daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday, now);
@@ -244,5 +253,17 @@ public class Spog {
 
     public HashMap<Account, AccountStatus> getAccountStatusMap() {
         return accountStatusMap;
+    }
+
+    public Float getRemainderRentCost() {
+        return remainderRentCost;
+    }
+
+    public Float getBillsCost() {
+        return billsCost;
+    }
+
+    public Float getRemainderBillsCost() {
+        return remainderBillsCost;
     }
 }

@@ -144,16 +144,19 @@ public class SpogController extends Controller {
         Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list(sup.getUserId())));
         List<Outgoing> rents = repoListToList(outgoingRepository.rents(sup.getUserId()));
+        // TODO: this only deals with one single rent payment
+        Float totalRentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
         Float rentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
         if (firstRentShare != null) {
             System.out.println("Rent share : " + firstRentShare.getSplit());
             rentCost = rentCost * firstRentShare.getSplit();
         }
+        Float remainderRentCost = totalRentCost - rentCost;
 
         Float surplus = round2(incomingTotal - outgoingTotal);
-        int suggestedIncomeAsSavings = firstMonthlySavingsGoal != null ? (int)(firstMonthlySavingsGoal.getSplit() * 100) : 0;
-        Float savingsPlanCost = (((float)suggestedIncomeAsSavings / 100) * (incomingTotal));
-        System.out.println("suggestedIncomeAsSavings :: " + suggestedIncomeAsSavings / 100);
+        int percentIncomeAsSavings = firstMonthlySavingsGoal != null ? (int)(firstMonthlySavingsGoal.getSplit() * 100) : 0;
+        Float savingsPlanCost = (((float)percentIncomeAsSavings / 100) * (incomingTotal));
+        System.out.println("percentIncomeAsSavings :: " + percentIncomeAsSavings / 100);
         System.out.println("Savings plan cost :: " + savingsPlanCost);
         surplus -= savingsPlanCost;
         int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
@@ -173,6 +176,13 @@ public class SpogController extends Controller {
         for (Outgoing o: bills) {
             System.out.println("Bill :: " + o.getName() + " on " + o.getOutgoingDay());
         }
+        Float totalBillsCost = bills.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+        Float billsCost = totalBillsCost;
+        if (firstBillShare != null) {
+            System.out.println("bill share : " + firstBillShare.getSplit());
+            billsCost = billsCost * firstBillShare.getSplit();
+        }
+        Float remainderBillsCost = totalBillsCost - billsCost;
         Float completedOutgoingsSum = completedOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         Float pendingOutgoingsSum = pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         // Scratch end
@@ -181,10 +191,13 @@ public class SpogController extends Controller {
         Spog spogVm = new Spog(
                 surplus,
                 nextPayDay,
-                suggestedIncomeAsSavings,
+                percentIncomeAsSavings,
                 incomingTotal,
                 outgoingTotal,
                 rentCost,
+                remainderRentCost,
+                billsCost,
+                remainderBillsCost,
                 completedOutgoingsSum,
                 pendingOutgoingsSum,
                 allAccounts);

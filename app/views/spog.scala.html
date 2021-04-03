@@ -34,13 +34,34 @@
                 </p>
                 <hr>
                 <p>
+                    If you have a rent/bill sharing plan, the values here will reflect those shares:
+                </p>
+                <p>
                     - <b>MAX per day available (between paydays) -> £@spogVm.getMaxPerDay() </b><br/>
                     - MAX per week available -> £@spogVm.getMaxPerWeek() <br/>
                     - MAX per month available -> £@spogVm.getSurplus()<br/>
                     - rent (with sharing) as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
                     - outgoings (with sharing) as % of wages -> @spogVm.getPercentageIncomeAsOutgoings()%
                 </p>
-                <hr>
+                <hr/>
+                <p>
+                    - Total rent: £@{spogVm.getRemainderRentCost() + spogVm.getRentCost()} <br/>
+                    - What I pay: £@{spogVm.getRentCost()} <br/>
+                    - What they pay: £@{spogVm.getRemainderRentCost()} <br/>
+                </p>
+                <hr/>
+                <p>
+                    - Total bills: £@{spogVm.getRemainderBillsCost() + spogVm.getBillsCost()} <br/>
+                    - What I pay: £@{spogVm.getBillsCost()} <br/>
+                    - What they pay: £@{spogVm.getRemainderBillsCost()} <br/>
+                </p>
+                <hr/>
+                <p>Rent AND Bills</p>
+                <p>
+                    - What I pay: £@{spogVm.getBillsCost() + spogVm.getRentCost()} <br/>
+                    - What they pay: £@{spogVm.getRemainderBillsCost() + spogVm.getRemainderRentCost()} <br/>
+                </p>
+                <hr/>
                 <p>
                     - monthly takehome -> £@spogVm.getIncomingTotal()  <br/>
                     - monthly outgoings (with sharing) -> £@spogVm.getOutgoingTotal()  <br/>
