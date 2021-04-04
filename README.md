@@ -21,15 +21,14 @@
 ./run_boh.sh
 ```
 
-- Provision Keycloak
+- Provision Keycloak (requires a running keycloak web ui, this script below doesn't (currently) wait for this!)
 
 ```
-cd auth
-./realm_setup.sh
-cd -
+./post_run_boh.sh
 ```
 
-- (Missing step) Add users to the realm
+- (Missing step) Add users to the realm, it's not possible to export users using the web UI 
+- one must run some sort of script in the standlone bin
 
 - Run the Play app
 
@@ -39,7 +38,9 @@ sbt run
 
 ## How to deploy
 
-- At the moment, Monmon is deployed to a tiny droplet on DigitalOcean
+- At the moment, Monmon is deployed to two tiny droplets on DigitalOcean
+    - One runs postgres + the app
+    - The other runs Keycloak (since Keycloak needs a minimum of 512mb RAM)
 
 ### Useful commands
 
@@ -68,6 +69,7 @@ docker run -it -p 8080:8080 -e KEYCLOAK_USER=admin -e KEYCLOAK_PASSWORD=admin -e
 ```
 
 - This will run Keycloak against an in-memory h2 database
+- When deployed, Keycloak runs against the same postgres db as the Play app
 - Quickstarted with:
   - https://www.keycloak.org/getting-started/getting-started-docker
 - To get the client secret:
@@ -137,6 +139,10 @@ Please see the Play documentation for more details:
 - https://www.playframework.com/documentation/latest/ThreadPools
 - https://www.playframework.com/documentation/latest/JavaAsync
 
+# A notice about thinking that running postgres in the wild with no secops is a good idea
+
+- I genuinely think this happened!
+- https://dba.stackexchange.com/questions/207589/excessive-postgres-docker-cpu-consumption
 ```
 
 ```
