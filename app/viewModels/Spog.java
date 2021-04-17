@@ -288,6 +288,17 @@ public class Spog {
         return round2((double) creditLimit);
     }
 
+    public Double getLiquidSavingsPot() {
+        // Add up all last balance for *SAVINGS accounts
+        Double liquidSavingsPot = 0d;
+        for (AccountStatus as : accountStatusMap.values()) {
+            if(as.getAccountType() == Account.AccountType.SHORT_TERM_SAVINGS) {
+                liquidSavingsPot += as.getLatestBalance();
+            }
+        }
+        return round2(liquidSavingsPot);
+    }
+
     public Double getSavingsPot() {
         // Add up all last balance for *SAVINGS accounts
         Double savingsPot = 0d;
