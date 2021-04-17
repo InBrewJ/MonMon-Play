@@ -37,6 +37,12 @@ public class Account {
     @Column(nullable = true)
     public List<Outgoing> outgoings = new ArrayList<>();
 
+    @Column(name = "account_limit", nullable = true )
+    public Float availableLimit = 0f;
+
+    @Column(name = "interest_rate", nullable = true )
+    public Float interestRate = 0f;
+
     public boolean archived = false;
 
     public List<Balance> getBalances() {
@@ -89,5 +95,21 @@ public class Account {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public Float getAvailableLimit() {
+        return availableLimit;
+    }
+
+    public void setAvailableLimit(Float availableLimit) {
+        this.availableLimit = availableLimit;
+    }
+
+    public Float getInterestRate() {
+        return interestRate;
+    }
+
+    public void setInterestRate(Float interestRate) {
+        this.interestRate = interestRate;
     }
 }
