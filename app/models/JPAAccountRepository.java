@@ -72,6 +72,8 @@ public class JPAAccountRepository implements AccountRepository {
         toUpdate.setName(account.getName());
         toUpdate.setNickname(account.getNickname());
         toUpdate.setType(account.getType());
+        toUpdate.setAvailableLimit(account.getAvailableLimit());
+        toUpdate.setInterestRate(account.getInterestRate());
         em.persist(toUpdate);
         return toUpdate;
     }

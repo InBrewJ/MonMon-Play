@@ -143,6 +143,7 @@ Please see the Play documentation for more details:
 
 - I genuinely think this happened!
 - https://dba.stackexchange.com/questions/207589/excessive-postgres-docker-cpu-consumption
+- https://ubuntu.com/blog/postgresql-security-the-pgminer-botnet-attacks-explained
 ```
 
 ```

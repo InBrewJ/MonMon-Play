@@ -51,6 +51,7 @@ public class AccountController extends Controller {
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addAccount(final Http.Request request) {
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
+        System.out.println("this limit :: " + account.getAvailableLimit());
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         account.setUserId(sup.getUserId());
         return accountRepository
@@ -78,6 +79,7 @@ public class AccountController extends Controller {
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateAccount(int id, final Http.Request request) {
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
+        System.out.println("this limit :: " + account.getAvailableLimit());
         return accountRepository
                 .update(id, account)
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());

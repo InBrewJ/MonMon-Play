@@ -30,16 +30,20 @@
         <table class="w3-left-align w3-table w3-striped w3-responsive">
           <tr>
             <th>name</th>
-            <th>type</th>
             <th>nickname</th>
+            <th>type</th>
+            <th>credit limit / overdraft</th>
+            <th>interest rate</th>
             <th></th> <!-- edit -->
             <th></th> <!-- archive -->
           </tr>
           @for(a <- accounts) {
             <tr>
                 <td>@a.name</td>
-                <td>@{a.`type`}</td>
                 <td>@a.nickname</td>
+                <td>@{a.`type`}</td>
+                <td>@a.availableLimit</td>
+                <td>@a.interestRate</td>
                 <td class="w3-center">
                   <a href="/editAccount/@a.id">
                     <i class="fas fa-pen"></i>
@@ -75,6 +79,20 @@
                   type="text"
                   name="nickname"
                   value='@accountForm.field("nickname").value()'
+          />
+          <br />
+          <input
+                  placeholder="overdraft / credit limit"
+                  type="text"
+                  name="availableLimit"
+                  value='@accountForm.field("availableLimit").value()'
+          />
+          <br />
+          <input
+                  placeholder="interest rate"
+                  type="text"
+                  name="interestRate"
+                  value='@accountForm.field("interestRate").value()'
           />
           <br />
           <select id="type" name="type">
