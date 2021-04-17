@@ -100,6 +100,19 @@
             </div>
             <div class="w3-card w3-padding w3-margin">
                 <p><b>Account Overview</b></p>
+                <hr/>
+                Debit available: £@spogVm.getTotalAvailableDebit() <br/>
+                Credit available: £@spogVm.getTotalAvailableCredit()  <br/>
+                <hr/>
+                Credit balance: £@spogVm.getCreditBalance()  <br/>
+                Credit limit: £@spogVm.getCreditLimit()  <br/>
+                <b>
+                    Credit usage: @spogVm.getCreditUsage()%
+                </b>
+                <br/>
+                <hr/>
+                Savings pot: £@spogVm.getSavingsPot() <br/>
+                <hr/>
                 <ul>
                     @for((a, status) <- spogVm.getAccountStatusMap()) {
                     <li>@a.name (@{a.`type`})
@@ -114,8 +127,13 @@
                                 £@status.getLatestBalance() available
                             </li>
                             <li>
+                                <i>
+                                    £@status.getBalanceWithLimits() balance with limit
+                                </i>
+                            </li>
+                            <li>
                                 <b>
-                                    £@status.getAdjustedAvailable() is what you <i>actually</i> have left
+                                    £@status.getAdjustedAvailable() <i>actually</i> left to spend
                                 </b>
                             </li>
                         </ul>

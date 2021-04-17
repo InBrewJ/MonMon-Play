@@ -35,6 +35,8 @@ public class Spog {
     private final Double adjustedLeftPerDay;
     private final List<Account> allAccounts;
     private final HashMap<Account, AccountStatus> accountStatusMap;
+    private Double totalAvailableDebit;
+    private Double totalAvailableCredit;
 
     public Spog(Float surplus,
                 int nextPayday,
@@ -95,6 +97,8 @@ public class Spog {
                     break;
             }
         }
+        this.totalAvailableCredit = totalAvailableCredit;
+        this.totalAvailableDebit = totalAvailableDebit;
         System.out.println("totalAvailableDebit :: " + totalAvailableDebit);
         System.out.println("totalAvailableCredit :: " + totalAvailableCredit);
         return round2(totalAvailableDebit / this.daysUntilNextPayday);
@@ -246,7 +250,7 @@ public class Spog {
             } catch (Exception e) {
                 latestBalance = 0f;
             }
-            accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, (double)latestBalance));
+            accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, (double)latestBalance, a.getType(), a.getAvailableLimit()));
         }
         return accountsAndPendings;
     }
@@ -265,5 +269,32 @@ public class Spog {
 
     public Float getRemainderBillsCost() {
         return remainderBillsCost;
+    }
+
+    public Double getTotalAvailableDebit() {
+        return round2(totalAvailableDebit);
+    }
+
+    public Double getTotalAvailableCredit() {
+        return round2(totalAvailableCredit);
+    }
+
+    public Double getCreditLimit() {
+        // Add up all availableLimits for CREDIT account
+        return round2(4500d);
+    }
+
+    public Double getSavingsPot() {
+        // Add up all last balance for *SAVINGS accounts
+        return round2(2000d);
+    }
+
+    public Double getCreditBalance() {
+        // Add up all getBalanceWithLimits from AccountStatus where CREDIT
+        return round2(3012d);
+    }
+
+    public Double getCreditUsage() {
+        return round2((getCreditBalance() / getCreditLimit() * 100));
     }
 }
