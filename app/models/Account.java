@@ -98,7 +98,7 @@ public class Account {
     }
 
     public Float getAvailableLimit() {
-        return availableLimit;
+        return availableLimit == null ? 0 : availableLimit;
     }
 
     public void setAvailableLimit(Float availableLimit) {
@@ -106,7 +106,7 @@ public class Account {
     }
 
     public Float getInterestRate() {
-        return interestRate;
+        return interestRate == null ? 0 : interestRate;
     }
 
     public void setInterestRate(Float interestRate) {
