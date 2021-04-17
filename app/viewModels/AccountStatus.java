@@ -37,6 +37,10 @@ public class AccountStatus {
         return adjustedAvailable;
     }
 
+    public Account.AccountType getAccountType() {
+        return accountType;
+    }
+
     public Double getBalanceWithLimits() {
         switch (accountType) {
             case CREDIT:

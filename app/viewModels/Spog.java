@@ -281,17 +281,34 @@ public class Spog {
 
     public Double getCreditLimit() {
         // Add up all availableLimits for CREDIT account
-        return round2(4500d);
+        Float creditLimit = allAccounts
+                .stream()
+                .filter(a -> a.getType() == Account.AccountType.CREDIT)
+                .reduce(0.0f, (partialResult, a) -> partialResult + a.getAvailableLimit(), Float::sum);
+        return round2((double) creditLimit);
     }
 
     public Double getSavingsPot() {
         // Add up all last balance for *SAVINGS accounts
-        return round2(2000d);
+        Double savingsPot = 0d;
+        for (AccountStatus as : accountStatusMap.values()) {
+            if(as.getAccountType() == Account.AccountType.LONG_TERM_SAVINGS ||
+                    as.getAccountType() == Account.AccountType.SHORT_TERM_SAVINGS) {
+                savingsPot += as.getLatestBalance();
+            }
+        }
+        return round2(savingsPot);
     }
 
     public Double getCreditBalance() {
         // Add up all getBalanceWithLimits from AccountStatus where CREDIT
-        return round2(3012d);
+        Double creditBalance = 0d;
+        for (AccountStatus as : accountStatusMap.values()) {
+            if(as.getAccountType() == Account.AccountType.CREDIT) {
+                creditBalance += as.getBalanceWithLimits();
+            }
+        }
+        return round2(creditBalance);
     }
 
     public Double getCreditUsage() {
