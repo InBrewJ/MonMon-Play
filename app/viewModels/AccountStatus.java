@@ -42,13 +42,15 @@ public class AccountStatus {
     }
 
     public Double getBalanceWithLimits() {
+        Float safeAvailableLimit = availableLimit == null ? 0 : availableLimit;
+        Double safeLatestBalance = latestBalance == null ? 0 : latestBalance;
         switch (accountType) {
             case CREDIT:
                 // for a credit limit
-                return round2(availableLimit - latestBalance);
+                return round2(safeAvailableLimit - safeLatestBalance);
             case DEBIT: case DEBIT_SHARED_BILLS:
                 // for an overdraft
-                return round2(availableLimit + latestBalance);
+                return round2(safeAvailableLimit + safeLatestBalance);
             default:
                 // for anything else, as yet undefined
                 return 0d;
