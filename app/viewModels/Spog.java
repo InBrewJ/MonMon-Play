@@ -5,6 +5,7 @@ import models.Balance;
 
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.findAlreadyPaid;
@@ -78,6 +79,40 @@ public class Spog {
         this.adjustedLeftPerDay = this.calculateAdjustedLeftPerDay();
     }
 
+    // MWM-48 this could be the 'monthly pot'
+    // could be a polymorphic calculateAdjustedLeftPerDay that takes
+    // the accounts configured in the monthly pot
+
+    public Double getMonthlyPotLeftPerDay() {
+        List<Account> allAccounts = this.allAccounts;
+        List<Account> tmpMonthlyPotAccount = allAccounts
+                .stream()
+                .filter(a -> a.getType() == Account.AccountType.CREDIT).collect(Collectors.toList());
+        for (Account a : tmpMonthlyPotAccount) {
+            System.out.println("monthlyPot account name :: " + a.getName());
+        }
+        return calculateAdjustedLeftPerDay(tmpMonthlyPotAccount);
+    }
+
+    private Double calculateAdjustedLeftPerDay(List<Account> monthlyPotAccounts) {
+        HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap(monthlyPotAccounts);
+        Double totalLeftPerDay = 0d;
+        for (Map.Entry<Account, AccountStatus> pair : accountsMap.entrySet()) {
+            Account a = pair.getKey();
+            AccountStatus as = pair.getValue();
+            Account.AccountType accountType = a.getType();
+            switch (accountType) {
+                default:
+                    totalLeftPerDay += as.getAdjustedAvailable();
+                    break;
+            }
+        }
+        System.out.println("totalLeftPerDay in monthlyPot account :: " + totalAvailableDebit);
+        return round2(totalLeftPerDay / this.daysUntilNextPayday);
+    }
+
+    // This is actually calculateAdjustedLeftPerDay in all debit accounts!
+    // Annoyingly this is also where totalAvailableCredit is set...
     private Double calculateAdjustedLeftPerDay() {
         HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap();
         Double totalAvailableDebit = 0d;
