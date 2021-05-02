@@ -1,0 +1,23 @@
+@import play.mvc.Http.Request;
+@import org.pac4j.core.context.session._;
+@import play.libs.Scala.asScala;
+@import helper._
+@(
+accounts: Seq[Account],
+pots: Seq[Pot],
+editingPot: Boolean
+)(
+implicit
+request: Http.Request,
+playSessionStore: SessionStore,
+messages: play.i18n.Messages
+)
+@main("MonMon Pots") {
+
+@partials.header()
+@partials.userDetails()
+@partials.navbar()
+
+<h1>Le Pots</h1>
+
+}

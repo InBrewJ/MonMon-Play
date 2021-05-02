@@ -1,7 +1,6 @@
 package controllers;
 
-import models.Plan;
-import models.PlanRepository;
+import models.*;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
 import play.data.Form;
@@ -15,7 +14,12 @@ import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+
+import static helpers.ModelHelpers.repoListToList;
 import static helpers.UserHelpers.getSimpleUserProfile;
+import static play.libs.Scala.asScala;
 
 /**
  * PotController
@@ -33,29 +37,51 @@ import static helpers.UserHelpers.getSimpleUserProfile;
  * of a few savings account, add them together and compare
  * them with a 'pot target'
  *
+ * A monthly pot needs a list of accounts
+ * one pot has many accounts
+ *
+ * Pot has type (MONTHLY / YEARLY(?) / SAVING_TARGET)
+ * MONTHLY will be displayed as pot / days left before payday etc
+ *
+ * So a Pot is a model. Needs a name and needs a list of accounts (ids)
  */
 public class PotController extends Controller {
     private final FormFactory formFactory;
     private final HttpExecutionContext ec;
-    private final PlanRepository planRepository;
     private MessagesApi messagesApi;
     private final Form<Plan> form;
+    private final PotRepository potRepository;
+    private final AccountRepository accountRepository;
+    private List<Account> accounts;
+    private List<Pot> pots;
 
     @Inject
     private SessionStore playSessionStore;
 
     @Inject
-    public PotController(FormFactory formFactory, MessagesApi messagesApi, PlanRepository planRepository, HttpExecutionContext ec) {
+    public PotController(FormFactory formFactory, MessagesApi messagesApi, PotRepository potRepository, AccountRepository accountRepository, HttpExecutionContext ec) {
         this.formFactory = formFactory;
         this.messagesApi = messagesApi;
-        this.planRepository = planRepository;
+        this.potRepository = potRepository;
+        this.accountRepository = accountRepository;
         this.form = formFactory.form(Plan.class);
         this.ec = ec;
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
-    public Result monthlyPot(final Http.Request request) {
+    public Result monthlyPot(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        return ok("monthly pots");
+        this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
+        this.pots = repoListToList(potRepository.listComplete(sup.getUserId()));
+        return ok(
+                views.html.pots.render(
+                        asScala(accounts),
+                        asScala(pots),
+                        false,
+                        request,
+                        playSessionStore,
+                        messagesApi.preferred(request)
+                )
+        );
     }
 }

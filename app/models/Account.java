@@ -23,6 +23,9 @@ public class Account {
     @Column(name = "userId")
     public String userId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Pot pot;
+
     public String name;
     public String nickname;
 
@@ -111,5 +114,9 @@ public class Account {
 
     public void setInterestRate(Float interestRate) {
         this.interestRate = interestRate;
+    }
+
+    public void setPot(Pot pot) {
+        this.pot = pot;
     }
 }
