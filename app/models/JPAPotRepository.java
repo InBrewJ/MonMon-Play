@@ -65,10 +65,9 @@ public class JPAPotRepository implements PotRepository {
     private Stream<Pot> list(EntityManager em, String userId) {
         try {
             List<Pot> pots = em.createQuery(
-                    "select distinct p from Pot p left join fetch p.accounts where p.userId = :userId and p.archived = false",
+                    "select p from Pot p join fetch p.accounts where p.userId = :userId and p.archived = false",
                     Pot.class)
                     .setParameter("userId", userId)
-                    .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
                     .getResultList();
             return pots.stream();
         } catch (Exception e) {
@@ -95,21 +94,4 @@ public class JPAPotRepository implements PotRepository {
             return noPots.stream();
         }
     }
-
-//    @Override
-//    public CompletionStage<Pot> update(int potId, Pot pot) {
-//
-//    };
-//
-//    @Override
-//    public CompletionStage<Pot> archive(int potId) {
-//
-//    };
-//
-//    // List _without_ archived (for displayed)
-//    @Override
-//    public CompletionStage<Stream<Pot>> list(String userId) {
-//
-//    };
-
 }

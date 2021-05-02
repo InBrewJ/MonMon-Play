@@ -35,6 +35,7 @@ public class Spog {
     private final Float pendingOutgoings;
     private final Double adjustedLeftPerDay;
     private final List<Account> allAccounts;
+    private final List<Account> monthlyPotAccounts;
     private final HashMap<Account, AccountStatus> accountStatusMap;
     private Double totalAvailableDebit;
     private Double totalAvailableCredit;
@@ -50,8 +51,11 @@ public class Spog {
                 Float remainderBillsCost,
                 Float completedOutgoingsSum,
                 Float pendingOutgoingsSum,
-                List<Account> allAccounts) {
+                List<Account> allAccounts,
+                List<Account> monthlyPotAccounts
+    ) {
         LocalDate now = LocalDate.now();
+        this.monthlyPotAccounts = monthlyPotAccounts;
         // takes savings plan into account, this seems lame
         this.outgoingTotal = outgoingTotal;
         this.rentCost = rentCost;
@@ -85,9 +89,7 @@ public class Spog {
 
     public Double getMonthlyPotLeftPerDay() {
         List<Account> allAccounts = this.allAccounts;
-        List<Account> tmpMonthlyPotAccount = allAccounts
-                .stream()
-                .filter(a -> a.getType() == Account.AccountType.CREDIT).collect(Collectors.toList());
+        List<Account> tmpMonthlyPotAccount = new ArrayList<>(this.monthlyPotAccounts);
         for (Account a : tmpMonthlyPotAccount) {
             System.out.println("monthlyPot account name :: " + a.getName());
         }
@@ -98,16 +100,11 @@ public class Spog {
         HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap(monthlyPotAccounts);
         Double totalLeftPerDay = 0d;
         for (Map.Entry<Account, AccountStatus> pair : accountsMap.entrySet()) {
-            Account a = pair.getKey();
             AccountStatus as = pair.getValue();
-            Account.AccountType accountType = a.getType();
-            switch (accountType) {
-                default:
-                    totalLeftPerDay += as.getAdjustedAvailable();
-                    break;
-            }
+            totalLeftPerDay += as.getAdjustedAvailable();
         }
-        System.out.println("totalLeftPerDay in monthlyPot account :: " + totalAvailableDebit);
+        System.out.println("totalLeftPerDay in monthlyPot account :: " + totalLeftPerDay);
+        System.out.println("this.daysUntilNextPayday :: " + this.daysUntilNextPayday);
         return round2(totalLeftPerDay / this.daysUntilNextPayday);
     }
 
@@ -269,6 +266,10 @@ public class Spog {
 
     public HashMap<Account, AccountStatus> getAccountStatusMap(List<Account> accounts) {
         HashMap<Account, AccountStatus> accountsAndPendings = new LinkedHashMap<>();
+
+        System.out.println("getAccountStatusMap :: ");
+        System.out.println("accounts size :: " + accounts.size());
+
         for (Account a : accounts) {
             Float alreadyPaidSum = findAlreadyPaid(a.outgoings, LocalDate.now(), nextPayday)
                             .stream()
@@ -282,7 +283,10 @@ public class Spog {
             try {
                 a.balances.sort(Comparator.comparing(Balance::getTimestamp).reversed());
                 latestBalance = a.balances.get(0).getValue();
+                System.out.println("Latest balance :: " + latestBalance);
             } catch (Exception e) {
+                System.out.println("Bad balances :");
+                System.out.println(e);
                 latestBalance = 0f;
             }
             accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, (double)latestBalance, a.getType(), a.getAvailableLimit()));

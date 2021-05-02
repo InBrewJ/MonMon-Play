@@ -23,7 +23,7 @@
                 <p><b> These are apparently your balances:</b></p>
                 <ul id="incomings">
                     @for(b <- balances) {
-                        <li>@b.value, @b.timestamp, (@b.account) ( -> @b.account.getName()) </li>
+                        <li>@b.value, @b.getTimestampHumanReadable, (@b.account) ( -> @b.account.getName()) </li>
                     }
                 </ul>
             </div>

@@ -33,7 +33,16 @@ messages: play.i18n.Messages
                     Created at: @{p.getCreatedAtHumanReadable}
                     <br />
                     @for(a <- p.accounts) {
-                        Account name: @{a.name}
+<!--                        balances(0) here doesn't work because balances is fetched LAZILY-->
+<!--                        need to figure out how to retrieve balances through the oneToMany -->
+<!--                        relationship (one(Pot)ToMany(accounts)). Setting fetch type to EAGER-->
+<!--                        doesn't work...-->
+                        Account name: @{a.name}, @a.balances(0)
+                        <br />
+                        @for(o <- a.outgoings) {
+                            @o.name
+                            <br />
+                        }
                     }
                     <hr/>
                 }

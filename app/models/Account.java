@@ -1,5 +1,7 @@
 package models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.persistence.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +27,7 @@ public class Account {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name="pot_id")
+    @JsonIgnore
     public Pot pot;
 
     public String name;
@@ -37,7 +40,9 @@ public class Account {
     @Column(nullable = true)
     public List<Balance> balances = new ArrayList<>();
 
-    @OneToMany(fetch = FetchType.LAZY, mappedBy = "account")
+    // This is EAGER because monthlyPots need access to outgoings
+    // see https://www.baeldung.com/hibernate-initialize-proxy-exception
+    @OneToMany(fetch = FetchType.EAGER, mappedBy = "account")
     @Column(nullable = true)
     public List<Outgoing> outgoings = new ArrayList<>();
 
