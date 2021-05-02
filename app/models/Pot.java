@@ -4,6 +4,8 @@ import javax.persistence.*;
 import java.util.ArrayList;
 import java.util.List;
 
+import static helpers.TimeHelpers.unixTimestampToDisplayDate;
+
 @Entity
 @Table(indexes = @Index(columnList = "userId"))
 public class Pot {
@@ -35,6 +37,8 @@ public class Pot {
             orphanRemoval = true
     )
     public List<Account> accounts = new ArrayList<>();
+
+    public boolean archived = false;
 
     public String getUserId() {
         return userId;
@@ -70,6 +74,19 @@ public class Pot {
 
     public void addAccount(Account account) {
         accounts.add(account);
+        System.out.println("Adding pot to the account, pot id here :: " + this.id);
         account.setPot(this);
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
+
+    public String getCreatedAtHumanReadable() {
+        return unixTimestampToDisplayDate(getCreatedAt());
     }
 }

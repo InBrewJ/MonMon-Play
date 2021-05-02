@@ -18,6 +18,50 @@ messages: play.i18n.Messages
 @partials.userDetails()
 @partials.navbar()
 
-<h1>Le Pots</h1>
+<div class="w3-content" style="max-width: 1500px">
+    <div class="w3-row">
+        <div class="w3-half w3-padding">
+            <div class="w3-card w3-padding w3-margin">
+                Pots:
+                <br />
+                @for(p <- pots) {
+                    @{p.`type`}
+                    <a href="/binPot/@p.id">
+                        <i class="fas fa-trash-alt"></i>
+                    </a>
+                    <br />
+                    Created at: @{p.getCreatedAtHumanReadable}
+                    <br />
+                    @for(a <- p.accounts) {
+                        Account name: @{a.name}
+                    }
+                    <hr/>
+                }
+            </div>
+        </div>
+        <div class="w3-half w3-padding">
+            <div class="w3-card w3-padding w3-margin">
+                <form method="POST" action="@routes.PotController.addPot()">
+                    @helper.CSRF.formField
+                    <label for="type">Pot type: </label>
+                    <select id="type" name="type">
+                        <option value="MONTHLY">Monthly</option>
+                    </select>
+                    <br />
+                    <label for="accounts">Select one/more accounts for this pot: </label>
+                    <select id="accounts" name="accounts" multiple>
+                        @for(a <- accounts) {
+                        <option
+                        value="@a.id">
+                        @a.name (@{a.`type`})
+                        </option>
+                        }
+                    </select>
+                    <br />
+                    <button>Add Pot</button>
+                </form>
+            </div>
+        </div>
+    </div>
 
 }

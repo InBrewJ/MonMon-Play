@@ -24,7 +24,8 @@ public class Account {
     public String userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    private Pot pot;
+    @JoinColumn(name="pot_id")
+    public Pot pot;
 
     public String name;
     public String nickname;
@@ -117,6 +118,7 @@ public class Account {
     }
 
     public void setPot(Pot pot) {
+        System.out.println("Setting this account to :: " + pot.type + " id :: " + pot.id);
         this.pot = pot;
     }
 }

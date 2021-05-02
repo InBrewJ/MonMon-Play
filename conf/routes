@@ -45,6 +45,8 @@ GET     /plans/updateSavingsPayoffPercentage   controllers.PlanController.setBas
 
 # Monthly pot (setting up spending sources per month)
 GET     /myMonthlyPot                               controllers.PotController.monthlyPot(req: Request)
+POST    /pot                                        controllers.PotController.addPot(req: Request)
+GET     /binPot/:id                                 controllers.PotController.archivePot(id: Int, req: Request)
 
 # Auth + Authz (via pac4j / keycloak / OpenIDConnect, see SecurityModule)
 GET     /oidc/index.html            controllers.SpogController.oidcIndex(req: Request)

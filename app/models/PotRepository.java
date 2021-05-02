@@ -18,9 +18,9 @@ public interface PotRepository {
 
 //    CompletionStage<Pot> update(int potId, Pot pot);
 //
-//    CompletionStage<Pot> archive(int potId);
-//
-//    // List _without_ archived (for displayed)
-//    CompletionStage<Stream<Pot>> list(String userId);
+    CompletionStage<Pot> archive(int potId);
+
+    // List _without_ archived (for displayed)
+    CompletionStage<Stream<Pot>> list(String userId);
 
 }
