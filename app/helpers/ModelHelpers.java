@@ -22,6 +22,9 @@ public class ModelHelpers {
     }
 
     public static List<Outgoing> findAlreadyPaid(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
+        System.out.println("We're here...");
+        System.out.println("length of outgoings :: " + outgoings.size());
+
         List<Outgoing> found = new ArrayList<>();
         LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);
         do {

@@ -43,6 +43,11 @@ GET     /binPlan/:id                           controllers.PlanController.archiv
 GET     /plans                                 controllers.PlanController.getPlansComplete(req: Request)
 GET     /plans/updateSavingsPayoffPercentage   controllers.PlanController.setBasicSavingsPlan(percent: Int, req: Request)
 
+# Monthly pot (setting up spending sources per month)
+GET     /myMonthlyPot                               controllers.PotController.monthlyPot(req: Request)
+POST    /pot                                        controllers.PotController.addPot(req: Request)
+GET     /binPot/:id                                 controllers.PotController.archivePot(id: Int, req: Request)
+
 # Auth + Authz (via pac4j / keycloak / OpenIDConnect, see SecurityModule)
 GET     /oidc/index.html            controllers.SpogController.oidcIndex(req: Request)
 GET     /protected/index.html       controllers.SpogController.protectedIndex(req: Request)

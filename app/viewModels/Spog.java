@@ -5,6 +5,7 @@ import models.Balance;
 
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.findAlreadyPaid;
@@ -34,6 +35,7 @@ public class Spog {
     private final Float pendingOutgoings;
     private final Double adjustedLeftPerDay;
     private final List<Account> allAccounts;
+    private final List<Account> monthlyPotAccounts;
     private final HashMap<Account, AccountStatus> accountStatusMap;
     private Double totalAvailableDebit;
     private Double totalAvailableCredit;
@@ -49,8 +51,11 @@ public class Spog {
                 Float remainderBillsCost,
                 Float completedOutgoingsSum,
                 Float pendingOutgoingsSum,
-                List<Account> allAccounts) {
+                List<Account> allAccounts,
+                List<Account> monthlyPotAccounts
+    ) {
         LocalDate now = LocalDate.now();
+        this.monthlyPotAccounts = monthlyPotAccounts;
         // takes savings plan into account, this seems lame
         this.outgoingTotal = outgoingTotal;
         this.rentCost = rentCost;
@@ -78,6 +83,33 @@ public class Spog {
         this.adjustedLeftPerDay = this.calculateAdjustedLeftPerDay();
     }
 
+    // MWM-48 this could be the 'monthly pot'
+    // could be a polymorphic calculateAdjustedLeftPerDay that takes
+    // the accounts configured in the monthly pot
+
+    public Double getMonthlyPotLeftPerDay() {
+        List<Account> allAccounts = this.allAccounts;
+        List<Account> tmpMonthlyPotAccount = new ArrayList<>(this.monthlyPotAccounts);
+        for (Account a : tmpMonthlyPotAccount) {
+            System.out.println("monthlyPot account name :: " + a.getName());
+        }
+        return calculateAdjustedLeftPerDay(tmpMonthlyPotAccount);
+    }
+
+    private Double calculateAdjustedLeftPerDay(List<Account> monthlyPotAccounts) {
+        HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap(monthlyPotAccounts);
+        Double totalLeftPerDay = 0d;
+        for (Map.Entry<Account, AccountStatus> pair : accountsMap.entrySet()) {
+            AccountStatus as = pair.getValue();
+            totalLeftPerDay += as.getAdjustedAvailable();
+        }
+        System.out.println("totalLeftPerDay in monthlyPot account :: " + totalLeftPerDay);
+        System.out.println("this.daysUntilNextPayday :: " + this.daysUntilNextPayday);
+        return round2(totalLeftPerDay / this.daysUntilNextPayday);
+    }
+
+    // This is actually calculateAdjustedLeftPerDay in all debit accounts!
+    // Annoyingly this is also where totalAvailableCredit is set...
     private Double calculateAdjustedLeftPerDay() {
         HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap();
         Double totalAvailableDebit = 0d;
@@ -234,6 +266,10 @@ public class Spog {
 
     public HashMap<Account, AccountStatus> getAccountStatusMap(List<Account> accounts) {
         HashMap<Account, AccountStatus> accountsAndPendings = new LinkedHashMap<>();
+
+        System.out.println("getAccountStatusMap :: ");
+        System.out.println("accounts size :: " + accounts.size());
+
         for (Account a : accounts) {
             Float alreadyPaidSum = findAlreadyPaid(a.outgoings, LocalDate.now(), nextPayday)
                             .stream()
@@ -247,7 +283,10 @@ public class Spog {
             try {
                 a.balances.sort(Comparator.comparing(Balance::getTimestamp).reversed());
                 latestBalance = a.balances.get(0).getValue();
+                System.out.println("Latest balance :: " + latestBalance);
             } catch (Exception e) {
+                System.out.println("Bad balances :");
+                System.out.println(e);
                 latestBalance = 0f;
             }
             accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, (double)latestBalance, a.getType(), a.getAvailableLimit()));
@@ -323,6 +362,12 @@ public class Spog {
     }
 
     public Double getCreditUsage() {
-        return round2((getCreditBalance() / getCreditLimit() * 100));
+        try {
+            return round2((getCreditBalance() / getCreditLimit() * 100));
+        } catch (Exception e) {
+            System.out.println("Bad getCreditUsage :");
+            System.out.println(e);
+            return 0d;
+        }
     }
 }

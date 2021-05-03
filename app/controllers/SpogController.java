@@ -15,6 +15,7 @@ import viewModels.Spog;
 
 import javax.inject.Inject;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -36,6 +37,7 @@ public class SpogController extends Controller {
     private final AccountRepository accountRepository;
     private final BalanceRepository balanceRepository;
     private final PlanRepository planRepository;
+    private final PotRepository potRepository;
     private final HttpExecutionContext ec;
 
     @Inject
@@ -45,12 +47,15 @@ public class SpogController extends Controller {
             AccountRepository accountRepository,
             IncomingRepository incomingRepository,
             BalanceRepository balanceRepository,
-            HttpExecutionContext ec) {
+            PotRepository potRepository,
+            HttpExecutionContext ec
+    ) {
         this.incomingRepository = incomingRepository;
         this.accountRepository = accountRepository;
         this.outgoingRepository = outgoingRepository;
         this.balanceRepository = balanceRepository;
         this.planRepository = planRepository;
+        this.potRepository = potRepository;
         this.ec = ec;
     }
 
@@ -188,6 +193,11 @@ public class SpogController extends Controller {
         // Scratch end
 
         List<Account> allAccounts = repoListToList(this.accountRepository.list(sup.getUserId()));
+        List<Pot> monthlyPots = repoListToList(this.potRepository.list(sup.getUserId()));
+        List<Account> monthlyPotAccounts = !monthlyPots.isEmpty() ? monthlyPots.stream()
+                .filter(p -> p.getType() == Pot.PotType.MONTHLY)
+                .collect(Collectors.toList())
+                .get(0).accounts : Collections.emptyList();
         Spog spogVm = new Spog(
                 surplus,
                 nextPayDay,
@@ -200,7 +210,9 @@ public class SpogController extends Controller {
                 remainderBillsCost,
                 completedOutgoingsSum,
                 pendingOutgoingsSum,
-                allAccounts);
+                allAccounts,
+                monthlyPotAccounts
+        );
         return ok(views.html.spog.render(spogVm, request, playSessionStore));
     }
 

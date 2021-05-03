@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import javax.persistence.*;
 
+import static helpers.TimeHelpers.unixTimestampToDisplayDate;
+
 @Entity
 @Table(indexes = @Index(columnList = "userId"))
 public class Balance {
@@ -39,6 +41,10 @@ public class Balance {
 
     public Long getTimestamp() {
         return timestamp;
+    }
+
+    public String getTimestampHumanReadable() {
+        return unixTimestampToDisplayDate(timestamp);
     }
 
     public void setTimestamp(Long timestamp) {
