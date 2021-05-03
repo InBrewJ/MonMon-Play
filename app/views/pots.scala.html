@@ -37,7 +37,10 @@ messages: play.i18n.Messages
 <!--                        need to figure out how to retrieve balances through the oneToMany -->
 <!--                        relationship (one(Pot)ToMany(accounts)). Setting fetch type to EAGER-->
 <!--                        doesn't work...-->
-                        Account name: @{a.name}, @a.balances(0)
+<!--                        The thing below works fine but is apparently considered an anti-pattern-->
+<!--                        Try and find some other way...-->
+<!--                        https://www.baeldung.com/hibernate-initialize-proxy-exception#2-turning-on-enablelazyloadnotrans-property-->
+                        Account name: @{a.name}, bal: £@a.balances(0).getValue
                         <br />
                         @for(o <- a.outgoings) {
                             @o.name

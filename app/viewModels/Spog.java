@@ -362,6 +362,12 @@ public class Spog {
     }
 
     public Double getCreditUsage() {
-        return round2((getCreditBalance() / getCreditLimit() * 100));
+        try {
+            return round2((getCreditBalance() / getCreditLimit() * 100));
+        } catch (Exception e) {
+            System.out.println("Bad getCreditUsage :");
+            System.out.println(e);
+            return 0d;
+        }
     }
 }
