@@ -116,10 +116,12 @@ public class PotController extends Controller {
         // get all accounts selected
         for (String s : accountFormMap) {
             System.out.println("accounts selected :: " + s);
+            Account selectedAccount = accountRepository.findById(parseInt(s)).toCompletableFuture().get();
+            scratchPot.addAccount(selectedAccount);
         }
-        Account potAccount = getAccountsFromFormRequest(request);
-        System.out.println("Adding this account only to pot :: " + potAccount.getName());
-        scratchPot.addAccount(potAccount);
+//        Account potAccount = getAccountsFromFormRequest(request);
+//        System.out.println("Adding this account only to pot :: " + potAccount.getName());
+//        scratchPot.addAccount(potAccount);
         return potRepository
                 .add(scratchPot)
                 .thenApplyAsync(p -> redirect(routes.PotController.monthlyPot()), ec.current());
@@ -131,15 +133,5 @@ public class PotController extends Controller {
         return potRepository
                 .archive(id)
                 .thenApplyAsync(p -> redirect(routes.PotController.monthlyPot()), ec.current());
-    }
-
-    private Account getAccountsFromFormRequest(Http.Request request) throws ExecutionException, InterruptedException {
-        // THIS ONLY GETS THE FIRST ACCOUNT SELECTED IN THE POT!!!
-        int accountIdFromForm = parseInt(request.body().asFormUrlEncoded().get("accounts")[0]);
-        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        List<Account> desiredAccount = accounts.stream().filter(account -> account.getId() == accountIdFromForm  ).collect(Collectors.toList());
-        System.out.println("Found it in PotController, account id = " + desiredAccount.get(0).getId());
-        return desiredAccount.get(0);
     }
 }
