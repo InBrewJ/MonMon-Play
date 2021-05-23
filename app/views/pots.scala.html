@@ -32,6 +32,8 @@ messages: play.i18n.Messages
                     <br />
                     Created at: @{p.getCreatedAtHumanReadable}
                     <br />
+                    Made up of these accounts:
+                    <hr>
                     @for(a <- p.accounts) {
 <!--                        balances(0) here doesn't work because balances is fetched LAZILY-->
 <!--                        need to figure out how to retrieve balances through the oneToMany -->
@@ -40,12 +42,8 @@ messages: play.i18n.Messages
 <!--                        The thing below works fine but is apparently considered an anti-pattern-->
 <!--                        Try and find some other way...-->
 <!--                        https://www.baeldung.com/hibernate-initialize-proxy-exception#2-turning-on-enablelazyloadnotrans-property-->
-                        Account name: @{a.name}, bal: £@a.balances(0).getValue
+                        @{a.name}, bal: £@a.balances(0).getValue
                         <br />
-                        @for(o <- a.outgoings) {
-                            @o.name
-                            <br />
-                        }
                     }
                     <hr/>
                 }
