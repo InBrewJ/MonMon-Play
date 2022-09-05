@@ -19,16 +19,6 @@
 <div class="w3-content w3-center" style="max-width: 1500px">
     <div class="w3-row w3-padding">
         <div class="w3-half">
-            <div class="w3-card w3-padding">
-                <p><b> These are apparently your balances:</b></p>
-                <ul id="incomings">
-                    @for(b <- balances) {
-                        <li>@b.value, @b.getTimestampHumanReadable, (@b.account) ( -> @b.account.getName()) </li>
-                    }
-                </ul>
-            </div>
-        </div>
-        <div class="w3-half w3-padding-64">
             <form method="POST" action="@routes.BalanceController.addBalance()">
                 <!--                Need error handling for all forms-->
                 @helper.CSRF.formField
@@ -43,6 +33,16 @@
                 <br />
                 <button>Add Balance</button>
             </form>
+        </div>
+         <div class="w3-half w3-padding-64">
+            <div class="w3-card w3-padding">
+                <p><b> These are apparently your balances:</b></p>
+                <ul id="incomings">
+                    @for(b <- balances) {
+                        <li>@b.value, @b.getTimestampHumanReadable, (@b.account) ( -> @b.account.getName()) </li>
+                    }
+                </ul>
+            </div>
         </div>
     </div>
 </div>
