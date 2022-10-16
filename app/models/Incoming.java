@@ -21,6 +21,9 @@ public class Incoming {
     public boolean archived = false;
     public boolean payDay = false;
 
+    @Column(name = "findLastWeekday")
+    public boolean findLastWeekday = false;
+
     public String getUserId() {
         return userId;
     }
@@ -98,4 +101,11 @@ public class Incoming {
         return incomings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.netValue, Float::sum);
     }
 
+    public boolean isFindLastWeekday() {
+        return findLastWeekday;
+    }
+
+    public void setFindLastWeekday(boolean findLastWeekday) {
+        this.findLastWeekday = findLastWeekday;
+    }
 }

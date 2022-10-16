@@ -14,6 +14,7 @@ import static helpers.ModelHelpers.findYetToPay;
 public class Spog {
     private final Float surplus;
     private final int nextPayday;
+    private final int lastPayday;
     private final int percentageIncomeAsSavings;
     private final Float percentageIncomeAsRent;
     private final Float percentageIncomeAsOutgoings;
@@ -63,7 +64,12 @@ public class Spog {
         this.billsCost = billsCost;
         this.remainderBillsCost = remainderBillsCost;
         this.surplus = round2(surplus);
+        // MWM-21
+        // Needs a flag on the payday
+        // - exact day (bool) (maybe not needed)
+        // - closest weekday (bool)
         this.nextPayday = nextPayday;
+        this.lastPayday = nextPayday;
         this.daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday, now);
         this.nextPayDate = this.calculateNextPaydayDate(nextPayday, now);
         this.percentageIncomeAsSavings = percentageIncomeAsSavings;
@@ -93,10 +99,19 @@ public class Spog {
         for (Account a : tmpMonthlyPotAccount) {
             System.out.println("monthlyPot account name :: " + a.getName());
         }
-        return calculateAdjustedLeftPerDay(tmpMonthlyPotAccount);
+        return calculateAdjustedLeftPerDay(tmpMonthlyPotAccount, this.daysUntilNextPayday);
     }
 
-    private Double calculateAdjustedLeftPerDay(List<Account> monthlyPotAccounts) {
+    public Double getMonthlyPotLeftPerDayFromTomorrow() {
+        List<Account> allAccounts = this.allAccounts;
+        List<Account> tmpMonthlyPotAccount = new ArrayList<>(this.monthlyPotAccounts);
+        for (Account a : tmpMonthlyPotAccount) {
+            System.out.println("monthlyPot account name :: " + a.getName());
+        }
+        return calculateAdjustedLeftPerDay(tmpMonthlyPotAccount, this.daysUntilNextPayday - 1);
+    }
+
+    private Double calculateAdjustedLeftPerDay(List<Account> monthlyPotAccounts, int daysUntilNextPayday) {
         HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap(monthlyPotAccounts);
         Double totalLeftPerDay = 0d;
         for (Map.Entry<Account, AccountStatus> pair : accountsMap.entrySet()) {
@@ -105,7 +120,7 @@ public class Spog {
         }
         System.out.println("totalLeftPerDay in monthlyPot account :: " + totalLeftPerDay);
         System.out.println("this.daysUntilNextPayday :: " + this.daysUntilNextPayday);
-        return round2(totalLeftPerDay / this.daysUntilNextPayday);
+        return round2(totalLeftPerDay / daysUntilNextPayday);
     }
 
     // This is actually calculateAdjustedLeftPerDay in all debit accounts!
