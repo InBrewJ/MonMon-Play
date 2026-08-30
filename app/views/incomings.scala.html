@@ -60,7 +60,7 @@
                                 }
                             </td>
                             <td class="w3-center">
-                                <a href="/editIncoming/@i.id" title="Edit">
+                                <a href="/editIncoming/@i.id#edit-form" title="Edit">
                                     <i class="fas fa-pen"></i>
                                 </a>
                             </td>
@@ -77,7 +77,7 @@
         </div>
 
         <div class="w3-half">
-            <div class="w3-card w3-padding w3-margin-bottom">
+            <div class="w3-card w3-padding w3-margin-bottom @if(editing){editing-mode}" id="edit-form">
                 <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
                     <i class="fas fa-plus-circle" style="color: var(--primary); margin-right: 6px;"></i> @{ if (editing) "Amend" else "Add New"} Incoming
                 </div>

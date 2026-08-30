@@ -1,8 +1,29 @@
 $ ->
-    $("#ticker").html new Date()
-    setInterval ->
-        $("#ticker").html new Date()
-    , 1000
+    formatTicker = ->
+        now = new Date()
+        day = now.getDate()
+        suffix = "th"
+        if day in [1, 21, 31]
+            suffix = "st"
+        else if day in [2, 22]
+            suffix = "nd"
+        else if day in [3, 23]
+            suffix = "rd"
+
+        dateStr = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+        timeStr = now.toLocaleTimeString('en-GB')
+        $("#ticker").html "<span style='color: #60a5fa; font-weight: 700; margin-right: 8px;'><i class='far fa-calendar-alt'></i> Today: Day #{day} (#{day}#{suffix})</span> · <span style='color: #cbd5e1;'>#{dateStr} #{timeStr}</span>"
+
+    formatTicker()
+    setInterval formatTicker, 1000
+
+    if window.location.hash == "#edit-form" or $("#edit-form.editing-mode").length
+        editTarget = document.getElementById("edit-form")
+        if editTarget
+            editTarget.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            setTimeout ->
+                $("#edit-form input:visible:first").focus()
+            , 200
 
 $ ->
     updateAllowances = (percent) ->
