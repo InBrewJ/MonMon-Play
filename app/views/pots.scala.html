@@ -35,7 +35,7 @@ messages: play.i18n.Messages
                             <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.9rem; font-weight: 700;">
                                 @{p.`type`} POT
                             </span>
-                            <a href="/binPot/@p.id" title="Delete Pot">
+                            <a href="/binPot/@p.id" title="Delete Pot" onclick="return confirm('Are you sure you want to delete this pot?');">
                                 <i class="fas fa-trash-alt"></i>
                             </a>
                         </div>

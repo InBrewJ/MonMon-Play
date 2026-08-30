@@ -17,6 +17,9 @@ public class UIHelpers {
 
     static public String userDetails(SessionStore playSessionStore, Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        return sup.getUsername() + " (" + sup.getUserEmail() + ")";
+        if (sup.getUserEmail() != null && !sup.getUserEmail().isEmpty()) {
+            return sup.getUsername() + " (" + sup.getUserEmail() + ")";
+        }
+        return sup.getUsername();
     }
 }

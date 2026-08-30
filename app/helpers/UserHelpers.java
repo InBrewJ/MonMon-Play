@@ -30,15 +30,25 @@ public class UserHelpers {
     static public SimpleUserProfile getSimpleUserProfile(SessionStore playSessionStore, Http.Request request) {
         List<UserProfile> allProfiles = getAuthProfiles(playSessionStore, request);
         SimpleUserProfile sup = new SimpleUserProfile();
-        if (!allProfiles.isEmpty()) {
+        if (allProfiles != null && !allProfiles.isEmpty()) {
             UserProfile firstUp = allProfiles.get(0);
-            sup.setUserId(firstUp.getId());
-            sup.setUsername(firstUp.getUsername());
-            sup.setUserEmail(firstUp.getAttribute("email").toString());
+            String id = firstUp.getId();
+            sup.setUserId(id != null ? id : "default-user");
+
+            String username = firstUp.getUsername();
+            if (username == null || username.trim().isEmpty()) {
+                Object pref = firstUp.getAttribute("preferred_username");
+                username = pref != null ? pref.toString() : "User";
+            }
+            sup.setUsername(username);
+
+            Object emailObj = firstUp.getAttribute("email");
+            String email = emailObj != null ? emailObj.toString() : "";
+            sup.setUserEmail(email);
         } else {
-            sup.setUserId(null);
-            sup.setUsername("username: error");
-            sup.setUserEmail("email: error");
+            sup.setUserId("guest");
+            sup.setUsername("Guest");
+            sup.setUserEmail("");
         }
         return sup;
     }

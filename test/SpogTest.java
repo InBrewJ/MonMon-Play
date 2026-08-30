@@ -94,4 +94,89 @@ public class SpogTest {
             assertThat(spog.getAbsoluteDailyOverspend()).isNotNull();
         }
     }
+
+    @Test
+    public void testPensionAndLoanAccounts() {
+        // Pension account
+        Account pension = new Account();
+        pension.setType(Account.AccountType.PENSION);
+        pension.setName("Aviva Pension");
+        pension.setAvailableLimit(0f);
+        pension.outgoings = Collections.emptyList();
+        Balance pb = new Balance();
+        pb.setValue(25000f);
+        pb.setTimestamp(System.currentTimeMillis());
+        pb.setAccount(pension);
+        pension.balances = Collections.singletonList(pb);
+
+        // Short term savings account
+        Account shortSavings = new Account();
+        shortSavings.setType(Account.AccountType.SHORT_TERM_SAVINGS);
+        shortSavings.setName("Easy Access");
+        shortSavings.setAvailableLimit(0f);
+        shortSavings.outgoings = Collections.emptyList();
+        Balance sb = new Balance();
+        sb.setValue(1500f);
+        sb.setTimestamp(System.currentTimeMillis());
+        sb.setAccount(shortSavings);
+        shortSavings.balances = Collections.singletonList(sb);
+
+        // Credit account
+        Account credit = new Account();
+        credit.setType(Account.AccountType.CREDIT);
+        credit.setName("Barclaycard");
+        credit.setAvailableLimit(2000f);
+        credit.outgoings = Collections.emptyList();
+        Balance cb = new Balance();
+        cb.setValue(1500f); // 1500 limit remaining, 500 spent
+        cb.setTimestamp(System.currentTimeMillis());
+        cb.setAccount(credit);
+        credit.balances = Collections.singletonList(cb);
+
+        // Loan account (Original Drawdown = 10,000, Remaining = 6,500)
+        Account loan = new Account();
+        loan.setType(Account.AccountType.LOAN);
+        loan.setName("Car Loan");
+        loan.setAvailableLimit(10000f); // Original drawdown
+        loan.outgoings = Collections.emptyList();
+        Balance lb = new Balance();
+        lb.setValue(6500f); // Remaining balance
+        lb.setTimestamp(System.currentTimeMillis());
+        lb.setAccount(loan);
+        loan.balances = Collections.singletonList(lb);
+
+        List<Account> allAccounts = List.of(pension, shortSavings, credit, loan);
+        List<Account> monthlyPotAccounts = Collections.emptyList();
+
+        Spog spog = new Spog(
+                500f,
+                31,
+                0,
+                3000f,
+                2000f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                allAccounts,
+                monthlyPotAccounts
+        );
+
+        // Pension is in total savings pot, but NOT liquid savings pot
+        assertThat(spog.getPensionPot()).isEqualTo(25000.0);
+        assertThat(spog.getLiquidSavingsPot()).isEqualTo(1500.0);
+        assertThat(spog.getSavingsPot()).isEqualTo(26500.0); // 25000 + 1500
+
+        // Loan does not affect credit calculations
+        assertThat(spog.getCreditLimit()).isEqualTo(2000.0);
+        assertThat(spog.getCreditBalance()).isEqualTo(500.0); // 2000 - 1500
+        assertThat(spog.getLoanRemainingTotal()).isEqualTo(6500.0);
+        assertThat(spog.getLoanOriginalDrawdownTotal()).isEqualTo(10000.0);
+
+        // Neither Pension nor Loan affect Debit or Credit available spend pools
+        assertThat(spog.getTotalAvailableDebit()).isEqualTo(0.0);
+        assertThat(spog.getTotalAvailableCredit()).isEqualTo(1500.0);
+    }
 }

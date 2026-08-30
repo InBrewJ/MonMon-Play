@@ -32,7 +32,8 @@
           </span>
         </div>
 
-        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+        <!-- Desktop Table View -->
+        <div class="desktop-view" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
           <table class="w3-table w3-striped">
             <thead>
               <tr>
@@ -59,16 +60,26 @@
                         @o.outgoingDay
                       }
                     </td>
-                    <td><b>@o.name</b></td>
-                    <td style="color: var(--danger); font-weight: 600;">£@o.cost</td>
-                    <td><span class="badge-pill" style="background: #f1f5f9; color: var(--text-muted); font-size: 0.8rem;">@o.account.name</span></td>
+                    <td>
+                      <b>@o.name</b>
+                      @if(o.isBill()) { <span class="badge-pill badge-warning" style="font-size: 0.72rem; margin-left: 4px;">Bill</span> }
+                      @if(o.isRent()) { <span class="badge-pill badge-primary" style="font-size: 0.72rem; margin-left: 4px;">Rent</span> }
+                      @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; margin-left: 4px;">Savings Plan</span> }
+                    </td>
+                    <td style="color: var(--danger); font-weight: 700;">£@o.cost</td>
+                    <td>
+                      <span class="account-tag">
+                        <i class="fas fa-university" style="color: var(--primary); font-size: 0.75rem;"></i>
+                        @o.account.name
+                      </span>
+                    </td>
                     <td class="w3-center">
                       <a href="/editOutgoing/@o.id" title="Edit">
                         <i class="fas fa-pen"></i>
                       </a>
                     </td>
                     <td class="w3-center">
-                      <a href="/binOutgoing/@o.id" title="Delete">
+                      <a href="/binOutgoing/@o.id" title="Delete" onclick="return confirm('Are you sure you want to delete this outgoing?');">
                         <i class="fas fa-trash-alt"></i>
                       </a>
                     </td>
@@ -77,6 +88,50 @@
               }
             </tbody>
           </table>
+        </div>
+
+        <!-- Mobile Card Grid View -->
+        <div class="mobile-cards-view">
+          @if(outgoings.isEmpty) {
+            <div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0;">No outgoings recorded. Add one below.</div>
+          } else {
+            @for(o <- outgoings) {
+              <div class="item-card">
+                <div class="item-card-header">
+                  <div class="item-card-title-group">
+                    <div class="day-badge @if(o.isAdjustedForMonth()) {day-badge-adj}">
+                      <span>@if(o.isAdjustedForMonth()) {@o.getEffectiveOutgoingDay()} else {@o.outgoingDay}</span>
+                      <span style="font-size: 0.6rem; font-weight: 500; text-transform: uppercase;">Day</span>
+                    </div>
+                    <div>
+                      <div class="item-card-title">@o.name</div>
+                    </div>
+                  </div>
+                  <div class="item-card-cost">£@o.cost</div>
+                </div>
+
+                <div class="item-card-meta">
+                  <span class="account-tag">
+                    <i class="fas fa-university" style="color: var(--primary); font-size: 0.75rem;"></i>
+                    @o.account.name
+                  </span>
+                  @if(o.isBill()) { <span class="badge-pill badge-warning">Shared Bill</span> }
+                  @if(o.isRent()) { <span class="badge-pill badge-primary">Rent</span> }
+                  @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="background: #e2e8f0; color: #475569;">Savings Plan</span> }
+                  @if(o.isAdjustedForMonth()) {
+                    <span class="badge-pill badge-danger" title="Adjusted from @o.outgoingDay for short month or weekend">
+                      <i class="fas fa-calendar-alt"></i> Clamped from @o.outgoingDay
+                    </span>
+                  }
+                </div>
+
+                <div class="item-card-actions">
+                  <a href="/editOutgoing/@o.id" class="btn-action btn-edit"><i class="fas fa-pen"></i> Edit</a>
+                  <a href="/binOutgoing/@o.id" class="btn-action btn-delete" onclick="return confirm('Are you sure you want to delete this outgoing?');"><i class="fas fa-trash-alt"></i> Delete</a>
+                </div>
+              </div>
+            }
+          }
         </div>
       </div>
     </div>

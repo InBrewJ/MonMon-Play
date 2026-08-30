@@ -97,42 +97,20 @@ public class SpogController extends Controller {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         // Plans affect how total outgoings and rent values appear
         List<Plan> allPlans = repoListToList(planRepository.list(sup.getUserId()));
-        Plan firstRentShare = null;
-        Plan firstBillShare = null;
-        Plan firstMonthlySavingsGoal = null;
+        Plan firstMonthlySavingsGoal = allPlans.stream()
+                .filter(p -> p.getType() == Plan.PlanType.MONTHLY_SAVINGS_GOAL)
+                .findFirst()
+                .orElse(null);
 
-        try {
-            firstMonthlySavingsGoal = !allPlans.isEmpty() ?
-                    allPlans
-                            .stream()
-                            .filter(p -> p.getType() == Plan.PlanType.MONTHLY_SAVINGS_GOAL)
-                            .collect(Collectors.toList())
-                            .get(0) : null;
-        } catch (Exception e) {
-            System.out.println("No MONTHLY_SAVINGS_GOAL found");
-        }
+        Plan firstRentShare = allPlans.stream()
+                .filter(p -> p.getType() == Plan.PlanType.RENT_SHARE)
+                .findFirst()
+                .orElse(null);
 
-        try {
-            firstRentShare = !allPlans.isEmpty() ?
-                    allPlans
-                            .stream()
-                            .filter(p -> p.getType() == Plan.PlanType.RENT_SHARE)
-                            .collect(Collectors.toList())
-                            .get(0) : null;
-        } catch (Exception e) {
-            System.out.println("No RENT_SHARE found");
-        }
-
-        try {
-            firstBillShare = !allPlans.isEmpty() ?
-                    allPlans
-                            .stream()
-                            .filter(p -> p.getType() == Plan.PlanType.BILL_SHARE)
-                            .collect(Collectors.toList())
-                            .get(0) : null;
-        } catch (Exception e) {
-            System.out.println("No BILL_SHARE found");
-        }
+        Plan firstBillShare = allPlans.stream()
+                .filter(p -> p.getType() == Plan.PlanType.BILL_SHARE)
+                .findFirst()
+                .orElse(null);
 
         //
         List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
@@ -194,10 +172,11 @@ public class SpogController extends Controller {
 
         List<Account> allAccounts = repoListToList(this.accountRepository.list(sup.getUserId()));
         List<Pot> monthlyPots = repoListToList(this.potRepository.list(sup.getUserId()));
-        List<Account> monthlyPotAccounts = !monthlyPots.isEmpty() ? monthlyPots.stream()
+        List<Account> monthlyPotAccounts = monthlyPots.stream()
                 .filter(p -> p.getType() == Pot.PotType.MONTHLY)
-                .collect(Collectors.toList())
-                .get(0).accounts : Collections.emptyList();
+                .findFirst()
+                .map(p -> p.accounts != null ? p.accounts : Collections.<Account>emptyList())
+                .orElse(Collections.emptyList());
         Spog spogVm = new Spog(
                 surplus,
                 nextPayDay,

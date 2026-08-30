@@ -61,14 +61,17 @@
                     This cycle: <b>@spogVm.getDaysBetweenPaydays()</b> days between paydays
                 </div>
 
-                <div class="metric-box" style="text-align: left; font-size: 0.92rem;">
+                <div class="metric-box" style="text-align: left; font-size: 0.92rem;" id="allowances-box"
+                     data-incoming="@spogVm.getIncomingTotal()"
+                     data-outgoing="@spogVm.getOutgoingTotal()"
+                     data-days="@spogVm.getDaysBetweenPaydays()">
                     <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">
                         <i class="fas fa-wallet" style="color: var(--primary); margin-right: 6px;"></i>Daily & Monthly Allowances
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem;">
-                        <div>• <b>MAX / day</b>: £@spogVm.getMaxPerDay()</div>
-                        <div>• <b>MAX / week</b>: £@spogVm.getMaxPerWeek()</div>
-                        <div>• <b>MAX / month</b>: £@spogVm.getSurplus()</div>
+                        <div>• <b>MAX / day</b>: £<span id="dyn-max-day">@spogVm.getMaxPerDay()</span></div>
+                        <div>• <b>MAX / week</b>: £<span id="dyn-max-week">@spogVm.getMaxPerWeek()</span></div>
+                        <div>• <b>MAX / month</b>: £<span id="dyn-max-month">@spogVm.getSurplus()</span></div>
                         <div>• Rent (% of wage): @spogVm.getPercentageIncomeAsRent()%</div>
                         <div style="grid-column: span 2;">• Outgoings (% of wage): @spogVm.getPercentageIncomeAsOutgoings()%</div>
                     </div>
@@ -99,7 +102,7 @@
                         <div>• Yearly Takehome: £@spogVm.getYearlyTakehome()</div>
                         <div>• Yearly Outgoings: £@spogVm.getYearlyOutgoings()</div>
                         <div style="grid-column: span 2; font-weight: 700; color: var(--success); padding-top: 4px; border-top: 1px dashed var(--border-color);">
-                            • Yearly Surplus (to live on): £@spogVm.getYearlySurplus()
+                            • Yearly Surplus (to live on): £<span id="dyn-yearly-surplus">@spogVm.getYearlySurplus()</span>
                         </div>
                     </div>
                 </div>
@@ -203,9 +206,21 @@
                         <div style="font-size: 1.1rem; font-weight: 700; color: var(--success);">£@spogVm.getLiquidSavingsPot()</div>
                     </div>
                     <div class="metric-box" style="margin: 0;">
-                        <div style="color: var(--text-muted); font-size: 0.8rem;">Total Savings Pot</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Total Savings Pot (inc Pension)</div>
                         <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary);">£@spogVm.getSavingsPot()</div>
                     </div>
+                    @if(spogVm.getPensionPot() > 0) {
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Pension Total</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary);">£@spogVm.getPensionPot()</div>
+                    </div>
+                    }
+                    @if(spogVm.getLoanRemainingTotal() > 0 || spogVm.getLoanOriginalDrawdownTotal() > 0) {
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Loans (Remaining / Drawdown)</div>
+                        <div style="font-size: 1rem; font-weight: 700; color: var(--danger);">£@spogVm.getLoanRemainingTotal() / £@spogVm.getLoanOriginalDrawdownTotal()</div>
+                    </div>
+                    }
                 </div>
 
                 <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem;">Account Details:</div>
@@ -214,7 +229,11 @@
                     <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.65rem 0.85rem; background: #ffffff;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
                             <b>@a.name <span style="font-weight: 400; font-size: 0.82rem; color: var(--text-muted);">(@{a.`type`})</span></b>
-                            <span style="font-weight: 700; color: var(--primary);">£@status.getAdjustedAvailable() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">left to spend</span></span>
+                            @if(a.`type`.toString == "LOAN") {
+                                <span style="font-weight: 700; color: var(--danger);">£@status.getLatestBalance() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">remaining of £@a.availableLimit</span></span>
+                            } else {
+                                <span style="font-weight: 700; color: var(--primary);">£@status.getAdjustedAvailable() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">left to spend</span></span>
+                            }
                         </div>
                         <div style="display: flex; gap: 0.75rem; font-size: 0.82rem; color: var(--text-muted);">
                             <span>Paid: £@status.getAlreadyPaid()</span>
@@ -228,5 +247,43 @@
         </div>
     </div>
 </div>
+
+<script>
+$(function() {
+    function updateDynamicAllowances(percent) {
+        var box = $('#allowances-box');
+        if (!box.length) return;
+        var incoming = parseFloat(box.data('incoming')) || 0;
+        var outgoing = parseFloat(box.data('outgoing')) || 0;
+        var days = parseInt(box.data('days')) || 30;
+        if (days <= 0) days = 30;
+
+        var pct = parseFloat(percent) || 0;
+        var savingsCost = (pct / 100.0) * incoming;
+        var newSurplus = (incoming - outgoing) - savingsCost;
+        if (newSurplus < 0) newSurplus = 0;
+        var newMaxDay = newSurplus / days;
+        var newMaxWeek = newMaxDay * 7;
+        var newYearlySurplus = newSurplus * 12;
+
+        $('#dyn-max-day').text(newMaxDay.toFixed(2));
+        $('#dyn-max-week').text(newMaxWeek.toFixed(2));
+        $('#dyn-max-month').text(newSurplus.toFixed(2));
+        $('#dyn-yearly-surplus').text(newYearlySurplus.toFixed(2));
+        $('#savings-amount').text('£' + savingsCost.toFixed(2));
+        $('#savings-slider-val').text(pct);
+        $('#savings-slider-val-target').attr('href', '/plans/updateSavingsPayoffPercentage?percent=' + pct);
+    }
+
+    $('#savings-slider').on('input change', function(e) {
+        updateDynamicAllowances(e.target.value);
+    });
+
+    var initVal = $('#savings-slider').val();
+    if (initVal !== undefined) {
+        updateDynamicAllowances(initVal);
+    }
+});
+</script>
 
 }

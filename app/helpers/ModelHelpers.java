@@ -24,7 +24,7 @@ public class ModelHelpers {
     public static LocalDate getActualPaydayDate(int nominalPayday, int year, int month) {
         LocalDate firstOfMonth = LocalDate.of(year, month, 1);
         int maxDaysInMonth = firstOfMonth.lengthOfMonth();
-        int targetDay = Math.min(nominalPayday, maxDaysInMonth);
+        int targetDay = Math.max(1, Math.min(nominalPayday, maxDaysInMonth));
         LocalDate payDate = LocalDate.of(year, month, targetDay);
         if (payDate.getDayOfWeek() == DayOfWeek.SATURDAY) {
             payDate = payDate.minusDays(1);
