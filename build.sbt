@@ -38,7 +38,8 @@ lazy val root = (project in file("."))
     Test / testOptions += Tests.Argument(TestFrameworks.JUnit, "-a", "-v"),
     scalacOptions ++= List("-encoding", "utf8", "-deprecation", "-feature", "-unchecked"),
     javacOptions ++= List("-Xlint:unchecked", "-Xlint:deprecation", "-Werror"),
-    PlayKeys.externalizeResourcesExcludes += baseDirectory.value / "conf" / "META-INF" / "persistence.xml"
+    PlayKeys.externalizeResourcesExcludes += baseDirectory.value / "conf" / "META-INF" / "persistence.xml",
+    pipelineStages := Seq(digest)
   )
 
 resolvers ++= Seq(

@@ -231,6 +231,8 @@
                             <b>@a.name <span style="font-weight: 400; font-size: 0.82rem; color: var(--text-muted);">(@{a.`type`})</span></b>
                             @if(a.`type`.toString == "LOAN") {
                                 <span style="font-weight: 700; color: var(--danger);">£@status.getLatestBalance() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">remaining of £@a.availableLimit</span></span>
+                            } else if(a.`type`.toString == "PENSION") {
+                                <span style="font-weight: 700; color: var(--primary);">£@status.getLatestBalance() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">banked</span></span>
                             } else {
                                 <span style="font-weight: 700; color: var(--primary);">£@status.getAdjustedAvailable() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">left to spend</span></span>
                             }
