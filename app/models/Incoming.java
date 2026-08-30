@@ -93,6 +93,26 @@ public class Incoming {
         this.archived = archived;
     }
 
+    public int getEffectiveIncomingMonthDay(java.time.LocalDate asOf) {
+        if (this.payDay) {
+            return helpers.ModelHelpers.getActualPaydayDate(this.incomingMonthDay, asOf).getDayOfMonth();
+        } else {
+            return Math.min(this.incomingMonthDay, asOf.lengthOfMonth());
+        }
+    }
+
+    public int getEffectiveIncomingMonthDay() {
+        return getEffectiveIncomingMonthDay(java.time.LocalDate.now());
+    }
+
+    public boolean isAdjustedForMonth(java.time.LocalDate asOf) {
+        return getEffectiveIncomingMonthDay(asOf) != this.incomingMonthDay;
+    }
+
+    public boolean isAdjustedForMonth() {
+        return isAdjustedForMonth(java.time.LocalDate.now());
+    }
+
     public static Float getTotalIncomings(List<Incoming> incomings) {
         if (incomings.isEmpty()) return 0f;
         return incomings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.netValue, Float::sum);

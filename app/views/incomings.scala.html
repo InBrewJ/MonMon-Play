@@ -26,7 +26,14 @@
                 <ul id="incomings">
                     @for(i <- incomings) {
                     <li>
-                        @i.name, (@{i.`type`}), @i.netValue, @i.incomingMonthDay, payday: @i.isPayDay
+                        @i.name, (@{i.`type`}), £@i.netValue, on day:
+                        @if(i.isAdjustedForMonth()) {
+                            <span title="Adjusted from @i.incomingMonthDay for this month @if(i.isPayDay()){(last working day)}">
+                                @i.getEffectiveIncomingMonthDay()<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #f44336;"></i></sup>
+                            </span>
+                        } else {
+                            @i.incomingMonthDay
+                        }, payday: @i.isPayDay
                         &nbsp;
                         <a href="/editIncoming/@i.id">
                             <i class="fas fa-pen"></i>

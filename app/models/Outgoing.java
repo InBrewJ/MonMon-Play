@@ -123,6 +123,22 @@ public class Outgoing {
                 .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 
+    public int getEffectiveOutgoingDay(java.time.LocalDate asOf) {
+        return Math.min(this.outgoingDay, asOf.lengthOfMonth());
+    }
+
+    public int getEffectiveOutgoingDay() {
+        return getEffectiveOutgoingDay(java.time.LocalDate.now());
+    }
+
+    public boolean isAdjustedForMonth(java.time.LocalDate asOf) {
+        return this.outgoingDay > asOf.lengthOfMonth();
+    }
+
+    public boolean isAdjustedForMonth() {
+        return isAdjustedForMonth(java.time.LocalDate.now());
+    }
+
     public Account getAccount() {
         return account;
     }

@@ -2,6 +2,7 @@ package helpers;
 
 import models.Outgoing;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,44 +16,78 @@ public class ModelHelpers {
         return in.toCompletableFuture().get().collect(Collectors.toList());
     }
 
+    /**
+     * Calculates the actual payday for a given year and month.
+     * 1. Clamps the nominal payday to the month length (e.g. 31 -> 28 in Feb).
+     * 2. If the day falls on Saturday or Sunday, shifts back to the preceding Friday (last working day).
+     */
+    public static LocalDate getActualPaydayDate(int nominalPayday, int year, int month) {
+        LocalDate firstOfMonth = LocalDate.of(year, month, 1);
+        int maxDaysInMonth = firstOfMonth.lengthOfMonth();
+        int targetDay = Math.min(nominalPayday, maxDaysInMonth);
+        LocalDate payDate = LocalDate.of(year, month, targetDay);
+        if (payDate.getDayOfWeek() == DayOfWeek.SATURDAY) {
+            payDate = payDate.minusDays(1);
+        } else if (payDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            payDate = payDate.minusDays(2);
+        }
+        return payDate;
+    }
+
+    public static LocalDate getActualPaydayDate(int nominalPayday, LocalDate referenceDate) {
+        return getActualPaydayDate(nominalPayday, referenceDate.getYear(), referenceDate.getMonthValue());
+    }
+
+    /**
+     * Finds the most recent actual payday date on or before 'asOf'.
+     */
+    public static LocalDate findLastPaydayDate(LocalDate asOf, int nominalPayday) {
+        LocalDate currentMonthPayday = getActualPaydayDate(nominalPayday, asOf);
+        if (!asOf.isBefore(currentMonthPayday)) {
+            return currentMonthPayday;
+        } else {
+            return getActualPaydayDate(nominalPayday, asOf.minusMonths(1));
+        }
+    }
+
+    /**
+     * Finds the next upcoming actual payday date strictly after 'asOf'.
+     */
+    public static LocalDate findNextPaydayDate(LocalDate asOf, int nominalPayday) {
+        LocalDate currentMonthPayday = getActualPaydayDate(nominalPayday, asOf);
+        if (asOf.isBefore(currentMonthPayday)) {
+            return currentMonthPayday;
+        } else {
+            return getActualPaydayDate(nominalPayday, asOf.plusMonths(1));
+        }
+    }
+
+    /**
+     * Clamps an outgoing day to the last day of the month for the given date.
+     */
+    public static int getEffectiveOutgoingDay(int outgoingDay, LocalDate date) {
+        return Math.min(outgoingDay, date.lengthOfMonth());
+    }
+
     public static List<Outgoing> findYetToPay(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
         List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
-        outgoings.removeAll(paid);
-        return outgoings;
+        List<Outgoing> remaining = new ArrayList<>(outgoings);
+        remaining.removeAll(paid);
+        return remaining;
     }
 
     public static List<Outgoing> findAlreadyPaid(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
-        System.out.println("We're here...");
-        System.out.println("length of outgoings :: " + outgoings.size());
-
         List<Outgoing> found = new ArrayList<>();
         LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);
-        do {
-            for (Outgoing o: outgoings) {
-                if (o.getOutgoingDay() == searchDate.getDayOfMonth()) {
+        while (!searchDate.isAfter(asOf)) {
+            for (Outgoing o : outgoings) {
+                int effectiveDay = getEffectiveOutgoingDay(o.getOutgoingDay(), searchDate);
+                if (effectiveDay == searchDate.getDayOfMonth() && !found.contains(o)) {
                     found.add(o);
                 }
             }
             searchDate = searchDate.plusDays(1);
-        } while (searchDate.getDayOfMonth() != asOf.plusDays(1).getDayOfMonth());
-        return found;
-    }
-
-    public static LocalDate findLastPaydayDate(LocalDate asOf, int payday) {
-        // This should NOT be greater than a month ago!
-        // For example, if today is the 31st of March and we search
-        // for 31st Feb, we're going to go all the way back to the 31st Jan
-
-        LocalDate possiblePayDate = asOf;
-        while(possiblePayDate.getDayOfMonth() != payday) {
-            // If 'payday' is not in this month, return the last day
-            // of this month
-            int endOfThisMonth = possiblePayDate.lengthOfMonth();
-            if (payday > endOfThisMonth) {
-                return possiblePayDate.withDayOfMonth(endOfThisMonth);
-            }
-            possiblePayDate = possiblePayDate.minusDays(1);
         }
-        return possiblePayDate;
+        return found;
     }
 }

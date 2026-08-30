@@ -159,7 +159,15 @@
           </tr>
           @for(o <- outgoings) {
             <tr>
-              <td class="w3-center">@o.outgoingDay</td>
+              <td class="w3-center">
+                @if(o.isAdjustedForMonth()) {
+                  <span title="Adjusted from @o.outgoingDay for this month">
+                    @o.getEffectiveOutgoingDay()<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #f44336;"></i></sup>
+                  </span>
+                } else {
+                  @o.outgoingDay
+                }
+              </td>
               <td>@o.name</td>
               <td>£@o.cost</td>
               <td>@o.account.name (@{o.account.`type`})</td>

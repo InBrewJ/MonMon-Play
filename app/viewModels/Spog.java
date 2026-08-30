@@ -105,7 +105,8 @@ public class Spog {
         }
         System.out.println("totalLeftPerDay in monthlyPot account :: " + totalLeftPerDay);
         System.out.println("this.daysUntilNextPayday :: " + this.daysUntilNextPayday);
-        return round2(totalLeftPerDay / this.daysUntilNextPayday);
+        int divisor = Math.max(1, this.daysUntilNextPayday);
+        return round2(totalLeftPerDay / divisor);
     }
 
     // This is actually calculateAdjustedLeftPerDay in all debit accounts!
@@ -133,7 +134,8 @@ public class Spog {
         this.totalAvailableDebit = totalAvailableDebit;
         System.out.println("totalAvailableDebit :: " + totalAvailableDebit);
         System.out.println("totalAvailableCredit :: " + totalAvailableCredit);
-        return round2(totalAvailableDebit / this.daysUntilNextPayday);
+        int divisor = Math.max(1, this.daysUntilNextPayday);
+        return round2(totalAvailableDebit / divisor);
     }
 
     private Float calculatePercentageIncomeAsRent() {
@@ -147,45 +149,37 @@ public class Spog {
     }
 
     private int calculateDaysBetweenPaydays(int nextPayday, LocalDate now) {
-        int daysUntilNextPayday = this.calculateDaysUntilNextPayday(nextPayday, now);
-        int daysSinceLastPayday = this.calculateDaysSinceLastPayday(nextPayday, now);
-        int daysBetweenPayDays = daysUntilNextPayday + daysSinceLastPayday;
-        return Math.min(daysBetweenPayDays, 31);
+        LocalDate lastPayDate = helpers.ModelHelpers.findLastPaydayDate(now, nextPayday);
+        LocalDate nextPayDate = helpers.ModelHelpers.findNextPaydayDate(now, nextPayday);
+        return (int) java.time.temporal.ChronoUnit.DAYS.between(lastPayDate, nextPayDate);
     }
 
     private LocalDate calculateNextPaydayDate(int nextPayday, LocalDate from) {
-        LocalDate possiblePayDate = from;
-        boolean found = false;
-        while(!found) {
-            possiblePayDate = possiblePayDate.plusDays(1);
-            if (possiblePayDate.getDayOfMonth() == nextPayday) found = true;
-        }
-        return possiblePayDate;
+        return helpers.ModelHelpers.findNextPaydayDate(from, nextPayday);
     }
 
     private int calculateDaysUntilNextPayday(int nextPayday, LocalDate from) {
-        LocalDate possiblePayDate = from;
-        boolean found = false;
-        int count = 0;
-        while(!found) {
-            possiblePayDate = possiblePayDate.plusDays(1);
-            count++;
-            if (possiblePayDate.getDayOfMonth() == nextPayday || count == 31) found = true;
-        }
-        return count;
+        LocalDate nextPayDate = helpers.ModelHelpers.findNextPaydayDate(from, nextPayday);
+        return (int) java.time.temporal.ChronoUnit.DAYS.between(from, nextPayDate);
     }
 
-    // What about Feburary, genius? There is no 31 in February
     private int calculateDaysSinceLastPayday(int lastPayday, LocalDate from) {
-        LocalDate possiblePayDate = from;
-        boolean found = false;
-        int count = 0;
-        while(!found) {
-            possiblePayDate = possiblePayDate.minusDays(1);
-            count++;
-            if (possiblePayDate.getDayOfMonth() == lastPayday) found = true;
-        }
-        return count;
+        LocalDate lastPayDate = helpers.ModelHelpers.findLastPaydayDate(from, lastPayday);
+        return (int) java.time.temporal.ChronoUnit.DAYS.between(lastPayDate, from);
+    }
+
+    public Double getBaselineDiffTotal() {
+        Double monthlyPotTotal = getMonthlyPotLeftPerDay() * this.daysUntilNextPayday;
+        Double baselineTotal = (double) this.maxPerDay * this.daysUntilNextPayday;
+        return round2(monthlyPotTotal - baselineTotal);
+    }
+
+    public boolean isBehindBaseline() {
+        return getBaselineDiffTotal() < 0;
+    }
+
+    public Double getAbsoluteBaselineDiffTotal() {
+        return round2(Math.abs(getBaselineDiffTotal()));
     }
 
     public Float getPercentageIncomeAsOutgoings() {
