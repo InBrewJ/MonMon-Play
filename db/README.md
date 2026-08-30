@@ -7,3 +7,7 @@ pg_dump -p 5432 -U postgres -h monmon.urawizard.com --column-inserts -v -d monmo
 pg_dump -p 5432 -U postgres -h monmon.urawizard.com --column-inserts -v -d keycloak > ./backups/keycloak-20221016.sql
 
 ## Change the password of the postgres user
+
+pg_dump -p 5433 -U postgres -h doz.urawizard.com --column-inserts -v -d monmon-play > ./backups/monmon-play-20230207.sql
+
+pg_dump -p 5433 -U postgres -h doz.urawizard.com --column-inserts -v -d keycloak > ./backups/keycloak-20230207.sql
