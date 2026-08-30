@@ -63,3 +63,29 @@ $ ->
             e.preventDefault()
             return false
 
+$ ->
+    updateThemeToggleUI = (theme) ->
+        if theme == 'dark'
+            $('#theme-toggle-icon').removeClass('fa-moon').addClass('fa-sun')
+            $('#theme-toggle-text').text('Light Mode')
+            $('#theme-toggle').attr('title', 'Switch to Light Mode')
+        else
+            $('#theme-toggle-icon').removeClass('fa-sun').addClass('fa-moon')
+            $('#theme-toggle-text').text('Dark Mode')
+            $('#theme-toggle').attr('title', 'Switch to Dark Mode')
+
+    currentTheme = $('html').attr('data-theme') || localStorage.getItem('monmon-theme') || 'dark'
+    updateThemeToggleUI(currentTheme)
+
+    $(document).on 'click', '#theme-toggle', (e) ->
+        e.preventDefault()
+        activeTheme = $('html').attr('data-theme') || 'dark'
+        nextTheme = if activeTheme == 'dark' then 'light' else 'dark'
+        $('html').attr('data-theme', nextTheme)
+        try
+            localStorage.setItem('monmon-theme', nextTheme)
+        catch err
+            # localstorage might fail in private browsing
+        updateThemeToggleUI(nextTheme)
+
+

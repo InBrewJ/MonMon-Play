@@ -1,7 +1,46 @@
-:root {
+:root,
+:root[data-theme="dark"] {
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --primary-light: rgba(99, 102, 241, 0.18);
+  --primary-text: #a5b4fc;
+  --success: #34d399;
+  --success-light: rgba(52, 211, 153, 0.18);
+  --danger: #f87171;
+  --danger-light: rgba(248, 113, 113, 0.18);
+  --warning: #fbbf24;
+  --warning-light: rgba(251, 191, 36, 0.18);
+  --bg-main: #0b0f19;
+  --card-bg: #131b2e;
+  --card-bg-subtle: #1a233a;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border-color: #1e293b;
+  --input-bg: #0f172a;
+  --input-border: #334155;
+  --account-tag-bg: #1e293b;
+  --account-tag-border: #334155;
+  --account-tag-text: #e2e8f0;
+  --table-stripe: #0f172a;
+  --table-border: #1e293b;
+  --table-hover: #1a233a;
+  --border-radius: 12px;
+  --border-radius-sm: 8px;
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --ticker-bg: #070a12;
+  --ticker-text: #94a3b8;
+  --ticker-border: #131b2e;
+  --nav-bg: #131b2e;
+  --nav-border: #1e293b;
+}
+
+:root[data-theme="light"] {
   --primary: #4f46e5;
   --primary-hover: #4338ca;
   --primary-light: #eef2ff;
+  --primary-text: #4f46e5;
   --success: #10b981;
   --success-light: #ecfdf5;
   --danger: #ef4444;
@@ -10,14 +49,28 @@
   --warning-light: #fffbeb;
   --bg-main: #f8fafc;
   --card-bg: #ffffff;
+  --card-bg-subtle: #f8fafc;
   --text-main: #0f172a;
   --text-muted: #64748b;
   --border-color: #e2e8f0;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --account-tag-bg: #f8fafc;
+  --account-tag-border: #cbd5e1;
+  --account-tag-text: #334155;
+  --table-stripe: #f8fafc;
+  --table-border: #e2e8f0;
+  --table-hover: #f1f5f9;
   --border-radius: 12px;
   --border-radius-sm: 8px;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+  --ticker-bg: #0f172a;
+  --ticker-text: #cbd5e1;
+  --ticker-border: #1e293b;
+  --nav-bg: #ffffff;
+  --nav-border: #e2e8f0;
 }
 
 body {
@@ -28,6 +81,7 @@ body {
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -56,14 +110,14 @@ a:hover {
   padding: 0.55rem 1.5rem;
   text-align: center;
   width: 100%;
-  background: #0f172a;
-  color: #94a3b8;
+  background: var(--ticker-bg);
+  color: var(--ticker-text);
   font-size: 0.85rem;
   font-family: 'JetBrains Mono', monospace;
   letter-spacing: 0.02em;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--ticker-border);
   box-sizing: border-box;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   margin-bottom: 0.75rem;
 }
 
@@ -83,7 +137,7 @@ header.app-header h1 {
 }
 
 header.app-header h1 a {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   text-decoration: none;
@@ -91,13 +145,45 @@ header.app-header h1 a {
   align-items: center;
 }
 
+.theme-toggle-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.45rem !important;
+  padding: 0.4rem 0.85rem !important;
+  background: var(--card-bg) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--border-radius-sm) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all 0.2s ease !important;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--card-bg-subtle) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
+  transform: translateY(-1px) !important;
+}
+
+:root[data-theme="dark"] #theme-toggle-icon {
+  color: #fbbf24;
+}
+
+:root[data-theme="light"] #theme-toggle-icon {
+  color: #4f46e5;
+}
+
 /* Navigation */
 nav.crumbs {
-  background: #ffffff;
-  border-bottom: 1px solid var(--border-color);
+  background: var(--nav-bg);
+  border-bottom: 1px solid var(--nav-border);
   padding: 0.5rem 2rem;
   box-shadow: var(--shadow-sm);
   margin-bottom: 1.5rem;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 nav.crumbs ol {
@@ -132,6 +218,8 @@ nav.crumbs ol {
 .crumb.active a {
   background-color: var(--primary);
   color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.35);
 }
 
 .crumb a::after {
@@ -143,7 +231,7 @@ nav.crumbs ol {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: #ffffff;
+  background: var(--card-bg);
   border: 1px solid var(--border-color);
   padding: 0.35rem 0.85rem;
   border-radius: 9999px;
@@ -157,8 +245,9 @@ nav.crumbs ol {
   background-color: var(--card-bg) !important;
   border-radius: var(--border-radius) !important;
   border: 1px solid var(--border-color) !important;
+  color: var(--text-main) !important;
   box-shadow: var(--shadow-md) !important;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .w3-card:hover, .card:hover {
@@ -167,7 +256,7 @@ nav.crumbs ol {
 
 /* Corner Spent This Month Widget */
 .spent-month-widget {
-  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: var(--shadow-md);
@@ -184,7 +273,7 @@ nav.crumbs ol {
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, #4f46e5, #06b6d4);
+  background: linear-gradient(90deg, #6366f1, #06b6d4);
 }
 
 /* Form Elements */
@@ -199,20 +288,20 @@ textarea {
   padding: 0.55rem 0.85rem;
   margin: 0.35rem 0 0.85rem 0;
   display: inline-block;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--input-border);
   border-radius: var(--border-radius-sm);
-  background-color: #ffffff;
+  background-color: var(--input-bg);
   font-family: inherit;
   font-size: 0.95rem;
   color: var(--text-main);
   box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.2s ease;
 }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
 }
 
 button, .w3-button {
@@ -248,26 +337,28 @@ button:active, .w3-button:active {
   width: 100%;
   border-radius: var(--border-radius-sm);
   overflow: hidden;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--table-border);
+  background-color: var(--card-bg);
 }
 
 .w3-table th {
-  background-color: #f1f5f9;
-  color: #475569;
+  background-color: var(--card-bg-subtle);
+  color: var(--text-muted);
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--table-border);
 }
 
 .w3-table td {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border-color);
   vertical-align: middle;
   font-size: 0.92rem;
+  color: var(--text-main);
 }
 
 .w3-table tr:last-child td {
@@ -275,11 +366,11 @@ button:active, .w3-button:active {
 }
 
 .w3-table-all tr:nth-child(even), .w3-striped tbody tr:nth-child(even) {
-  background-color: #f8fafc;
+  background-color: var(--table-stripe);
 }
 
 .w3-table tr:hover {
-  background-color: #f1f5f9;
+  background-color: var(--table-hover);
 }
 
 /* Action Icons */
@@ -312,20 +403,20 @@ button:active, .w3-button:active {
 
 .badge-success {
   background-color: var(--success-light);
-  color: #065f46;
-  border: 1px solid #a7f3d0;
+  color: var(--success);
+  border: 1px solid rgba(52, 211, 153, 0.3);
 }
 
 .badge-danger {
   background-color: var(--danger-light);
-  color: #991b1b;
-  border: 1px solid #fecaca;
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.3);
 }
 
 .badge-warning {
   background-color: var(--warning-light);
-  color: #92400e;
-  border: 1px solid #fde68a;
+  color: var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 /* Slider */
@@ -339,7 +430,7 @@ button:active, .w3-button:active {
   width: 100%;
   height: 8px;
   border-radius: 4px;
-  background: #e2e8f0;
+  background: var(--input-border);
   outline: none;
   transition: opacity 0.2s;
   margin: 1rem 0;
@@ -352,7 +443,7 @@ button:active, .w3-button:active {
   height: 22px;
   border-radius: 50%;
   background: var(--primary);
-  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.4);
   cursor: pointer;
   transition: transform 0.15s ease;
 }
@@ -366,7 +457,7 @@ button:active, .w3-button:active {
   height: 22px;
   border-radius: 50%;
   background: var(--primary);
-  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.4);
   cursor: pointer;
 }
 
@@ -374,26 +465,27 @@ button:active, .w3-button:active {
 .metric-box {
   padding: 1rem;
   border-radius: var(--border-radius-sm);
-  background: #ffffff;
+  background: var(--card-bg-subtle);
   border: 1px solid var(--border-color);
   margin-bottom: 0.75rem;
+  color: var(--text-main);
 }
 
-/* Account Tags (replacing messy grey circles) */
+/* Account Tags */
 .account-tag {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   padding: 0.35rem 0.65rem;
-  background: #f8fafc;
-  color: #334155;
-  border: 1px solid #cbd5e1;
+  background: var(--account-tag-bg);
+  color: var(--account-tag-text);
+  border: 1px solid var(--account-tag-border);
   border-radius: 6px;
   font-size: 0.82rem;
   font-weight: 600;
   line-height: 1.25;
   white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 /* Edit Form Auto-Scroll Margin */
@@ -451,7 +543,7 @@ button:active, .w3-button:active {
 
 /* Item Cards (Mobile & Grid Layouts) */
 .item-card {
-  background: #ffffff;
+  background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   padding: 0.9rem 1rem;
@@ -463,7 +555,7 @@ button:active, .w3-button:active {
 }
 
 .item-card:hover {
-  border-color: #cbd5e1;
+  border-color: var(--input-border);
   box-shadow: var(--shadow-md);
 }
 
@@ -491,17 +583,17 @@ button:active, .w3-button:active {
   padding: 0 0.35rem;
   border-radius: 8px;
   background: var(--primary-light);
-  color: var(--primary);
+  color: var(--primary-text);
   font-weight: 800;
   font-size: 0.85rem;
   flex-shrink: 0;
-  border: 1px solid #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.3);
 }
 
 .day-badge-adj {
-  background: #fee2e2;
-  color: #ef4444;
-  border: 1px solid #fca5a5;
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.3);
 }
 
 .item-card-title {
@@ -535,7 +627,7 @@ button:active, .w3-button:active {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.5rem;
-  background: #f8fafc;
+  background: var(--card-bg-subtle);
   padding: 0.6rem 0.75rem;
   border-radius: 6px;
   border: 1px solid var(--border-color);
@@ -582,23 +674,23 @@ button:active, .w3-button:active {
 }
 
 .btn-edit {
-  background: #f1f5f9;
-  color: #334155;
-  border: 1px solid #cbd5e1;
+  background: var(--card-bg-subtle);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
 }
 .btn-edit:hover {
-  background: #e2e8f0;
-  color: #0f172a;
+  background: var(--table-hover);
+  color: var(--text-main);
 }
 
 .btn-delete {
-  background: #fee2e2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.3);
 }
 .btn-delete:hover {
-  background: #fecaca;
-  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.28);
+  color: #ef4444;
 }
 
 hr {
