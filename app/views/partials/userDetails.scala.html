@@ -2,11 +2,9 @@
 @import org.pac4j.core.context.session._;
 @()(implicit request: Http.Request, playSessionStore: SessionStore)
 
-<div class="w3-margin w3-display-container">
-    <p>
-        Logged in as:
-        <b>
-            @UIHelpers.userDetails(playSessionStore, request)
-        </b>
-    </p>
+<div style="padding: 0 2rem; margin-bottom: 0.5rem; display: flex; justify-content: flex-end;">
+    <div class="user-chip">
+        <i class="fas fa-user-circle" style="color: var(--primary);"></i>
+        <span>@UIHelpers.userDetails(playSessionStore, request)</span>
+    </div>
 </div>

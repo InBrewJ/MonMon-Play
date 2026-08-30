@@ -9,152 +9,221 @@
     request: Http.Request,
     playSessionStore: SessionStore
 )
-@main("MonMonSPOG") {
+@main("MonMon SPOG") {
 
 @partials.header()
 @partials.userDetails()
 @partials.navbar()
 
-<div class="w3-content" style="max-width: 1500px">
-    <div class="w3-row">
-        <div class="w3-half w3-padding w3-center">
-            <div class="w3-card w3-padding w3-margin">
-                <p><b> SPOG stands for 'Single Pane of Glass'</b></p>
-                <hr>
-                <p>
-                    <b>
-                        Left per day after outgoings in your
-                        <a href="/myMonthlyPot">'monthly pot'</a>
-                        : £@spogVm.getMonthlyPotLeftPerDay()
-                    </b>
-                </p>
-                <div class="w3-panel w3-round @if(spogVm.isBehindBaseline()) {w3-pale-red w3-border w3-border-red} else {w3-pale-green w3-border w3-border-green}" style="margin: 8px auto; max-width: 340px; padding: 6px 12px; font-size: 0.95em;">
+<div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
+    <div class="w3-row-padding">
+        <!-- Left Column -->
+        <div class="w3-half">
+            <!-- Monthly Pot & Daily Budget Card -->
+            <div class="w3-card w3-padding w3-margin-bottom" style="text-align: center;">
+                <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.5rem;">
+                    Single Pane of Glass
+                </div>
+                <h3 style="margin: 0 0 0.5rem 0; font-size: 1.35rem;">
+                    Left per day in your
+                    <a href="/myMonthlyPot" style="font-weight: 800; color: var(--primary);">'monthly pot'</a>:
+                    <span style="font-size: 1.55rem; color: var(--primary);">£@spogVm.getMonthlyPotLeftPerDay()</span>
+                </h3>
+
+                <!-- Baseline Difference Box -->
+                <div class="w3-panel w3-round @if(spogVm.isBehindBaseline()) {w3-pale-red w3-border-red} else {w3-pale-green w3-border-green}" style="margin: 0.75rem auto; max-width: 360px; padding: 8px 14px; font-size: 0.95em; border-left: 4px solid;">
                     @if(spogVm.isBehindBaseline()) {
                         <span title="£@spogVm.getAbsoluteBaselineDiffTotal() behind baseline (£@spogVm.getMaxPerDay()/day)">
-                            <b>£@spogVm.getAbsoluteBaselineDiffTotal()</b> to get back to baseline<sup><i class="fas fa-arrow-down" style="color: #f44336;"></i></sup>
+                            <i class="fas fa-exclamation-circle" style="color: #ef4444; margin-right: 4px;"></i>
+                            <b>£@spogVm.getAbsoluteBaselineDiffTotal()</b> to get back to baseline<sup><i class="fas fa-arrow-down" style="color: #ef4444;"></i></sup>
                         </span>
                     } else {
                         <span title="£@spogVm.getAbsoluteBaselineDiffTotal() ahead of baseline (£@spogVm.getMaxPerDay()/day)">
-                            <b>£@spogVm.getAbsoluteBaselineDiffTotal()</b> surplus above baseline<sup><i class="fas fa-arrow-up" style="color: #4CAF50;"></i></sup>
+                            <i class="fas fa-check-circle" style="color: #10b981; margin-right: 4px;"></i>
+                            <b>£@spogVm.getAbsoluteBaselineDiffTotal()</b> surplus above baseline<sup><i class="fas fa-arrow-up" style="color: #10b981;"></i></sup>
                         </span>
                     }
                 </div>
-                <p>Already paid out: £@spogVm.getCompletedOutgoings()</p>
-                <p>Left to pay out: £@spogVm.getPendingOutgoings()</p>
-                <hr>
-                <p>
-                    This month, there are @spogVm.getDaysBetweenPaydays() days between paydays
-                </p>
-                <hr>
-                <p>
-                    If you have a rent/bill sharing plan, the values here will reflect those shares:
-                </p>
-                <p>
-                    - <b>MAX per day available (between paydays) -> £@spogVm.getMaxPerDay() </b><br/>
-                    - MAX per week available -> £@spogVm.getMaxPerWeek() <br/>
-                    - MAX per month available -> £@spogVm.getSurplus()<br/>
-                    - rent (with sharing) as % of wages -> @spogVm.getPercentageIncomeAsRent()% <br/>
-                    - outgoings (with sharing) as % of wages -> @spogVm.getPercentageIncomeAsOutgoings()%
-                </p>
-                <hr/>
-                <p>
-                    - Total rent: £@{spogVm.getRemainderRentCost() + spogVm.getRentCost()} <br/>
-                    - What I pay: £@{spogVm.getRentCost()} <br/>
-                    - What they pay: £@{spogVm.getRemainderRentCost()} <br/>
-                </p>
-                <hr/>
-                <p>
-                    - Total bills: £@{spogVm.getRemainderBillsCost() + spogVm.getBillsCost()} <br/>
-                    - What I pay: £@{spogVm.getBillsCost()} <br/>
-                    - What they pay: £@{spogVm.getRemainderBillsCost()} <br/>
-                </p>
-                <hr/>
-                <p>Rent AND Bills</p>
-                <p>
-                    - What I pay: £@{spogVm.getBillsCost() + spogVm.getRentCost()} <br/>
-                    - What they pay: £@{spogVm.getRemainderBillsCost() + spogVm.getRemainderRentCost()} <br/>
-                </p>
-                <hr/>
-                <p>
-                    - monthly takehome -> £@spogVm.getIncomingTotal()  <br/>
-                    - monthly outgoings (with sharing) -> £@spogVm.getOutgoingTotal()  <br/>
-                </p>
-                <hr>
-                <p>
-                     - yearly takehome -> £@spogVm.getYearlyTakehome()  <br/>
-                     - yearly outgoings -> £@spogVm.getYearlyOutgoings()  <br/>
-                     - yearly surplus (how much left to live on) -> £@spogVm.getYearlySurplus() <br/>
 
-                </p>
+                <div style="display: flex; justify-content: center; gap: 1rem; margin: 1rem 0; font-size: 0.9rem;">
+                    <span class="badge-pill badge-success">
+                        <i class="fas fa-check"></i> Paid: £@spogVm.getCompletedOutgoings()
+                    </span>
+                    <span class="badge-pill badge-warning">
+                        <i class="fas fa-clock"></i> Pending: £@spogVm.getPendingOutgoings()
+                    </span>
+                </div>
+
+                <hr style="margin: 1rem 0;">
+
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i>
+                    This cycle: <b>@spogVm.getDaysBetweenPaydays()</b> days between paydays
+                </div>
+
+                <div class="metric-box" style="text-align: left; font-size: 0.92rem;">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">
+                        <i class="fas fa-wallet" style="color: var(--primary); margin-right: 6px;"></i>Daily & Monthly Allowances
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem;">
+                        <div>• <b>MAX / day</b>: £@spogVm.getMaxPerDay()</div>
+                        <div>• <b>MAX / week</b>: £@spogVm.getMaxPerWeek()</div>
+                        <div>• <b>MAX / month</b>: £@spogVm.getSurplus()</div>
+                        <div>• Rent (% of wage): @spogVm.getPercentageIncomeAsRent()%</div>
+                        <div style="grid-column: span 2;">• Outgoings (% of wage): @spogVm.getPercentageIncomeAsOutgoings()%</div>
+                    </div>
+                </div>
+
+                <div class="metric-box" style="text-align: left; font-size: 0.92rem;">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">
+                        <i class="fas fa-home" style="color: var(--primary); margin-right: 6px;"></i>Rent & Bills Split
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                        <div>• Rent (Total): £@{spogVm.getRemainderRentCost() + spogVm.getRentCost()}</div>
+                        <div>• Rent (I pay): £@{spogVm.getRentCost()}</div>
+                        <div>• Bills (Total): £@{spogVm.getRemainderBillsCost() + spogVm.getBillsCost()}</div>
+                        <div>• Bills (I pay): £@{spogVm.getBillsCost()}</div>
+                        <div style="grid-column: span 2; font-weight: 600; padding-top: 4px; border-top: 1px dashed var(--border-color);">
+                            • Total (Rent + Bills I pay): £@{spogVm.getBillsCost() + spogVm.getRentCost()}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-box" style="text-align: left; font-size: 0.92rem;">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">
+                        <i class="fas fa-chart-pie" style="color: var(--primary); margin-right: 6px;"></i>Annual Forecast
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                        <div>• Monthly Takehome: £@spogVm.getIncomingTotal()</div>
+                        <div>• Monthly Outgoings: £@spogVm.getOutgoingTotal()</div>
+                        <div>• Yearly Takehome: £@spogVm.getYearlyTakehome()</div>
+                        <div>• Yearly Outgoings: £@spogVm.getYearlyOutgoings()</div>
+                        <div style="grid-column: span 2; font-weight: 700; color: var(--success); padding-top: 4px; border-top: 1px dashed var(--border-color);">
+                            • Yearly Surplus (to live on): £@spogVm.getYearlySurplus()
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="w3-half w3-padding">
-            <div class="w3-card w3-padding w3-margin w3-center">
-                <p>Next payday: <span id="next-payday-ddmmyyyy">@spogVm.getNextPayDate()</span></p>
-                <p>That is, <span id="next-pay-days-from-now">@spogVm.getDaysUntilNextPayday()</span> days away</p>
-                <p>Savings Slider</p>
-                <div class="slidecontainer">
+
+        <!-- Right Column -->
+        <div class="w3-half">
+            <!-- Corner 'Spent This Month' Widget -->
+            <div class="spent-month-widget w3-margin-bottom">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem;">
+                    <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
+                        <i class="fas fa-chart-line" style="color: var(--primary); margin-right: 6px;"></i> Spent This Month
+                    </span>
+                    <span class="badge-pill @if(spogVm.isOverspentDaily()) {badge-danger} else {badge-success}">
+                        Day @spogVm.getDaysSinceLastPayday() of @spogVm.getDaysBetweenPaydays()
+                    </span>
+                </div>
+
+                <div style="margin: 0.5rem 0;">
+                    <span style="font-size: 1.85rem; font-weight: 800; color: var(--text-main);">
+                        £@spogVm.getSpentThisMonth()
+                    </span>
+                    <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">
+                        / £@spogVm.getSurplus() monthly budget
+                    </span>
+                </div>
+
+                <div style="font-size: 0.95rem; margin-bottom: 0.65rem;">
+                    Current spending pace: <b>£@spogVm.getActualDailySpend() / day</b>
+                </div>
+
+                <!-- Daily Overspend vs MAX Indication -->
+                <div class="w3-panel w3-round @if(spogVm.isOverspentDaily()) {w3-pale-red w3-border-red} else {w3-pale-green w3-border-green}" style="margin: 0; padding: 8px 12px; font-size: 0.9em; border-left: 4px solid;">
+                    @if(spogVm.isOverspentDaily()) {
+                        <span title="Actual daily spend (£@spogVm.getActualDailySpend()) exceeds daily MAX allowance (£@spogVm.getMaxPerDay()) by £@spogVm.getAbsoluteDailyOverspend()/day">
+                            <i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 4px;"></i>
+                            Overspent by <b>£@spogVm.getAbsoluteDailyOverspend()</b> per day based on MAX (£@spogVm.getMaxPerDay())<sup><i class="fas fa-arrow-up" style="color: #ef4444;"></i></sup>
+                        </span>
+                    } else {
+                        <span title="Actual daily spend (£@spogVm.getActualDailySpend()) is within daily MAX allowance (£@spogVm.getMaxPerDay())">
+                            <i class="fas fa-check-circle" style="color: #10b981; margin-right: 4px;"></i>
+                            <b>£@spogVm.getAbsoluteDailyOverspend()</b> per day under MAX (£@spogVm.getMaxPerDay())<sup><i class="fas fa-arrow-down" style="color: #10b981;"></i></sup>
+                        </span>
+                    }
+                </div>
+            </div>
+
+            <!-- Payday & Savings Plan Card -->
+            <div class="w3-card w3-padding w3-margin-bottom" style="text-align: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                    <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
+                        <i class="fas fa-piggy-bank" style="color: var(--primary); margin-right: 6px;"></i> Savings Plan
+                    </span>
+                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); border: 1px solid #c7d2fe;">
+                        Next Pay: <span id="next-payday-ddmmyyyy">@spogVm.getNextPayDate()</span> (@spogVm.getDaysUntilNextPayday()d away)
+                    </span>
+                </div>
+
+                <div class="slidecontainer" style="padding: 0 0.5rem;">
                     <input type="range" min="0" max="100" value="@spogVm.getPercentageIncomeAsSavings()" class="slider" id="savings-slider">
                 </div>
-                <p>
-                    <span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>% of income as savings + payoff pcm
+
+                <p style="margin: 0.5rem 0; font-size: 0.95rem;">
+                    <b><span id="savings-slider-val">@spogVm.getPercentageIncomeAsSavings()</span>%</b> of income as savings + payoff
+                    (<span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>)
                 </p>
-                <p>
-                    That is, <span id="savings-amount"></span> of £<span id="incoming-total">@spogVm.getIncomingTotal()</span>
-                </p>
-                <!--                MWM-13 -->
-                <!--                This might work better as a standard POST form-->
-                <!--                The backend needs to find the next payday and add -->
-                <!--                a new outgoing on that day -->
-                <!--                    That outgoing will then be the basis for a savings plan-->
-                <!--                    Should this type of outgoing be _derived_ from Outgoing?-->
-                <!--                    Could this be some sort of Liskov Substitution thing?-->
-                <a id="savings-slider-val-target" href="/plans/updateSavingsPayoffPercentage?percent=@spogVm.getPercentageIncomeAsSavings()" class="w3-button w3-round w3-grey">Update savings plan</a>
+
+                <div style="margin-top: 1rem;">
+                    <a id="savings-slider-val-target" href="/plans/updateSavingsPayoffPercentage?percent=@spogVm.getPercentageIncomeAsSavings()" class="w3-button w3-round" style="display: inline-block;">Update savings plan</a>
+                </div>
             </div>
-            <div class="w3-card w3-padding w3-margin">
-                <p><b>Account Overview</b></p>
-                <hr/>
-                Debit available: £@spogVm.getTotalAvailableDebit() <br/>
-                Credit available: £@spogVm.getTotalAvailableCredit()  <br/>
-                <hr/>
-                Credit balance: £@spogVm.getCreditBalance()  <br/>
-                Credit limit: £@spogVm.getCreditLimit()  <br/>
-                <b>
-                    Credit usage: @spogVm.getCreditUsage()% (get that bad boi below 50%)
-                </b>
-                <br/>
-                <hr/>
-                Liquid savings pot: £@spogVm.getLiquidSavingsPot() <br/>
-                Total savings pot: £@spogVm.getSavingsPot() <br/>
-                <hr/>
-                <ul>
+
+            <!-- Account Overview Card -->
+            <div class="w3-card w3-padding w3-margin-bottom">
+                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    <i class="fas fa-university" style="color: var(--primary); margin-right: 6px;"></i> Account Overview
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1rem; font-size: 0.92rem;">
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Debit Available</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--success);">£@spogVm.getTotalAvailableDebit()</div>
+                    </div>
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Credit Available</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--primary);">£@spogVm.getTotalAvailableCredit()</div>
+                    </div>
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Credit Balance / Limit</div>
+                        <div style="font-size: 1rem; font-weight: 600;">£@spogVm.getCreditBalance() / £@spogVm.getCreditLimit()</div>
+                    </div>
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Credit Usage</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: @if(spogVm.getCreditUsage() > 50) {var(--danger)} else {var(--success)};">
+                            @spogVm.getCreditUsage()%
+                        </div>
+                    </div>
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Liquid Savings Pot</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--success);">£@spogVm.getLiquidSavingsPot()</div>
+                    </div>
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Total Savings Pot</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary);">£@spogVm.getSavingsPot()</div>
+                    </div>
+                </div>
+
+                <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem;">Account Details:</div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                     @for((a, status) <- spogVm.getAccountStatusMap()) {
-                    <li>@a.name (@{a.`type`})
-                        <ul>
-                            <li>
-                                £@status.getAlreadyPaid() already gone out
-                            </li>
-                            <li>
-                                £@status.getPending() still needed
-                            </li>
-                            <li>
-                                £@status.getLatestBalance() available
-                            </li>
-                            <li>
-                                <i>
-                                    £@status.getBalanceWithLimits() balance with limit
-                                </i>
-                            </li>
-                            <li>
-                                <b>
-                                    £@status.getAdjustedAvailable() <i>actually</i> left to spend
-                                </b>
-                            </li>
-                        </ul>
-                        <hr>
-                    </li>
+                    <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.65rem 0.85rem; background: #ffffff;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                            <b>@a.name <span style="font-weight: 400; font-size: 0.82rem; color: var(--text-muted);">(@{a.`type`})</span></b>
+                            <span style="font-weight: 700; color: var(--primary);">£@status.getAdjustedAvailable() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">left to spend</span></span>
+                        </div>
+                        <div style="display: flex; gap: 0.75rem; font-size: 0.82rem; color: var(--text-muted);">
+                            <span>Paid: £@status.getAlreadyPaid()</span>
+                            <span>Pending: £@status.getPending()</span>
+                            <span>Balance: £@status.getLatestBalance()</span>
+                        </div>
+                    </div>
                     }
-                </ul>
+                </div>
             </div>
         </div>
     </div>

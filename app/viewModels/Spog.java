@@ -19,6 +19,7 @@ public class Spog {
     private final Float percentageIncomeAsOutgoings;
     private final int daysUntilNextPayday;
     private final int daysBetweenPaydays;
+    private final int daysSinceLastPayday;
     private final Float incomingTotal;
     private final Float outgoingTotal;
     private final Float maxPerDay;
@@ -69,6 +70,7 @@ public class Spog {
         this.percentageIncomeAsSavings = percentageIncomeAsSavings;
         this.incomingTotal = incomingTotal;
         this.daysBetweenPaydays = this.calculateDaysBetweenPaydays(nextPayday, now);
+        this.daysSinceLastPayday = this.calculateDaysSinceLastPayday(nextPayday, now);
         this.maxPerDay = round2(surplus / this.daysBetweenPaydays);
         this.maxPerWeek = round2(this.maxPerDay * 7);
         this.yearlySurplus = round2((incomingTotal - outgoingTotal) * 12);
@@ -180,6 +182,45 @@ public class Spog {
 
     public Double getAbsoluteBaselineDiffTotal() {
         return round2(Math.abs(getBaselineDiffTotal()));
+    }
+
+    public int getDaysSinceLastPayday() {
+        return daysSinceLastPayday;
+    }
+
+    public Double getMonthlyPotTotalAvailable() {
+        List<Account> tmpMonthlyPotAccount = new ArrayList<>(this.monthlyPotAccounts);
+        HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap(tmpMonthlyPotAccount);
+        Double total = 0d;
+        for (AccountStatus as : accountsMap.values()) {
+            total += as.getAdjustedAvailable();
+        }
+        return round2(total);
+    }
+
+    public Double getSpentThisMonth() {
+        Double totalAvailable = getMonthlyPotTotalAvailable();
+        Double spent = (double) this.surplus - totalAvailable;
+        return round2(Math.max(0.0, spent));
+    }
+
+    public Double getActualDailySpend() {
+        if (this.daysSinceLastPayday <= 0) {
+            return 0.0;
+        }
+        return round2(getSpentThisMonth() / this.daysSinceLastPayday);
+    }
+
+    public Double getDailyOverspend() {
+        return round2(getActualDailySpend() - (double) this.maxPerDay);
+    }
+
+    public boolean isOverspentDaily() {
+        return getDailyOverspend() > 0;
+    }
+
+    public Double getAbsoluteDailyOverspend() {
+        return round2(Math.abs(getDailyOverspend()));
     }
 
     public Float getPercentageIncomeAsOutgoings() {
