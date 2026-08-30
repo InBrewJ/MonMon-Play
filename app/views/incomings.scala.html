@@ -50,13 +50,13 @@
                                 }
                             </td>
                             <td><b>@i.name</b></td>
-                            <td><span class="badge-pill" style="background: #f1f5f9; color: var(--text-muted);">@{i.`type`}</span></td>
+                            <td><span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">@{i.`type`}</span></td>
                             <td style="color: var(--success); font-weight: 600;">£@i.netValue</td>
                             <td>
                                 @if(i.isPayDay()) {
                                     <span class="badge-pill badge-success"><i class="fas fa-check"></i> Yes</span>
                                 } else {
-                                    <span class="badge-pill" style="background: #f1f5f9; color: var(--text-muted);">No</span>
+                                    <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">No</span>
                                 }
                             </td>
                             <td class="w3-center">

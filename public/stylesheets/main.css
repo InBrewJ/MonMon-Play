@@ -186,6 +186,14 @@ nav.crumbs {
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
+nav.crumbs .nav-mobile-header {
+  display: none !important;
+}
+
+.nav-toggle-btn {
+  display: none !important;
+}
+
 nav.crumbs ol {
   list-style: none;
   padding: 0;
@@ -224,6 +232,79 @@ nav.crumbs ol {
 
 .crumb a::after {
   display: none;
+}
+
+@media (max-width: 768px) {
+  nav.crumbs {
+    padding: 0.5rem 1rem;
+  }
+
+  nav.crumbs .nav-mobile-header {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .nav-toggle-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.35rem !important;
+    background: var(--card-bg-subtle) !important;
+    color: var(--text-muted) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-sm) !important;
+    padding: 0.25rem 0.65rem !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    box-shadow: var(--shadow-sm) !important;
+  }
+
+  #nav-toggle-icon {
+    transition: transform 0.2s ease;
+  }
+
+  /* When collapsed on mobile, only show active route */
+  nav.crumbs:not(.nav-open) ol {
+    display: inline-flex;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+  }
+
+  nav.crumbs:not(.nav-open) ol li.crumb:not(.active) {
+    display: none !important;
+  }
+
+  nav.crumbs:not(.nav-open) ol li.crumb.active {
+    display: inline-flex !important;
+  }
+
+  /* When open on mobile, show all routes stacked */
+  nav.crumbs.nav-open ol {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--border-color);
+  }
+
+  nav.crumbs.nav-open ol li.crumb {
+    display: block !important;
+  }
+
+  nav.crumbs.nav-open ol li.crumb a {
+    display: flex;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.45rem 0.75rem;
+  }
+
+  nav.crumbs.nav-open #nav-toggle-icon {
+    transform: rotate(90deg);
+  }
 }
 
 /* User Details */
@@ -538,6 +619,21 @@ button:active, .w3-button:active {
     display: flex !important;
     flex-direction: column;
     gap: 0.75rem;
+  }
+}
+
+/* SPOG Account Grid */
+.spog-account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .spog-account-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
   }
 }
 

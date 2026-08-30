@@ -64,7 +64,7 @@
                       <b>@o.name</b>
                       @if(o.isBill()) { <span class="badge-pill badge-warning" style="font-size: 0.72rem; margin-left: 4px;">Bill</span> }
                       @if(o.isRent()) { <span class="badge-pill badge-primary" style="font-size: 0.72rem; margin-left: 4px;">Rent</span> }
-                      @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="font-size: 0.72rem; background: #e2e8f0; color: #475569; margin-left: 4px;">Savings Plan</span> }
+                      @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="font-size: 0.72rem; background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); margin-left: 4px;">Savings Plan</span> }
                     </td>
                     <td class="col-cost" style="color: var(--danger); font-weight: 700;">£@o.cost</td>
                     <td class="col-account">
@@ -117,7 +117,7 @@
                   </span>
                   @if(o.isBill()) { <span class="badge-pill badge-warning">Shared Bill</span> }
                   @if(o.isRent()) { <span class="badge-pill badge-primary">Rent</span> }
-                  @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="background: #e2e8f0; color: #475569;">Savings Plan</span> }
+                  @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">Savings Plan</span> }
                   @if(o.isAdjustedForMonth()) {
                     <span class="badge-pill badge-danger" title="Adjusted from @o.outgoingDay for short month or weekend">
                       <i class="fas fa-calendar-alt"></i> Clamped from @o.outgoingDay

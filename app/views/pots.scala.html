@@ -30,7 +30,7 @@ messages: play.i18n.Messages
                     <p style="color: var(--text-muted);">No pots configured yet.</p>
                 } else {
                     @for(p <- pots) {
-                    <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 1rem; margin-bottom: 1rem; background: #ffffff;">
+                    <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 1rem; margin-bottom: 1rem; background: var(--card-bg);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                             <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.9rem; font-weight: 700;">
                                 @{p.`type`} POT
@@ -47,7 +47,7 @@ messages: play.i18n.Messages
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 0.35rem;">
                             @for(a <- p.accounts) {
-                            <div style="display: flex; justify-content: space-between; background: #f8fafc; padding: 0.4rem 0.75rem; border-radius: 6px; font-size: 0.9rem;">
+                            <div style="display: flex; justify-content: space-between; background: var(--card-bg-subtle); border: 1px solid var(--border-color); padding: 0.4rem 0.75rem; border-radius: 6px; font-size: 0.9rem;">
                                 <span><b>@a.name</b> <span style="color: var(--text-muted); font-size: 0.8rem;">(@{a.`type`})</span></span>
                                 <span style="font-weight: 700; color: var(--success);">£@a.getLatestBalanceValue()</span>
                             </div>

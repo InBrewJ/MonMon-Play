@@ -54,7 +54,7 @@
                       } else if(a.`type`.toString == "PENSION") {
                         <span class="badge-pill badge-primary" style="font-size: 0.8rem;">PENSION</span>
                       } else {
-                        <span class="badge-pill" style="background: #f1f5f9; color: var(--text-muted); font-size: 0.8rem;">@{a.`type`}</span>
+                        <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.8rem;">@{a.`type`}</span>
                       }
                     </td>
                     <td style="font-weight: 600;">£@a.availableLimit</td>
@@ -99,7 +99,7 @@
                     } else if(a.`type`.toString == "PENSION") {
                       <span class="badge-pill badge-primary">PENSION</span>
                     } else {
-                      <span class="badge-pill" style="background: #f1f5f9; color: var(--text-muted);">@{a.`type`}</span>
+                      <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">@{a.`type`}</span>
                     }
                   </div>
                 </div>
@@ -230,7 +230,7 @@
               Loan
             </option>
           </select>
-          <div id="loan-hint" style="display: none; font-size: 0.82rem; color: var(--text-muted); margin-top: 0.35rem; background: #f8fafc; padding: 0.5rem; border-radius: 6px;">
+          <div id="loan-hint" style="display: none; font-size: 0.82rem; color: var(--text-muted); margin-top: 0.35rem; background: var(--card-bg-subtle); border: 1px solid var(--border-color); padding: 0.5rem; border-radius: 6px;">
             <i class="fas fa-info-circle" style="color: var(--primary);"></i> For loans, enter the <b>original drawdown amount</b> in the limit field above. You can record the current <b>remaining balance</b> on the Balances page.
           </div>
           <br /><br />

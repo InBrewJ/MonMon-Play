@@ -38,6 +38,14 @@ public class ModelHelpersTest {
         // Payday set to 28th in Feb 2021 (Feb 28 is Sunday) -> Friday Feb 26
         LocalDate feb28_2021 = ModelHelpers.getActualPaydayDate(28, 2021, 2);
         assertThat(feb28_2021).isEqualTo(LocalDate.of(2021, 2, 26));
+
+        // August 2026: Nominal 31st is Monday (UK Summer Bank Holiday) -> rolls back over weekend (30, 29) to Friday Aug 28
+        LocalDate aug2026 = ModelHelpers.getActualPaydayDate(31, 2026, 8);
+        assertThat(aug2026).isEqualTo(LocalDate.of(2026, 8, 28));
+
+        // Dec 2026: Nominal 25th is Christmas Day (Friday Bank Holiday) -> rolls back to Thursday Dec 24
+        LocalDate dec2026 = ModelHelpers.getActualPaydayDate(25, 2026, 12);
+        assertThat(dec2026).isEqualTo(LocalDate.of(2026, 12, 24));
     }
 
     @Test

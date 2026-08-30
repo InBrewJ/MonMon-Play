@@ -1,0 +1,58 @@
+@import play.mvc.Http.Request
+@import org.pac4j.core.context.session._;
+@(currentRegion: String)(implicit request: play.mvc.Http.Request, playSessionStore: SessionStore, messages: play.i18n.Messages)
+
+@main("MonMon - Settings") {
+@partials.header()
+@partials.userDetails()
+@partials.navbar()
+
+<div class="w3-row-padding" style="max-width: 900px; margin: 0 auto; padding: 0 1rem 3rem 1rem;">
+    <div class="w3-col l12 m12 s12">
+        <div class="w3-card w3-padding w3-margin-bottom">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+                <div style="font-weight: 800; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                    <i class="fas fa-cog" style="color: var(--primary); margin-right: 8px;"></i> Regional & System Settings
+                </div>
+            </div>
+
+            @if(request.flash.get("success").isPresent) {
+                <div class="badge-pill badge-success" style="width: 100%; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem;">
+                    <i class="fas fa-check-circle"></i> @request.flash.get("success").get()
+                </div>
+            }
+
+            <form method="POST" action="@routes.SettingsController.updateSettings()">
+                @helper.CSRF.formField
+                
+                <div style="margin-bottom: 1.25rem;">
+                    <label style="font-size: 0.9rem; font-weight: 700; color: var(--text-main);">
+                        <i class="fas fa-globe-europe" style="color: var(--primary); margin-right: 6px;"></i> Region & Holiday Calendar
+                    </label>
+                    <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                        Governs official bank holidays and local timezone (<strong>Europe/London</strong> GMT/BST) used for working day payday shifts and midnight transitions.
+                    </div>
+                    <select id="region" name="region" style="max-width: 100%; width: 100%;">
+                        <option value="UK" @if(currentRegion == "UK") { selected }>
+                            🇬🇧 United Kingdom (England & Wales Bank Holidays, Europe/London Timezone)
+                        </option>
+                    </select>
+                </div>
+
+                <div class="metric-box" style="margin-bottom: 1.5rem;">
+                    <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); margin-bottom: 0.35rem;">
+                        <i class="fas fa-info-circle" style="color: var(--primary); margin-right: 6px;"></i> How Bank Holidays Affect Payday
+                    </div>
+                    <div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">
+                        When your payday falls on a weekend or a UK Bank Holiday (such as Summer Bank Holiday on 31 August 2026), MonMon automatically adjusts your payday to the preceding working day (e.g. Friday 28 August 2026).
+                    </div>
+                </div>
+
+                <button type="submit" class="w3-button w3-round">
+                    <i class="fas fa-save" style="margin-right: 6px;"></i> Save Settings
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+}

@@ -50,6 +50,10 @@ GET     /myMonthlyPot                               controllers.PotController.mo
 POST    /pot                                        controllers.PotController.addPot(req: Request)
 GET     /binPot/:id                                 controllers.PotController.archivePot(id: Int, req: Request)
 
+# Settings
+GET     /settings                                   controllers.SettingsController.index(req: Request)
+POST    /settings                                   controllers.SettingsController.updateSettings(req: Request)
+
 # Auth + Authz (via pac4j / keycloak / OpenIDConnect, see SecurityModule)
 GET     /oidc/index.html            controllers.SpogController.oidcIndex(req: Request)
 GET     /protected/index.html       controllers.SpogController.protectedIndex(req: Request)

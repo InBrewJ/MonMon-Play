@@ -19,19 +19,14 @@ public class ModelHelpers {
     /**
      * Calculates the actual payday for a given year and month.
      * 1. Clamps the nominal payday to the month length (e.g. 31 -> 28 in Feb).
-     * 2. If the day falls on Saturday or Sunday, shifts back to the preceding Friday (last working day).
+     * 2. Shifts back to the last preceding working day taking weekends and bank holidays into account.
      */
     public static LocalDate getActualPaydayDate(int nominalPayday, int year, int month) {
         LocalDate firstOfMonth = LocalDate.of(year, month, 1);
         int maxDaysInMonth = firstOfMonth.lengthOfMonth();
         int targetDay = Math.max(1, Math.min(nominalPayday, maxDaysInMonth));
         LocalDate payDate = LocalDate.of(year, month, targetDay);
-        if (payDate.getDayOfWeek() == DayOfWeek.SATURDAY) {
-            payDate = payDate.minusDays(1);
-        } else if (payDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
-            payDate = payDate.minusDays(2);
-        }
-        return payDate;
+        return BankHolidayHelper.getLastWorkingDayOnOrBefore(payDate);
     }
 
     public static LocalDate getActualPaydayDate(int nominalPayday, LocalDate referenceDate) {

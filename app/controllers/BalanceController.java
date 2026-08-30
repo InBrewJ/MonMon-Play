@@ -1,6 +1,7 @@
 package controllers;
 
 import models.*;
+import services.GoogleCalendarService;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
 import play.data.Form;
@@ -39,19 +40,26 @@ public class BalanceController extends Controller {
     private final BalanceRepository balanceRepository;
     private final HttpExecutionContext ec;
     private final Form<Balance> form;
+    private final GoogleCalendarService gcalService;
     private MessagesApi messagesApi;
 
     @Inject
     private SessionStore playSessionStore;
 
     @Inject
-    public BalanceController(FormFactory formFactory, MessagesApi messagesApi, BalanceRepository balanceRepository, AccountRepository accountRepository, HttpExecutionContext ec) {
+    public BalanceController(FormFactory formFactory,
+                             MessagesApi messagesApi,
+                             BalanceRepository balanceRepository,
+                             AccountRepository accountRepository,
+                             HttpExecutionContext ec,
+                             GoogleCalendarService gcalService) {
         this.formFactory = formFactory;
         this.accountRepository = accountRepository;
         this.balanceRepository = balanceRepository;
         this.messagesApi = messagesApi;
         this.form = formFactory.form(Balance.class);
         this.ec = ec;
+        this.gcalService = gcalService;
     }
 
     // weird, roundabout stuff for now...
@@ -90,20 +98,25 @@ public class BalanceController extends Controller {
     }
 
     @Secure(clients = "OidcClient")
-    public Result listBalances(Http.Request request) throws ExecutionException, InterruptedException {
+    public CompletionStage<Result> listBalances(Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Balance> balances = repoListToList(balanceRepository.list(sup.getUserId()));
         List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        return ok(
-                views.html.balances.render(
-                        asScala(balances),
-                        this.form,
-                        asScala(accounts),
-                        request,
-                        playSessionStore,
-                        messagesApi.preferred(request)
-                )
-        );
+        java.time.LocalDate now = java.time.LocalDate.now();
+        java.time.LocalDate oneYearAgo = now.minusYears(1);
+
+        return gcalService.getEventsForYear(oneYearAgo, now)
+                .thenApplyAsync(events -> ok(
+                        views.html.balances.render(
+                                asScala(balances),
+                                this.form,
+                                asScala(accounts),
+                                asScala(events),
+                                request,
+                                playSessionStore,
+                                messagesApi.preferred(request)
+                        )
+                ), ec.current());
     }
 
 }

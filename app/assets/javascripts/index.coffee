@@ -85,7 +85,11 @@ $ ->
         try
             localStorage.setItem('monmon-theme', nextTheme)
         catch err
-            # localstorage might fail in private browsing
         updateThemeToggleUI(nextTheme)
+
+$ ->
+    $(document).on 'click', '#nav-toggle', (e) ->
+        e.preventDefault()
+        $('#main-nav').toggleClass('nav-open')
 
 

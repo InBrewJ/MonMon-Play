@@ -1,50 +1,281 @@
 @import play.mvc.Http.Request
 @import org.pac4j.core.context.session._;
 @import helper._
+@import models._
 @(
     balances: Seq[Balance],
     balanceForm: Form[Balance],
-    accounts: Seq[Account]
+    accounts: Seq[Account],
+    events: Seq[CalendarEvent] = Seq.empty
 )(
     implicit request: Http.Request,
     playSessionStore: SessionStore,
     messages: play.i18n.Messages
 )
-@main("MonMonBalances") {
+@main("MonMon - Balances") {
 
 @partials.header()
 @partials.userDetails()
 @partials.navbar()
 
-<div class="w3-content w3-center" style="max-width: 1500px">
-    <div class="w3-row w3-padding">
-        <div class="w3-half w3-padding-64">
-            <form method="POST" action="@routes.BalanceController.addBalance()">
-                <!--                Need error handling for all forms-->
-                @helper.CSRF.formField
-                <input placeholder="What's the balance?" type="number" step="0.01" name="value" />
-                <br />
-                <label for="account">Which account? </label>
-                <select id="account" name="account_id">
+<div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
+    <div class="w3-row-padding">
+        <!-- Add Balance Card -->
+        <div class="w3-col l4 m5 s12">
+            <div class="w3-card w3-padding w3-margin-bottom">
+                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 1rem;">
+                    <i class="fas fa-plus-circle" style="color: var(--primary); margin-right: 6px;"></i> Record Available Balance
+                </div>
+                
+                <form method="POST" action="@routes.BalanceController.addBalance()">
+                    @helper.CSRF.formField
+                    
+                    <label for="balance-value" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Available Funds</label>
+                    <input id="balance-value" placeholder="What's the available?" type="number" step="0.01" name="value" required style="width: 100%; max-width: 100%;" />
+                    
+                    <label for="account" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-top: 0.5rem; display: block;">Which Account?</label>
+                    <select id="account" name="account_id" style="width: 100%; max-width: 100%;">
+                        @for(a <- accounts) {
+                        <option value="@a.id">@a.name (@{a.`type`})</option>
+                        }
+                    </select>
+                    
+                    <button type="submit" class="w3-button w3-round" style="width: 100%; margin-top: 0.75rem;">
+                        <i class="fas fa-save" style="margin-right: 6px;"></i> Save Balance
+                    </button>
+                </form>
+            </div>
+
+            <!-- Quick Account Available Summary -->
+            <div class="w3-card w3-padding w3-margin-bottom">
+                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    <i class="fas fa-wallet" style="color: var(--primary); margin-right: 6px;"></i> Accounts Available
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                     @for(a <- accounts) {
-                    <option value="@a.id">@a.name (@{a.`type`})</option>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0.6rem; background: var(--card-bg-subtle); border-radius: 6px; font-size: 0.85rem;">
+                        <span><b>@a.name</b> <span style="font-size: 0.75rem; color: var(--text-muted);">(@{a.`type`})</span></span>
+                        @if(!a.balances.isEmpty) {
+                            <span style="font-weight: 700; color: var(--primary);">£@a.balances.get(0).getValue()</span>
+                        } else {
+                            <span style="color: var(--text-muted);">No records</span>
+                        }
+                    </div>
                     }
-                </select>
-                <br />
-                <button>Add Balance</button>
-            </form>
+                </div>
+            </div>
         </div>
-         <div class="w3-half">
+
+        <!-- Filterable Balance Graph & History -->
+        <div class="w3-col l8 m7 s12">
+            <div class="w3-card w3-padding w3-margin-bottom">
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                    <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                        <i class="fas fa-chart-area" style="color: var(--primary); margin-right: 6px;"></i> Balance Trajectory
+                    </div>
+                    
+                    <!-- Filters -->
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;">
+                        <select id="filter-account" style="width: auto; padding: 0.3rem 0.6rem; font-size: 0.82rem; margin: 0;">
+                            <option value="ALL">All Accounts</option>
+                            @for(a <- accounts) {
+                                <option value="@a.id">@a.name</option>
+                            }
+                        </select>
+                        <div class="btn-group" style="display: inline-flex; gap: 2px;">
+                            <button type="button" class="btn-time-filter" data-range="2m" style="padding: 0.35rem 0.65rem; font-size: 0.78rem; border-radius: 6px 0 0 6px;">Last 2 Months</button>
+                            <button type="button" class="btn-time-filter" data-range="6m" style="padding: 0.35rem 0.65rem; font-size: 0.78rem; border-radius: 0;">6 Months</button>
+                            <button type="button" class="btn-time-filter" data-range="1y" style="padding: 0.35rem 0.65rem; font-size: 0.78rem; border-radius: 0;">1 Year + Events</button>
+                            <button type="button" class="btn-time-filter" data-range="all" style="padding: 0.35rem 0.65rem; font-size: 0.78rem; border-radius: 0 6px 6px 0;">All</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive SVG Chart Canvas -->
+                <div id="chart-container" style="position: relative; width: 100%; height: 280px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                    <svg id="balance-chart" width="100%" height="100%" style="overflow: visible;"></svg>
+                    <div id="chart-tooltip" style="display: none; position: absolute; background: var(--ticker-bg); color: var(--ticker-text); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem; pointer-events: none; border: 1px solid var(--border-color); box-shadow: var(--shadow-md); z-index: 10;"></div>
+                </div>
+
+                <!-- Legend & Event Indicator -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted);">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span><span style="display: inline-block; width: 12px; height: 3px; background: var(--primary); vertical-align: middle; margin-right: 4px;"></span> Balance Line</span>
+                        <span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; vertical-align: middle; margin-right: 4px;"></span> Calendar Event</span>
+                    </div>
+                    <span id="chart-range-label">Showing Last 2 Months</span>
+                </div>
+            </div>
+
+            <!-- Balance History Table -->
             <div class="w3-card w3-padding">
-                <p><b> These are apparently your balances:</b></p>
-                <ul id="incomings">
-                    @for(b <- balances) {
-                        <li>@b.value, @b.getTimestampHumanReadable, (@b.account) ( -> @b.account.getName()) </li>
-                    }
-                </ul>
+                <div style="font-weight: 800; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 0.75rem;">
+                    <i class="fas fa-history" style="color: var(--primary); margin-right: 6px;"></i> Recorded Log
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table class="w3-table w3-striped" id="balances-table">
+                        <thead>
+                            <tr>
+                                <th>Date & Time</th>
+                                <th>Account</th>
+                                <th style="text-align: right;">Available</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if(balances.isEmpty) {
+                            <tr>
+                                <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No balance entries recorded yet.</td>
+                            </tr>
+                            }
+                            @for(b <- balances) {
+                            <tr data-account-id="@b.getAccount().getId()" data-timestamp="@b.getTimestamp()">
+                                <td>@b.getTimestampHumanReadable</td>
+                                <td><span class="account-tag">🏛️ @b.getAccount().getName()</span></td>
+                                <td style="text-align: right; font-weight: 700; color: var(--primary);">£@b.getValue()</td>
+                            </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+<script>
+var rawBalances = [
+@for(b <- balances) {
+    { id: @b.getId(), accountId: @b.getAccount().getId(), accountName: "@b.getAccount().getName()", value: @b.getValue(), timestamp: @b.getTimestamp(), dateStr: "@b.getTimestampHumanReadable" },
+}
+];
+
+var rawEvents = [
+@for(e <- events) {
+    { id: "@e.getId()", title: "@e.getTitle()", date: "@e.getDate()", timestamp: Math.floor(new Date("@e.getDate()").getTime() / 1000) },
+}
+];
+
+$(function() {
+    var selectedRange = '2m';
+    var selectedAccount = 'ALL';
+
+    function renderChart() {
+        var svg = $('#balance-chart');
+        svg.empty();
+        var width = svg.width() || 600;
+        var height = svg.height() || 280;
+        var padding = { top: 25, right: 30, bottom: 35, left: 60 };
+
+        var nowSec = Math.floor(Date.now() / 1000);
+        var minSec = nowSec - (60 * 86400); // default 2m (60 days)
+        if (selectedRange === '6m') minSec = nowSec - (180 * 86400);
+        else if (selectedRange === '1y') minSec = nowSec - (365 * 86400);
+        else if (selectedRange === 'all') minSec = 0;
+
+        // Filter balances
+        var filtered = rawBalances.filter(function(b) {
+            var inTime = (selectedRange === 'all') || (b.timestamp >= minSec && b.timestamp <= nowSec);
+            var inAcc = (selectedAccount === 'ALL') || (String(b.accountId) === String(selectedAccount));
+            return inTime && inAcc;
+        });
+
+        filtered.sort(function(a, b) { return a.timestamp - b.timestamp; });
+
+        if (!filtered.length) {
+            svg.append('<text x="' + (width/2) + '" y="' + (height/2) + '" text-anchor="middle" fill="var(--text-muted)" font-size="14">No balance entries found for this range</text>');
+            return;
+        }
+
+        var minVal = Math.min.apply(null, filtered.map(function(d) { return d.value; }));
+        var maxVal = Math.max.apply(null, filtered.map(function(d) { return d.value; }));
+        if (minVal === maxVal) { minVal = 0; maxVal = maxVal * 1.2 || 100; }
+        minVal = Math.min(0, minVal);
+        maxVal = maxVal * 1.1;
+
+        var tMin = (selectedRange === 'all') ? filtered[0].timestamp : minSec;
+        var tMax = nowSec;
+        if (tMin === tMax) tMin = tMax - 86400;
+
+        function getX(t) { return padding.left + ((t - tMin) / (tMax - tMin)) * (width - padding.left - padding.right); }
+        function getY(v) { return height - padding.bottom - ((v - minVal) / (maxVal - minVal)) * (height - padding.top - padding.bottom); }
+
+        // Grid lines & Y Axis labels
+        var ySteps = 4;
+        for (var i = 0; i <= ySteps; i++) {
+            var val = minVal + ((maxVal - minVal) / ySteps) * i;
+            var yPos = getY(val);
+            svg.append('<line x1="' + padding.left + '" y1="' + yPos + '" x2="' + (width - padding.right) + '" y2="' + yPos + '" stroke="var(--border-color)" stroke-dasharray="3,3" />');
+            svg.append('<text x="' + (padding.left - 8) + '" y="' + (yPos + 4) + '" text-anchor="end" fill="var(--text-muted)" font-size="11">£' + Math.round(val) + '</text>');
+        }
+
+        // Area & Line path
+        var pathPoints = [];
+        for (var j = 0; j < filtered.length; j++) {
+            var px = getX(filtered[j].timestamp);
+            var py = getY(filtered[j].value);
+            pathPoints.push(px + ',' + py);
+        }
+
+        // Draw Line
+        var polyline = '<polyline fill="none" stroke="var(--primary)" stroke-width="2.5" points="' + pathPoints.join(' ') + '" />';
+        svg.append(polyline);
+
+        // Draw Data Points
+        for (var k = 0; k < filtered.length; k++) {
+            var pt = filtered[k];
+            var cx = getX(pt.timestamp);
+            var cy = getY(pt.value);
+            var circle = $('<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="var(--card-bg)" stroke="var(--primary)" stroke-width="2.5" style="cursor: pointer;"></circle>');
+            (function(item, x, y) {
+                circle.on('mouseenter', function() {
+                    $('#chart-tooltip').html('<strong>' + item.accountName + '</strong><br/>£' + item.value.toFixed(2) + '<br/><span style="font-size:0.75rem; color:var(--text-muted);">' + item.dateStr + '</span>')
+                        .css({ left: (x + 10) + 'px', top: (y - 20) + 'px' }).fadeIn(100);
+                }).on('mouseleave', function() {
+                    $('#chart-tooltip').hide();
+                });
+            })(pt, cx, cy);
+            svg.append(circle);
+        }
+
+        // Overlay Google Calendar Events (on 1y or if in range)
+        if (rawEvents.length && (selectedRange === '1y' || selectedRange === 'all')) {
+            rawEvents.forEach(function(ev) {
+                if (ev.timestamp >= tMin && ev.timestamp <= tMax) {
+                    var ex = getX(ev.timestamp);
+                    var eline = '<line x1="' + ex + '" y1="' + padding.top + '" x2="' + ex + '" y2="' + (height - padding.bottom) + '" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="2,2" opacity="0.75" />';
+                    var epin = $('<circle cx="' + ex + '" cy="' + (padding.top + 6) + '" r="4" fill="#f59e0b" style="cursor: pointer;"></circle>');
+                    svg.append(eline);
+                    epin.on('mouseenter', function() {
+                        $('#chart-tooltip').html('<span style="color:#f59e0b; font-weight:700;"><i class="fas fa-calendar-check"></i> Event</span><br/><strong>' + ev.title + '</strong><br/><span style="font-size:0.75rem;">' + ev.date + '</span>')
+                            .css({ left: (ex + 10) + 'px', top: (padding.top + 10) + 'px' }).fadeIn(100);
+                    }).on('mouseleave', function() {
+                        $('#chart-tooltip').hide();
+                    });
+                    svg.append(epin);
+                }
+            });
+        }
+    }
+
+    $('.btn-time-filter').on('click', function() {
+        $('.btn-time-filter').removeClass('w3-button-active').css('background', 'var(--card-bg-subtle)').css('color', 'var(--text-main)');
+        $(this).css('background', 'var(--primary)').css('color', '#ffffff');
+        selectedRange = $(this).data('range');
+        var labels = { '2m': 'Showing Last 2 Months', '6m': 'Showing Last 6 Months', '1y': 'Showing 1 Year & Calendar Events', 'all': 'Showing All Recorded Balances' };
+        $('#chart-range-label').text(labels[selectedRange] || '');
+        renderChart();
+    });
+
+    $('#filter-account').on('change', function() {
+        selectedAccount = $(this).val();
+        renderChart();
+    });
+
+    // Default select 2m
+    $('.btn-time-filter[data-range="2m"]').trigger('click');
+
+    $(window).on('resize', renderChart);
+});
+</script>
 }

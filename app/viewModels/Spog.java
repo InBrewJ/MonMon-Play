@@ -333,6 +333,43 @@ public class Spog {
         return accountStatusMap;
     }
 
+    public LinkedHashMap<String, List<Map.Entry<Account, AccountStatus>>> getGroupedAccountStatuses() {
+        LinkedHashMap<String, List<Map.Entry<Account, AccountStatus>>> grouped = new LinkedHashMap<>();
+        grouped.put("Debit Accounts", new ArrayList<>());
+        grouped.put("Credit Accounts", new ArrayList<>());
+        grouped.put("Savings Accounts", new ArrayList<>());
+        grouped.put("Pensions", new ArrayList<>());
+        grouped.put("Loans", new ArrayList<>());
+        grouped.put("Other Accounts", new ArrayList<>());
+
+        for (Map.Entry<Account, AccountStatus> entry : accountStatusMap.entrySet()) {
+            Account a = entry.getKey();
+            Account.AccountType type = a.getType();
+            if (type == Account.AccountType.DEBIT || type == Account.AccountType.DEBIT_SHARED_BILLS) {
+                grouped.get("Debit Accounts").add(entry);
+            } else if (type == Account.AccountType.CREDIT) {
+                grouped.get("Credit Accounts").add(entry);
+            } else if (type == Account.AccountType.SHORT_TERM_SAVINGS || type == Account.AccountType.LONG_TERM_SAVINGS) {
+                grouped.get("Savings Accounts").add(entry);
+            } else if (type == Account.AccountType.PENSION) {
+                grouped.get("Pensions").add(entry);
+            } else if (type == Account.AccountType.LOAN) {
+                grouped.get("Loans").add(entry);
+            } else {
+                grouped.get("Other Accounts").add(entry);
+            }
+        }
+
+        LinkedHashMap<String, List<Map.Entry<Account, AccountStatus>>> result = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Map.Entry<Account, AccountStatus>>> grp : grouped.entrySet()) {
+            if (!grp.getValue().isEmpty()) {
+                grp.getValue().sort(Comparator.comparing(e -> e.getKey().getName() != null ? e.getKey().getName().toLowerCase() : ""));
+                result.put(grp.getKey(), grp.getValue());
+            }
+        }
+        return result;
+    }
+
     public Float getRemainderRentCost() {
         return remainderRentCost;
     }

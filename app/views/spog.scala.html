@@ -223,24 +223,47 @@
                     }
                 </div>
 
-                <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem;">Account Details:</div>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    @for((a, status) <- spogVm.getAccountStatusMap()) {
-                    <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.65rem 0.85rem; background: #ffffff;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-                            <b>@a.name <span style="font-weight: 400; font-size: 0.82rem; color: var(--text-muted);">(@{a.`type`})</span></b>
-                            @if(a.`type`.toString == "LOAN") {
-                                <span style="font-weight: 700; color: var(--danger);">£@status.getLatestBalance() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">remaining of £@a.availableLimit</span></span>
-                            } else if(a.`type`.toString == "PENSION") {
-                                <span style="font-weight: 700; color: var(--primary);">£@status.getLatestBalance() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">banked</span></span>
-                            } else {
-                                <span style="font-weight: 700; color: var(--primary);">£@status.getAdjustedAvailable() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">left to spend</span></span>
-                            }
+                <div style="font-weight: 700; font-size: 0.95rem; margin-top: 1.25rem; margin-bottom: 0.75rem; color: var(--text-main);">
+                    Account Breakdown
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    @for((groupName, entries) <- spogVm.getGroupedAccountStatuses()) {
+                    <div>
+                        <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-layer-group"></i> @groupName
                         </div>
-                        <div style="display: flex; gap: 0.75rem; font-size: 0.82rem; color: var(--text-muted);">
-                            <span>Paid: £@status.getAlreadyPaid()</span>
-                            <span>Pending: £@status.getPending()</span>
-                            <span>Balance: £@status.getLatestBalance()</span>
+                        <div class="spog-account-grid">
+                            @for(entry <- entries) {
+                                @defining(entry.getKey()) { a =>
+                                @defining(entry.getValue()) { status =>
+                                <div class="item-card" style="padding: 0.75rem 0.9rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.35rem;">
+                                        <b style="font-size: 0.92rem; color: var(--text-main);">@a.name</b>
+                                        @if(a.`type`.toString == "LOAN") {
+                                            <span style="font-weight: 700; color: var(--danger); font-size: 0.9rem;">£@status.getLatestBalance() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">remaining of £@a.availableLimit</span></span>
+                                        } else if(a.`type`.toString == "PENSION") {
+                                            <span style="font-weight: 700; color: var(--primary); font-size: 0.9rem;">£@status.getLatestBalance() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">banked</span></span>
+                                        } else {
+                                            <span style="font-weight: 700; color: var(--primary); font-size: 0.9rem;">£@status.getAdjustedAvailable() <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">left to spend</span></span>
+                                        }
+                                    </div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem 0.85rem; font-size: 0.8rem; color: var(--text-muted); padding-top: 0.35rem; border-top: 1px dashed var(--border-color);">
+                                        @if(a.`type`.toString == "CREDIT") {
+                                            <span>Balance: <strong style="color: var(--text-main);">£@status.getLatestBalance() / £@a.availableLimit</strong></span>
+                                            <span>Pending: £@status.getPending()</span>
+                                        } else if(a.`type`.toString == "LOAN") {
+                                            <span>Original Drawdown: £@a.availableLimit</span>
+                                        } else if(a.`type`.toString == "PENSION") {
+                                            <span>Type: Long-Term Pension</span>
+                                        } else {
+                                            <span>Paid: £@status.getAlreadyPaid()</span>
+                                            <span>Pending: £@status.getPending()</span>
+                                            <span>Balance: £@status.getLatestBalance()</span>
+                                        }
+                                    </div>
+                                </div>
+                                }}
+                            }
                         </div>
                     </div>
                     }
