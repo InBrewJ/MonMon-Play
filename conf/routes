@@ -2,8 +2,9 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 
-# Home page (sort of - atm this is weird + janky view model - needs a refactor)
+# Outgoings
 GET     /                            controllers.OutgoingController.index(req: Request)
+GET     /myOutgoings                 controllers.OutgoingController.index(req: Request)
 POST    /outgoing                    controllers.OutgoingController.addOutgoing(req: Request)
 GET     /outgoings                   controllers.OutgoingController.getOutgoingsComplete(req: Request)
 GET     /editOutgoing/:id            controllers.OutgoingController.listOutgoingsWithPrefill(id: Int, req: Request)
@@ -11,10 +12,11 @@ GET     /binOutgoing/:id             controllers.OutgoingController.archiveOutgo
 POST    /updateOutgoing              controllers.OutgoingController.updateOutgoing(id: Int, req: Request)
 
 # Accounts
+GET     /myAccounts                  controllers.AccountController.listAccounts(req: Request)
 POST    /account                     controllers.AccountController.addAccount(req: Request)
 GET     /accounts                    controllers.AccountController.getAccountsComplete(req: Request)
 GET     /binAccount/:id              controllers.AccountController.archiveAccount(id: Int, req: Request)
-GET     /editAccount/:id             controllers.OutgoingController.listAccountsWithPrefill(id: Int, req: Request)
+GET     /editAccount/:id             controllers.AccountController.listAccountsWithPrefill(id: Int, req: Request)
 POST    /updateAccount               controllers.AccountController.updateAccount(id: Int, req: Request)
 
 # Incoming details

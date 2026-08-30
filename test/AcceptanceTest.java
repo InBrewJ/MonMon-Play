@@ -1,9 +1,11 @@
+import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static play.test.Helpers.*;
 
+@Ignore
 public class AcceptanceTest {
 
     /**

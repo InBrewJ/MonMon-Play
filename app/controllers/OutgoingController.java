@@ -66,13 +66,11 @@ public class OutgoingController extends Controller {
         this.outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
         return ok(
-                views.html.index.render(
-                        asScala(accounts),
+                views.html.outgoings.render(
                         asScala(outgoings),
                         this.outgoingTotal,
                         this.outgoingForm,
-                        false,
-                        this.accountForm,
+                        asScala(accounts),
                         false,
                         request,
                         playSessionStore,
@@ -119,51 +117,20 @@ public class OutgoingController extends Controller {
     @Secure(clients = "OidcClient")
     public Result listOutgoingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        List<Outgoing> outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
+        if (found == null || !found.getUserId().equals(sup.getUserId())) {
+            return forbidden(views.html.error403.render());
+        }
         Form<Outgoing> prefilledOutgoingForm = this.outgoingForm.fill(found);
         this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
         this.outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
-        if (!found.getUserId().equals(sup.getUserId())) {
-            return forbidden(views.html.error403.render());
-        }
         return ok(
-                views.html.index.render(
-                        asScala(accounts),
+                views.html.outgoings.render(
                         asScala(outgoings),
                         this.outgoingTotal,
                         prefilledOutgoingForm,
-                        true,
-                        this.accountForm,
-                        false,
-                        request,
-                        playSessionStore,
-                        messagesApi.preferred(request)
-                )
-        );
-    }
-
-    @Secure(clients = "OidcClient")
-    public Result listAccountsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
-        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        List<Outgoing> outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
-        Account found = accountRepository.findById(id).toCompletableFuture().get();
-        Form<Account> prefilledAccountForm = this.accountForm.fill(found);
-        this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        this.outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
-        this.outgoingTotal = round2(getTotalOutgoings(this.outgoings));
-        if (!found.getUserId().equals(sup.getUserId())) {
-            return forbidden(views.html.error403.render());
-        }
-        return ok(
-                views.html.index.render(
                         asScala(accounts),
-                        asScala(outgoings),
-                        this.outgoingTotal,
-                        this.outgoingForm,
-                        false,
-                        prefilledAccountForm,
                         true,
                         request,
                         playSessionStore,

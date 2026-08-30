@@ -374,15 +374,44 @@ public class Spog {
     }
 
     public Double getSavingsPot() {
-        // Add up all last balance for *SAVINGS accounts
+        // Add up all last balance for LONG_TERM_SAVINGS, SHORT_TERM_SAVINGS, and PENSION
         Double savingsPot = 0d;
         for (AccountStatus as : accountStatusMap.values()) {
             if(as.getAccountType() == Account.AccountType.LONG_TERM_SAVINGS ||
-                    as.getAccountType() == Account.AccountType.SHORT_TERM_SAVINGS) {
+                    as.getAccountType() == Account.AccountType.SHORT_TERM_SAVINGS ||
+                    as.getAccountType() == Account.AccountType.PENSION) {
                 savingsPot += as.getLatestBalance();
             }
         }
         return round2(savingsPot);
+    }
+
+    public Double getPensionPot() {
+        Double pensionPot = 0d;
+        for (AccountStatus as : accountStatusMap.values()) {
+            if(as.getAccountType() == Account.AccountType.PENSION) {
+                pensionPot += as.getLatestBalance();
+            }
+        }
+        return round2(pensionPot);
+    }
+
+    public Double getLoanRemainingTotal() {
+        Double loanTotal = 0d;
+        for (AccountStatus as : accountStatusMap.values()) {
+            if(as.getAccountType() == Account.AccountType.LOAN) {
+                loanTotal += as.getLatestBalance();
+            }
+        }
+        return round2(loanTotal);
+    }
+
+    public Double getLoanOriginalDrawdownTotal() {
+        Float total = allAccounts
+                .stream()
+                .filter(a -> a.getType() == Account.AccountType.LOAN)
+                .reduce(0.0f, (partialResult, a) -> partialResult + a.getAvailableLimit(), Float::sum);
+        return round2((double) total);
     }
 
     public Double getCreditBalance() {

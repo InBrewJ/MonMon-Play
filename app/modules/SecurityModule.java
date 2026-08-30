@@ -70,7 +70,8 @@ public class SecurityModule extends AbstractModule {
         oidcConfiguration.setClientId(configuration.getString("oidc.clientId"));
         oidcConfiguration.setSecret(configuration.getString("oidc.clientSecret"));
         oidcConfiguration.setDiscoveryURI(configuration.getString("oidc.discoveryUri"));
-        oidcConfiguration.addCustomParam("prompt", "consent");
+        oidcConfiguration.setExpireSessionWithToken(false);
+        oidcConfiguration.setUseNonce(true);
         oidcConfiguration.setPreferredJwsAlgorithm(JWSAlgorithm.RS256);
         final OidcClient oidcClient = new OidcClient(oidcConfiguration);
         oidcClient.addAuthorizationGenerator((ctx, session, profile) -> { profile.addRole("ROLE_ADMIN"); return Optional.of(profile); });

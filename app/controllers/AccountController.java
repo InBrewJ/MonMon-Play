@@ -2,10 +2,11 @@ package controllers;
 
 import models.Account;
 import models.AccountRepository;
-import models.Outgoing;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
+import play.data.Form;
 import play.data.FormFactory;
+import play.i18n.MessagesApi;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
@@ -13,12 +14,15 @@ import play.mvc.Result;
 import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
-import java.time.LocalTime;
+import java.util.List;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
+import static helpers.ModelHelpers.repoListToList;
 import static helpers.UserHelpers.getSimpleUserProfile;
 import static play.libs.Json.toJson;
+import static play.libs.Scala.asScala;
 
 /**
  * The controller keeps all database operations behind the repository, and uses
@@ -29,25 +33,57 @@ public class AccountController extends Controller {
 
     private final FormFactory formFactory;
     private final AccountRepository accountRepository;
+    private final MessagesApi messagesApi;
     private final HttpExecutionContext ec;
 
     @Inject
     private SessionStore playSessionStore;
 
     @Inject
-    public AccountController(FormFactory formFactory, AccountRepository accountRepository, HttpExecutionContext ec) {
+    public AccountController(FormFactory formFactory, MessagesApi messagesApi, AccountRepository accountRepository, HttpExecutionContext ec) {
         this.formFactory = formFactory;
+        this.messagesApi = messagesApi;
         this.accountRepository = accountRepository;
         this.ec = ec;
     }
 
-    // This doesn't work because of something to do with CSRF protection:
-    // HM.
-    // Turns out that pac4j has its own csrf protection. We can either send the pac4j
-    // token along in the request or turn it off on pac4j?
-    // This is done by adding a list of "authorizers". By default,
-    // pac4j adds the csrfFilter if no "authorizers" are defined...
-    // #RTFM
+    @Secure(clients = "OidcClient")
+    public Result listAccounts(final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
+        return ok(
+                views.html.accounts.render(
+                        asScala(accounts),
+                        formFactory.form(Account.class),
+                        false,
+                        request,
+                        playSessionStore,
+                        messagesApi.preferred(request)
+                )
+        );
+    }
+
+    @Secure(clients = "OidcClient")
+    public Result listAccountsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        Account found = accountRepository.findById(id).toCompletableFuture().get();
+        if (found == null || !found.getUserId().equals(sup.getUserId())) {
+            return forbidden(views.html.error403.render());
+        }
+        List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
+        Form<Account> prefilledAccountForm = formFactory.form(Account.class).fill(found);
+        return ok(
+                views.html.accounts.render(
+                        asScala(accounts),
+                        prefilledAccountForm,
+                        true,
+                        request,
+                        playSessionStore,
+                        messagesApi.preferred(request)
+                )
+        );
+    }
+
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addAccount(final Http.Request request) {
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
@@ -56,7 +92,7 @@ public class AccountController extends Controller {
         account.setUserId(sup.getUserId());
         return accountRepository
                 .add(account)
-                .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
+                .thenApplyAsync(p -> redirect(routes.AccountController.listAccounts()), ec.current());
     }
 
     @Secure(clients = "OidcClient")
@@ -70,10 +106,9 @@ public class AccountController extends Controller {
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveAccount(int id, final Http.Request request) {
         System.out.println("Deleting account with id : " + id);
-        // perhaps just update an 'archived' field here
         return accountRepository
                 .archive(id)
-                .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
+                .thenApplyAsync(p -> redirect(routes.AccountController.listAccounts()), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -82,7 +117,7 @@ public class AccountController extends Controller {
         System.out.println("this limit :: " + account.getAvailableLimit());
         return accountRepository
                 .update(id, account)
-                .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
+                .thenApplyAsync(p -> redirect(routes.AccountController.listAccounts()), ec.current());
     }
 
 }

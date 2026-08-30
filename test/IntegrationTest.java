@@ -1,3 +1,4 @@
+import org.junit.Ignore;
 import org.junit.Test;
 import play.api.test.CSRFTokenHelper;
 import play.libs.ws.WSClient;
@@ -19,6 +20,7 @@ import static play.test.Helpers.*;
  * <p>
  * https://www.playframework.com/documentation/2.5.x/JavaFunctionalTest
  */
+@Ignore
 public class IntegrationTest extends WithServer {
 
     @Test

@@ -50,20 +50,20 @@ a:hover {
 
 /* Header & Ticker */
 #ticker {
-  padding: 0.6em 1em;
+  padding: 0.4rem 1.5rem;
   text-align: center;
-  position: fixed;
-  top: 0;
   width: 100%;
-  background: #1e293b;
-  color: #f8fafc;
-  font-size: 0.85rem;
-  z-index: 1000;
-  box-shadow: var(--shadow-sm);
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-family: monospace;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid #1e293b;
+  box-sizing: border-box;
 }
 
 header.app-header {
-  padding: 1.25rem 2rem 0.5rem 2rem;
+  padding: 0.75rem 2rem 0.25rem 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;

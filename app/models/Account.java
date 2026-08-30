@@ -15,7 +15,9 @@ public class Account {
         CREDIT,
         LONG_TERM_SAVINGS,
         SHORT_TERM_SAVINGS,
-        DEBIT_SHARED_BILLS
+        DEBIT_SHARED_BILLS,
+        PENSION,
+        LOAN
     }
 
     @Id
@@ -125,5 +127,20 @@ public class Account {
     public void setPot(Pot pot) {
         System.out.println("Setting this account to :: " + pot.type + " id :: " + pot.id);
         this.pot = pot;
+    }
+
+    public Balance getLatestBalance() {
+        if (this.balances == null || this.balances.isEmpty()) {
+            return null;
+        }
+        return this.balances.stream()
+                .filter(java.util.Objects::nonNull)
+                .max(java.util.Comparator.comparing(b -> b.getTimestamp() != null ? b.getTimestamp() : 0L))
+                .orElse(null);
+    }
+
+    public Float getLatestBalanceValue() {
+        Balance latest = getLatestBalance();
+        return latest != null && latest.getValue() != null ? latest.getValue() : 0f;
     }
 }
