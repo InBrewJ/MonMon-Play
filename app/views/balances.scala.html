@@ -73,9 +73,9 @@
                     </div>
                 </div>
 
-                <!-- Interactive SVG Chart Canvas -->
+                <!-- Interactive HTML5 Canvas Chart -->
                 <div id="chart-container" style="position: relative; width: 100%; height: 280px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
-                    <svg id="balance-chart" width="100%" height="100%" style="overflow: visible;"></svg>
+                    <canvas id="balance-chart" style="width: 100%; height: 100%; display: block;"></canvas>
                     <div id="chart-tooltip" style="display: none; position: absolute; background: var(--ticker-bg); color: var(--ticker-text); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem; pointer-events: none; border: 1px solid var(--border-color); box-shadow: var(--shadow-md); z-index: 10;"></div>
                 </div>
 
@@ -137,13 +137,28 @@ var rawEvents = @play.twirl.api.Html(chartEventsJson);
 $(function() {
     var selectedRange = '2m';
     var selectedAccount = 'ALL';
-    var palette = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#3b82f6'];
+    var palette = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#14b8a6'];
+    var currentRenderedPoints = [];
+    var currentRenderedEvents = [];
 
     function renderChart() {
-        var svg = $('#balance-chart');
-        svg.empty();
-        var width = svg.width() || 600;
-        var height = svg.height() || 280;
+        var canvas = document.getElementById('balance-chart');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        var container = canvas.parentElement;
+        var rect = container.getBoundingClientRect();
+        var dpr = window.devicePixelRatio || 1;
+        var width = rect.width || 600;
+        var height = rect.height || 280;
+
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.scale(dpr, dpr);
+
+        ctx.clearRect(0, 0, width, height);
+        currentRenderedPoints = [];
+        currentRenderedEvents = [];
+
         var padding = { top: 25, right: 30, bottom: 35, left: 65 };
 
         var nowSec = Math.floor(Date.now() / 1000);
@@ -162,7 +177,11 @@ $(function() {
         filtered.sort(function(a, b) { return a.timestamp - b.timestamp; });
 
         if (!filtered.length) {
-            svg.append('<text x="' + (width/2) + '" y="' + (height/2) + '" text-anchor="middle" fill="var(--text-muted)" font-size="14">No balance entries found for this range</text>');
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '14px system-ui, -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('No balance entries recorded for this range', width / 2, height / 2);
             return;
         }
 
@@ -181,14 +200,26 @@ $(function() {
 
         // Grid lines & Y Axis labels
         var ySteps = 4;
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.setLineDash([3, 3]);
+
         for (var i = 0; i <= ySteps; i++) {
             var val = minVal + ((maxVal - minVal) / ySteps) * i;
             var yPos = getY(val);
-            svg.append('<line x1="' + padding.left + '" y1="' + yPos + '" x2="' + (width - padding.right) + '" y2="' + yPos + '" stroke="var(--border-color)" stroke-dasharray="3,3" />');
-            svg.append('<text x="' + (padding.left - 8) + '" y="' + (yPos + 4) + '" text-anchor="end" fill="var(--text-muted)" font-size="11">£' + Math.round(val) + '</text>');
-        }
+            ctx.beginPath();
+            ctx.moveTo(padding.left, yPos);
+            ctx.lineTo(width - padding.right, yPos);
+            ctx.stroke();
 
-        // Group points by accountId so lines connect per-account cleanly
+            ctx.fillText('£' + Math.round(val), padding.left - 8, yPos);
+        }
+        ctx.setLineDash([]); // reset
+
+        // Group points by accountId
         var accountGroups = {};
         filtered.forEach(function(pt) {
             if (!accountGroups[pt.accountId]) {
@@ -200,57 +231,157 @@ $(function() {
         var accKeys = Object.keys(accountGroups);
         accKeys.forEach(function(accId, idx) {
             var group = accountGroups[accId];
-            var lineColor = (selectedAccount !== 'ALL') ? 'var(--primary)' : palette[idx % palette.length];
-            var pathPoints = [];
+            var lineColor = (selectedAccount !== 'ALL') ? '#6366f1' : palette[idx % palette.length];
 
-            group.points.forEach(function(pt) {
-                var px = getX(pt.timestamp);
-                var py = getY(pt.value);
-                pathPoints.push(px + ',' + py);
-            });
+            if (group.points.length === 1) {
+                // Single point: draw subtle baseline and prominent dot
+                var singlePt = group.points[0];
+                var singleY = getY(singlePt.value);
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(padding.left, singleY);
+                ctx.lineTo(width - padding.right, singleY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            } else if (group.points.length > 1) {
+                // Multi-point polyline
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = 2.5;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                for (var j = 0; j < group.points.length; j++) {
+                    var px = getX(group.points[j].timestamp);
+                    var py = getY(group.points[j].value);
+                    if (j === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
 
-            if (pathPoints.length > 1) {
-                var polyline = '<polyline fill="none" stroke="' + lineColor + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="' + pathPoints.join(' ') + '" />';
-                svg.append(polyline);
+                // If single account selected, fill area underneath
+                if (selectedAccount !== 'ALL') {
+                    var lastPx = getX(group.points[group.points.length - 1].timestamp);
+                    var firstPx = getX(group.points[0].timestamp);
+                    var baseY = height - padding.bottom;
+                    ctx.lineTo(lastPx, baseY);
+                    ctx.lineTo(firstPx, baseY);
+                    ctx.closePath();
+                    var grad = ctx.createLinearGradient(0, padding.top, 0, baseY);
+                    grad.addColorStop(0, 'rgba(99, 102, 241, 0.25)');
+                    grad.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+                }
             }
 
             // Draw Data Points
             group.points.forEach(function(pt) {
                 var cx = getX(pt.timestamp);
                 var cy = getY(pt.value);
-                var circle = $('<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="var(--card-bg)" stroke="' + lineColor + '" stroke-width="2" style="cursor: pointer;"></circle>');
-                (function(item, x, y) {
-                    circle.on('mouseenter', function() {
-                        $('#chart-tooltip').html('<strong>' + item.accountName + '</strong><br/>£' + item.value.toFixed(2) + '<br/><span style="font-size:0.75rem; color:var(--text-muted);">' + item.dateStr + '</span>')
-                            .css({ left: (x + 10) + 'px', top: (y - 20) + 'px' }).fadeIn(100);
-                    }).on('mouseleave', function() {
-                        $('#chart-tooltip').hide();
-                    });
-                })(pt, cx, cy);
-                svg.append(circle);
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#1e293b';
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = lineColor;
+                ctx.stroke();
+
+                currentRenderedPoints.push({
+                    x: cx,
+                    y: cy,
+                    accountName: pt.accountName,
+                    value: pt.value,
+                    dateStr: pt.dateStr,
+                    color: lineColor
+                });
             });
         });
 
-        // Overlay Google Calendar Events (on 1y or if in range)
-        if (rawEvents.length && (selectedRange === '1y' || selectedRange === 'all')) {
+        // Overlay Google Calendar Events (on 1y or all)
+        if (rawEvents && rawEvents.length && (selectedRange === '1y' || selectedRange === 'all')) {
             rawEvents.forEach(function(ev) {
                 var evSec = Math.floor(new Date(ev.date).getTime() / 1000);
                 if (evSec >= tMin && evSec <= tMax) {
                     var ex = getX(evSec);
-                    var eline = '<line x1="' + ex + '" y1="' + padding.top + '" x2="' + ex + '" y2="' + (height - padding.bottom) + '" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="2,2" opacity="0.75" />';
-                    var epin = $('<circle cx="' + ex + '" cy="' + (padding.top + 6) + '" r="4" fill="#f59e0b" style="cursor: pointer;"></circle>');
-                    svg.append(eline);
-                    epin.on('mouseenter', function() {
-                        $('#chart-tooltip').html('<span style="color:#f59e0b; font-weight:700;"><i class="fas fa-calendar-check"></i> Event</span><br/><strong>' + ev.title + '</strong><br/><span style="font-size:0.75rem;">' + ev.date + '</span>')
-                            .css({ left: (ex + 10) + 'px', top: (padding.top + 10) + 'px' }).fadeIn(100);
-                    }).on('mouseleave', function() {
-                        $('#chart-tooltip').hide();
+                    ctx.strokeStyle = '#f59e0b';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([2, 2]);
+                    ctx.beginPath();
+                    ctx.moveTo(ex, padding.top);
+                    ctx.lineTo(ex, height - padding.bottom);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    ctx.beginPath();
+                    ctx.arc(ex, padding.top + 6, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.fill();
+
+                    currentRenderedEvents.push({
+                        x: ex,
+                        y: padding.top + 6,
+                        title: ev.title,
+                        date: ev.date
                     });
-                    svg.append(epin);
                 }
             });
         }
     }
+
+    // Hover tooltip tracking on canvas
+    var canvasEl = $('#balance-chart');
+    canvasEl.on('mousemove', function(e) {
+        var rect = this.getBoundingClientRect();
+        var mouseX = e.clientX - rect.left;
+        var mouseY = e.clientY - rect.top;
+
+        // Check nearest balance point
+        var nearest = null;
+        var minDist = 25;
+        currentRenderedPoints.forEach(function(pt) {
+            var dist = Math.hypot(pt.x - mouseX, pt.y - mouseY);
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = pt;
+            }
+        });
+
+        if (nearest) {
+            $('#chart-tooltip')
+                .html('<strong>' + nearest.accountName + '</strong><br/>£' + nearest.value.toFixed(2) + '<br/><span style="font-size:0.75rem; color:var(--text-muted);">' + nearest.dateStr + '</span>')
+                .css({ left: (nearest.x + 12) + 'px', top: (nearest.y - 20) + 'px' })
+                .show();
+            return;
+        }
+
+        // Check nearest calendar event
+        var eventNearest = null;
+        var minEvDist = 15;
+        currentRenderedEvents.forEach(function(ev) {
+            var dist = Math.abs(ev.x - mouseX);
+            if (dist < minEvDist && mouseY >= 0 && mouseY <= 100) {
+                minEvDist = dist;
+                eventNearest = ev;
+            }
+        });
+
+        if (eventNearest) {
+            $('#chart-tooltip')
+                .html('<span style="color:#f59e0b; font-weight:700;"><i class="fas fa-calendar-check"></i> Event</span><br/><strong>' + eventNearest.title + '</strong><br/><span style="font-size:0.75rem;">' + eventNearest.date + '</span>')
+                .css({ left: (eventNearest.x + 12) + 'px', top: (eventNearest.y + 8) + 'px' })
+                .show();
+            return;
+        }
+
+        $('#chart-tooltip').hide();
+    });
+
+    canvasEl.on('mouseleave', function() {
+        $('#chart-tooltip').hide();
+    });
 
     $('.btn-time-filter').on('click', function() {
         $('.btn-time-filter').css('background', 'var(--card-bg-subtle)').css('color', 'var(--text-main)');

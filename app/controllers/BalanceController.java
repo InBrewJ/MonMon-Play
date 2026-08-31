@@ -160,7 +160,6 @@ public class BalanceController extends Controller {
             return "[]";
         }
         java.time.ZoneId zone = java.time.ZoneId.of("Europe/London");
-        long oneYearAgoSec = java.time.Instant.now().minus(365, java.time.temporal.ChronoUnit.DAYS).getEpochSecond();
         long sixtyDaysAgoSec = java.time.Instant.now().minus(60, java.time.temporal.ChronoUnit.DAYS).getEpochSecond();
 
         List<Balance> sorted = new java.util.ArrayList<>(allBalances);
@@ -170,7 +169,7 @@ public class BalanceController extends Controller {
         java.util.Map<String, Balance> dailySampled = new java.util.HashMap<>();
 
         for (Balance b : sorted) {
-            if (b.getAccount() == null || b.getTimestamp() == null || b.getTimestamp() < oneYearAgoSec) {
+            if (b.getAccount() == null || b.getTimestamp() == null) {
                 continue;
             }
             if (b.getTimestamp() >= sixtyDaysAgoSec) {
@@ -225,16 +224,15 @@ public class BalanceController extends Controller {
     public CompletionStage<Result> listBalances(Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         long tenDaysAgoSec = java.time.Instant.now().minus(10, java.time.temporal.ChronoUnit.DAYS).getEpochSecond();
-        long oneYearAgoSec = java.time.Instant.now().minus(365, java.time.temporal.ChronoUnit.DAYS).getEpochSecond();
 
         // 1. Query database directly for only last 10 days balances (table)
         List<Balance> recentBalances = repoListToList(balanceRepository.listSince(sup.getUserId(), tenDaysAgoSec));
 
-        // 2. Query database directly for only 1 year balances (chart)
-        List<Balance> chartBalances = repoListToList(balanceRepository.listSince(sup.getUserId(), oneYearAgoSec));
+        // 2. Query full list and condense on backend for fast chart
+        List<Balance> allBalances = repoListToList(balanceRepository.list(sup.getUserId()));
+        String chartBalancesJson = buildChartBalancesJson(allBalances);
 
         List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
-        String chartBalancesJson = buildChartBalancesJson(chartBalances);
 
         java.time.LocalDate now = java.time.LocalDate.now();
         java.time.LocalDate oneYearAgo = now.minusYears(1);
