@@ -7,7 +7,9 @@
     balanceForm: Form[Balance],
     accounts: Seq[Account],
     chartBalancesJson: String,
-    chartEventsJson: String
+    chartEventsJson: String,
+    paydaysJson: String = "[]",
+    defaultAccountIdsJson: String = "[]"
 )(
     implicit request: Http.Request,
     playSessionStore: SessionStore,
@@ -58,12 +60,40 @@
                     
                     <!-- Filters -->
                     <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;">
-                        <select id="filter-account" style="width: auto; padding: 0.3rem 0.6rem; font-size: 0.82rem; margin: 0;">
-                            <option value="ALL">All Accounts</option>
-                            @for(a <- accounts) {
-                                <option value="@a.id">@a.name</option>
-                            }
-                        </select>
+                        <!-- Multi-select Account Filter Dropdown -->
+                        <div class="custom-multiselect" style="position: relative; display: inline-block;">
+                            <button type="button" id="btn-account-multiselect" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.35rem 0.75rem; font-size: 0.8rem; border-radius: 6px; background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); cursor: pointer;">
+                                <i class="fas fa-university" style="color: var(--primary);"></i>
+                                <span id="multiselect-label">Monthly Pot Accounts</span>
+                                <i class="fas fa-chevron-down" style="font-size: 0.7rem; margin-left: 2px;"></i>
+                            </button>
+                            
+                            <div id="multiselect-dropdown" style="display: none; position: absolute; top: calc(100% + 4px); right: 0; min-width: 280px; max-width: 340px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow-lg); padding: 0.75rem; z-index: 100;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.4rem; margin-bottom: 0.4rem; border-bottom: 1px solid var(--border-color); font-size: 0.78rem;">
+                                    <span style="font-weight: 700; color: var(--text-muted);">FILTER ACCOUNTS</span>
+                                    <div style="display: flex; gap: 6px;">
+                                        <a href="javascript:void(0)" id="select-pot-btn" style="color: var(--primary); font-weight: 600; text-decoration: none;">Monthly Pot</a>
+                                        <span style="color: var(--border-color);">|</span>
+                                        <a href="javascript:void(0)" id="select-all-btn" style="color: var(--text-muted); text-decoration: none;">All</a>
+                                        <span style="color: var(--border-color);">|</span>
+                                        <a href="javascript:void(0)" id="select-none-btn" style="color: var(--text-muted); text-decoration: none;">None</a>
+                                    </div>
+                                </div>
+                                
+                                <div id="account-checkbox-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem;">
+                                    @for(a <- accounts) {
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; cursor: pointer; padding: 0.25rem 0.4rem; border-radius: 4px;" class="account-check-item">
+                                        <input type="checkbox" class="account-filter-chk" value="@a.id" style="accent-color: var(--primary); cursor: pointer;" />
+                                        <span class="account-palette-dot" data-account-id="@a.id" style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #6366f1; flex-shrink: 0;"></span>
+                                        <span style="flex-grow: 1; color: var(--text-main); font-weight: 500;">@a.name</span>
+                                        <span style="font-size: 0.7rem; color: var(--text-muted);">@{a.`type`}</span>
+                                    </label>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Time Filter Buttons -->
                         <div class="btn-group" style="display: inline-flex; gap: 2px;">
                             <button type="button" class="btn-time-filter" data-range="2m" style="padding: 0.35rem 0.65rem; font-size: 0.78rem; border-radius: 6px 0 0 6px;">Last 2 Months</button>
                             <button type="button" class="btn-time-filter" data-range="6m" style="padding: 0.35rem 0.65rem; font-size: 0.78rem; border-radius: 0;">6 Months</button>
@@ -74,15 +104,16 @@
                 </div>
 
                 <!-- Interactive HTML5 Canvas Chart -->
-                <div id="chart-container" style="position: relative; width: 100%; height: 280px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                <div id="chart-container" style="position: relative; width: 100%; height: 280px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px;">
                     <canvas id="balance-chart" style="width: 100%; height: 100%; display: block;"></canvas>
-                    <div id="chart-tooltip" style="display: none; position: absolute; background: var(--ticker-bg); color: var(--ticker-text); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem; pointer-events: none; border: 1px solid var(--border-color); box-shadow: var(--shadow-md); z-index: 10;"></div>
+                    <div id="chart-tooltip" style="display: none; position: absolute; background: var(--ticker-bg); color: var(--ticker-text); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem; pointer-events: none; border: 1px solid var(--border-color); box-shadow: var(--shadow-lg); z-index: 100; white-space: nowrap;"></div>
                 </div>
 
-                <!-- Legend & Event Indicator -->
+                <!-- Legend & Indicators -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted);">
-                    <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
                         <span><span style="display: inline-block; width: 12px; height: 3px; background: var(--primary); vertical-align: middle; margin-right: 4px;"></span> Balance Line</span>
+                        <span><span style="display: inline-block; width: 12px; height: 2px; border-top: 2px dashed #10b981; vertical-align: middle; margin-right: 4px;"></span> Payday</span>
                         <span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; vertical-align: middle; margin-right: 4px;"></span> Calendar Event</span>
                     </div>
                     <span id="chart-range-label">Showing Last 2 Months</span>
@@ -133,13 +164,104 @@
 <script>
 var rawBalances = @play.twirl.api.Html(chartBalancesJson);
 var rawEvents = @play.twirl.api.Html(chartEventsJson);
+var paydays = @play.twirl.api.Html(paydaysJson);
+var defaultAccountIds = @play.twirl.api.Html(defaultAccountIdsJson);
 
 $(function() {
     var selectedRange = '2m';
-    var selectedAccount = 'ALL';
-    var palette = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#14b8a6'];
+    var palette = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#14b8a6', '#e11d48', '#3b82f6'];
     var currentRenderedPoints = [];
     var currentRenderedEvents = [];
+    var currentRenderedPaydays = [];
+
+    // Assign color palette dots per account
+    var accountColors = {};
+    $('.account-palette-dot').each(function(idx) {
+        var accId = String($(this).data('account-id'));
+        var col = palette[idx % palette.length];
+        accountColors[accId] = col;
+        $(this).css('background', col);
+    });
+
+    // Initialize selected accounts (default to monthly pot)
+    var selectedAccountIds = new Set(defaultAccountIds.map(String));
+
+    function syncCheckboxes() {
+        $('.account-filter-chk').each(function() {
+            var accId = String($(this).val());
+            $(this).prop('checked', selectedAccountIds.has(accId));
+        });
+        updateMultiselectLabel();
+    }
+
+    function updateMultiselectLabel() {
+        var totalAccounts = $('.account-filter-chk').length;
+        var count = selectedAccountIds.size;
+        if (count === 0) {
+            $('#multiselect-label').text('No Accounts');
+        } else if (count === totalAccounts) {
+            $('#multiselect-label').text('All Accounts (' + count + ')');
+        } else {
+            // Check if matches default monthly pot
+            var isMonthlyPot = (count === defaultAccountIds.length) && defaultAccountIds.every(function(id) {
+                return selectedAccountIds.has(String(id));
+            });
+            if (isMonthlyPot) {
+                $('#multiselect-label').text('Monthly Pot (' + count + ')');
+            } else {
+                $('#multiselect-label').text(count + ' Account' + (count > 1 ? 's' : ''));
+            }
+        }
+    }
+
+    syncCheckboxes();
+
+    // Dropdown toggle & outside click handling
+    $('#btn-account-multiselect').on('click', function(e) {
+        e.stopPropagation();
+        $('#multiselect-dropdown').toggle();
+    });
+
+    $('#multiselect-dropdown').on('click', function(e) {
+        e.stopPropagation();
+    });
+
+    $(document).on('click', function() {
+        $('#multiselect-dropdown').hide();
+    });
+
+    // Checkbox change
+    $('.account-filter-chk').on('change', function() {
+        var accId = String($(this).val());
+        if ($(this).is(':checked')) {
+            selectedAccountIds.add(accId);
+        } else {
+            selectedAccountIds.delete(accId);
+        }
+        updateMultiselectLabel();
+        renderChart();
+    });
+
+    // Quick select actions
+    $('#select-pot-btn').on('click', function() {
+        selectedAccountIds = new Set(defaultAccountIds.map(String));
+        syncCheckboxes();
+        renderChart();
+    });
+
+    $('#select-all-btn').on('click', function() {
+        $('.account-filter-chk').each(function() {
+            selectedAccountIds.add(String($(this).val()));
+        });
+        syncCheckboxes();
+        renderChart();
+    });
+
+    $('#select-none-btn').on('click', function() {
+        selectedAccountIds.clear();
+        syncCheckboxes();
+        renderChart();
+    });
 
     function renderChart() {
         var canvas = document.getElementById('balance-chart');
@@ -158,6 +280,7 @@ $(function() {
         ctx.clearRect(0, 0, width, height);
         currentRenderedPoints = [];
         currentRenderedEvents = [];
+        currentRenderedPaydays = [];
 
         var padding = { top: 25, right: 30, bottom: 35, left: 65 };
 
@@ -167,10 +290,10 @@ $(function() {
         else if (selectedRange === '1y') minSec = nowSec - (365 * 86400);
         else if (selectedRange === 'all') minSec = 0;
 
-        // Filter balances
+        // Filter balances by time range AND multi-selected accounts
         var filtered = rawBalances.filter(function(b) {
             var inTime = (selectedRange === 'all') || (b.timestamp >= minSec && b.timestamp <= nowSec);
-            var inAcc = (selectedAccount === 'ALL') || (String(b.accountId) === String(selectedAccount));
+            var inAcc = selectedAccountIds.has(String(b.accountId));
             return inTime && inAcc;
         });
 
@@ -181,7 +304,11 @@ $(function() {
             ctx.font = '14px system-ui, -apple-system, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('No balance entries recorded for this range', width / 2, height / 2);
+            if (selectedAccountIds.size === 0) {
+                ctx.fillText('No accounts selected. Use the filter above to select accounts.', width / 2, height / 2);
+            } else {
+                ctx.fillText('No balance entries recorded for the selected accounts in this range', width / 2, height / 2);
+            }
             return;
         }
 
@@ -219,6 +346,36 @@ $(function() {
         }
         ctx.setLineDash([]); // reset
 
+        // Draw Vertical Lines for Paydays
+        if (paydays && paydays.length) {
+            paydays.forEach(function(pd) {
+                if (pd.timestamp >= tMin && pd.timestamp <= tMax) {
+                    var px = getX(pd.timestamp);
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(px, padding.top);
+                    ctx.lineTo(px, height - padding.bottom);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Payday badge dot at top
+                    ctx.beginPath();
+                    ctx.arc(px, padding.top + 4, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#10b981';
+                    ctx.fill();
+
+                    currentRenderedPaydays.push({
+                        x: px,
+                        label: pd.label,
+                        dateStr: pd.dateStr,
+                        timestamp: pd.timestamp
+                    });
+                }
+            });
+        }
+
         // Group points by accountId
         var accountGroups = {};
         filtered.forEach(function(pt) {
@@ -229,9 +386,9 @@ $(function() {
         });
 
         var accKeys = Object.keys(accountGroups);
-        accKeys.forEach(function(accId, idx) {
+        accKeys.forEach(function(accId) {
             var group = accountGroups[accId];
-            var lineColor = (selectedAccount !== 'ALL') ? '#6366f1' : palette[idx % palette.length];
+            var lineColor = accountColors[accId] || '#6366f1';
 
             if (group.points.length === 1) {
                 // Single point: draw subtle baseline and prominent dot
@@ -260,8 +417,8 @@ $(function() {
                 }
                 ctx.stroke();
 
-                // If single account selected, fill area underneath
-                if (selectedAccount !== 'ALL') {
+                // If only 1 account is active, fill area underneath
+                if (selectedAccountIds.size === 1) {
                     var lastPx = getX(group.points[group.points.length - 1].timestamp);
                     var firstPx = getX(group.points[0].timestamp);
                     var baseY = height - padding.bottom;
@@ -331,6 +488,34 @@ $(function() {
         }
     }
 
+    function positionTooltip(targetX, targetY, contentHtml) {
+        var tooltip = $('#chart-tooltip');
+        tooltip.html(contentHtml).show();
+
+        var container = $('#chart-container');
+        var containerWidth = container.width() || 600;
+        var containerHeight = container.height() || 280;
+        var tipWidth = tooltip.outerWidth() || 150;
+        var tipHeight = tooltip.outerHeight() || 55;
+
+        // Horizontal: flip to left if near right edge
+        var posX = targetX + 12;
+        if (posX + tipWidth > containerWidth - 10) {
+            posX = targetX - tipWidth - 12;
+        }
+        if (posX < 8) posX = 8;
+
+        // Vertical: center vertically on target point, clamp within container bounds
+        var posY = targetY - (tipHeight / 2);
+        if (posY < 8) {
+            posY = targetY + 12;
+        } else if (posY + tipHeight > containerHeight - 8) {
+            posY = containerHeight - tipHeight - 8;
+        }
+
+        tooltip.css({ left: Math.round(posX) + 'px', top: Math.round(posY) + 'px' });
+    }
+
     // Hover tooltip tracking on canvas
     var canvasEl = $('#balance-chart');
     canvasEl.on('mousemove', function(e) {
@@ -350,10 +535,31 @@ $(function() {
         });
 
         if (nearest) {
-            $('#chart-tooltip')
-                .html('<strong>' + nearest.accountName + '</strong><br/>£' + nearest.value.toFixed(2) + '<br/><span style="font-size:0.75rem; color:var(--text-muted);">' + nearest.dateStr + '</span>')
-                .css({ left: (nearest.x + 12) + 'px', top: (nearest.y - 20) + 'px' })
-                .show();
+            positionTooltip(
+                nearest.x,
+                nearest.y,
+                '<strong>' + nearest.accountName + '</strong><br/>£' + nearest.value.toFixed(2) + '<br/><span style="font-size:0.75rem; color:var(--text-muted);">' + nearest.dateStr + '</span>'
+            );
+            return;
+        }
+
+        // Check nearest payday line
+        var paydayNearest = null;
+        var minPayDist = 12;
+        currentRenderedPaydays.forEach(function(pd) {
+            var dist = Math.abs(pd.x - mouseX);
+            if (dist < minPayDist) {
+                minPayDist = dist;
+                paydayNearest = pd;
+            }
+        });
+
+        if (paydayNearest) {
+            positionTooltip(
+                paydayNearest.x,
+                padding.top + 30,
+                '<span style="color:#10b981; font-weight:700;"><i class="fas fa-coins"></i> ' + paydayNearest.label + '</span><br/><strong>' + paydayNearest.dateStr + '</strong>'
+            );
             return;
         }
 
@@ -369,10 +575,11 @@ $(function() {
         });
 
         if (eventNearest) {
-            $('#chart-tooltip')
-                .html('<span style="color:#f59e0b; font-weight:700;"><i class="fas fa-calendar-check"></i> Event</span><br/><strong>' + eventNearest.title + '</strong><br/><span style="font-size:0.75rem;">' + eventNearest.date + '</span>')
-                .css({ left: (eventNearest.x + 12) + 'px', top: (eventNearest.y + 8) + 'px' })
-                .show();
+            positionTooltip(
+                eventNearest.x,
+                padding.top + 20,
+                '<span style="color:#f59e0b; font-weight:700;"><i class="fas fa-calendar-check"></i> Event</span><br/><strong>' + eventNearest.title + '</strong><br/><span style="font-size:0.75rem;">' + eventNearest.date + '</span>'
+            );
             return;
         }
 
@@ -389,11 +596,6 @@ $(function() {
         selectedRange = $(this).data('range');
         var labels = { '2m': 'Showing Last 2 Months', '6m': 'Showing Last 6 Months', '1y': 'Showing 1 Year & Calendar Events', 'all': 'Showing All Recorded Balances' };
         $('#chart-range-label').text(labels[selectedRange] || '');
-        renderChart();
-    });
-
-    $('#filter-account').on('change', function() {
-        selectedAccount = $(this).val();
         renderChart();
     });
 

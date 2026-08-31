@@ -38,6 +38,8 @@ public class BalanceController extends Controller {
     private final FormFactory formFactory;
     private final AccountRepository accountRepository;
     private final BalanceRepository balanceRepository;
+    private final IncomingRepository incomingRepository;
+    private final PotRepository potRepository;
     private final HttpExecutionContext ec;
     private final Form<Balance> form;
     private final GoogleCalendarService gcalService;
@@ -51,11 +53,15 @@ public class BalanceController extends Controller {
                              MessagesApi messagesApi,
                              BalanceRepository balanceRepository,
                              AccountRepository accountRepository,
+                             IncomingRepository incomingRepository,
+                             PotRepository potRepository,
                              HttpExecutionContext ec,
                              GoogleCalendarService gcalService) {
         this.formFactory = formFactory;
         this.accountRepository = accountRepository;
         this.balanceRepository = balanceRepository;
+        this.incomingRepository = incomingRepository;
+        this.potRepository = potRepository;
         this.messagesApi = messagesApi;
         this.form = formFactory.form(Balance.class);
         this.ec = ec;
@@ -234,10 +240,45 @@ public class BalanceController extends Controller {
 
         List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
 
-        java.time.LocalDate now = java.time.LocalDate.now();
-        java.time.LocalDate oneYearAgo = now.minusYears(1);
+        // 3. Compute paydays across past 5 years up to next month
+        int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
+        java.time.LocalDate nowLocalDate = java.time.LocalDate.now();
+        java.time.ZoneId ukZone = java.time.ZoneId.of("Europe/London");
+        java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy");
 
-        return gcalService.getEventsForYear(oneYearAgo, now)
+        List<java.util.Map<String, Object>> paydaysList = new java.util.ArrayList<>();
+        if (nextPayDay > 0) {
+            java.time.LocalDate startMonth = nowLocalDate.minusYears(5).withDayOfMonth(1);
+            java.time.LocalDate endMonth = nowLocalDate.plusMonths(1).withDayOfMonth(1);
+            java.time.LocalDate curr = startMonth;
+            while (!curr.isAfter(endMonth)) {
+                java.time.LocalDate actualPayday = helpers.ModelHelpers.getActualPaydayDate(nextPayDay, curr.getYear(), curr.getMonthValue());
+                java.util.Map<String, Object> payMap = new java.util.HashMap<>();
+                payMap.put("timestamp", actualPayday.atStartOfDay(ukZone).toEpochSecond());
+                payMap.put("label", "Payday");
+                payMap.put("dateStr", dtf.format(actualPayday));
+                paydaysList.add(payMap);
+                curr = curr.plusMonths(1);
+            }
+        }
+        String paydaysJson = play.libs.Json.stringify(play.libs.Json.toJson(paydaysList));
+
+        // 4. Default selected accounts (accounts in Monthly Pot)
+        List<Pot> monthlyPots = repoListToList(this.potRepository.list(sup.getUserId()));
+        List<Long> defaultAccountIds = monthlyPots.stream()
+                .filter(p -> p.getType() == Pot.PotType.MONTHLY)
+                .findFirst()
+                .map(p -> p.accounts != null ? p.accounts.stream().map(Account::getId).collect(Collectors.toList()) : java.util.Collections.<Long>emptyList())
+                .orElse(java.util.Collections.emptyList());
+
+        if (defaultAccountIds.isEmpty()) {
+            defaultAccountIds = accounts.stream().map(Account::getId).collect(Collectors.toList());
+        }
+        String defaultAccountIdsJson = play.libs.Json.stringify(play.libs.Json.toJson(defaultAccountIds));
+
+        java.time.LocalDate oneYearAgo = nowLocalDate.minusYears(1);
+
+        return gcalService.getEventsForYear(oneYearAgo, nowLocalDate)
                 .thenApplyAsync(events -> {
                     String chartEventsJson = buildChartEventsJson(events);
                     return ok(
@@ -247,6 +288,8 @@ public class BalanceController extends Controller {
                                     asScala(accounts),
                                     chartBalancesJson,
                                     chartEventsJson,
+                                    paydaysJson,
+                                    defaultAccountIdsJson,
                                     request,
                                     playSessionStore,
                                     messagesApi.preferred(request)
