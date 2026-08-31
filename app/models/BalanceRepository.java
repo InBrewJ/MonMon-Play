@@ -14,4 +14,6 @@ public interface BalanceRepository {
     CompletionStage<Balance> add(Balance balance);
 
     CompletionStage<Stream<Balance>> list(String userId);
+
+    CompletionStage<Stream<Balance>> listSince(String userId, Long sinceTimestamp);
 }

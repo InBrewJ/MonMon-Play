@@ -1,13 +1,18 @@
 package helpers;
 
 import java.time.Instant;
-import java.util.Date;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 public class TimeHelpers {
+    private static final DateTimeFormatter DISPLAY_FORMATTER = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
+            .withZone(ZoneId.of("Europe/London"));
+
     public static String unixTimestampToDisplayDate(Long timestamp) {
-        Date d =  new Date(timestamp * 1000);
-        return d.toString();
+        if (timestamp == null) return "";
+        return DISPLAY_FORMATTER.format(Instant.ofEpochSecond(timestamp));
     }
+
     public static Long generateUnixTimestamp() {
         return Instant.now().getEpochSecond();
     }

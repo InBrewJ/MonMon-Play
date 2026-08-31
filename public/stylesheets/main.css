@@ -186,11 +186,13 @@ nav.crumbs {
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-nav.crumbs .nav-mobile-header {
-  display: none !important;
+.nav-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.nav-toggle-btn {
+.nav-chevron-toggle {
   display: none !important;
 }
 
@@ -236,35 +238,50 @@ nav.crumbs ol {
 
 @media (max-width: 768px) {
   nav.crumbs {
-    padding: 0.5rem 1rem;
+    padding: 0.45rem 1rem;
   }
 
-  nav.crumbs .nav-mobile-header {
-    display: flex !important;
-    justify-content: space-between;
+  .nav-bar-inner {
+    display: flex;
     align-items: center;
+    gap: 0.4rem;
+    width: 100%;
   }
 
-  .nav-toggle-btn {
+  .nav-chevron-toggle {
     display: inline-flex !important;
     align-items: center !important;
-    gap: 0.35rem !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
     background: var(--card-bg-subtle) !important;
     color: var(--text-muted) !important;
     border: 1px solid var(--border-color) !important;
     border-radius: var(--border-radius-sm) !important;
-    padding: 0.25rem 0.65rem !important;
-    font-size: 0.8rem !important;
-    font-weight: 600 !important;
     cursor: pointer !important;
+    font-size: 0.85rem !important;
     box-shadow: var(--shadow-sm) !important;
+    transition: all 0.2s ease !important;
+    flex-shrink: 0 !important;
+  }
+
+  .nav-chevron-toggle:hover, .nav-chevron-toggle:focus {
+    background: var(--card-bg) !important;
+    color: var(--primary) !important;
+    border-color: var(--primary) !important;
   }
 
   #nav-toggle-icon {
     transition: transform 0.2s ease;
   }
 
-  /* When collapsed on mobile, only show active route */
+  /* When collapsed on mobile, show only active crumb & inline chevron */
+  nav.crumbs:not(.nav-open) .nav-bar-inner {
+    flex-direction: row;
+    align-items: center;
+  }
+
   nav.crumbs:not(.nav-open) ol {
     display: inline-flex;
     margin: 0;
@@ -281,12 +298,28 @@ nav.crumbs ol {
   }
 
   /* When open on mobile, show all routes stacked */
+  nav.crumbs.nav-open .nav-bar-inner {
+    flex-direction: column;
+    align-items: stretch;
+    position: relative;
+  }
+
+  nav.crumbs.nav-open .nav-chevron-toggle {
+    position: absolute;
+    top: 2px;
+    right: 0;
+  }
+
+  nav.crumbs.nav-open #nav-toggle-icon {
+    transform: rotate(90deg);
+  }
+
   nav.crumbs.nav-open ol {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: 0.35rem;
-    margin-top: 0.5rem;
+    margin-top: 2.5rem;
     padding-top: 0.5rem;
     border-top: 1px dashed var(--border-color);
   }
@@ -300,10 +333,6 @@ nav.crumbs ol {
     width: 100%;
     box-sizing: border-box;
     padding: 0.45rem 0.75rem;
-  }
-
-  nav.crumbs.nav-open #nav-toggle-icon {
-    transform: rotate(90deg);
   }
 }
 
@@ -601,6 +630,27 @@ button:active, .w3-button:active {
   width: 38px;
   text-align: center;
   white-space: nowrap;
+}
+
+/* Balances Recorded Log Table Column Layouts */
+.w3-table th.col-balance-date, .w3-table td.col-balance-date {
+  width: 170px;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.w3-table th.col-balance-account, .w3-table td.col-balance-account {
+  width: auto;
+  white-space: nowrap;
+}
+
+.w3-table th.col-balance-avail, .w3-table td.col-balance-avail {
+  width: 130px;
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--primary);
 }
 
 /* Responsive View Switcher */

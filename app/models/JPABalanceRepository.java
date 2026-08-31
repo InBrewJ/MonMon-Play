@@ -35,6 +35,11 @@ public class JPABalanceRepository implements BalanceRepository {
         return supplyAsync(() -> wrap(em -> list(em, userId)), executionContext);
     }
 
+    @Override
+    public CompletionStage<Stream<Balance>> listSince(String userId, Long sinceTimestamp) {
+        return supplyAsync(() -> wrap(em -> listSince(em, userId, sinceTimestamp)), executionContext);
+    }
+
     private <T> T wrap(Function<EntityManager, T> function) {
         return jpaApi.withTransaction(function);
     }
@@ -48,6 +53,15 @@ public class JPABalanceRepository implements BalanceRepository {
         List<Balance> balances = em
                 .createQuery("select b from Balance b WHERE userId = :userId ORDER BY b.timestamp DESC", Balance.class)
                 .setParameter("userId", userId)
+                .getResultList();
+        return balances.stream();
+    }
+
+    private Stream<Balance> listSince(EntityManager em, String userId, Long sinceTimestamp) {
+        List<Balance> balances = em
+                .createQuery("select b from Balance b WHERE userId = :userId AND b.timestamp >= :sinceTimestamp ORDER BY b.timestamp DESC", Balance.class)
+                .setParameter("userId", userId)
+                .setParameter("sinceTimestamp", sinceTimestamp)
                 .getResultList();
         return balances.stream();
     }

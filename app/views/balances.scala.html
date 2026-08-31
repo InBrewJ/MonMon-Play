@@ -6,7 +6,8 @@
     balances: Seq[Balance],
     balanceForm: Form[Balance],
     accounts: Seq[Account],
-    events: Seq[CalendarEvent] = Seq.empty
+    chartBalancesJson: String,
+    chartEventsJson: String
 )(
     implicit request: Http.Request,
     playSessionStore: SessionStore,
@@ -44,25 +45,6 @@
                         <i class="fas fa-save" style="margin-right: 6px;"></i> Save Balance
                     </button>
                 </form>
-            </div>
-
-            <!-- Quick Account Available Summary -->
-            <div class="w3-card w3-padding w3-margin-bottom">
-                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
-                    <i class="fas fa-wallet" style="color: var(--primary); margin-right: 6px;"></i> Accounts Available
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    @for(a <- accounts) {
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0.6rem; background: var(--card-bg-subtle); border-radius: 6px; font-size: 0.85rem;">
-                        <span><b>@a.name</b> <span style="font-size: 0.75rem; color: var(--text-muted);">(@{a.`type`})</span></span>
-                        @if(!a.balances.isEmpty) {
-                            <span style="font-weight: 700; color: var(--primary);">£@a.balances.get(0).getValue()</span>
-                        } else {
-                            <span style="color: var(--text-muted);">No records</span>
-                        }
-                    </div>
-                    }
-                </div>
             </div>
         </div>
 
@@ -107,32 +89,37 @@
                 </div>
             </div>
 
-            <!-- Balance History Table -->
+            <!-- Balance History Table (Last 10 Days Verbatim) -->
             <div class="w3-card w3-padding">
-                <div style="font-weight: 800; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 0.75rem;">
-                    <i class="fas fa-history" style="color: var(--primary); margin-right: 6px;"></i> Recorded Log
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                    <div style="font-weight: 800; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                        <i class="fas fa-history" style="color: var(--primary); margin-right: 6px;"></i> Recorded Log
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                        (Last 10 days per account)
+                    </div>
                 </div>
 
                 <div style="overflow-x: auto;">
                     <table class="w3-table w3-striped" id="balances-table">
                         <thead>
                             <tr>
-                                <th>Date & Time</th>
-                                <th>Account</th>
-                                <th style="text-align: right;">Available</th>
+                                <th class="col-balance-date">Date &amp; Time</th>
+                                <th class="col-balance-account">Account</th>
+                                <th class="col-balance-avail">Available</th>
                             </tr>
                         </thead>
                         <tbody>
                             @if(balances.isEmpty) {
                             <tr>
-                                <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No balance entries recorded yet.</td>
+                                <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No balance entries recorded in the last 10 days.</td>
                             </tr>
                             }
                             @for(b <- balances) {
                             <tr data-account-id="@b.getAccount().getId()" data-timestamp="@b.getTimestamp()">
-                                <td>@b.getTimestampHumanReadable</td>
-                                <td><span class="account-tag">🏛️ @b.getAccount().getName()</span></td>
-                                <td style="text-align: right; font-weight: 700; color: var(--primary);">£@b.getValue()</td>
+                                <td class="col-balance-date">@b.getTimestampHumanReadable</td>
+                                <td class="col-balance-account"><span class="account-tag">🏛️ @b.getAccount().getName()</span></td>
+                                <td class="col-balance-avail">£@String.format(java.util.Locale.UK, "%.2f", b.getValue())</td>
                             </tr>
                             }
                         </tbody>
@@ -144,31 +131,23 @@
 </div>
 
 <script>
-var rawBalances = [
-@for(b <- balances) {
-    { id: @b.getId(), accountId: @b.getAccount().getId(), accountName: "@b.getAccount().getName()", value: @b.getValue(), timestamp: @b.getTimestamp(), dateStr: "@b.getTimestampHumanReadable" },
-}
-];
-
-var rawEvents = [
-@for(e <- events) {
-    { id: "@e.getId()", title: "@e.getTitle()", date: "@e.getDate()", timestamp: Math.floor(new Date("@e.getDate()").getTime() / 1000) },
-}
-];
+var rawBalances = @play.twirl.api.Html(chartBalancesJson);
+var rawEvents = @play.twirl.api.Html(chartEventsJson);
 
 $(function() {
     var selectedRange = '2m';
     var selectedAccount = 'ALL';
+    var palette = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#3b82f6'];
 
     function renderChart() {
         var svg = $('#balance-chart');
         svg.empty();
         var width = svg.width() || 600;
         var height = svg.height() || 280;
-        var padding = { top: 25, right: 30, bottom: 35, left: 60 };
+        var padding = { top: 25, right: 30, bottom: 35, left: 65 };
 
         var nowSec = Math.floor(Date.now() / 1000);
-        var minSec = nowSec - (60 * 86400); // default 2m (60 days)
+        var minSec = nowSec - (60 * 86400); // default 2m
         if (selectedRange === '6m') minSec = nowSec - (180 * 86400);
         else if (selectedRange === '1y') minSec = nowSec - (365 * 86400);
         else if (selectedRange === 'all') minSec = 0;
@@ -189,7 +168,7 @@ $(function() {
 
         var minVal = Math.min.apply(null, filtered.map(function(d) { return d.value; }));
         var maxVal = Math.max.apply(null, filtered.map(function(d) { return d.value; }));
-        if (minVal === maxVal) { minVal = 0; maxVal = maxVal * 1.2 || 100; }
+        if (minVal === maxVal) { minVal = 0; maxVal = (maxVal * 1.2) || 100; }
         minVal = Math.min(0, minVal);
         maxVal = maxVal * 1.1;
 
@@ -209,40 +188,55 @@ $(function() {
             svg.append('<text x="' + (padding.left - 8) + '" y="' + (yPos + 4) + '" text-anchor="end" fill="var(--text-muted)" font-size="11">£' + Math.round(val) + '</text>');
         }
 
-        // Area & Line path
-        var pathPoints = [];
-        for (var j = 0; j < filtered.length; j++) {
-            var px = getX(filtered[j].timestamp);
-            var py = getY(filtered[j].value);
-            pathPoints.push(px + ',' + py);
-        }
+        // Group points by accountId so lines connect per-account cleanly
+        var accountGroups = {};
+        filtered.forEach(function(pt) {
+            if (!accountGroups[pt.accountId]) {
+                accountGroups[pt.accountId] = { id: pt.accountId, name: pt.accountName, points: [] };
+            }
+            accountGroups[pt.accountId].points.push(pt);
+        });
 
-        // Draw Line
-        var polyline = '<polyline fill="none" stroke="var(--primary)" stroke-width="2.5" points="' + pathPoints.join(' ') + '" />';
-        svg.append(polyline);
+        var accKeys = Object.keys(accountGroups);
+        accKeys.forEach(function(accId, idx) {
+            var group = accountGroups[accId];
+            var lineColor = (selectedAccount !== 'ALL') ? 'var(--primary)' : palette[idx % palette.length];
+            var pathPoints = [];
 
-        // Draw Data Points
-        for (var k = 0; k < filtered.length; k++) {
-            var pt = filtered[k];
-            var cx = getX(pt.timestamp);
-            var cy = getY(pt.value);
-            var circle = $('<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="var(--card-bg)" stroke="var(--primary)" stroke-width="2.5" style="cursor: pointer;"></circle>');
-            (function(item, x, y) {
-                circle.on('mouseenter', function() {
-                    $('#chart-tooltip').html('<strong>' + item.accountName + '</strong><br/>£' + item.value.toFixed(2) + '<br/><span style="font-size:0.75rem; color:var(--text-muted);">' + item.dateStr + '</span>')
-                        .css({ left: (x + 10) + 'px', top: (y - 20) + 'px' }).fadeIn(100);
-                }).on('mouseleave', function() {
-                    $('#chart-tooltip').hide();
-                });
-            })(pt, cx, cy);
-            svg.append(circle);
-        }
+            group.points.forEach(function(pt) {
+                var px = getX(pt.timestamp);
+                var py = getY(pt.value);
+                pathPoints.push(px + ',' + py);
+            });
+
+            if (pathPoints.length > 1) {
+                var polyline = '<polyline fill="none" stroke="' + lineColor + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="' + pathPoints.join(' ') + '" />';
+                svg.append(polyline);
+            }
+
+            // Draw Data Points
+            group.points.forEach(function(pt) {
+                var cx = getX(pt.timestamp);
+                var cy = getY(pt.value);
+                var circle = $('<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="var(--card-bg)" stroke="' + lineColor + '" stroke-width="2" style="cursor: pointer;"></circle>');
+                (function(item, x, y) {
+                    circle.on('mouseenter', function() {
+                        $('#chart-tooltip').html('<strong>' + item.accountName + '</strong><br/>£' + item.value.toFixed(2) + '<br/><span style="font-size:0.75rem; color:var(--text-muted);">' + item.dateStr + '</span>')
+                            .css({ left: (x + 10) + 'px', top: (y - 20) + 'px' }).fadeIn(100);
+                    }).on('mouseleave', function() {
+                        $('#chart-tooltip').hide();
+                    });
+                })(pt, cx, cy);
+                svg.append(circle);
+            });
+        });
 
         // Overlay Google Calendar Events (on 1y or if in range)
         if (rawEvents.length && (selectedRange === '1y' || selectedRange === 'all')) {
             rawEvents.forEach(function(ev) {
-                if (ev.timestamp >= tMin && ev.timestamp <= tMax) {
-                    var ex = getX(ev.timestamp);
+                var evSec = Math.floor(new Date(ev.date).getTime() / 1000);
+                if (evSec >= tMin && evSec <= tMax) {
+                    var ex = getX(evSec);
                     var eline = '<line x1="' + ex + '" y1="' + padding.top + '" x2="' + ex + '" y2="' + (height - padding.bottom) + '" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="2,2" opacity="0.75" />';
                     var epin = $('<circle cx="' + ex + '" cy="' + (padding.top + 6) + '" r="4" fill="#f59e0b" style="cursor: pointer;"></circle>');
                     svg.append(eline);
@@ -259,7 +253,7 @@ $(function() {
     }
 
     $('.btn-time-filter').on('click', function() {
-        $('.btn-time-filter').removeClass('w3-button-active').css('background', 'var(--card-bg-subtle)').css('color', 'var(--text-main)');
+        $('.btn-time-filter').css('background', 'var(--card-bg-subtle)').css('color', 'var(--text-main)');
         $(this).css('background', 'var(--primary)').css('color', '#ffffff');
         selectedRange = $(this).data('range');
         var labels = { '2m': 'Showing Last 2 Months', '6m': 'Showing Last 6 Months', '1y': 'Showing 1 Year & Calendar Events', 'all': 'Showing All Recorded Balances' };
