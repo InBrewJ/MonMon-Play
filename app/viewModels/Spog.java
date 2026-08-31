@@ -336,8 +336,10 @@ public class Spog {
     public LinkedHashMap<String, List<Map.Entry<Account, AccountStatus>>> getGroupedAccountStatuses() {
         LinkedHashMap<String, List<Map.Entry<Account, AccountStatus>>> grouped = new LinkedHashMap<>();
         grouped.put("Debit Accounts", new ArrayList<>());
+        grouped.put("Shared Bills (Debit) Accounts", new ArrayList<>());
         grouped.put("Credit Accounts", new ArrayList<>());
-        grouped.put("Savings Accounts", new ArrayList<>());
+        grouped.put("Short-Term Savings Accounts", new ArrayList<>());
+        grouped.put("Long-Term Savings Accounts", new ArrayList<>());
         grouped.put("Pensions", new ArrayList<>());
         grouped.put("Loans", new ArrayList<>());
         grouped.put("Other Accounts", new ArrayList<>());
@@ -345,12 +347,16 @@ public class Spog {
         for (Map.Entry<Account, AccountStatus> entry : accountStatusMap.entrySet()) {
             Account a = entry.getKey();
             Account.AccountType type = a.getType();
-            if (type == Account.AccountType.DEBIT || type == Account.AccountType.DEBIT_SHARED_BILLS) {
+            if (type == Account.AccountType.DEBIT) {
                 grouped.get("Debit Accounts").add(entry);
+            } else if (type == Account.AccountType.DEBIT_SHARED_BILLS) {
+                grouped.get("Shared Bills (Debit) Accounts").add(entry);
             } else if (type == Account.AccountType.CREDIT) {
                 grouped.get("Credit Accounts").add(entry);
-            } else if (type == Account.AccountType.SHORT_TERM_SAVINGS || type == Account.AccountType.LONG_TERM_SAVINGS) {
-                grouped.get("Savings Accounts").add(entry);
+            } else if (type == Account.AccountType.SHORT_TERM_SAVINGS) {
+                grouped.get("Short-Term Savings Accounts").add(entry);
+            } else if (type == Account.AccountType.LONG_TERM_SAVINGS) {
+                grouped.get("Long-Term Savings Accounts").add(entry);
             } else if (type == Account.AccountType.PENSION) {
                 grouped.get("Pensions").add(entry);
             } else if (type == Account.AccountType.LOAN) {

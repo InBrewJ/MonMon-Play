@@ -179,4 +179,72 @@ public class SpogTest {
         assertThat(spog.getTotalAvailableDebit()).isEqualTo(0.0);
         assertThat(spog.getTotalAvailableCredit()).isEqualTo(1500.0);
     }
+
+    @Test
+    public void testGroupedAccountStatusesSplitting() {
+        Account debit = new Account();
+        debit.setType(Account.AccountType.DEBIT);
+        debit.setName("Main Current");
+        debit.balances = Collections.emptyList();
+        debit.outgoings = Collections.emptyList();
+
+        Account sharedBills = new Account();
+        sharedBills.setType(Account.AccountType.DEBIT_SHARED_BILLS);
+        sharedBills.setName("Joint Bills");
+        sharedBills.balances = Collections.emptyList();
+        sharedBills.outgoings = Collections.emptyList();
+
+        Account credit = new Account();
+        credit.setType(Account.AccountType.CREDIT);
+        credit.setName("Amex Card");
+        credit.balances = Collections.emptyList();
+        credit.outgoings = Collections.emptyList();
+
+        Account shortTerm = new Account();
+        shortTerm.setType(Account.AccountType.SHORT_TERM_SAVINGS);
+        shortTerm.setName("Emergency Fund");
+        shortTerm.balances = Collections.emptyList();
+        shortTerm.outgoings = Collections.emptyList();
+
+        Account longTerm = new Account();
+        longTerm.setType(Account.AccountType.LONG_TERM_SAVINGS);
+        longTerm.setName("Stocks ISA");
+        longTerm.balances = Collections.emptyList();
+        longTerm.outgoings = Collections.emptyList();
+
+        Account pension = new Account();
+        pension.setType(Account.AccountType.PENSION);
+        pension.setName("Nest Pension");
+        pension.balances = Collections.emptyList();
+        pension.outgoings = Collections.emptyList();
+
+        Account loan = new Account();
+        loan.setType(Account.AccountType.LOAN);
+        loan.setName("Car Loan");
+        loan.balances = Collections.emptyList();
+        loan.outgoings = Collections.emptyList();
+
+        List<Account> allAccounts = List.of(debit, sharedBills, credit, shortTerm, longTerm, pension, loan);
+        Spog spog = new Spog(
+                500f, 31, 0, 3000f, 2000f, 0f, 0f, 0f, 0f, 0f, 0f,
+                allAccounts, Collections.emptyList()
+        );
+
+        java.util.LinkedHashMap<String, List<java.util.Map.Entry<Account, viewModels.AccountStatus>>> grouped =
+                spog.getGroupedAccountStatuses();
+
+        assertThat(grouped.keySet()).containsExactly(
+                "Debit Accounts",
+                "Shared Bills (Debit) Accounts",
+                "Credit Accounts",
+                "Short-Term Savings Accounts",
+                "Long-Term Savings Accounts",
+                "Pensions",
+                "Loans"
+        );
+        assertThat(grouped.get("Debit Accounts").get(0).getKey().getName()).isEqualTo("Main Current");
+        assertThat(grouped.get("Shared Bills (Debit) Accounts").get(0).getKey().getName()).isEqualTo("Joint Bills");
+        assertThat(grouped.get("Short-Term Savings Accounts").get(0).getKey().getName()).isEqualTo("Emergency Fund");
+        assertThat(grouped.get("Long-Term Savings Accounts").get(0).getKey().getName()).isEqualTo("Stocks ISA");
+    }
 }
