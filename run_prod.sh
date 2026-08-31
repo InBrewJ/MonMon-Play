@@ -70,6 +70,7 @@ sleep 2
 if kill -0 "$NEW_PID" 2>/dev/null; then
     echo "MonMon is running successfully (PID $NEW_PID)."
 else
-    echo "WARNING: MonMon exited immediately. Check ./monmon.err and ./monmon.out:"
+    echo "❌ ERROR: MonMon exited immediately. Check ./monmon.err and ./monmon.out:" >&2
     tail -n 20 ./monmon.err || true
+    exit 1
 fi
