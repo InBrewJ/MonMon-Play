@@ -56,7 +56,7 @@ public class Spog {
                 List<Account> monthlyPotAccounts
     ) {
         LocalDate now = LocalDate.now();
-        this.monthlyPotAccounts = monthlyPotAccounts;
+        this.monthlyPotAccounts = this.resolveMonthlyPotAccounts(monthlyPotAccounts, allAccounts);
         // takes savings plan into account, this seems lame
         this.outgoingTotal = outgoingTotal;
         this.rentCost = rentCost;
@@ -198,10 +198,89 @@ public class Spog {
         return round2(total);
     }
 
+    private List<Account> resolveMonthlyPotAccounts(List<Account> potAccounts, List<Account> accounts) {
+        if (potAccounts == null || potAccounts.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (accounts == null || accounts.isEmpty()) {
+            return potAccounts;
+        }
+        Map<Long, Account> accountById = new HashMap<>();
+        for (Account a : accounts) {
+            if (a != null && a.getId() != null) {
+                accountById.put(a.getId(), a);
+            }
+        }
+        List<Account> resolved = new ArrayList<>();
+        for (Account m : potAccounts) {
+            if (m != null && m.getId() != null && accountById.containsKey(m.getId())) {
+                resolved.add(accountById.get(m.getId()));
+            } else if (m != null) {
+                resolved.add(m);
+            }
+        }
+        return resolved;
+    }
+
+    private static long toEpochSec(Long timestamp) {
+        if (timestamp == null) {
+            return 0L;
+        }
+        return timestamp > 10_000_000_000L ? timestamp / 1000L : timestamp;
+    }
+
     public Double getSpentThisMonth() {
-        Double totalAvailable = getMonthlyPotTotalAvailable();
-        Double spent = (double) this.surplus - totalAvailable;
-        return round2(Math.max(0.0, spent));
+        if (this.monthlyPotAccounts == null || this.monthlyPotAccounts.isEmpty()) {
+            return 0.0;
+        }
+
+        LocalDate now = LocalDate.now();
+        LocalDate lastPayDate = helpers.ModelHelpers.findLastPaydayDate(now, this.nextPayday);
+        long cycleStartSec = lastPayDate.atStartOfDay(java.time.ZoneId.of("Europe/London")).toEpochSecond();
+
+        double totalSpent = 0.0;
+
+        // Deduplicate accounts by ID
+        Map<Long, Account> uniqueAccounts = new LinkedHashMap<>();
+        for (Account a : this.monthlyPotAccounts) {
+            if (a != null) {
+                Long id = a.getId() != null ? a.getId() : (long) a.hashCode();
+                uniqueAccounts.putIfAbsent(id, a);
+            }
+        }
+
+        for (Account a : uniqueAccounts.values()) {
+            if (a == null || a.balances == null || a.balances.isEmpty()) {
+                continue;
+            }
+
+            List<Balance> validBalances = a.balances.stream()
+                    .filter(b -> b != null && b.getTimestamp() != null && b.getValue() != null)
+                    .collect(Collectors.toList());
+
+            if (validBalances.isEmpty()) {
+                continue;
+            }
+
+            List<Balance> sorted = new ArrayList<>(validBalances);
+            sorted.sort(Comparator
+                    .comparing((Balance b) -> toEpochSec(b.getTimestamp()))
+                    .thenComparing(b -> b.getId() != null ? b.getId() : 0L));
+
+            for (int i = 1; i < sorted.size(); i++) {
+                Balance curr = sorted.get(i);
+                long tCurr = toEpochSec(curr.getTimestamp());
+                if (tCurr >= cycleStartSec) {
+                    Balance prev = sorted.get(i - 1);
+                    double delta = (double) curr.getValue() - (double) prev.getValue();
+                    if (delta < 0) {
+                        totalSpent += (-delta);
+                    }
+                }
+            }
+        }
+
+        return round2(Math.max(0.0, totalSpent));
     }
 
     public Double getActualDailySpend() {
@@ -314,11 +393,16 @@ public class Spog {
                     .stream()
                     .filter(o -> !o.isArchived())
                     .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
-            Float latestBalance;
+            Float latestBalance = 0f;
             try {
-                a.balances.sort(Comparator.comparing(Balance::getTimestamp).reversed());
-                latestBalance = a.balances.get(0).getValue();
-                System.out.println("Latest balance :: " + latestBalance);
+                if (a.balances != null && !a.balances.isEmpty()) {
+                    List<Balance> valid = a.balances.stream()
+                            .filter(b -> b != null && b.getTimestamp() != null && b.getValue() != null)
+                            .sorted(Comparator.comparing(Balance::getTimestamp).reversed())
+                            .collect(Collectors.toList());
+                    latestBalance = !valid.isEmpty() ? valid.get(0).getValue() : 0f;
+                    System.out.println("Latest balance :: " + latestBalance);
+                }
             } catch (Exception e) {
                 System.out.println("Bad balances :");
                 System.out.println(e);

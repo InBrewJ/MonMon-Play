@@ -172,11 +172,16 @@ public class SpogController extends Controller {
 
         List<Account> allAccounts = repoListToList(this.accountRepository.list(sup.getUserId()));
         List<Pot> monthlyPots = repoListToList(this.potRepository.list(sup.getUserId()));
-        List<Account> monthlyPotAccounts = monthlyPots.stream()
+        java.util.Set<Long> monthlyPotAccountIds = monthlyPots.stream()
                 .filter(p -> p.getType() == Pot.PotType.MONTHLY)
                 .findFirst()
-                .map(p -> p.accounts != null ? p.accounts : Collections.<Account>emptyList())
-                .orElse(Collections.emptyList());
+                .map(p -> p.accounts != null
+                        ? p.accounts.stream().map(Account::getId).collect(Collectors.toSet())
+                        : Collections.<Long>emptySet())
+                .orElse(Collections.emptySet());
+        List<Account> monthlyPotAccounts = allAccounts.stream()
+                .filter(a -> monthlyPotAccountIds.contains(a.getId()))
+                .collect(Collectors.toList());
         Spog spogVm = new Spog(
                 surplus,
                 nextPayDay,

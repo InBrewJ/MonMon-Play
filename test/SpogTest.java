@@ -50,26 +50,32 @@ public class SpogTest {
     @Test
     public void testSpentThisMonthAndDailyOverspend() {
         Account acc = new Account();
+        acc.setId(1L);
         acc.setType(Account.AccountType.DEBIT);
         acc.setName("Current");
         acc.setAvailableLimit(0f);
         acc.outgoings = Collections.emptyList();
 
-        Balance b = new Balance();
-        b.setValue(300f);
-        b.setTimestamp(System.currentTimeMillis());
-        b.setAccount(acc);
+        long nowSec = System.currentTimeMillis() / 1000L;
+        Balance b0 = new Balance();
+        b0.setValue(800f);
+        b0.setTimestamp(nowSec - 86400); // 1 day ago
+        b0.setAccount(acc);
+
+        Balance b1 = new Balance();
+        b1.setValue(300f);
+        b1.setTimestamp(nowSec); // now
+        b1.setAccount(acc);
 
         List<Balance> balances = new ArrayList<>();
-        balances.add(b);
+        balances.add(b0);
+        balances.add(b1);
         acc.balances = balances;
 
         List<Account> allAccounts = Collections.singletonList(acc);
         List<Account> monthlyPotAccounts = Collections.singletonList(acc);
 
-        // Surplus = 800 (discretionary budget)
-        // Current monthly pot balance = 300
-        // Spent this month = 800 - 300 = 500
+        // Start = 800, now = 300. Negative delta = -500 -> Spent this month = 500
         Spog spog = new Spog(
                 800f,
                 31,
@@ -93,6 +99,50 @@ public class SpogTest {
             assertThat(spog.getActualDailySpend()).isGreaterThan(0.0);
             assertThat(spog.getAbsoluteDailyOverspend()).isNotNull();
         }
+
+        // 1. Halfway through month, adding an account whose balance remained constant should NOT increase spent
+        Account acc2 = new Account();
+        acc2.setId(2L);
+        acc2.setType(Account.AccountType.DEBIT);
+        acc2.setName("Constant Account");
+        acc2.setAvailableLimit(0f);
+        acc2.outgoings = Collections.emptyList();
+        Balance bConst = new Balance();
+        bConst.setValue(250f);
+        bConst.setTimestamp(nowSec - 172800); // 2 days ago
+        bConst.setAccount(acc2);
+        acc2.balances = Collections.singletonList(bConst);
+
+        List<Account> monthlyWithAddedAccount = List.of(acc, acc2);
+        Spog spogWithAdded = new Spog(
+                800f, 31, 0, 2000f, 1200f, 0f, 0f, 0f, 0f, 0f, 0f,
+                monthlyWithAddedAccount, monthlyWithAddedAccount
+        );
+        // Balance in acc2 remained constant, so spent is still 500.0
+        assertThat(spogWithAdded.getSpentThisMonth()).isEqualTo(500.0);
+        // But total available increased by 250 (300 + 250 = 550)
+        assertThat(spogWithAdded.getMonthlyPotTotalAvailable()).isEqualTo(550.0);
+
+        // 2. Adding more money to a pot at sometime during the month
+        // 800 -> 300 (spent 500) -> 600 (top-up +300) -> 450 (spent 150)
+        Balance bTopUp = new Balance();
+        bTopUp.setValue(600f);
+        bTopUp.setTimestamp(nowSec + 100);
+        bTopUp.setAccount(acc);
+
+        Balance bSpendAgain = new Balance();
+        bSpendAgain.setValue(450f);
+        bSpendAgain.setTimestamp(nowSec + 200);
+        bSpendAgain.setAccount(acc);
+
+        acc.balances = List.of(b0, b1, bTopUp, bSpendAgain);
+        Spog spogWithTopUp = new Spog(
+                800f, 31, 0, 2000f, 1200f, 0f, 0f, 0f, 0f, 0f, 0f,
+                Collections.singletonList(acc), Collections.singletonList(acc)
+        );
+        // Total spent = 500 + 150 = 650.0
+        assertThat(spogWithTopUp.getSpentThisMonth()).isEqualTo(650.0);
+        assertThat(spogWithTopUp.getMonthlyPotTotalAvailable()).isEqualTo(450.0);
     }
 
     @Test
