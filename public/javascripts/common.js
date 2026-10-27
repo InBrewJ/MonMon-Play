@@ -43,7 +43,37 @@
         }, true);
     }
 
-    // 3. Numeric & Negative Inputs Enhancement
+    // 3. Robust touch & click binder for iOS Safari + desktop
+    function bindTapOrClick(element, handler) {
+        if (!element) return;
+        var lastTouchTime = 0;
+
+        // Prevent mouse down from blurring focused input on desktop
+        element.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+        });
+
+        // On mobile touch devices (iOS Safari, Android):
+        // NEVER preventDefault on touchstart, as iOS suppresses all click/touch interactions!
+        // Instead, handle action on touchend with preventDefault to avoid delayed click.
+        element.addEventListener('touchend', function (e) {
+            lastTouchTime = Date.now();
+            e.preventDefault();
+            handler(e);
+        }, { passive: false });
+
+        element.addEventListener('click', function (e) {
+            // If fired within 600ms of touchend, ignore synthetic duplicate click
+            if (Date.now() - lastTouchTime < 600) {
+                e.preventDefault();
+                return;
+            }
+            e.preventDefault();
+            handler(e);
+        });
+    }
+
+    // 4. Numeric & Negative Inputs Enhancement
     function permitsNegative(inp) {
         if (inp.hasAttribute('data-allow-negative')) {
             return inp.getAttribute('data-allow-negative') !== 'false';
@@ -76,7 +106,17 @@
         updateInputSignStyle(inp);
         inp.dispatchEvent(new Event('input', { bubbles: true }));
         inp.dispatchEvent(new Event('change', { bubbles: true }));
-        inp.focus();
+
+        // Ensure input remains focused and cursor is placed at end
+        try {
+            inp.focus();
+            if (inp.setSelectionRange && inp.type !== 'number') {
+                var len = inp.value.length;
+                inp.setSelectionRange(len, len);
+            }
+        } catch (err) {
+            // Ignore if browser restricts setSelectionRange
+        }
     }
 
     function updateInputSignStyle(inp) {
@@ -100,10 +140,10 @@
         if (pill && pill._currentInput === inp) {
             if (isNeg) {
                 pill.style.background = '#ef4444';
-                pill.innerHTML = '<span style="font-size:1.1rem;font-weight:900;">&minus;</span> Negative';
+                pill.innerHTML = '<span style="font-size:1.15rem;font-weight:900;">&minus;</span> Negative';
             } else {
                 pill.style.background = '#6366f1';
-                pill.innerHTML = '<span style="font-size:1.1rem;font-weight:900;">&plusmn;</span> Negative';
+                pill.innerHTML = '<span style="font-size:1.15rem;font-weight:900;">&plusmn;</span> Negative';
             }
         }
     }
@@ -116,19 +156,17 @@
             floatingPill.type = 'button';
             floatingPill.setAttribute('aria-label', 'Toggle negative sign');
             floatingPill.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;' +
-                'background:#6366f1;color:#fff;border:none;font-weight:700;font-size:0.9rem;padding:8px 16px;' +
-                'border-radius:9999px;box-shadow:0 4px 16px rgba(0,0,0,0.5);cursor:pointer;display:none;align-items:center;gap:6px;user-select:none;transition:background 0.15s ease;';
-            floatingPill.innerHTML = '<span style="font-size:1.1rem;font-weight:900;">&plusmn;</span> Negative';
+                'background:#6366f1;color:#fff;border:none;font-weight:700;font-size:0.9rem;padding:8px 18px;' +
+                'border-radius:9999px;box-shadow:0 4px 16px rgba(0,0,0,0.5);cursor:pointer;display:none;align-items:center;gap:6px;' +
+                'user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:background 0.15s ease;';
+            floatingPill.innerHTML = '<span style="font-size:1.15rem;font-weight:900;">&plusmn;</span> Negative';
 
-            floatingPill.addEventListener('mousedown', function (e) { e.preventDefault(); });
-            floatingPill.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
-
-            floatingPill.addEventListener('click', function (e) {
-                e.preventDefault();
+            bindTapOrClick(floatingPill, function () {
                 if (floatingPill._currentInput) {
                     toggleSign(floatingPill._currentInput);
                 }
             });
+
             document.body.appendChild(floatingPill);
         }
         return floatingPill;
@@ -161,6 +199,11 @@
 
             if (canBeNegative) {
                 inp.addEventListener('focus', function () {
+                    // If the input already has an inline toggle right next to it, don't clutter with floating pill
+                    var container = inp.closest('div');
+                    if (container && container.querySelector('.btn-toggle-sign, #balance-sign-toggle')) {
+                        return;
+                    }
                     if (window.innerWidth <= 768 || ('ontouchstart' in window)) {
                         var pill = getOrCreateFloatingPill();
                         pill._currentInput = inp;
@@ -180,18 +223,19 @@
             }
         });
 
+        // Wire up all inline .btn-toggle-sign buttons
         var signButtons = document.querySelectorAll('.btn-toggle-sign, #balance-sign-toggle');
         signButtons.forEach(function (btn) {
             if (btn._boundSign) return;
             btn._boundSign = true;
 
-            btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
-            btn.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
-
-            btn.addEventListener('click', function (e) {
-                e.preventDefault();
-                var container = btn.closest('div');
-                var targetInput = container ? container.querySelector('input') : null;
+            bindTapOrClick(btn, function () {
+                var targetId = btn.getAttribute('data-target');
+                var targetInput = targetId ? document.getElementById(targetId) : null;
+                if (!targetInput) {
+                    var container = btn.closest('div');
+                    targetInput = container ? container.querySelector('input') : null;
+                }
                 if (targetInput) {
                     toggleSign(targetInput);
                 }
