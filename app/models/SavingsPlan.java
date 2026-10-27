@@ -143,4 +143,39 @@ public class SavingsPlan {
         float target = getTargetAmount(incomingTotal);
         return round2(target - getTotalAllocated());
     }
+
+    /**
+     * Scales all active items proportionally to match a new savings target percentage.
+     * Preserves original proportions across all items.
+     */
+    public void scaleItemsProportionally(Float incomingTotal, int newPercentage) {
+        float oldTotalAllocated = getTotalAllocated();
+        this.savingsPercentage = newPercentage;
+        this.lastUpdated = System.currentTimeMillis();
+
+        if (incomingTotal == null || incomingTotal <= 0f) {
+            return;
+        }
+
+        float newTargetPot = getTargetAmount(incomingTotal);
+        List<SavingsPlanItem> activeItems = getItems();
+        if (activeItems.isEmpty()) {
+            return;
+        }
+
+        if (oldTotalAllocated <= 0f) {
+            float equalShare = round2(newTargetPot / activeItems.size());
+            for (SavingsPlanItem item : activeItems) {
+                item.setMonthlyAmount(equalShare);
+            }
+            return;
+        }
+
+        for (SavingsPlanItem item : activeItems) {
+            float oldAmount = item.getMonthlyAmount() != null ? item.getMonthlyAmount() : 0.0f;
+            float weight = oldAmount / oldTotalAllocated;
+            float newAmount = round2(newTargetPot * weight);
+            item.setMonthlyAmount(newAmount);
+        }
+    }
 }

@@ -108,8 +108,8 @@
                 </div>
             </div>
 
-            <!-- Ed Says AI Panel -->
-            <div class="w3-card w3-padding w3-margin-bottom" id="ed-says-panel" style="border-left: 4px solid var(--primary); background: var(--card-bg);">
+            <!-- Ed Says AI Panel (Desktop) -->
+            <div class="w3-card w3-padding w3-margin-bottom" id="ed-says-desktop-panel" style="border-left: 4px solid var(--primary); background: var(--card-bg);">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; border-bottom: 1px dashed var(--border-color); padding-bottom: 0.4rem;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 32px; height: 32px; vertical-align: middle;" />
@@ -118,11 +118,11 @@
                             <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">AI Financial Insights (Mistral)</div>
                         </div>
                     </div>
-                    <button id="ed-refresh-btn" class="w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; cursor: pointer;" title="Ask Ed for fresh advice">
-                        <i class="fas fa-sync-alt" id="ed-refresh-icon"></i> Ask Ed
+                    <button type="button" class="ed-refresh-btn w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; cursor: pointer;" title="Ask Ed for fresh advice">
+                        <i class="fas fa-sync-alt ed-refresh-icon"></i> Ask Ed
                     </button>
                 </div>
-                <div id="ed-says-content" style="font-size: 0.88rem; line-height: 1.55; color: var(--text-main);">
+                <div class="ed-says-content" style="font-size: 0.88rem; line-height: 1.55; color: var(--text-main);">
                     <div style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); padding: 0.6rem 0;">
                         <i class="fas fa-spinner fa-spin" style="color: var(--primary);"></i>
                         <span>Summoning Ed's thoughts on your finances...</span>
@@ -458,6 +458,11 @@
     <span>Can I afford this?</span>
 </button>
 
+<!-- Floating Action Button for Ed (Bottom Left, Mobile) -->
+<button type="button" id="btn-ed-fab" class="fab-ed" title="Ed says">
+    <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" />
+</button>
+
 <!-- Can I Afford This Scratchpad Modal -->
 <div id="afford-modal" class="modal-backdrop">
     <div class="modal-content-card">
@@ -525,6 +530,35 @@
 
             <div style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 1.25rem;">
                 <i class="fas fa-info-circle"></i> Scratchpad only — client-side simulation, nothing is saved.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ed Says Modal (Mobile) -->
+<div id="ed-modal" class="modal-backdrop">
+    <div class="modal-content-card">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 1.1rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 28px; height: 28px; vertical-align: middle;" />
+                <span>Ed says</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="ed-refresh-btn w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; cursor: pointer;" title="Ask Ed for fresh advice">
+                    <i class="fas fa-sync-alt ed-refresh-icon"></i> Ask Ed
+                </button>
+                <button type="button" id="ed-close-btn" style="background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 1.25rem; max-height: calc(85vh - 70px); overflow-y: auto;">
+            <div class="ed-says-content" style="font-size: 0.9rem; line-height: 1.6; color: var(--text-main);">
+                <div style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); padding: 0.6rem 0;">
+                    <i class="fas fa-spinner fa-spin" style="color: var(--primary);"></i>
+                    <span>Summoning Ed's thoughts on your finances...</span>
+                </div>
             </div>
         </div>
     </div>

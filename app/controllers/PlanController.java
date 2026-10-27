@@ -1,6 +1,7 @@
 package controllers;
 
 import models.Incoming;
+import models.IncomingRepository;
 import models.Plan;
 import models.PlanRepository;
 import models.SavingsPlan;
@@ -33,6 +34,7 @@ public class PlanController extends Controller {
     private final HttpExecutionContext ec;
     private final PlanRepository planRepository;
     private final SavingsPlanRepository savingsPlanRepository;
+    private final IncomingRepository incomingRepository;
     private MessagesApi messagesApi;
     private final Form<Plan> form;
 
@@ -40,11 +42,19 @@ public class PlanController extends Controller {
     private SessionStore playSessionStore;
 
     @Inject
-    public PlanController(FormFactory formFactory, MessagesApi messagesApi, PlanRepository planRepository, SavingsPlanRepository savingsPlanRepository, HttpExecutionContext ec) {
+    public PlanController(
+            FormFactory formFactory,
+            MessagesApi messagesApi,
+            PlanRepository planRepository,
+            SavingsPlanRepository savingsPlanRepository,
+            IncomingRepository incomingRepository,
+            HttpExecutionContext ec
+    ) {
         this.formFactory = formFactory;
         this.messagesApi = messagesApi;
         this.planRepository = planRepository;
         this.savingsPlanRepository = savingsPlanRepository;
+        this.incomingRepository = incomingRepository;
         this.form = formFactory.form(Plan.class);
         this.ec = ec;
     }
@@ -76,15 +86,17 @@ public class PlanController extends Controller {
         plan.setScope(Plan.PlanScope.PERMANENT);
         return planRepository
                 .createOrReplace(sup.getUserId(), Plan.PlanType.MONTHLY_SAVINGS_GOAL, plan)
-                .thenComposeAsync(p -> savingsPlanRepository.getActive(sup.getUserId()), ec.current())
-                .thenComposeAsync(sp -> {
-                    if (sp != null) {
-                        return savingsPlanRepository.updatePercentage(sp.getId(), percent);
-                    } else {
-                        SavingsPlan newSp = new SavingsPlan(sup.getUserId(), "Monthly Savings Plan", percent);
-                        return savingsPlanRepository.add(newSp);
-                    }
-                }, ec.current())
+                .thenComposeAsync(p -> incomingRepository.list(sup.getUserId()), ec.current())
+                .thenApplyAsync(incomings -> Incoming.getTotalIncomings(incomings.collect(Collectors.toList())), ec.current())
+                .thenComposeAsync(incomingTotal ->
+                        savingsPlanRepository.getActive(sup.getUserId()).thenComposeAsync(sp -> {
+                            if (sp != null) {
+                                return savingsPlanRepository.updatePercentageAndScaleItems(sp.getId(), percent, incomingTotal);
+                            } else {
+                                SavingsPlan newSp = new SavingsPlan(sup.getUserId(), "Monthly Savings Plan", percent);
+                                return savingsPlanRepository.add(newSp);
+                            }
+                        }, ec.current()), ec.current())
                 .thenApplyAsync(p -> redirect(routes.SpogController.index()), ec.current());
     }
 

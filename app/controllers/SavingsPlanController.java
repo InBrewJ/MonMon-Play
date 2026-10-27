@@ -160,7 +160,9 @@ public class SavingsPlanController extends Controller {
         basePlan.setScope(Plan.PlanScope.PERMANENT);
 
         return planRepository.createOrReplace(sup.getUserId(), Plan.PlanType.MONTHLY_SAVINGS_GOAL, basePlan)
-                .thenComposeAsync(bp -> savingsPlanRepository.updatePercentage(planId, percent), ec.current())
+                .thenComposeAsync(bp -> incomingRepository.list(sup.getUserId()), ec.current())
+                .thenApplyAsync(incomings -> Incoming.getTotalIncomings(incomings.collect(Collectors.toList())), ec.current())
+                .thenComposeAsync(incomingTotal -> savingsPlanRepository.updatePercentageAndScaleItems(planId, percent, incomingTotal), ec.current())
                 .thenApplyAsync(p -> redirect(routes.SavingsPlanController.index()), ec.current());
     }
 

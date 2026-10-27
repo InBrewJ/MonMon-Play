@@ -24,6 +24,8 @@ public interface SavingsPlanRepository {
 
     CompletionStage<SavingsPlan> updatePercentage(Long planId, int percent);
 
+    CompletionStage<SavingsPlan> updatePercentageAndScaleItems(Long planId, int percent, Float incomingTotal);
+
     CompletionStage<Stream<SavingsPlan>> list(String userId);
 
     CompletionStage<Stream<SavingsPlan>> listComplete(String userId);

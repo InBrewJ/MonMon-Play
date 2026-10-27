@@ -11,26 +11,117 @@
 
         var incomingTotal = incomingTotalEl ? parseFloat(incomingTotalEl.getAttribute('data-incoming')) || 0 : 0;
 
-        function updateSliderUI(percent) {
+        // Initialize item rows for real-time proportional scaling
+        var itemRows = document.querySelectorAll('.savings-item-row');
+        var itemsData = [];
+        var initialTotalAllocated = 0;
+
+        for (var i = 0; i < itemRows.length; i++) {
+            var row = itemRows[i];
+            var baseMonthly = parseFloat(row.getAttribute('data-base-monthly')) || 0;
+            var debt = parseFloat(row.getAttribute('data-debt')) || 0;
+            var target = parseFloat(row.getAttribute('data-target')) || 0;
+            var remaining = parseFloat(row.getAttribute('data-remaining')) || 0;
+            var type = row.getAttribute('data-type') || 'SAVINGS_TARGET';
+
+            initialTotalAllocated += baseMonthly;
+            itemsData.push({
+                row: row,
+                baseMonthly: baseMonthly,
+                debt: debt,
+                target: target,
+                remaining: remaining,
+                type: type,
+                monthlyEl: row.querySelector('.item-monthly-val'),
+                durationEl: row.querySelector('.item-duration-val')
+            });
+        }
+
+        // Calculate baseline weights based on original proportions
+        for (var k = 0; k < itemsData.length; k++) {
+            if (initialTotalAllocated > 0) {
+                itemsData[k].weight = itemsData[k].baseMonthly / initialTotalAllocated;
+            } else if (itemsData.length > 0) {
+                itemsData[k].weight = 1.0 / itemsData.length;
+            } else {
+                itemsData[k].weight = 0;
+            }
+        }
+
+        function updateSliderAndScaleItems(percent) {
             if (sliderVal) {
                 sliderVal.textContent = percent;
             }
             if (sliderTargetInput) {
                 sliderTargetInput.value = percent;
             }
+
+            var newTargetPot = (percent / 100) * incomingTotal;
             if (savingsAmountSpan) {
-                var amount = ((percent / 100) * incomingTotal).toFixed(2);
-                savingsAmountSpan.textContent = '£' + amount;
+                savingsAmountSpan.textContent = '£' + newTargetPot.toFixed(2);
             }
 
-            // Also update live unallocated preview if element exists
+            var newTotalAllocated = 0;
+
+            // Scale every item in real-time according to original proportions
+            for (var j = 0; j < itemsData.length; j++) {
+                var item = itemsData[j];
+                var scaledMonthly = 0;
+                if (initialTotalAllocated > 0 || (itemsData.length > 0 && newTargetPot > 0)) {
+                    scaledMonthly = Math.round(newTargetPot * item.weight * 100) / 100;
+                }
+                newTotalAllocated += scaledMonthly;
+
+                if (item.monthlyEl) {
+                    item.monthlyEl.textContent = '£' + scaledMonthly.toFixed(2);
+                }
+
+                if (item.durationEl) {
+                    if (item.type === 'DEBT_PAYOFF') {
+                        if (item.debt <= 0) {
+                            item.durationEl.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Paid off (£0 debt)</span>';
+                        } else if (scaledMonthly > 0) {
+                            var months = Math.ceil(item.debt / scaledMonthly);
+                            item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + months + ' month' + (months === 1 ? '' : 's') + '</span>' +
+                                '<div style="font-size: 0.75rem; color: var(--text-muted);">to clear £' + item.debt.toFixed(2) + ' at £' + scaledMonthly.toFixed(2) + '/mo</div>';
+                        } else {
+                            item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">No monthly payment</span>';
+                        }
+                    } else {
+                        if (item.target > 0 && item.remaining <= 0) {
+                            item.durationEl.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Target reached</span>';
+                        } else if (scaledMonthly > 0 && item.target > 0) {
+                            var targetMonths = Math.ceil(item.remaining / scaledMonthly);
+                            item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + targetMonths + ' month' + (targetMonths === 1 ? '' : 's') + '</span>' +
+                                '<div style="font-size: 0.75rem; color: var(--text-muted);">to reach £' + item.target.toFixed(2) + ' at £' + scaledMonthly.toFixed(2) + '/mo</div>';
+                        } else if (scaledMonthly > 0) {
+                            item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings (£' + scaledMonthly.toFixed(2) + '/mo)</span>';
+                        } else {
+                            item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings</span>';
+                        }
+                    }
+                }
+            }
+
+            // Update summary metric boxes and footer in real-time
             var totalAllocatedEl = document.getElementById('total-allocated-val');
             var unallocatedEl = document.getElementById('unallocated-val');
             var unallocatedAlert = document.getElementById('unallocated-alert');
-            if (totalAllocatedEl && unallocatedEl) {
-                var totalAllocated = parseFloat(totalAllocatedEl.getAttribute('data-allocated')) || 0;
-                var currentTargetPot = (percent / 100) * incomingTotal;
-                var unallocated = currentTargetPot - totalAllocated;
+            var footerTotalEl = document.getElementById('footer-total-allocated');
+            var footerTargetPotEl = document.getElementById('footer-target-pot');
+
+            if (totalAllocatedEl) {
+                totalAllocatedEl.textContent = '£' + newTotalAllocated.toFixed(2);
+            }
+            if (footerTotalEl) {
+                footerTotalEl.textContent = '£' + newTotalAllocated.toFixed(2);
+            }
+            if (footerTargetPotEl) {
+                footerTargetPotEl.textContent = 'Target Pot: £' + newTargetPot.toFixed(2);
+            }
+
+            if (unallocatedEl) {
+                var unallocated = newTargetPot - newTotalAllocated;
                 unallocatedEl.textContent = '£' + Math.abs(unallocated).toFixed(2);
                 if (unallocatedAlert) {
                     if (unallocated < -0.01) {
@@ -46,9 +137,8 @@
 
         if (slider) {
             slider.addEventListener('input', function () {
-                updateSliderUI(parseInt(slider.value, 10));
+                updateSliderAndScaleItems(parseInt(slider.value, 10));
             });
-            updateSliderUI(parseInt(slider.value, 10));
         }
 
         // Live calculation in the "Add Item" form
@@ -122,7 +212,6 @@
 
         if (itemTypeSelect) {
             itemTypeSelect.addEventListener('change', function () {
-                // Adjust account options view
                 var isDebt = itemTypeSelect.value === 'DEBT_PAYOFF';
                 var optgroups = accountSelect ? accountSelect.getElementsByTagName('optgroup') : [];
                 for (var i = 0; i < optgroups.length; i++) {

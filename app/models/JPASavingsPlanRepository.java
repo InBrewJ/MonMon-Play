@@ -65,6 +65,11 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     }
 
     @Override
+    public CompletionStage<SavingsPlan> updatePercentageAndScaleItems(Long planId, int percent, Float incomingTotal) {
+        return supplyAsync(() -> wrap(em -> updatePercentageAndScaleItems(em, planId, percent, incomingTotal)), executionContext);
+    }
+
+    @Override
     public CompletionStage<Stream<SavingsPlan>> list(String userId) {
         return supplyAsync(() -> wrap(em -> list(em, userId)), executionContext);
     }
@@ -173,6 +178,15 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         if (plan != null) {
             plan.setSavingsPercentage(percent);
             plan.setLastUpdated(System.currentTimeMillis());
+            em.merge(plan);
+        }
+        return plan;
+    }
+
+    private SavingsPlan updatePercentageAndScaleItems(EntityManager em, Long planId, int percent, Float incomingTotal) {
+        SavingsPlan plan = em.find(SavingsPlan.class, planId);
+        if (plan != null) {
+            plan.scaleItemsProportionally(incomingTotal, percent);
             em.merge(plan);
         }
         return plan;

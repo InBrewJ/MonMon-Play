@@ -220,4 +220,55 @@ public class SavingsPlanTest {
         plan.setArchived(true);
         assertThat(spog.hasSavingsPlan()).isFalse();
     }
+
+    @Test
+    public void testScaleItemsProportionallyPreservesWeightsWhenSliderChanges() {
+        SavingsPlan plan = new SavingsPlan("user123", "Scaling Plan", 20);
+
+        SavingsPlanItem item1 = new SavingsPlanItem("Credit Card", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, null, 100.0f);
+        SavingsPlanItem item2 = new SavingsPlanItem("Holiday Pot", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 300.0f);
+
+        plan.addItem(item1);
+        plan.addItem(item2);
+
+        // Initial total allocated = 400 (item1 has 25% share, item2 has 75% share)
+        assertThat(plan.getTotalAllocated()).isEqualTo(400.0f);
+
+        Float incomingsTotal = 2000.0f;
+        // Scale to 30% of 2000 = 600 target pot
+        plan.scaleItemsProportionally(incomingsTotal, 30);
+
+        assertThat(plan.getSavingsPercentage()).isEqualTo(30);
+        assertThat(item1.getMonthlyAmount()).isEqualTo(150.0f); // 25% of 600
+        assertThat(item2.getMonthlyAmount()).isEqualTo(450.0f); // 75% of 600
+        assertThat(plan.getTotalAllocated()).isEqualTo(600.0f);
+        assertThat(plan.getUnallocatedAmount(incomingsTotal)).isEqualTo(0.0f);
+
+        // Scale down to 10% of 2000 = 200 target pot
+        plan.scaleItemsProportionally(incomingsTotal, 10);
+
+        assertThat(plan.getSavingsPercentage()).isEqualTo(10);
+        assertThat(item1.getMonthlyAmount()).isEqualTo(50.0f);  // 25% of 200
+        assertThat(item2.getMonthlyAmount()).isEqualTo(150.0f); // 75% of 200
+        assertThat(plan.getTotalAllocated()).isEqualTo(200.0f);
+    }
+
+    @Test
+    public void testScaleItemsProportionallyDividesEquallyWhenInitialTotalIsZero() {
+        SavingsPlan plan = new SavingsPlan("user123", "Zero Initial Plan", 0);
+
+        SavingsPlanItem item1 = new SavingsPlanItem("Item 1", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 500f, 0.0f);
+        SavingsPlanItem item2 = new SavingsPlanItem("Item 2", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 500f, 0.0f);
+
+        plan.addItem(item1);
+        plan.addItem(item2);
+
+        Float incomingsTotal = 2000.0f;
+        // Scale to 20% of 2000 = 400 target pot
+        plan.scaleItemsProportionally(incomingsTotal, 20);
+
+        assertThat(item1.getMonthlyAmount()).isEqualTo(200.0f);
+        assertThat(item2.getMonthlyAmount()).isEqualTo(200.0f);
+        assertThat(plan.getTotalAllocated()).isEqualTo(400.0f);
+    }
 }

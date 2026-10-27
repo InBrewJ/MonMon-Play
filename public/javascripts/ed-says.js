@@ -1,8 +1,11 @@
 /**
  * Ed Says - Asynchronous AI financial coach powered by Mistral AI
+ * Desktop panel & Mobile popup modal
  */
 (function () {
     'use strict';
+
+    var cachedResponse = null;
 
     function renderMarkdown(md) {
         if (!md) return '';
@@ -71,21 +74,43 @@
         return html;
     }
 
+    function updateAllContent(html) {
+        var targets = document.querySelectorAll('.ed-says-content');
+        targets.forEach(function (el) {
+            el.innerHTML = html;
+        });
+
+        // Wire up any dynamic retry buttons
+        document.querySelectorAll('.ed-retry-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                loadEdSays(true);
+            });
+        });
+    }
+
+    function setLoading(isLoading) {
+        document.querySelectorAll('.ed-refresh-btn').forEach(function (btn) {
+            btn.disabled = isLoading;
+        });
+        document.querySelectorAll('.ed-refresh-icon').forEach(function (icon) {
+            if (isLoading) {
+                icon.classList.add('fa-spin');
+            } else {
+                icon.classList.remove('fa-spin');
+            }
+        });
+    }
+
     function loadEdSays(force) {
-        var contentEl = document.getElementById('ed-says-content');
-        var btn = document.getElementById('ed-refresh-btn');
-        var icon = document.getElementById('ed-refresh-icon');
+        setLoading(true);
 
-        if (!contentEl) return;
-
-        if (btn) btn.disabled = true;
-        if (icon) icon.classList.add('fa-spin');
-
-        contentEl.innerHTML =
+        updateAllContent(
             '<div style="display: flex; align-items: center; gap: 10px; color: var(--text-muted); padding: 0.6rem 0;">' +
             '  <i class="fas fa-spinner fa-spin" style="color: var(--primary); font-size: 1.1rem;"></i>' +
             '  <span>Ed is analyzing your finances...</span>' +
-            '</div>';
+            '</div>'
+        );
 
         var url = '/api/ed-says' + (force ? '?force=true' : '');
 
@@ -106,12 +131,12 @@
             })
             .then(function (data) {
                 if (!data) {
-                    contentEl.innerHTML = '<span style="color: var(--text-muted);">Ed remained silent.</span>';
+                    updateAllContent('<span style="color: var(--text-muted);">Ed remained silent.</span>');
                     return;
                 }
 
                 if (data.configured === false) {
-                    contentEl.innerHTML =
+                    var setupHtml =
                         '<div style="background: rgba(139, 92, 246, 0.08); border: 1px dashed var(--primary); border-radius: 8px; padding: 0.85rem;">' +
                         '  <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.3rem;">' +
                         '    <i class="fas fa-key" style="color: var(--primary); margin-right: 6px;"></i>Mistral API Key Needed' +
@@ -121,43 +146,87 @@
                         '    You can set it in <code>conf/application.conf</code> under <code>mistral.apiKey = "..."</code> or as the <code>MISTRAL_API_KEY</code> environment variable.' +
                         '  </div>' +
                         '</div>';
+                    updateAllContent(setupHtml);
                     return;
                 }
 
-                contentEl.innerHTML = renderMarkdown(data.edSays);
+                cachedResponse = data.edSays;
+                updateAllContent(renderMarkdown(data.edSays));
             })
             .catch(function (err) {
-                contentEl.innerHTML =
+                var errHtml =
                     '<div style="color: #ef4444; font-size: 0.88rem; padding: 0.4rem 0;">' +
                     '  <i class="fas fa-exclamation-triangle" style="margin-right: 6px;"></i>' +
                     '  <span>Could not get Ed\'s advice: ' + (err.message || 'Network error') + '</span> ' +
-                    '  <button id="ed-retry-btn" class="w3-button w3-tiny w3-round" style="margin-left: 8px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); cursor: pointer;">Retry</button>' +
+                    '  <button class="ed-retry-btn w3-button w3-tiny w3-round" style="margin-left: 8px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); cursor: pointer;">Retry</button>' +
                     '</div>';
-
-                var retryBtn = document.getElementById('ed-retry-btn');
-                if (retryBtn) {
-                    retryBtn.addEventListener('click', function () {
-                        loadEdSays(true);
-                    });
-                }
+                updateAllContent(errHtml);
             })
             .finally(function () {
-                if (btn) btn.disabled = false;
-                if (icon) icon.classList.remove('fa-spin');
+                setLoading(false);
             });
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
-        var panel = document.getElementById('ed-says-panel');
-        if (!panel) return;
+    function openEdModal() {
+        var modal = document.getElementById('ed-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            if (!cachedResponse) {
+                loadEdSays(false);
+            }
+        }
+    }
 
-        var refreshBtn = document.getElementById('ed-refresh-btn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', function (e) {
+    function closeEdModal() {
+        var modal = document.getElementById('ed-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // Wire refresh buttons
+        document.querySelectorAll('.ed-refresh-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 loadEdSays(true);
             });
+        });
+
+        // Wire mobile FAB icon
+        var edFab = document.getElementById('btn-ed-fab');
+        if (edFab) {
+            edFab.addEventListener('click', function (e) {
+                e.preventDefault();
+                openEdModal();
+            });
         }
+
+        // Wire close button on modal
+        var closeBtn = document.getElementById('ed-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeEdModal();
+            });
+        }
+
+        // Click outside modal content to close
+        var modal = document.getElementById('ed-modal');
+        if (modal) {
+            modal.addEventListener('click', function (e) {
+                if (e.target === modal) {
+                    closeEdModal();
+                }
+            });
+        }
+
+        // Escape key closes modal
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && modal && modal.style.display === 'flex') {
+                closeEdModal();
+            }
+        });
 
         // Initial async load
         loadEdSays(false);

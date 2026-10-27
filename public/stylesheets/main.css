@@ -891,12 +891,73 @@ hr {
   transform: translateY(0) scale(0.98);
 }
 
+/* Floating Action Button for Ed (Mobile) */
+.fab-ed {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 990;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  background: var(--card-bg);
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 14px rgba(139, 92, 246, 0.4);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+}
+
+.fab-ed img {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: contain;
+  display: block;
+}
+
+.fab-ed:hover {
+  transform: translateY(-3px) scale(1.06);
+  box-shadow: 0 8px 25px rgba(139, 92, 246, 0.6);
+}
+
+.fab-ed:active {
+  transform: translateY(0) scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .fab-ed {
+    display: flex;
+    bottom: 18px;
+    left: 18px;
+  }
+
+  #ed-says-desktop-panel {
+    display: none !important;
+  }
+}
+
 @media (max-width: 600px) {
   .fab-afford {
     bottom: 18px;
     right: 18px;
     padding: 10px 16px;
     font-size: 0.85rem;
+  }
+
+  .fab-ed {
+    bottom: 18px;
+    left: 18px;
+    width: 48px;
+    height: 48px;
+  }
+
+  .fab-ed img {
+    width: 34px;
+    height: 34px;
   }
 }
 
