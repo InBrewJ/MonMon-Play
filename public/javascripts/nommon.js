@@ -1,0 +1,451 @@
+/**
+ * NomMon - Smart Grocery & Meal Planner
+ * Plain JavaScript (Strictly No CoffeeScript per MonMon guidelines)
+ */
+(function () {
+    'use strict';
+
+    var container = document.getElementById('nommon-container');
+    if (!container) return;
+
+    var weeklyBudget = parseFloat(container.getAttribute('data-budget')) || 50.00;
+    var isConfigured = container.getAttribute('data-configured') === 'true';
+
+    var currentPlan = null;
+    var checkedItems = new Set();
+    var STORAGE_CHECKED_KEY = 'nommon_checked_items';
+    var STORAGE_POSTCODE_KEY = 'nommon_user_postcode';
+
+    // Load saved checked items from localStorage
+    function loadSavedChecks() {
+        try {
+            var raw = localStorage.getItem(STORAGE_CHECKED_KEY);
+            if (raw) {
+                var arr = JSON.parse(raw);
+                if (Array.isArray(arr)) {
+                    checkedItems = new Set(arr);
+                }
+            }
+        } catch (e) {
+            checkedItems = new Set();
+        }
+    }
+
+    function saveChecks() {
+        try {
+            localStorage.setItem(STORAGE_CHECKED_KEY, JSON.stringify(Array.from(checkedItems)));
+        } catch (e) {}
+    }
+
+    // Update Store Locator Links
+    function updateStoreLinks(postcode) {
+        var finderLink = document.getElementById('link-sainsburys-finder');
+        var mapsLink = document.getElementById('link-google-maps');
+        var cleanCode = (postcode || '').trim();
+
+        if (finderLink) {
+            finderLink.href = cleanCode
+                ? 'https://stores.sainsburys.co.uk/search?q=' + encodeURIComponent(cleanCode)
+                : 'https://stores.sainsburys.co.uk/';
+        }
+        if (mapsLink) {
+            mapsLink.href = cleanCode
+                ? 'https://www.google.com/maps/search/Sainsbury\'s+near+' + encodeURIComponent(cleanCode)
+                : 'https://www.google.com/maps/search/Sainsbury\'s';
+        }
+    }
+
+    // Tab Switching
+    function initTabs() {
+        var tabBtns = document.querySelectorAll('.nommon-tab-btn');
+        tabBtns.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var targetId = btn.getAttribute('data-tab');
+
+                tabBtns.forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+
+                document.querySelectorAll('.nommon-tab-panel').forEach(function (panel) {
+                    panel.style.display = 'none';
+                });
+
+                var activePanel = document.getElementById(targetId);
+                if (activePanel) {
+                    activePanel.style.display = 'block';
+                }
+            });
+        });
+    }
+
+    // Update in-cart checked summary
+    function updateCheckedSummary() {
+        var checkboxes = document.querySelectorAll('.nommon-item-check');
+        var totalCount = checkboxes.length;
+        var checkedCount = 0;
+        var checkedSpend = 0.0;
+
+        checkboxes.forEach(function (cb) {
+            if (cb.checked) {
+                checkedCount++;
+                var price = parseFloat(cb.getAttribute('data-price')) || 0;
+                var qty = parseInt(cb.getAttribute('data-qty'), 10) || 1;
+                checkedSpend += (price * qty);
+            }
+        });
+
+        var counterEl = document.getElementById('nommon-checked-counter');
+        var spendEl = document.getElementById('nommon-checked-spend');
+
+        if (counterEl) {
+            counterEl.textContent = checkedCount + ' / ' + totalCount;
+        }
+        if (spendEl) {
+            spendEl.textContent = '£' + checkedSpend.toFixed(2) + ' in cart';
+        }
+    }
+
+    // Render Shopping List
+    function renderShoppingList(list) {
+        var containerEl = document.getElementById('shopping-list-categories');
+        var tabCountEl = document.getElementById('tab-item-count');
+        if (!containerEl) return;
+
+        containerEl.innerHTML = '';
+        if (!list || !list.length) {
+            containerEl.innerHTML = '<div style="color: var(--text-muted); padding: 1rem;">No grocery items found in plan.</div>';
+            return;
+        }
+
+        if (tabCountEl) {
+            tabCountEl.textContent = list.length;
+        }
+
+        // Group by category
+        var groups = {};
+        list.forEach(function (item) {
+            var cat = item.category || 'Other Staples';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(item);
+        });
+
+        var categoryOrder = ['Produce', 'Bakery', 'Dairy & Eggs', 'Pantry & Pulses', 'Tins & Cans', 'Frozen', 'Other Staples'];
+        var sortedCats = Object.keys(groups).sort(function (a, b) {
+            var ia = categoryOrder.indexOf(a);
+            var ib = categoryOrder.indexOf(b);
+            if (ia === -1) ia = 99;
+            if (ib === -1) ib = 99;
+            return ia - ib;
+        });
+
+        sortedCats.forEach(function (catName) {
+            var items = groups[catName];
+            var catBox = document.createElement('div');
+            catBox.style.border = '1px solid var(--border-color)';
+            catBox.style.borderRadius = '8px';
+            catBox.style.overflow = 'hidden';
+
+            var header = document.createElement('div');
+            header.style.background = 'var(--card-bg-subtle)';
+            header.style.padding = '8px 12px';
+            header.style.fontWeight = '700';
+            header.style.fontSize = '0.9rem';
+            header.style.borderBottom = '1px solid var(--border-color)';
+            header.style.display = 'flex';
+            header.style.justifyContent = 'space-between';
+            header.innerHTML = '<span><i class="fas fa-tag" style="color: var(--primary); margin-right: 6px;"></i>' + catName + '</span>' +
+                '<span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">' + items.length + ' item' + (items.length === 1 ? '' : 's') + '</span>';
+            catBox.appendChild(header);
+
+            items.forEach(function (itm) {
+                var isChecked = checkedItems.has(itm.name);
+                var row = document.createElement('div');
+                row.className = 'nommon-checklist-item' + (isChecked ? ' checked' : '');
+
+                var price = parseFloat(itm.estimatedPrice) || 0;
+                var qty = parseInt(itm.quantity, 10) || 1;
+                var itemTotal = price * qty;
+
+                row.innerHTML =
+                    '<div style="display: flex; align-items: center; gap: 10px;">' +
+                    '  <input type="checkbox" class="nommon-item-check" data-name="' + escapeHtml(itm.name) + '" data-price="' + price + '" data-qty="' + qty + '" ' + (isChecked ? 'checked' : '') + ' style="cursor: pointer; transform: scale(1.15);" />' +
+                    '  <span class="item-name" style="font-weight: 600; font-size: 0.92rem;">' + escapeHtml(itm.name) + '</span>' +
+                    (itm.unit ? '<span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 400;">(' + escapeHtml(itm.unit) + ')</span>' : '') +
+                    '</div>' +
+                    '<div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main); white-space: nowrap;">' +
+                    (qty > 1 ? '<span style="font-size: 0.78rem; font-weight: 400; color: var(--text-muted); margin-right: 4px;">' + qty + 'x £' + price.toFixed(2) + ' = </span>' : '') +
+                    '£' + itemTotal.toFixed(2) +
+                    '</div>';
+
+                var checkbox = row.querySelector('.nommon-item-check');
+
+                row.addEventListener('click', function (e) {
+                    if (e.target !== checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                    }
+                    if (checkbox.checked) {
+                        row.classList.add('checked');
+                        checkedItems.add(itm.name);
+                    } else {
+                        row.classList.remove('checked');
+                        checkedItems.delete(itm.name);
+                    }
+                    saveChecks();
+                    updateCheckedSummary();
+                });
+
+                checkbox.addEventListener('change', function () {
+                    if (checkbox.checked) {
+                        row.classList.add('checked');
+                        checkedItems.add(itm.name);
+                    } else {
+                        row.classList.remove('checked');
+                        checkedItems.delete(itm.name);
+                    }
+                    saveChecks();
+                    updateCheckedSummary();
+                });
+
+                catBox.appendChild(row);
+            });
+
+            containerEl.appendChild(catBox);
+        });
+
+        updateCheckedSummary();
+    }
+
+    // Render 7-Day Menu Schedule
+    function renderDays(days) {
+        var grid = document.getElementById('days-grid');
+        if (!grid) return;
+
+        grid.innerHTML = '';
+        if (!days || !days.length) {
+            grid.innerHTML = '<div style="color: var(--text-muted); padding: 1rem;">No daily schedule generated.</div>';
+            return;
+        }
+
+        days.forEach(function (d) {
+            var card = document.createElement('div');
+            card.className = 'day-card';
+            card.innerHTML =
+                '<div style="font-weight: 800; font-size: 1rem; color: var(--primary); margin-bottom: 0.6rem; border-bottom: 1px dashed var(--border-color); padding-bottom: 0.35rem; display: flex; justify-content: space-between;">' +
+                '  <span>' + escapeHtml(d.dayName || 'Day') + '</span>' +
+                '  <span class="badge-pill" style="font-size: 0.7rem; background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-muted);">Sainsbury\'s Staples</span>' +
+                '</div>' +
+                '<div style="display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.85rem; line-height: 1.45;">' +
+                '  <div><b style="color: var(--text-muted);"><i class="fas fa-sun" style="color: #eab308; margin-right: 4px;"></i>Breakfast:</b> ' + escapeHtml(d.breakfast || '—') + '</div>' +
+                '  <div><b style="color: var(--text-muted);"><i class="fas fa-bread-slice" style="color: #f97316; margin-right: 4px;"></i>Lunch:</b> ' + escapeHtml(d.lunch || '—') + '</div>' +
+                '  <div><b style="color: var(--text-muted);"><i class="fas fa-bowl-food" style="color: #10b981; margin-right: 4px;"></i>Dinner:</b> ' + escapeHtml(d.dinner || '—') + '</div>' +
+                (d.snack ? '  <div><b style="color: var(--text-muted);"><i class="fas fa-apple-whole" style="color: #ef4444; margin-right: 4px;"></i>Snack:</b> ' + escapeHtml(d.snack) + '</div>' : '') +
+                (d.prepNotes ? '  <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; padding-top: 4px; border-top: 1px dotted var(--border-color);"><b>Tip:</b> ' + escapeHtml(d.prepNotes) + '</div>' : '') +
+                '</div>';
+            grid.appendChild(card);
+        });
+    }
+
+    // Render Batch Recipes
+    function renderRecipes(recipes) {
+        var containerEl = document.getElementById('recipes-container');
+        var tabRecipeCountEl = document.getElementById('tab-recipe-count');
+        if (!containerEl) return;
+
+        containerEl.innerHTML = '';
+        if (!recipes || !recipes.length) {
+            containerEl.innerHTML = '<div style="color: var(--text-muted); padding: 1rem;">No batch recipes generated.</div>';
+            return;
+        }
+
+        if (tabRecipeCountEl) {
+            tabRecipeCountEl.textContent = recipes.length;
+        }
+
+        recipes.forEach(function (rec, idx) {
+            var box = document.createElement('div');
+            box.style.border = '1px solid var(--border-color)';
+            box.style.borderRadius = '8px';
+            box.style.padding = '1rem';
+            box.style.background = 'var(--card-bg-subtle)';
+
+            var ingredientsHtml = '';
+            if (rec.ingredientsUsed && rec.ingredientsUsed.length) {
+                ingredientsHtml = '<div style="display: flex; flex-wrap: wrap; gap: 4px; margin: 0.5rem 0 0.8rem 0;">' +
+                    rec.ingredientsUsed.map(function (ing) {
+                        return '<span class="badge-pill" style="font-size: 0.75rem; background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main);">' + escapeHtml(ing) + '</span>';
+                    }).join('') +
+                    '</div>';
+            }
+
+            var instructionsHtml = '';
+            if (rec.instructions && rec.instructions.length) {
+                instructionsHtml = '<ol style="margin: 0; padding-left: 1.25rem; font-size: 0.88rem; line-height: 1.55;">' +
+                    rec.instructions.map(function (step) {
+                        return '<li style="margin-bottom: 0.35rem;">' + escapeHtml(step) + '</li>';
+                    }).join('') +
+                    '</ol>';
+            }
+
+            box.innerHTML =
+                '<div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 0.4rem;">' +
+                '  <h4 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-main);">' +
+                '    <i class="fas fa-kitchen-set" style="color: var(--primary); margin-right: 6px;"></i>' + escapeHtml(rec.title || ('Recipe ' + (idx + 1))) +
+                '  </h4>' +
+                '  <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 10px;">' +
+                (rec.servings ? '<span><i class="fas fa-users"></i> ' + rec.servings + ' servings</span>' : '') +
+                (rec.prepTimeMinutes ? '<span><i class="far fa-clock"></i> Prep: ' + rec.prepTimeMinutes + 'm</span>' : '') +
+                (rec.cookTimeMinutes ? '<span><i class="fas fa-fire"></i> Cook: ' + rec.cookTimeMinutes + 'm</span>' : '') +
+                '  </div>' +
+                '</div>' +
+                ingredientsHtml +
+                instructionsHtml;
+
+            containerEl.appendChild(box);
+        });
+    }
+
+    // Fetch Plan from Backend
+    function fetchPlan(force) {
+        var loadingEl = document.getElementById('nommon-loading');
+        var contentEl = document.getElementById('nommon-content');
+        var refreshIcon = document.getElementById('nommon-refresh-icon');
+        var postcode = (document.getElementById('nommon-postcode-input').value || '').trim();
+
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (contentEl) contentEl.style.display = 'none';
+        if (refreshIcon) refreshIcon.classList.add('fa-spin');
+
+        var url = '/api/nommon/plan?budget=' + encodeURIComponent(weeklyBudget);
+        if (force) url += '&force=true';
+        if (postcode) url += '&postcode=' + encodeURIComponent(postcode);
+
+        fetch(url, {
+            headers: { 'Accept': 'application/json' }
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                if (!data || !data.plan) {
+                    throw new Error('No meal plan data returned');
+                }
+
+                currentPlan = data.plan;
+
+                // Title & Highlights
+                var titleEl = document.getElementById('plan-title-display');
+                var highlightsEl = document.getElementById('nutrition-highlight-display');
+                if (titleEl && currentPlan.planTitle) {
+                    titleEl.textContent = currentPlan.planTitle;
+                }
+                if (highlightsEl && currentPlan.nutritionalHighlights) {
+                    highlightsEl.innerHTML = '<i class="fas fa-heart-pulse" style="color: #ef4444; margin-right: 4px;"></i>' + escapeHtml(currentPlan.nutritionalHighlights);
+                }
+
+                // Top Metrics
+                var basketValEl = document.getElementById('nommon-basket-val');
+                var bufferValEl = document.getElementById('nommon-buffer-val');
+
+                var estCost = parseFloat(currentPlan.totalEstimatedCost) || 0;
+                var buffer = parseFloat(currentPlan.savingsBuffer) || Math.max(0, weeklyBudget - estCost);
+
+                if (basketValEl) basketValEl.textContent = '£' + estCost.toFixed(2);
+                if (bufferValEl) bufferValEl.textContent = '£' + buffer.toFixed(2);
+
+                // Render sections
+                renderShoppingList(currentPlan.shoppingList || []);
+                renderDays(currentPlan.days || []);
+                renderRecipes(currentPlan.recipes || []);
+
+                if (loadingEl) loadingEl.style.display = 'none';
+                if (contentEl) contentEl.style.display = 'block';
+            })
+            .catch(function (err) {
+                if (loadingEl) {
+                    loadingEl.innerHTML =
+                        '<div style="color: #ef4444; padding: 1.5rem;">' +
+                        '  <i class="fas fa-exclamation-triangle" style="font-size: 1.8rem; margin-bottom: 0.5rem;"></i>' +
+                        '  <div style="font-weight: 700; margin-bottom: 0.5rem;">Could not load NomMon plan</div>' +
+                        '  <div style="font-size: 0.85rem; color: var(--text-muted);">' + escapeHtml(err.message || 'Unknown error') + '</div>' +
+                        '  <button id="btn-nommon-retry" class="w3-button w3-round w3-small" style="margin-top: 1rem; background: var(--primary); color: #fff;">Retry</button>' +
+                        '</div>';
+                    var retryBtn = document.getElementById('btn-nommon-retry');
+                    if (retryBtn) {
+                        retryBtn.addEventListener('click', function () {
+                            fetchPlan(true);
+                        });
+                    }
+                }
+            })
+            .finally(function () {
+                if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+            });
+    }
+
+    // Helper: Escape HTML
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // DOM Ready Initialization
+    document.addEventListener('DOMContentLoaded', function () {
+        loadSavedChecks();
+        initTabs();
+
+        // Load saved postcode
+        var savedPostcode = '';
+        try {
+            savedPostcode = localStorage.getItem(STORAGE_POSTCODE_KEY) || '';
+        } catch (e) {}
+
+        var postcodeInput = document.getElementById('nommon-postcode-input');
+        if (postcodeInput && savedPostcode) {
+            postcodeInput.value = savedPostcode;
+        }
+        updateStoreLinks(savedPostcode);
+
+        // Save postcode button
+        var btnSavePostcode = document.getElementById('btn-save-postcode');
+        if (btnSavePostcode && postcodeInput) {
+            btnSavePostcode.addEventListener('click', function () {
+                var code = postcodeInput.value.trim();
+                try {
+                    localStorage.setItem(STORAGE_POSTCODE_KEY, code);
+                } catch (e) {}
+                updateStoreLinks(code);
+            });
+        }
+
+        // Regenerate Button
+        var btnRegen = document.getElementById('btn-regenerate-nommon');
+        if (btnRegen) {
+            btnRegen.addEventListener('click', function () {
+                fetchPlan(true);
+            });
+        }
+
+        // Uncheck all button
+        var btnUncheck = document.getElementById('btn-uncheck-all');
+        if (btnUncheck) {
+            btnUncheck.addEventListener('click', function () {
+                checkedItems.clear();
+                saveChecks();
+                document.querySelectorAll('.nommon-checklist-item').forEach(function (row) {
+                    row.classList.remove('checked');
+                    var cb = row.querySelector('.nommon-item-check');
+                    if (cb) cb.checked = false;
+                });
+                updateCheckedSummary();
+            });
+        }
+
+        // Initial Load
+        fetchPlan(false);
+    });
+})();

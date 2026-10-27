@@ -40,6 +40,10 @@ GET     /spog/seed                    controllers.SpogController.seed(req: Reque
 GET     /historicSpent                controllers.SpogController.historicSpent(req: Request)
 GET     /api/ed-says                  controllers.SpogController.edSays(req: Request)
 
+# NomMon (Smart Grocery & Meal Planner)
+GET     /nommon                       controllers.NomMonController.index(req: Request)
+GET     /api/nommon/plan              controllers.NomMonController.getPlan(req: Request)
+
 # Sharing (shared outgoings and tings)
 GET     /myPlans                               controllers.PlanController.sharedOutgoings(req: Request)
 POST    /plan                                  controllers.PlanController.addPlan(req: Request)

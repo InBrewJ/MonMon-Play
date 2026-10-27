@@ -125,4 +125,60 @@ public class MistralServiceTest {
         assertThat(service.getLastSpokeTimestamp("userA")).isGreaterThan(0L);
         assertThat(service.getLastSpokeTimestamp("unknownUser")).isNull();
     }
+
+    @Test
+    public void testGenerateNomMonPlanRejectedWhenKeyMissing() throws ExecutionException, InterruptedException {
+        Config emptyConfig = ConfigFactory.parseString("mistral { apiKey = \"\" }");
+        MistralService service = new MistralService(emptyConfig);
+
+        String json = service.generateNomMonPlan("user1", 50.0f, "SW1A 1AA", false).get();
+        assertThat(json).contains("Mistral API key is not configured");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testGenerateNomMonPlanWithMockHttpClientAndCaching() throws ExecutionException, InterruptedException, IOException {
+        Config config = ConfigFactory.parseString(
+                "mistral {\n" +
+                        "  apiKey = \"test-key-nommon-123\"\n" +
+                        "  model = \"mistral-small-latest\"\n" +
+                        "}"
+        );
+
+        HttpClient mockHttpClient = mock(HttpClient.class);
+        HttpResponse<String> mockResponse = mock(HttpResponse.class);
+        when(mockResponse.statusCode()).thenReturn(200);
+        when(mockResponse.body()).thenReturn("{\n" +
+                "  \"choices\": [{\n" +
+                "    \"message\": {\n" +
+                "      \"role\": \"assistant\",\n" +
+                "      \"content\": \"{\\\"planTitle\\\":\\\"Sainsbury's Budget Plan\\\",\\\"weeklyBudget\\\":50.0,\\\"totalEstimatedCost\\\":47.5,\\\"savingsBuffer\\\":2.5,\\\"shoppingList\\\":[{\\\"name\\\":\\\"Stamford St Oats 1kg\\\",\\\"category\\\":\\\"Pantry\\\",\\\"estimatedPrice\\\":0.90,\\\"quantity\\\":1}],\\\"days\\\":[{\\\"dayName\\\":\\\"Monday\\\",\\\"breakfast\\\":\\\"Porridge\\\"}],\\\"recipes\\\":[{\\\"title\\\":\\\"Oat Porridge\\\"}]}\"\n" +
+                "    }\n" +
+                "  }]\n" +
+                "}");
+
+        when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(CompletableFuture.completedFuture(mockResponse));
+
+        MistralService service = new MistralService(config, mockHttpClient);
+
+        // 1. Initial call
+        String plan1 = service.generateNomMonPlan("userNom", 50.0f, "SW1A 1AA", false).get();
+        assertThat(plan1).contains("Sainsbury's Budget Plan");
+        assertThat(plan1).contains("Stamford St Oats 1kg");
+        verify(mockHttpClient, times(1)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+        // 2. Cached call
+        String plan2 = service.generateNomMonPlan("userNom", 50.0f, "SW1A 1AA", false).get();
+        assertThat(plan2).isEqualTo(plan1);
+        verify(mockHttpClient, times(1)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+        // 3. Forced call
+        String plan3 = service.generateNomMonPlan("userNom", 50.0f, "SW1A 1AA", true).get();
+        assertThat(plan3).isEqualTo(plan1);
+        verify(mockHttpClient, times(2)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+        assertThat(service.getNomMonTimestamp("userNom")).isNotNull();
+        assertThat(service.getNomMonTimestamp("userNom")).isGreaterThan(0L);
+    }
 }

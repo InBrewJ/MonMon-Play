@@ -43,6 +43,7 @@ public class MistralService {
     }
 
     private final Map<String, CacheEntry> userAdviceCache = new ConcurrentHashMap<>();
+    private final Map<String, CacheEntry> nomMonCache = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 31L * 24L * 60L * 60L * 1000L; // 31 days TTL
 
     @Inject
@@ -130,6 +131,22 @@ public class MistralService {
         if (userId == null) return null;
         CacheEntry cached = userAdviceCache.get(userId);
         return cached != null ? cached.timestamp : null;
+    }
+
+    public Long getNomMonTimestamp(String userId) {
+        if (userId == null) return null;
+        CacheEntry cached = nomMonCache.get(userId);
+        return cached != null ? cached.timestamp : null;
+    }
+
+    public void clearNomMonCache(String userId) {
+        if (userId != null) {
+            nomMonCache.remove(userId);
+            log("INFO", "Cleared NomMon cache for user=" + userId);
+        } else {
+            nomMonCache.clear();
+            log("INFO", "Cleared entire NomMon cache");
+        }
     }
 
     public static String buildFinancialSnapshotPrompt(Spog spogVm) {
@@ -378,6 +395,138 @@ public class MistralService {
             log("ERROR", String.format("Error building Mistral request in %dms for user='%s': %s",
                     durationMs, userId, e.getMessage()));
             return CompletableFuture.completedFuture("Ed encountered an error preparing the request: " + e.getMessage());
+        }
+    }
+
+    public CompletableFuture<String> generateNomMonPlan(String userId, float weeklyBudget, String postcode, boolean forceRefresh) {
+        log("INFO", String.format("generateNomMonPlan requested: user='%s', budget=£%.2f, postcode='%s', force=%s",
+                userId, weeklyBudget, postcode != null ? postcode : "", forceRefresh));
+
+        if (!isConfigured()) {
+            log("WARN", String.format("generateNomMonPlan rejected: Mistral API key is not configured for user='%s'", userId));
+            return CompletableFuture.completedFuture(
+                    "{\"error\":\"Mistral API key is not configured. Please set `mistral.apiKey` in `conf/application.conf` or `MISTRAL_API_KEY` in environment.\"}"
+            );
+        }
+
+        long now = System.currentTimeMillis();
+        if (!forceRefresh && userId != null) {
+            CacheEntry cached = nomMonCache.get(userId);
+            if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
+                long ageSec = (now - cached.timestamp) / 1000L;
+                log("INFO", String.format("NomMon cache HIT for user='%s' (cached %ds ago). Returning cached plan.",
+                        userId, ageSec));
+                return CompletableFuture.completedFuture(cached.text);
+            }
+        }
+
+        long startTime = System.currentTimeMillis();
+        String model = getModel();
+        String apiKey = getApiKey();
+
+        log("INFO", String.format("NomMon sending API request: user='%s', model='%s', budget=£%.2f",
+                userId, model, weeklyBudget));
+
+        try {
+            ObjectNode payload = mapper.createObjectNode();
+            payload.put("model", model);
+            payload.put("temperature", 0.4);
+            payload.put("max_tokens", 3000);
+
+            ObjectNode responseFormat = payload.putObject("response_format");
+            responseFormat.put("type", "json_object");
+
+            ArrayNode messages = payload.putArray("messages");
+
+            ObjectNode systemMsg = messages.addObject();
+            systemMsg.put("role", "system");
+            systemMsg.put("content",
+                    "You are NomMon, an expert UK grocery planner and frugal nutritionist for MonMon.\n" +
+                    "Your mission is to construct a balanced 7-day meal plan, batch cooking recipes, and an itemized Sainsbury's shopping list.\n" +
+                    "STRICT REQUIREMENTS:\n" +
+                    "1. Supermarket: Sainsbury's. Prioritize their entry-tier budget brand 'Stamford Street Co.' and own-brand essentials.\n" +
+                    "2. Budget ceiling: The shopping basket total MUST be between 88% and 96% of the user's weekly budget (e.g. for £50.00, target £45.00 - £48.00) leaving a 4-12% safety buffer.\n" +
+                    "3. Nutrition: Moderate, balanced whole foods (adequate protein 55g-70g/day, fiber, staples like oats, lentils, eggs, peanut butter, seasonal veg, wholemeal bread).\n" +
+                    "4. Recipes: 2 to 4 simple batch-cooking recipes reusing common purchased ingredients.\n" +
+                    "5. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
+                    "{\n" +
+                    "  \"planTitle\": \"string\",\n" +
+                    "  \"supermarket\": \"Sainsbury's\",\n" +
+                    "  \"weeklyBudget\": float,\n" +
+                    "  \"totalEstimatedCost\": float,\n" +
+                    "  \"savingsBuffer\": float,\n" +
+                    "  \"nutritionalHighlights\": \"string\",\n" +
+                    "  \"shoppingList\": [\n" +
+                    "    {\"name\": \"string\", \"category\": \"Produce\"|\"Bakery\"|\"Dairy & Eggs\"|\"Pantry & Pulses\"|\"Tins & Cans\"|\"Frozen\", \"estimatedPrice\": float, \"quantity\": number, \"unit\": \"string\"}\n" +
+                    "  ],\n" +
+                    "  \"days\": [\n" +
+                    "    {\"dayName\": \"Monday\"...\"Sunday\", \"breakfast\": \"string\", \"lunch\": \"string\", \"dinner\": \"string\", \"snack\": \"string\", \"prepNotes\": \"string\"}\n" +
+                    "  ],\n" +
+                    "  \"recipes\": [\n" +
+                    "    {\"title\": \"string\", \"servings\": number, \"prepTimeMinutes\": number, \"cookTimeMinutes\": number, \"ingredientsUsed\": [\"string\"], \"instructions\": [\"string\"]}\n" +
+                    "  ]\n" +
+                    "}"
+            );
+
+            ObjectNode userMsg = messages.addObject();
+            userMsg.put("role", "user");
+            String prompt = String.format(java.util.Locale.US,
+                    "Generate a 7-day NomMon meal plan and Sainsbury's shopping list. Weekly budget: £%.2f.%s Focus on Stamford Street Co. / Sainsbury's own brand staples. Ensure basket total is slightly below budget so there is a buffer.",
+                    weeklyBudget,
+                    (postcode != null && !postcode.trim().isEmpty() ? " User location/postcode: " + postcode.trim() + "." : "")
+            );
+            userMsg.put("content", prompt);
+
+            String requestBody = mapper.writeValueAsString(payload);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.mistral.ai/v1/chat/completions"))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .timeout(Duration.ofSeconds(35))
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(response -> {
+                        long durationMs = System.currentTimeMillis() - startTime;
+                        int status = response.statusCode();
+                        String respBody = response.body();
+
+                        if (status == 200) {
+                            try {
+                                JsonNode root = mapper.readTree(respBody);
+                                JsonNode choices = root.path("choices");
+                                if (choices.isArray() && choices.size() > 0) {
+                                    String text = choices.get(0).path("message").path("content").asText();
+                                    if (userId != null && text != null && !text.isBlank()) {
+                                        nomMonCache.put(userId, new CacheEntry(text, System.currentTimeMillis()));
+                                    }
+                                    return text;
+                                }
+                                log("WARN", "NomMon: choices array empty in response: " + respBody);
+                                return "{\"error\":\"Empty response from AI\"}";
+                            } catch (Exception e) {
+                                log("ERROR", "NomMon JSON parse error: " + e.getMessage());
+                                return "{\"error\":\"Could not parse AI response: " + e.getMessage() + "\"}";
+                            }
+                        } else {
+                            String errorDetail = extractErrorMessage(respBody);
+                            log("ERROR", String.format("NomMon API ERROR (HTTP %d) in %dms for user='%s': %s",
+                                    status, durationMs, userId, errorDetail));
+                            return "{\"error\":\"Mistral API returned HTTP " + status + ": " + (errorDetail != null ? errorDetail : "") + "\"}";
+                        }
+                    })
+                    .exceptionally(ex -> {
+                        long durationMs = System.currentTimeMillis() - startTime;
+                        log("ERROR", String.format("NomMon request failed in %dms: %s", durationMs, ex.getMessage()));
+                        return "{\"error\":\"Request failed: " + ex.getMessage() + "\"}";
+                    });
+
+        } catch (Exception e) {
+            log("ERROR", "Error constructing NomMon request: " + e.getMessage());
+            return CompletableFuture.completedFuture("{\"error\":\"Internal error: " + e.getMessage() + "\"}");
         }
     }
 }
