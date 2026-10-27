@@ -61,7 +61,7 @@
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
-                <div class="metric-box">
+                <div class="metric-box" id="plan-incoming-total" data-incoming="@incomingTotal">
                     <div style="font-size: 0.8rem; color: var(--text-muted);">Monthly Income</div>
                     <div style="font-size: 1.3rem; font-weight: 700; color: var(--text-main);">£@incomingTotal</div>
                 </div>
@@ -134,11 +134,27 @@
 
         <!-- Table of Sliced Items -->
         <div class="w3-card w3-padding w3-margin-bottom" id="sliced-items-card" style="border-radius: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
                 <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">
                     <i class="fas fa-list-ul" style="color: var(--primary); margin-right: 6px;"></i>
                     Sliced Savings & Payoff Items (@activePlan.getItems().size())
                 </h3>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <form method="POST" action="/savingsPlan/saveAllocations/@activePlan.getId()" id="save-allocations-form" style="display: none;">
+                        @helper.CSRF.formField
+                    </form>
+                    <button type="button" id="btn-save-allocations" class="w3-button w3-round w3-small" style="background: var(--success); color: #fff; font-weight: 700; display: none; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);">
+                        <i class="fas fa-check" style="margin-right: 4px;"></i> Save Slices
+                    </button>
+                    @if(!activePlan.getItems().isEmpty()) {
+                        <form method="POST" action="/savingsPlan/balanceEvenly/@activePlan.getId()" style="margin: 0; display: inline;">
+                            @helper.CSRF.formField
+                            <button type="submit" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; cursor: pointer;" title="Distribute target pot evenly across all unlocked items">
+                                <i class="fas fa-equals" style="margin-right: 4px; color: var(--primary);"></i>Balance Evenly
+                            </button>
+                        </form>
+                    }
+                </div>
             </div>
 
             @if(activePlan.getItems().isEmpty()) {
@@ -148,6 +164,26 @@
                     <p style="margin: 0.25rem 0 0; font-size: 0.85rem;">Use the form below to allocate your monthly savings pot into debt payoffs (credit, overdrafts) and savings accounts.</p>
                 </div>
             } else {
+                <!-- Interactive Segmented Pot Bar -->
+                <div class="pot-bar-wrapper">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem;">
+                        <span style="font-weight: 700; color: var(--text-main);">
+                            <i class="fas fa-chart-pie" style="color: var(--primary); margin-right: 4px;"></i> Target Pot Allocation (100% Balanced)
+                        </span>
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">
+                            Target: <b style="color: var(--primary);">£@activePlan.getTargetAmount(incomingTotal)</b>
+                        </span>
+                    </div>
+
+                    <div id="pot-segmented-bar" class="pot-segmented-bar" title="Proportional breakdown of monthly target pot">
+                        <!-- Populated and smoothly transitioned via savingsPlan.js -->
+                    </div>
+
+                    <div id="pot-bar-legend" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 0.75rem;">
+                        <!-- Legend chips dynamically updated via savingsPlan.js -->
+                    </div>
+                </div>
+
                 <div style="overflow-x: auto;">
                     <table class="w3-table w3-striped w3-hoverable" style="width: 100%; font-size: 0.9rem;">
                         <thead>
@@ -157,15 +193,18 @@
                                 <th style="padding: 10px 8px;">Type</th>
                                 <th style="padding: 10px 8px;">Account</th>
                                 <th style="padding: 10px 8px;">Account / Target Status</th>
-                                <th style="padding: 10px 8px; text-align: right;">Monthly Sliced</th>
+                                <th style="padding: 10px 8px; text-align: right; width: 180px;">Monthly Sliced</th>
                                 <th style="padding: 10px 8px;">Estimated Duration</th>
-                                <th style="padding: 10px 8px; text-align: center; width: 140px;">Action</th>
+                                <th style="padding: 10px 8px; text-align: center; width: 170px;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             @for(item <- activePlan.getItems()) {
                                 <tr class="savings-item-row"
                                     data-id="@item.getId()"
+                                    data-name="@item.getName()"
+                                    data-priority="@item.getPriority()"
+                                    data-locked="@item.isLocked()"
                                     data-type="@item.getType()"
                                     data-debt="@item.getDebtOwed()"
                                     data-target="@item.getTargetAmount()"
@@ -177,7 +216,14 @@
                                             P@item.getPriority()
                                         </span>
                                     </td>
-                                    <td style="padding: 10px 8px; font-weight: 600;">@item.getName()</td>
+                                    <td style="padding: 10px 8px; font-weight: 600;">
+                                        @item.getName()
+                                        @if(item.isLocked()) {
+                                            <span class="badge-pill" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #f59e0b; font-size: 0.7rem; margin-left: 4px;">
+                                                <i class="fas fa-lock"></i> Fixed
+                                            </span>
+                                        }
+                                    </td>
                                     <td style="padding: 10px 8px;">
                                         @if(item.getType() == SavingsPlanItem.ItemType.DEBT_PAYOFF) {
                                             <span class="badge-pill badge-danger"><i class="fas fa-credit-card"></i> Debt Payoff</span>
@@ -220,8 +266,20 @@
                                             }
                                         }
                                     </td>
-                                    <td style="padding: 10px 8px; text-align: right; font-weight: 700; color: var(--text-main);">
-                                        <span class="item-monthly-val">£@item.getMonthlyAmount()</span>
+                                    <td style="padding: 10px 8px; text-align: right;">
+                                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">
+                                            <span class="item-monthly-val">£@item.getMonthlyAmount()</span>
+                                        </div>
+                                        <div style="margin-top: 4px;">
+                                            <input type="range"
+                                                   min="0"
+                                                   max="@activePlan.getTargetAmount(incomingTotal)"
+                                                   step="1"
+                                                   value="@item.getMonthlyAmount()"
+                                                   class="item-slice-slider"
+                                                   data-id="@item.getId()"
+                                                   @if(item.isLocked()){disabled title="Item is locked (fixed amount)"} else {title="Drag to dynamically balance against other items"}>
+                                        </div>
                                     </td>
                                     <td style="padding: 10px 8px;" class="item-duration-cell">
                                         @if(item.getType() == SavingsPlanItem.ItemType.DEBT_PAYOFF) {
@@ -255,11 +313,19 @@
                                         }
                                     </td>
                                     <td style="padding: 10px 8px; text-align: center;">
-                                        <div style="display: inline-flex; gap: 4px;">
+                                        <div style="display: inline-flex; gap: 4px; align-items: center;">
+                                            <form method="POST" action="/savingsPlan/toggleLock/@item.getId()" style="margin: 0; display: inline;">
+                                                @helper.CSRF.formField
+                                                <button type="submit"
+                                                        class="btn-action @if(item.isLocked()){btn-locked}"
+                                                        title="@if(item.isLocked()){Locked: amount is fixed during rebalancing. Click to unlock.}else{Unlocked: amount adjusts dynamically. Click to lock.}">
+                                                    <i class="fas @if(item.isLocked()){fa-lock}else{fa-lock-open}"></i>
+                                                </button>
+                                            </form>
                                             <a href="/editSavingsPlanItem/@item.getId()#edit-form"
                                                class="btn-action btn-edit"
-                                               title="Edit item">
-                                                <i class="fas fa-pen"></i> Edit
+                                               title="Edit item details">
+                                                <i class="fas fa-pen"></i>
                                             </a>
                                             <a href="/binSavingsPlanItem/@item.getId()"
                                                class="btn-action btn-delete"

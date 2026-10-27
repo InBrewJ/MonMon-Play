@@ -12,6 +12,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static java.util.concurrent.CompletableFuture.supplyAsync;
+import static helpers.MathHelpers.round2;
 
 public class JPASavingsPlanRepository implements SavingsPlanRepository {
 
@@ -57,6 +58,21 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     @Override
     public CompletionStage<SavingsPlanItem> findItemById(Long itemId) {
         return supplyAsync(() -> wrap(em -> findItemById(em, itemId)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<SavingsPlanItem> toggleLock(Long itemId) {
+        return supplyAsync(() -> wrap(em -> toggleLock(em, itemId)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<SavingsPlan> balanceEvenly(Long planId, Float incomingTotal) {
+        return supplyAsync(() -> wrap(em -> balanceEvenly(em, planId, incomingTotal)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<SavingsPlan> updateItemAmounts(Long planId, java.util.Map<Long, Float> amounts) {
+        return supplyAsync(() -> wrap(em -> updateItemAmounts(em, planId, amounts)), executionContext);
     }
 
     @Override
@@ -171,6 +187,43 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
 
     private SavingsPlanItem findItemById(EntityManager em, Long itemId) {
         return em.find(SavingsPlanItem.class, itemId);
+    }
+
+    private SavingsPlanItem toggleLock(EntityManager em, Long itemId) {
+        SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
+        if (item != null) {
+            item.setLocked(!item.isLocked());
+            if (item.getSavingsPlan() != null) {
+                item.getSavingsPlan().setLastUpdated(System.currentTimeMillis());
+                em.merge(item.getSavingsPlan());
+            }
+            em.merge(item);
+        }
+        return item;
+    }
+
+    private SavingsPlan balanceEvenly(EntityManager em, Long planId, Float incomingTotal) {
+        SavingsPlan plan = em.find(SavingsPlan.class, planId);
+        if (plan != null) {
+            plan.balanceEvenly(incomingTotal);
+            em.merge(plan);
+        }
+        return plan;
+    }
+
+    private SavingsPlan updateItemAmounts(EntityManager em, Long planId, java.util.Map<Long, Float> amounts) {
+        SavingsPlan plan = em.find(SavingsPlan.class, planId);
+        if (plan != null && amounts != null) {
+            for (SavingsPlanItem item : plan.getItems()) {
+                if (amounts.containsKey(item.getId())) {
+                    item.setMonthlyAmount(round2(amounts.get(item.getId())));
+                    em.merge(item);
+                }
+            }
+            plan.setLastUpdated(System.currentTimeMillis());
+            em.merge(plan);
+        }
+        return plan;
     }
 
     private SavingsPlanItem updateItem(EntityManager em, Long itemId, String name, SavingsPlanItem.ItemType type, Long accountId, Float targetAmount, Float monthlyAmount, Integer priority) {

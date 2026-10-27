@@ -376,6 +376,39 @@ public class SavingsPlanController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> toggleLock(Long id, final Http.Request request) {
+        return savingsPlanRepository.toggleLock(id)
+                .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> balanceEvenly(Long id, final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        return incomingRepository.list(sup.getUserId())
+                .thenApplyAsync(incomings -> Incoming.getTotalIncomings(incomings.collect(Collectors.toList())), ec.current())
+                .thenComposeAsync(total -> savingsPlanRepository.balanceEvenly(id, total), ec.current())
+                .thenApplyAsync(sp -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> saveAllocations(Long id, final Http.Request request) {
+        DynamicForm requestData = formFactory.form().bindFromRequest(request);
+        Map<String, String> rawData = requestData.rawData();
+        Map<Long, Float> amounts = new java.util.HashMap<>();
+        for (Map.Entry<String, String> entry : rawData.entrySet()) {
+            if (entry.getKey().startsWith("amount_")) {
+                try {
+                    Long itemId = Long.parseLong(entry.getKey().substring("amount_".length()));
+                    Float val = Float.parseFloat(entry.getValue());
+                    amounts.put(itemId, val);
+                } catch (Exception ignored) {}
+            }
+        }
+        return savingsPlanRepository.updateItemAmounts(id, amounts)
+                .thenApplyAsync(sp -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archivePlan(Long id, final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
 

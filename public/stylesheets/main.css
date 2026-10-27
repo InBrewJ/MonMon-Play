@@ -1257,3 +1257,108 @@ hr {
     max-width: none;
   }
 }
+
+/* --- Savings Plan Self-Balancing Pot Bar & Sliders --- */
+.pot-bar-wrapper {
+  background: var(--card-bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.pot-segmented-bar {
+  display: flex;
+  height: 28px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border-color);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
+  position: relative;
+}
+
+.pot-segment {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  position: relative;
+  cursor: pointer;
+}
+
+.pot-segment:hover {
+  filter: brightness(1.12);
+  z-index: 2;
+}
+
+.pot-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-main);
+  transition: transform 0.15s ease;
+}
+
+.pot-legend-chip:hover {
+  transform: translateY(-1px);
+}
+
+.pot-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.item-slice-slider {
+  width: 100%;
+  max-width: 130px;
+  height: 6px;
+  border-radius: 3px;
+  outline: none;
+  background: var(--border-color);
+  -webkit-appearance: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.item-slice-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+
+.btn-locked {
+  background: rgba(245, 158, 11, 0.15) !important;
+  border-color: #f59e0b !important;
+  color: #f59e0b !important;
+}
+
+.btn-locked:hover {
+  background: rgba(245, 158, 11, 0.25) !important;
+}
+

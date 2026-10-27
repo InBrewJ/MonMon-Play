@@ -194,36 +194,89 @@ public class SavingsPlan {
 
     /**
      * Scales all active items proportionally to match a new savings target percentage.
-     * Preserves original proportions across all items.
+     * Preserves original proportions across unlocked items, while locked items stay fixed.
      */
     public void scaleItemsProportionally(Float incomingTotal, int newPercentage) {
-        float oldTotalAllocated = getTotalAllocated();
         this.savingsPercentage = newPercentage;
         this.lastUpdated = System.currentTimeMillis();
+        balanceItemsToTarget(incomingTotal);
+    }
 
-        if (incomingTotal == null || incomingTotal <= 0f) {
+    /**
+     * Splits available budget equally across all unlocked items.
+     * Locked items retain their fixed amounts.
+     * Automatically reconciles penny rounding drift on the last unlocked item.
+     */
+    public void balanceEvenly(Float incomingTotal) {
+        if (incomingTotal == null || incomingTotal <= 0f) return;
+        float targetPot = getTargetAmount(incomingTotal);
+        List<SavingsPlanItem> active = getItems();
+        if (active.isEmpty()) return;
+
+        List<SavingsPlanItem> unlocked = active.stream().filter(i -> !i.isLocked()).collect(Collectors.toList());
+        double lockedTotal = active.stream().filter(SavingsPlanItem::isLocked).mapToDouble(i -> i.getMonthlyAmount() != null ? i.getMonthlyAmount() : 0.0).sum();
+
+        if (unlocked.isEmpty()) {
+            this.lastUpdated = System.currentTimeMillis();
             return;
         }
 
-        float newTargetPot = getTargetAmount(incomingTotal);
-        List<SavingsPlanItem> activeItems = getItems();
-        if (activeItems.isEmpty()) {
-            return;
-        }
+        float availableForUnlocked = (float) Math.max(0.0, targetPot - lockedTotal);
+        float baseShare = round2(availableForUnlocked / unlocked.size());
+        float runningSum = 0.0f;
 
-        if (oldTotalAllocated <= 0f) {
-            float equalShare = round2(newTargetPot / activeItems.size());
-            for (SavingsPlanItem item : activeItems) {
-                item.setMonthlyAmount(equalShare);
+        for (int i = 0; i < unlocked.size(); i++) {
+            if (i == unlocked.size() - 1) {
+                float remainder = round2(availableForUnlocked - runningSum);
+                unlocked.get(i).setMonthlyAmount(Math.max(0.0f, remainder));
+            } else {
+                unlocked.get(i).setMonthlyAmount(baseShare);
+                runningSum = round2(runningSum + baseShare);
             }
+        }
+        this.lastUpdated = System.currentTimeMillis();
+    }
+
+    /**
+     * Rebalances unlocked items so that total allocated strictly equals target pot,
+     * maintaining relative proportions among unlocked items.
+     * Reconciles penny drift on the last unlocked item.
+     */
+    public void balanceItemsToTarget(Float incomingTotal) {
+        if (incomingTotal == null || incomingTotal <= 0f) return;
+        float targetPot = getTargetAmount(incomingTotal);
+        List<SavingsPlanItem> active = getItems();
+        if (active.isEmpty()) return;
+
+        List<SavingsPlanItem> unlocked = active.stream().filter(i -> !i.isLocked()).collect(Collectors.toList());
+        double lockedTotal = active.stream().filter(SavingsPlanItem::isLocked).mapToDouble(i -> i.getMonthlyAmount() != null ? i.getMonthlyAmount() : 0.0).sum();
+
+        if (unlocked.isEmpty()) {
+            this.lastUpdated = System.currentTimeMillis();
             return;
         }
 
-        for (SavingsPlanItem item : activeItems) {
-            float oldAmount = item.getMonthlyAmount() != null ? item.getMonthlyAmount() : 0.0f;
-            float weight = oldAmount / oldTotalAllocated;
-            float newAmount = round2(newTargetPot * weight);
-            item.setMonthlyAmount(newAmount);
+        float availableForUnlocked = (float) Math.max(0.0, targetPot - lockedTotal);
+        double unlockedAllocated = unlocked.stream().mapToDouble(i -> i.getMonthlyAmount() != null ? i.getMonthlyAmount() : 0.0).sum();
+
+        if (unlockedAllocated <= 0.0) {
+            balanceEvenly(incomingTotal);
+            return;
         }
+
+        float runningSum = 0.0f;
+        for (int i = 0; i < unlocked.size(); i++) {
+            SavingsPlanItem item = unlocked.get(i);
+            if (i == unlocked.size() - 1) {
+                float remainder = round2(availableForUnlocked - runningSum);
+                item.setMonthlyAmount(Math.max(0.0f, remainder));
+            } else {
+                double weight = (item.getMonthlyAmount() != null ? item.getMonthlyAmount() : 0.0) / unlockedAllocated;
+                float share = round2((float) (availableForUnlocked * weight));
+                item.setMonthlyAmount(share);
+                runningSum = round2(runningSum + share);
+            }
+        }
+        this.lastUpdated = System.currentTimeMillis();
     }
 }

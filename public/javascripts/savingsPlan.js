@@ -1,6 +1,20 @@
 // MonMon Savings Plan Client Script (Plain JavaScript)
+// Features: Real-time proportional scaling, interactive segmented pot bar, self-balancing sliders & lock mechanics
 (function () {
     'use strict';
+
+    var SLICE_COLORS = [
+        '#3b82f6', // blue
+        '#8b5cf6', // purple
+        '#10b981', // emerald
+        '#f59e0b', // amber
+        '#ec4899', // pink
+        '#06b6d4', // cyan
+        '#6366f1', // indigo
+        '#14b8a6', // teal
+        '#f97316', // orange
+        '#84cc16'  // lime
+    ];
 
     function initSavingsPlan() {
         var slider = document.getElementById('savings-plan-slider');
@@ -15,112 +29,339 @@
         var incomingTotal = 0;
         if (incomingTotalEl) {
             incomingTotal = parseFloat(incomingTotalEl.getAttribute('data-incoming')) || 0;
-        } else {
-            var allMetricBoxes = document.querySelectorAll('.metric-box');
-            allMetricBoxes.forEach(function (b) {
-                var label = b.textContent || '';
-                if (label.indexOf('Monthly Income') !== -1) {
-                    var match = label.match(/£([0-9]+(?:\.[0-9]+)?)/);
-                    if (match) incomingTotal = parseFloat(match[1]);
-                }
-            });
         }
 
-        // Initialize item rows for real-time proportional scaling
+        // Initialize item rows for real-time proportional scaling & self-balancing
         var itemRows = document.querySelectorAll('.savings-item-row');
         var itemsData = [];
         var initialTotalAllocated = 0;
 
         for (var i = 0; i < itemRows.length; i++) {
             var row = itemRows[i];
+            var id = row.getAttribute('data-id');
+            var name = row.getAttribute('data-name') || ('Item ' + (i + 1));
+            var priority = parseInt(row.getAttribute('data-priority'), 10) || (i + 1);
+            var isLocked = row.getAttribute('data-locked') === 'true';
             var baseMonthly = parseFloat(row.getAttribute('data-base-monthly')) || 0;
             var debt = parseFloat(row.getAttribute('data-debt')) || 0;
             var target = parseFloat(row.getAttribute('data-target')) || 0;
             var remaining = parseFloat(row.getAttribute('data-remaining')) || 0;
             var type = row.getAttribute('data-type') || 'SAVINGS_TARGET';
+            var color = SLICE_COLORS[i % SLICE_COLORS.length];
 
             initialTotalAllocated += baseMonthly;
             itemsData.push({
+                id: id,
                 row: row,
+                name: name,
+                priority: priority,
+                isLocked: isLocked,
+                currentMonthly: baseMonthly,
                 baseMonthly: baseMonthly,
                 debt: debt,
                 target: target,
                 remaining: remaining,
                 type: type,
+                color: color,
                 monthlyEl: row.querySelector('.item-monthly-val'),
-                durationEl: row.querySelector('.item-duration-cell') || row.querySelector('.item-duration-val')
+                durationEl: row.querySelector('.item-duration-cell') || row.querySelector('.item-duration-val'),
+                sliceSlider: row.querySelector('.item-slice-slider')
             });
         }
 
-        // Calculate baseline weights based on original proportions
-        for (var k = 0; k < itemsData.length; k++) {
-            if (initialTotalAllocated > 0) {
-                itemsData[k].weight = itemsData[k].baseMonthly / initialTotalAllocated;
-            } else if (itemsData.length > 0) {
-                itemsData[k].weight = 1.0 / itemsData.length;
+        // Initial target pot
+        var currentPercent = slider ? parseInt(slider.value, 10) : 0;
+        var currentTargetPot = (currentPercent / 100) * incomingTotal;
+
+        // Render the Segmented Pot Bar and Legend
+        var potBarEl = document.getElementById('pot-segmented-bar');
+        var potLegendEl = document.getElementById('pot-bar-legend');
+        var saveAllocationsForm = document.getElementById('save-allocations-form');
+        var btnSaveAllocations = document.getElementById('btn-save-allocations');
+
+        function updateDurationProjection(item, monthlyVal) {
+            if (!item.durationEl) return;
+
+            if (item.type === 'DEBT_PAYOFF') {
+                if (item.debt <= 0) {
+                    item.durationEl.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Paid off (£0 debt)</span>';
+                } else if (monthlyVal > 0) {
+                    var months = Math.ceil(item.debt / monthlyVal);
+                    item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + months + ' month' + (months === 1 ? '' : 's') + '</span>' +
+                        '<div style="font-size: 0.75rem; color: var(--text-muted);">to clear £' + item.debt.toFixed(2) + ' at £' + monthlyVal.toFixed(2) + '/mo</div>';
+                } else {
+                    item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">No monthly payment</span>';
+                }
             } else {
-                itemsData[k].weight = 0;
+                if (item.target > 0 && item.remaining <= 0) {
+                    item.durationEl.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Target reached</span>';
+                } else if (monthlyVal > 0 && item.target > 0) {
+                    var targetMonths = Math.ceil(item.remaining / monthlyVal);
+                    item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + targetMonths + ' month' + (targetMonths === 1 ? '' : 's') + '</span>' +
+                        '<div style="font-size: 0.75rem; color: var(--text-muted);">to reach £' + item.target.toFixed(2) + ' at £' + monthlyVal.toFixed(2) + '/mo</div>';
+                } else if (monthlyVal > 0) {
+                    item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings (£' + monthlyVal.toFixed(2) + '/mo)</span>';
+                } else {
+                    item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings</span>';
+                }
             }
         }
 
+        function renderPotBar(targetPot) {
+            if (!potBarEl || itemsData.length === 0) return;
+
+            potBarEl.innerHTML = '';
+            if (potLegendEl) potLegendEl.innerHTML = '';
+
+            var totalAllocated = 0;
+            for (var i = 0; i < itemsData.length; i++) {
+                totalAllocated += itemsData[i].currentMonthly;
+            }
+
+            var safeTarget = targetPot > 0 ? targetPot : 1;
+
+            for (var j = 0; j < itemsData.length; j++) {
+                var itm = itemsData[j];
+                var amt = itm.currentMonthly;
+                var pct = targetPot > 0 ? Math.round((amt / safeTarget) * 100) : 0;
+                var widthPct = targetPot > 0 ? (amt / safeTarget) * 100 : 0;
+
+                if (widthPct > 0.5) {
+                    var seg = document.createElement('div');
+                    seg.className = 'pot-segment';
+                    seg.style.width = widthPct.toFixed(2) + '%';
+                    seg.style.backgroundColor = itm.color;
+                    seg.title = 'P' + itm.priority + ' ' + itm.name + ': £' + amt.toFixed(2) + ' (' + pct + '%)' + (itm.isLocked ? ' [LOCKED]' : '');
+
+                    if (widthPct > 8) {
+                        seg.innerHTML = (itm.isLocked ? '<i class="fas fa-lock" style="font-size: 0.65rem; margin-right: 3px;"></i>' : '') +
+                            'P' + itm.priority + ' ' + (widthPct > 15 ? '£' + amt.toFixed(0) : '');
+                    }
+                    potBarEl.appendChild(seg);
+                }
+
+                // Legend chip
+                if (potLegendEl) {
+                    var chip = document.createElement('div');
+                    chip.className = 'pot-legend-chip';
+                    chip.innerHTML = '<span class="pot-legend-dot" style="background-color: ' + itm.color + ';"></span>' +
+                        '<span>P' + itm.priority + ' ' + itm.name + ': <b>£' + amt.toFixed(2) + '</b> <span style="color: var(--text-muted); font-weight: 400;">(' + pct + '%)</span></span>' +
+                        (itm.isLocked ? ' <i class="fas fa-lock" style="color: #f59e0b; font-size: 0.72rem;" title="Locked amount"></i>' : '');
+                    potLegendEl.appendChild(chip);
+                }
+            }
+
+            // Unallocated slice if any
+            var unallocated = targetPot - totalAllocated;
+            if (unallocated > 0.01 && targetPot > 0) {
+                var unallocPct = (unallocated / safeTarget) * 100;
+                var unallocSeg = document.createElement('div');
+                unallocSeg.className = 'pot-segment';
+                unallocSeg.style.width = unallocPct.toFixed(2) + '%';
+                unallocSeg.style.background = 'repeating-linear-gradient(45deg, rgba(148, 163, 184, 0.25), rgba(148, 163, 184, 0.25) 10px, rgba(148, 163, 184, 0.4) 10px, rgba(148, 163, 184, 0.4) 20px)';
+                unallocSeg.style.color = 'var(--text-muted)';
+                unallocSeg.title = 'Unallocated Buffer: £' + unallocated.toFixed(2) + ' (' + Math.round(unallocPct) + '%)';
+                if (unallocPct > 10) {
+                    unallocSeg.textContent = '£' + unallocated.toFixed(0) + ' unallocated';
+                }
+                potBarEl.appendChild(unallocSeg);
+            }
+        }
+
+        function markAllocationsChanged() {
+            if (!saveAllocationsForm || !btnSaveAllocations) return;
+
+            saveAllocationsForm.innerHTML = '';
+            var csrfInput = document.querySelector('input[name="csrfToken"]');
+            if (csrfInput) {
+                var hiddenCsrf = document.createElement('input');
+                hiddenCsrf.type = 'hidden';
+                hiddenCsrf.name = 'csrfToken';
+                hiddenCsrf.value = csrfInput.value;
+                saveAllocationsForm.appendChild(hiddenCsrf);
+            }
+
+            for (var i = 0; i < itemsData.length; i++) {
+                var itm = itemsData[i];
+                var inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'amount_' + itm.id;
+                inp.value = itm.currentMonthly.toFixed(2);
+                saveAllocationsForm.appendChild(inp);
+            }
+
+            btnSaveAllocations.style.display = 'inline-block';
+        }
+
+        if (btnSaveAllocations && saveAllocationsForm) {
+            btnSaveAllocations.addEventListener('click', function () {
+                saveAllocationsForm.submit();
+            });
+        }
+
+        // Self-Balancing Engine when a single item slider moves
+        function handleItemSliderChange(changedItem, newVal) {
+            var targetPot = currentTargetPot;
+            if (targetPot <= 0 || itemsData.length <= 1) {
+                changedItem.currentMonthly = newVal;
+                if (changedItem.monthlyEl) changedItem.monthlyEl.textContent = '£' + newVal.toFixed(2);
+                updateDurationProjection(changedItem, newVal);
+                renderPotBar(targetPot);
+                markAllocationsChanged();
+                return;
+            }
+
+            // Calculate locked sum
+            var lockedTotal = 0;
+            var otherUnlocked = [];
+            for (var i = 0; i < itemsData.length; i++) {
+                var itm = itemsData[i];
+                if (itm.id === changedItem.id) continue;
+                if (itm.isLocked) {
+                    lockedTotal += itm.currentMonthly;
+                } else {
+                    otherUnlocked.push(itm);
+                }
+            }
+
+            var maxAllowedForChanged = Math.max(0, targetPot - lockedTotal);
+            if (newVal > maxAllowedForChanged) {
+                newVal = maxAllowedForChanged;
+                if (changedItem.sliceSlider) changedItem.sliceSlider.value = newVal;
+            }
+
+            var oldVal = changedItem.currentMonthly;
+            var delta = newVal - oldVal;
+            changedItem.currentMonthly = Math.round(newVal * 100) / 100;
+            if (changedItem.monthlyEl) changedItem.monthlyEl.textContent = '£' + changedItem.currentMonthly.toFixed(2);
+            updateDurationProjection(changedItem, changedItem.currentMonthly);
+
+            if (otherUnlocked.length > 0) {
+                var otherTotal = 0;
+                for (var j = 0; j < otherUnlocked.length; j++) {
+                    otherTotal += otherUnlocked[j].currentMonthly;
+                }
+
+                var remainingBudget = Math.max(0, targetPot - (lockedTotal + changedItem.currentMonthly));
+                var runningSum = 0;
+
+                for (var k = 0; k < otherUnlocked.length; k++) {
+                    var other = otherUnlocked[k];
+                    if (k === otherUnlocked.length - 1) {
+                        // Reconcile penny drift on the last unlocked item
+                        other.currentMonthly = Math.max(0, Math.round((remainingBudget - runningSum) * 100) / 100);
+                    } else {
+                        var share = 0;
+                        if (otherTotal > 0) {
+                            share = Math.round(((other.currentMonthly / otherTotal) * remainingBudget) * 100) / 100;
+                        } else {
+                            share = Math.round((remainingBudget / otherUnlocked.length) * 100) / 100;
+                        }
+                        other.currentMonthly = Math.max(0, share);
+                        runningSum += other.currentMonthly;
+                    }
+
+                    if (other.monthlyEl) other.monthlyEl.textContent = '£' + other.currentMonthly.toFixed(2);
+                    if (other.sliceSlider) other.sliceSlider.value = other.currentMonthly;
+                    updateDurationProjection(other, other.currentMonthly);
+                }
+            }
+
+            // Update footer totals
+            var newAllocated = 0;
+            for (var m = 0; m < itemsData.length; m++) {
+                newAllocated += itemsData[m].currentMonthly;
+            }
+            var totalAllocatedEl = document.getElementById('total-allocated-val');
+            var footerTotalEl = document.getElementById('footer-total-allocated');
+            if (totalAllocatedEl) totalAllocatedEl.textContent = '£' + newAllocated.toFixed(2);
+            if (footerTotalEl) footerTotalEl.textContent = '£' + newAllocated.toFixed(2);
+
+            renderPotBar(targetPot);
+            markAllocationsChanged();
+        }
+
+        // Attach listeners to item sliders
+        for (var s = 0; s < itemsData.length; s++) {
+            (function (itm) {
+                if (itm.sliceSlider) {
+                    itm.sliceSlider.addEventListener('input', function () {
+                        handleItemSliderChange(itm, parseFloat(itm.sliceSlider.value) || 0);
+                    });
+                }
+            })(itemsData[s]);
+        }
+
+        // Scale all items when top savings target slider moves
         function updateSliderAndScaleItems(percent) {
             if (percent > maxPercent) {
                 percent = maxPercent;
                 if (slider) slider.value = maxPercent;
             }
 
-            if (sliderVal) {
-                sliderVal.textContent = percent;
-            }
-            if (sliderTargetInput) {
-                sliderTargetInput.value = percent;
-            }
+            if (sliderVal) sliderVal.textContent = percent;
+            if (sliderTargetInput) sliderTargetInput.value = percent;
 
             var newTargetPot = (percent / 100) * incomingTotal;
+            currentTargetPot = newTargetPot;
+
             if (savingsAmountSpan) {
                 savingsAmountSpan.textContent = '£' + newTargetPot.toFixed(2);
             }
 
+            var barTargetPotEl = document.getElementById('bar-target-pot-display');
+            if (barTargetPotEl) {
+                barTargetPotEl.textContent = newTargetPot.toFixed(2);
+            }
+
+            // Self-balancing: keep locked items fixed, scale unlocked items proportionally
+            var lockedTotal = 0;
+            var unlockedItems = [];
+            for (var i = 0; i < itemsData.length; i++) {
+                var itm = itemsData[i];
+                if (itm.isLocked) {
+                    lockedTotal += itm.currentMonthly;
+                } else {
+                    unlockedItems.push(itm);
+                }
+            }
+
+            var budgetForUnlocked = Math.max(0, newTargetPot - lockedTotal);
+            var prevUnlockedSum = 0;
+            for (var u = 0; u < unlockedItems.length; u++) {
+                prevUnlockedSum += unlockedItems[u].currentMonthly;
+            }
+
+            var runningSum = 0;
+            for (var k = 0; k < unlockedItems.length; k++) {
+                var item = unlockedItems[k];
+                if (k === unlockedItems.length - 1) {
+                    item.currentMonthly = Math.max(0, Math.round((budgetForUnlocked - runningSum) * 100) / 100);
+                } else {
+                    var weight = prevUnlockedSum > 0 ? (item.currentMonthly / prevUnlockedSum) : (1.0 / unlockedItems.length);
+                    var scaledMonthly = Math.round(budgetForUnlocked * weight * 100) / 100;
+                    item.currentMonthly = Math.max(0, scaledMonthly);
+                    runningSum += item.currentMonthly;
+                }
+
+                if (item.monthlyEl) item.monthlyEl.textContent = '£' + item.currentMonthly.toFixed(2);
+                if (item.sliceSlider) {
+                    item.sliceSlider.max = newTargetPot;
+                    item.sliceSlider.value = item.currentMonthly;
+                }
+                updateDurationProjection(item, item.currentMonthly);
+            }
+
+            // Locked items sliders max updated
+            for (var l = 0; l < itemsData.length; l++) {
+                if (itemsData[l].isLocked && itemsData[l].sliceSlider) {
+                    itemsData[l].sliceSlider.max = newTargetPot;
+                }
+            }
+
             var newTotalAllocated = 0;
-
-            // Scale every item in real-time according to original proportions
             for (var j = 0; j < itemsData.length; j++) {
-                var item = itemsData[j];
-                var scaledMonthly = 0;
-                if (initialTotalAllocated > 0 || (itemsData.length > 0 && newTargetPot > 0)) {
-                    scaledMonthly = Math.round(newTargetPot * item.weight * 100) / 100;
-                }
-                newTotalAllocated += scaledMonthly;
-
-                if (item.monthlyEl) {
-                    item.monthlyEl.textContent = '£' + scaledMonthly.toFixed(2);
-                }
-
-                if (item.durationEl) {
-                    if (item.type === 'DEBT_PAYOFF') {
-                        if (item.debt <= 0) {
-                            item.durationEl.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Paid off (£0 debt)</span>';
-                        } else if (scaledMonthly > 0) {
-                            var months = Math.ceil(item.debt / scaledMonthly);
-                            item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + months + ' month' + (months === 1 ? '' : 's') + '</span>' +
-                                '<div style="font-size: 0.75rem; color: var(--text-muted);">to clear £' + item.debt.toFixed(2) + ' at £' + scaledMonthly.toFixed(2) + '/mo</div>';
-                        } else {
-                            item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">No monthly payment</span>';
-                        }
-                    } else {
-                        if (item.target > 0 && item.remaining <= 0) {
-                            item.durationEl.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Target reached</span>';
-                        } else if (scaledMonthly > 0 && item.target > 0) {
-                            var targetMonths = Math.ceil(item.remaining / scaledMonthly);
-                            item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + targetMonths + ' month' + (targetMonths === 1 ? '' : 's') + '</span>' +
-                                '<div style="font-size: 0.75rem; color: var(--text-muted);">to reach £' + item.target.toFixed(2) + ' at £' + scaledMonthly.toFixed(2) + '/mo</div>';
-                        } else if (scaledMonthly > 0) {
-                            item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings (£' + scaledMonthly.toFixed(2) + '/mo)</span>';
-                        } else {
-                            item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings</span>';
-                        }
-                    }
-                }
+                newTotalAllocated += itemsData[j].currentMonthly;
             }
 
             // Update summary metric boxes and footer in real-time
@@ -133,15 +374,9 @@
             var footerTotalEl = document.getElementById('footer-total-allocated');
             var footerTargetPotEl = document.getElementById('footer-target-pot');
 
-            if (totalAllocatedEl) {
-                totalAllocatedEl.textContent = '£' + newTotalAllocated.toFixed(2);
-            }
-            if (footerTotalEl) {
-                footerTotalEl.textContent = '£' + newTotalAllocated.toFixed(2);
-            }
-            if (footerTargetPotEl) {
-                footerTargetPotEl.textContent = 'Target Pot: £' + newTargetPot.toFixed(2);
-            }
+            if (totalAllocatedEl) totalAllocatedEl.textContent = '£' + newTotalAllocated.toFixed(2);
+            if (footerTotalEl) footerTotalEl.textContent = '£' + newTotalAllocated.toFixed(2);
+            if (footerTargetPotEl) footerTargetPotEl.textContent = 'Target Pot: £' + newTargetPot.toFixed(2);
 
             var unallocated = newTargetPot - newTotalAllocated;
             if (unallocatedEl) {
@@ -168,6 +403,8 @@
                     unallocatedAlert.innerHTML = '<i class="fas fa-check-circle"></i> <b>£' + unallocated.toFixed(2) + '</b> remaining to slice';
                 }
             }
+
+            renderPotBar(newTargetPot);
         }
 
         if (slider) {
@@ -175,6 +412,9 @@
                 updateSliderAndScaleItems(parseInt(slider.value, 10));
             });
         }
+
+        // Initial pot bar render
+        renderPotBar(currentTargetPot);
 
         // Live calculation in the "Add / Amend Item" form
         var itemTypeSelect = document.getElementById('item-type-select');
@@ -198,9 +438,7 @@
         }
 
         function updateEstimatePreview() {
-            if (!previewBox || !itemTypeSelect) {
-                return;
-            }
+            if (!previewBox || !itemTypeSelect) return;
 
             var type = itemTypeSelect.value;
             var monthly = monthlyAmountInput ? parseFloat(monthlyAmountInput.value) || 0 : 0;
@@ -211,9 +449,8 @@
             var accType = selectedOption ? selectedOption.getAttribute('data-type') || '' : '';
 
             if (type === 'DEBT_PAYOFF') {
-                if (targetAmountGroup) {
-                    targetAmountGroup.style.display = 'none';
-                }
+                if (targetAmountGroup) targetAmountGroup.style.display = 'none';
+
                 var debt = 0;
                 if (accType === 'LOAN') {
                     debt = Math.max(0, balance);
@@ -242,9 +479,8 @@
                     previewBox.innerHTML = '<span style="color: var(--primary); font-weight: 600;"><i class="fas fa-calculator"></i> Roughly <b>' + months + ' month' + (months === 1 ? '' : 's') + '</b> to pay off £' + debt.toFixed(2) + ' debt at £' + monthly.toFixed(2) + '/month</span>';
                 }
             } else {
-                if (targetAmountGroup) {
-                    targetAmountGroup.style.display = 'block';
-                }
+                if (targetAmountGroup) targetAmountGroup.style.display = 'block';
+
                 var target = targetAmountInput ? parseFloat(targetAmountInput.value) || 0 : 0;
                 var remaining = Math.max(0, target - balance);
 
@@ -283,15 +519,9 @@
             });
         }
 
-        if (accountSelect) {
-            accountSelect.addEventListener('change', updateEstimatePreview);
-        }
-        if (targetAmountInput) {
-            targetAmountInput.addEventListener('input', updateEstimatePreview);
-        }
-        if (monthlyAmountInput) {
-            monthlyAmountInput.addEventListener('input', updateEstimatePreview);
-        }
+        if (accountSelect) accountSelect.addEventListener('change', updateEstimatePreview);
+        if (targetAmountInput) targetAmountInput.addEventListener('input', updateEstimatePreview);
+        if (monthlyAmountInput) monthlyAmountInput.addEventListener('input', updateEstimatePreview);
 
         updateEstimatePreview();
     }

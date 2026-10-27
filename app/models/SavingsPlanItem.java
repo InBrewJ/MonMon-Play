@@ -39,6 +39,8 @@ public class SavingsPlanItem {
 
     private Integer priority = 1;
 
+    private boolean locked = false;
+
     private boolean archived = false;
 
     public SavingsPlanItem() {
@@ -120,6 +122,14 @@ public class SavingsPlanItem {
 
     public void setPriority(Integer priority) {
         this.priority = priority != null && priority > 0 ? priority : 1;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    public void setLocked(boolean locked) {
+        this.locked = locked;
     }
 
     public boolean isArchived() {

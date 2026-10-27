@@ -388,4 +388,51 @@ public class SavingsPlanTest {
 
         assertThat(plan.getTotalAllocated()).isEqualTo(450.0f);
     }
+
+    @Test
+    public void testBalanceEvenlyDistributesToUnlockedItems() {
+        SavingsPlan plan = new SavingsPlan("user123", "Balance Evenly Plan", 25);
+        Float incomingTotal = 2000.0f; // Target pot: 25% of 2000 = 500.00
+
+        SavingsPlanItem item1 = new SavingsPlanItem("Fixed Loan", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, null, 100.0f, 1);
+        item1.setLocked(true); // Fixed at £100
+
+        SavingsPlanItem item2 = new SavingsPlanItem("Holiday", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 50.0f, 2);
+        SavingsPlanItem item3 = new SavingsPlanItem("Emergency", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 2000f, 50.0f, 3);
+
+        plan.addItem(item1);
+        plan.addItem(item2);
+        plan.addItem(item3);
+
+        // Target pot: 500. Locked: 100. Available for unlocked: 400.
+        // Item2 and Item3 should each get 200.
+        plan.balanceEvenly(incomingTotal);
+
+        assertThat(item1.getMonthlyAmount()).isEqualTo(100.0f);
+        assertThat(item2.getMonthlyAmount()).isEqualTo(200.0f);
+        assertThat(item3.getMonthlyAmount()).isEqualTo(200.0f);
+        assertThat(plan.getTotalAllocated()).isEqualTo(500.0f);
+        assertThat(plan.getUnallocatedAmount(incomingTotal)).isEqualTo(0.0f);
+    }
+
+    @Test
+    public void testBalanceItemsToTargetPreservesLockedItemsAndReconcilesPennies() {
+        SavingsPlan plan = new SavingsPlan("user123", "Penny Drift Plan", 20);
+        Float incomingTotal = 1666.67f; // Target pot: 20% of 1666.67 = 333.33
+
+        SavingsPlanItem item1 = new SavingsPlanItem("P1", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, null, 100.0f, 1);
+        SavingsPlanItem item2 = new SavingsPlanItem("P2", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, null, 100.0f, 2);
+        SavingsPlanItem item3 = new SavingsPlanItem("P3", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, null, 100.0f, 3);
+
+        plan.addItem(item1);
+        plan.addItem(item2);
+        plan.addItem(item3);
+
+        // Rebalance to target: 333.33 divided across 3 items (111.11, 111.11, 111.11)
+        plan.balanceItemsToTarget(incomingTotal);
+
+        float target = plan.getTargetAmount(incomingTotal);
+        assertThat(plan.getTotalAllocated()).isEqualTo(target);
+        assertThat(plan.getUnallocatedAmount(incomingTotal)).isEqualTo(0.0f);
+    }
 }
