@@ -72,6 +72,9 @@ public class MistralServiceTest {
         assertThat(prompt).contains("Income & Allowances:");
         assertThat(prompt).contains("Monthly Income / Takehome: £3000.0");
         assertThat(prompt).contains("Max Monthly Spending Allowance: £374.61");
+        assertThat(prompt).contains("Credit & Debt:");
+        assertThat(prompt).contains("Total Credit Debt Owed:");
+        assertThat(prompt).contains("Savings & Assets:");
         assertThat(prompt).contains("Accounts:");
         assertThat(prompt).contains("Current Account (DEBIT): £1500.0");
         assertThat(prompt).contains("Spending Plan (Gruelling):");

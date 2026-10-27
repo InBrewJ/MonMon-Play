@@ -163,13 +163,44 @@ public class MistralService {
         sb.append("- Total Available Credit: £").append(spogVm.getTotalAvailableCredit()).append("\n");
         sb.append("- Total Funds: £").append(spogVm.getTotalFunds()).append("\n\n");
 
+        sb.append("Credit & Debt:\n");
+        sb.append("- Total Credit Debt Owed: £").append(spogVm.getCreditBalance()).append("\n");
+        sb.append("- Total Credit Limit: £").append(spogVm.getCreditLimit()).append("\n");
+        sb.append("- Credit Usage: ").append(spogVm.getCreditUsage()).append("%\n");
+        sb.append("- Credit Available (limit remaining to spend): £").append(spogVm.getTotalAvailableCredit()).append("\n");
+        if (spogVm.getLoanRemainingTotal() > 0 || spogVm.getLoanOriginalDrawdownTotal() > 0) {
+            sb.append("- Loans Remaining: £").append(spogVm.getLoanRemainingTotal())
+                    .append(" (Original drawdown: £").append(spogVm.getLoanOriginalDrawdownTotal()).append(")\n");
+        }
+        sb.append("\n");
+
+        sb.append("Savings & Assets:\n");
+        sb.append("- Liquid Savings Pot: £").append(spogVm.getLiquidSavingsPot()).append("\n");
+        sb.append("- Total Savings (including Pension): £").append(spogVm.getSavingsPot()).append("\n");
+        sb.append("- Pension Pot: £").append(spogVm.getPensionPot()).append("\n\n");
+
         if (spogVm.getAllAccounts() != null && !spogVm.getAllAccounts().isEmpty()) {
             sb.append("Accounts:\n");
+            Map<Account, viewModels.AccountStatus> statusMap = spogVm.getAccountStatusMap();
             for (Account a : spogVm.getAllAccounts()) {
                 if (a != null) {
-                    sb.append("  • ").append(a.getName() != null ? a.getName() : "Account")
-                            .append(" (").append(a.getType() != null ? a.getType() : "DEBIT").append("): £")
-                            .append(a.getLatestBalanceValue()).append("\n");
+                    viewModels.AccountStatus status = statusMap != null ? statusMap.get(a) : null;
+                    if (a.getType() == Account.AccountType.CREDIT) {
+                        double owed = status != null ? status.getBalanceWithLimits() : 0.0;
+                        float limit = a.getAvailableLimit() != null ? a.getAvailableLimit() : 0f;
+                        double available = status != null ? status.getLatestBalance() : (double) a.getLatestBalanceValue();
+                        sb.append("  • ").append(a.getName() != null ? a.getName() : "Credit Card")
+                                .append(" (CREDIT): £").append(owed).append(" owed of £").append(limit).append(" limit (£")
+                                .append(available).append(" available to spend)\n");
+                    } else if (a.getType() == Account.AccountType.LOAN) {
+                        sb.append("  • ").append(a.getName() != null ? a.getName() : "Loan")
+                                .append(" (LOAN): £").append(a.getLatestBalanceValue()).append(" remaining of £")
+                                .append(a.getAvailableLimit() != null ? a.getAvailableLimit() : 0f).append(" original\n");
+                    } else {
+                        sb.append("  • ").append(a.getName() != null ? a.getName() : "Account")
+                                .append(" (").append(a.getType() != null ? a.getType() : "DEBIT").append("): £")
+                                .append(a.getLatestBalanceValue()).append("\n");
+                    }
                 }
             }
             sb.append("\n");
@@ -186,7 +217,7 @@ public class MistralService {
             sb.append("  • Adjusted Fun Left Per Day: £").append(plan.getAdjustedFunLeftPerDay()).append("/day\n\n");
         }
 
-        sb.append("Please analyze these finances as Ed. Give me an assessment of how I'm doing and clear, practical actions to improve or manage my money for the rest of this month.");
+        sb.append("Please analyze these finances as Ed in the Hemingway style. Give a clear appraisal of the reality and the exact actions required to reach payday.");
         return sb.toString();
     }
 
@@ -249,11 +280,14 @@ public class MistralService {
             ObjectNode systemMsg = messages.addObject();
             systemMsg.put("role", "system");
             systemMsg.put("content",
-                    "You are Ed, the sharp-witted, helpful, and monstrously practical personal finance monster mascot of MonMon. " +
-                            "Analyze the user's financial dashboard snapshot (Single Pane of Glass - SPOG). Provide:\n" +
-                            "1. A quick 2-3 sentence overview of their financial health right now (are they on track, ahead, or burning cash?).\n" +
-                            "2. Exactly 2-4 punchy, high-impact, practical bullet points on what they can do to improve or survive until payday.\n" +
-                            "Tone: direct, encouraging, clever, with a tiny hint of monstrous wit. No generic fluff. Use Markdown formatting with bolding and bullet points."
+                    "You are Ed, financial observer in MonMon. " +
+                            "Speak strictly in the style of Ernest Hemingway: lean, spare, direct, honest, and unadorned. " +
+                            "Short sentences. No melodrama, no emojis, no exclamation marks, no cheap monster gimmicks or cartoon jokes. " +
+                            "Face the numbers as a man faces a cold sea: honest about what is spent, calm about what remains, and disciplined about the days ahead.\n\n" +
+                            "Structure:\n" +
+                            "1. A brief 2-3 sentence appraisal of the financial position right now.\n" +
+                            "2. Exactly 2-4 disciplined, practical actions to endure and finish the month cleanly.\n" +
+                            "Use clean Markdown formatting with simple bold headings and bullet points."
             );
 
             ObjectNode userMsg = messages.addObject();
