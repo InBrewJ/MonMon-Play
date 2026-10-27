@@ -120,5 +120,9 @@ public class MistralServiceTest {
         String advice3 = service.askEd("userA", "snapshot prompt", true).get();
         assertThat(advice3).isEqualTo(advice1);
         verify(mockHttpClient, times(2)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+        assertThat(service.getLastSpokeTimestamp("userA")).isNotNull();
+        assertThat(service.getLastSpokeTimestamp("userA")).isGreaterThan(0L);
+        assertThat(service.getLastSpokeTimestamp("unknownUser")).isNull();
     }
 }

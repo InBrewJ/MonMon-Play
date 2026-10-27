@@ -126,6 +126,12 @@ public class MistralService {
         }
     }
 
+    public Long getLastSpokeTimestamp(String userId) {
+        if (userId == null) return null;
+        CacheEntry cached = userAdviceCache.get(userId);
+        return cached != null ? cached.timestamp : null;
+    }
+
     public static String buildFinancialSnapshotPrompt(Spog spogVm) {
         if (spogVm == null) {
             return "No financial data available.";

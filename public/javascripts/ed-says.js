@@ -6,6 +6,46 @@
     'use strict';
 
     var cachedResponse = null;
+    var lastSpokeTimestamp = null;
+
+    function formatTimeAgo(timestampMs) {
+        if (!timestampMs) return '';
+        var diffMs = Date.now() - timestampMs;
+        if (diffMs < 0) diffMs = 0;
+        var sec = Math.floor(diffMs / 1000);
+        var min = Math.floor(sec / 60);
+        var hr = Math.floor(min / 60);
+        var day = Math.floor(hr / 24);
+        var week = Math.floor(day / 7);
+
+        if (week >= 1) {
+            return week === 1 ? '1 week ago' : (week + ' weeks ago');
+        }
+        if (day >= 1) {
+            return day === 1 ? '1 day ago' : (day + ' days ago');
+        }
+        if (hr >= 1) {
+            return hr === 1 ? '1 hour ago' : (hr + ' hours ago');
+        }
+        if (min >= 1) {
+            return min === 1 ? '1 minute ago' : (min + ' minutes ago');
+        }
+        return sec <= 1 ? '1 second ago' : (sec + ' seconds ago');
+    }
+
+    function updateFooter(timestampMs) {
+        if (!timestampMs) return;
+        lastSpokeTimestamp = timestampMs;
+        var formatted = formatTimeAgo(timestampMs);
+        var text = 'Ed last spoke: ' + formatted;
+
+        document.querySelectorAll('.ed-last-spoke-text').forEach(function (el) {
+            el.textContent = text;
+        });
+        document.querySelectorAll('.ed-says-footer').forEach(function (el) {
+            el.style.display = 'block';
+        });
+    }
 
     function renderMarkdown(md) {
         if (!md) return '';
@@ -152,6 +192,18 @@
 
                 cachedResponse = data.edSays;
                 updateAllContent(renderMarkdown(data.edSays));
+
+                if (data.lastSpoke) {
+                    try {
+                        localStorage.setItem('monmon_ed_last_spoke', data.lastSpoke);
+                    } catch (e) {}
+                    updateFooter(data.lastSpoke);
+                } else if (!lastSpokeTimestamp) {
+                    try {
+                        var savedTime = localStorage.getItem('monmon_ed_last_spoke');
+                        if (savedTime) updateFooter(parseInt(savedTime, 10));
+                    } catch (e) {}
+                }
             })
             .catch(function (err) {
                 var errHtml =
@@ -227,6 +279,21 @@
                 closeEdModal();
             }
         });
+
+        // Check localStorage for previous Ed advice timestamp on initial render
+        try {
+            var savedTime = localStorage.getItem('monmon_ed_last_spoke');
+            if (savedTime) {
+                updateFooter(parseInt(savedTime, 10));
+            }
+        } catch (e) {}
+
+        // Periodically refresh relative time ago readout
+        setInterval(function () {
+            if (lastSpokeTimestamp) {
+                updateFooter(lastSpokeTimestamp);
+            }
+        }, 5000);
 
         // Initial async load
         loadEdSays(false);

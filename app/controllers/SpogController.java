@@ -134,6 +134,10 @@ public class SpogController extends Controller {
                             ObjectNode res = play.libs.Json.newObject();
                             res.put("edSays", advice);
                             res.put("configured", mistralService.isConfigured());
+                            Long lastSpoke = mistralService.getLastSpokeTimestamp(userId);
+                            if (lastSpoke != null) {
+                                res.put("lastSpoke", lastSpoke);
+                            }
                             return ok(res);
                         })
         ).exceptionally(ex -> {

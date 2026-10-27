@@ -10,7 +10,8 @@
     maxSurplus: Float = 0.0f,
     maxPercent: Int = 100,
     editing: Boolean = false,
-    editingItem: SavingsPlanItem = null
+    editingItem: SavingsPlanItem = null,
+    daysBetweenPaydays: Int = 30
 )(
     implicit
     request: Http.Request,
@@ -72,16 +73,39 @@
                         <span style="font-size: 0.85rem; font-weight: 400; color: var(--text-muted);">(@activePlan.getSavingsPercentage()%)</span>
                     </div>
                 </div>
-                <div class="metric-box" style="border-left: 3px solid #16a34a;">
-                    <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between;">
-                        <span>MAX / Month</span>
+                <div class="metric-box" style="border-left: 3px solid #16a34a; min-width: 240px;" id="breadline-card" data-days="@daysBetweenPaydays">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="font-weight: 700;">Living Allowance</span>
                         <span class="badge-pill" style="background: rgba(34, 197, 94, 0.15); color: #16a34a; font-size: 0.7rem; font-weight: 700;">Breadline</span>
                     </div>
-                    <div id="breadline-metric-val" style="font-size: 1.3rem; font-weight: 700; color: #16a34a;">
-                        £@String.format(java.util.Locale.UK, "%.2f", Math.max(0.0, (maxSurplus - activePlan.getTargetAmount(incomingTotal)).toDouble))
-                    </div>
-                    <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
-                        Remaining on SPOG
+                    @defining(Math.max(0.0, (maxSurplus - activePlan.getTargetAmount(incomingTotal)).toDouble)) { breadlineMonth =>
+                        @defining(breadlineMonth / daysBetweenPaydays) { breadlineDay =>
+                            @defining(breadlineDay * 7.0) { breadlineWeek =>
+                                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+                                    <div>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">MAX / mo</div>
+                                        <div id="breadline-metric-val" style="font-size: 1.25rem; font-weight: 700; color: #16a34a;">
+                                            £@String.format(java.util.Locale.UK, "%.2f", breadlineMonth)
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">MAX / wk</div>
+                                        <div id="breadline-week-val" style="font-size: 1.05rem; font-weight: 700; color: #16a34a;">
+                                            £@String.format(java.util.Locale.UK, "%.2f", breadlineWeek)
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">MAX / day</div>
+                                        <div id="breadline-day-val" style="font-size: 1.05rem; font-weight: 700; color: #16a34a;">
+                                            £@String.format(java.util.Locale.UK, "%.2f", breadlineDay)
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                    <div style="font-size: 0.73rem; color: var(--text-muted); margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--border-color); line-height: 1.3;">
+                        <i class="fas fa-utensils" style="color: var(--primary); margin-right: 3px;"></i> Food is likely <b>£50/week</b> (or <b>£216.67/month</b>)
                     </div>
                 </div>
                 <div class="metric-box">
@@ -105,7 +129,11 @@
                     <span id="savings-plan-slider-val" style="color: var(--primary); font-size: 1.1rem; font-weight: 700;">@activePlan.getSavingsPercentage()</span>% of income
                     (<span id="savings-plan-amount" style="font-weight: 700;">£@activePlan.getTargetAmount(incomingTotal)</span> of £@incomingTotal)
                     <span style="font-weight: 500; font-size: 0.88rem; color: var(--text-muted); margin-left: 8px;">
-                        • Leaves <b>MAX / month: <span id="savings-plan-breadline" style="color: #16a34a; font-weight: 700;">£@String.format(java.util.Locale.UK, "%.2f", Math.max(0.0, (maxSurplus - activePlan.getTargetAmount(incomingTotal)).toDouble))</span></b>
+                        @defining(Math.max(0.0, (maxSurplus - activePlan.getTargetAmount(incomingTotal)).toDouble)) { breadlineMonth =>
+                            @defining(breadlineMonth / daysBetweenPaydays) { breadlineDay =>
+                                • Leaves <b>MAX / month: <span id="savings-plan-breadline" style="color: #16a34a; font-weight: 700;">£@String.format(java.util.Locale.UK, "%.2f", breadlineMonth) (£@String.format(java.util.Locale.UK, "%.2f", breadlineDay * 7.0)/wk, £@String.format(java.util.Locale.UK, "%.2f", breadlineDay)/day)</span></b>
+                            }
+                        }
                     </span>
                 </label>
                 <div class="slidecontainer" style="padding: 0.25rem 0;">
@@ -117,6 +145,7 @@
                            id="savings-plan-slider"
                            data-max-surplus="@maxSurplus"
                            data-max-percent="@maxPercent"
+                           data-days="@daysBetweenPaydays"
                            style="width: 100%;">
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
