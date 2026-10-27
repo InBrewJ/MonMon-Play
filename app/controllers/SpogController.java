@@ -269,9 +269,8 @@ public class SpogController extends Controller {
         List<Pot> allPots = repoListToList(this.potRepository.listComplete(sup.getUserId()));
         List<Incoming> allIncomings = repoListToList(incomingRepository.list(sup.getUserId()));
         List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
-        Float incomingTotal = Incoming.getTotalIncomings(allIncomings);
-        Float outgoingTotal = round2(Outgoing.getTotalOutgoingsWithoutHidden(allOutgoings));
-        Float monthlySurplus = round2(incomingTotal - outgoingTotal);
+        List<Plan> allPlans = repoListToList(this.planRepository.list(sup.getUserId()));
+        Float monthlySurplus = helpers.ModelHelpers.calculateMonthlyAllowance(allIncomings, allOutgoings, allPlans);
 
         viewModels.HistoricSpentViewModel viewModel = helpers.HistoricSpentCalculator.calculate(
                 allPots,

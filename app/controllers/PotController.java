@@ -36,6 +36,7 @@ public class PotController extends Controller {
     private final AccountRepository accountRepository;
     private final IncomingRepository incomingRepository;
     private final OutgoingRepository outgoingRepository;
+    private final PlanRepository planRepository;
 
     @Inject
     private SessionStore playSessionStore;
@@ -48,6 +49,7 @@ public class PotController extends Controller {
             AccountRepository accountRepository,
             IncomingRepository incomingRepository,
             OutgoingRepository outgoingRepository,
+            PlanRepository planRepository,
             HttpExecutionContext ec
     ) {
         this.formFactory = formFactory;
@@ -56,6 +58,7 @@ public class PotController extends Controller {
         this.accountRepository = accountRepository;
         this.incomingRepository = incomingRepository;
         this.outgoingRepository = outgoingRepository;
+        this.planRepository = planRepository;
         this.form = formFactory.form(Pot.class);
         this.ec = ec;
     }
@@ -78,12 +81,11 @@ public class PotController extends Controller {
                 .sorted(Comparator.comparing((Pot p) -> p.getCreatedAt() != null ? p.getCreatedAt() : 0L).reversed())
                 .collect(Collectors.toList());
 
-        // Calculate surplus (monthly budget)
+        // Calculate max monthly allowance as set on /spog (taking into account savings goals and bill/rent shares)
+        List<Plan> plans = repoListToList(planRepository.list(sup.getUserId()));
         List<Incoming> incomings = repoListToList(incomingRepository.list(sup.getUserId()));
         List<Outgoing> outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
-        Float incomingTotal = Incoming.getTotalIncomings(incomings);
-        Float outgoingTotal = round2(Outgoing.getTotalOutgoingsWithoutHidden(outgoings));
-        Float surplus = round2(incomingTotal - outgoingTotal);
+        Float surplus = helpers.ModelHelpers.calculateMonthlyAllowance(incomings, outgoings, plans);
 
         // Find active monthly pot
         Pot activeMonthlyPot = activePots.stream()

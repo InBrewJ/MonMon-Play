@@ -171,4 +171,46 @@ public class ModelHelpersTest {
         assertThat(ModelHelpers.findAlreadyPaid(outgoings, asOfFeb28, 31)).containsExactly(oEnd);
         assertThat(ModelHelpers.findYetToPay(outgoings, asOfFeb28, 31)).containsExactly(o5);
     }
+
+    @Test
+    public void testCalculateMonthlyAllowanceAppliesPlansAndSavingsGoal() {
+        Incoming salary = new Incoming();
+        salary.setNetValue(3000f);
+
+        Outgoing rent = new Outgoing();
+        rent.setName("Rent");
+        rent.setCost(1000f);
+        rent.setRent(true);
+
+        Outgoing councilTax = new Outgoing();
+        councilTax.setName("Council Tax");
+        councilTax.setCost(200f);
+        councilTax.setBill(true);
+
+        Outgoing internet = new Outgoing();
+        internet.setName("Internet");
+        internet.setCost(65.39f);
+
+        models.Plan rentShare = new models.Plan();
+        rentShare.setType(models.Plan.PlanType.RENT_SHARE);
+        rentShare.setSplit(0.5f);
+
+        models.Plan billShare = new models.Plan();
+        billShare.setType(models.Plan.PlanType.BILL_SHARE);
+        billShare.setSplit(0.5f);
+
+        models.Plan savingsGoal = new models.Plan();
+        savingsGoal.setType(models.Plan.PlanType.MONTHLY_SAVINGS_GOAL);
+        savingsGoal.setSplit(0.5f); // 50% savings goal -> £1500
+
+        List<Incoming> incomings = List.of(salary);
+        List<Outgoing> outgoings = List.of(rent, councilTax, internet);
+        List<models.Plan> plans = List.of(rentShare, billShare, savingsGoal);
+
+        // Rent becomes 500, council tax becomes 100, internet is 65.39 -> outgoings = 665.39
+        // Income = 3000 -> raw surplus = 2334.61
+        // Savings = 50% of 3000 = 1500 -> net allowance = 834.61
+        Float allowance = ModelHelpers.calculateMonthlyAllowance(incomings, outgoings, plans);
+        assertThat(allowance).isEqualTo(834.61f);
+    }
 }

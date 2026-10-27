@@ -1,15 +1,20 @@
 package helpers;
 
+import models.Incoming;
 import models.Outgoing;
+import models.Plan;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static helpers.MathHelpers.round2;
 
 public class ModelHelpers {
     public static <T> List<T> repoListToList(CompletionStage<Stream<T>> in) throws ExecutionException, InterruptedException {
@@ -84,5 +89,69 @@ public class ModelHelpers {
             searchDate = searchDate.plusDays(1);
         }
         return found;
+    }
+
+    /**
+     * Calculates the user's maximum monthly spending allowance (surplus) as configured from /spog.
+     * Takes into account incomings, outgoings (with bill share and rent share plan splits applied),
+     * and deductions for monthly savings goals.
+     */
+    public static Float calculateMonthlyAllowance(List<Incoming> incomings, List<Outgoing> outgoings, List<Plan> plans) {
+        if (incomings == null) {
+            incomings = Collections.emptyList();
+        }
+        if (outgoings == null) {
+            outgoings = Collections.emptyList();
+        }
+        if (plans == null) {
+            plans = Collections.emptyList();
+        }
+
+        Plan firstMonthlySavingsGoal = plans.stream()
+                .filter(p -> p != null && p.getType() == Plan.PlanType.MONTHLY_SAVINGS_GOAL)
+                .findFirst()
+                .orElse(null);
+
+        Plan firstRentShare = plans.stream()
+                .filter(p -> p != null && p.getType() == Plan.PlanType.RENT_SHARE)
+                .findFirst()
+                .orElse(null);
+
+        Plan firstBillShare = plans.stream()
+                .filter(p -> p != null && p.getType() == Plan.PlanType.BILL_SHARE)
+                .findFirst()
+                .orElse(null);
+
+        List<Outgoing> adjustedOutgoings = new ArrayList<>();
+        for (Outgoing o : outgoings) {
+            if (o != null) {
+                Outgoing copy = new Outgoing();
+                copy.setId(o.getId());
+                copy.setName(o.getName());
+                copy.setBill(o.isBill());
+                copy.setRent(o.isRent());
+                copy.setHiddenFromTotal(o.isHiddenFromTotal());
+                copy.setOutgoingDay(o.getOutgoingDay());
+                float cost = o.getCost();
+                if (firstBillShare != null && o.isBill()) {
+                    cost = cost * firstBillShare.getSplit();
+                }
+                if (firstRentShare != null && o.isRent()) {
+                    cost = cost * firstRentShare.getSplit();
+                }
+                copy.setCost(cost);
+                adjustedOutgoings.add(copy);
+            }
+        }
+
+        Float outgoingTotal = round2(Outgoing.getTotalOutgoingsWithoutHidden(adjustedOutgoings));
+        Float incomingTotal = Incoming.getTotalIncomings(incomings);
+        Float surplus = round2(incomingTotal - outgoingTotal);
+
+        int percentIncomeAsSavings = firstMonthlySavingsGoal != null ? (int) (firstMonthlySavingsGoal.getSplit() * 100) : 0;
+        Float savingsPlanCost = (((float) percentIncomeAsSavings / 100.0f) * incomingTotal);
+        surplus -= savingsPlanCost;
+
+        return round2(surplus);
     }
 }
