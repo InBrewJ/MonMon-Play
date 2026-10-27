@@ -1,9 +1,12 @@
 next up:
 
-0. have a look at the effect of the timezone setting for the 'left per day' and the rest of the 
-values on /spog. Anecdotally, in BST, it still seems like the values only update at 1am, not midnight
+0. let's have a general think about the UX of the spog page - there's a lot of data and
+   I'd say the most commonly looked at things are: left per day, spent this month and also last month's spent this month, savings slider and plan and the account overview
 
-1. we, begrudgingly for hard times, need to add a 'spending plan' to the monthly pot, made up of the max monthly allowance and adjusted for this month's spending (for food, fun, fuel and transport). The first spending plan will be 'gruelling' which should use the UK average weekly food spend and then see what's left over for fun. The gruelling plan should be a preset but a custom plan should be created through forms
+1. all I really need to see for each account is if the last 'available' was submitted before the last payment was due
 
-2. on /spog, there is a Spent This Month Day 27 of 30
-£2844.14 / £374.61 monthly budget section. There should be an icon / button on that spog section to take us to historic 'Spent this month'. The monthly pot will change historically previous pot configs all soft deleted - they should be used for this history
+2. Ed says on desktop can probably be the same as on mobile - accessible via a floating icon on the bottom left
+
+3. I don't understand how the priority system works on the /savingPlans page, if I have P1 then the
+   next item is normally P23 P24 P25 P26. I cannot asign a P7. Explain why and document or fix if wrong.
+   Ideally there would be arrows on screen to shunt up items in the priority list. In general, also document in a README and in a helpful floating tooltip somewhere how priority affects the system of interlocked sliders.
