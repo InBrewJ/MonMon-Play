@@ -33,8 +33,16 @@
                 <form method="POST" action="@routes.BalanceController.addBalance()">
                     @helper.CSRF.formField
                     
-                    <label for="balance-value" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Available Funds</label>
-                    <input id="balance-value" placeholder="What's the available?" type="number" step="0.01" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" name="value" required style="width: 100%; max-width: 100%;" />
+                    <label for="balance-value" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
+                        <span>Available Funds</span>
+                        <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">Use &plusmn; for overdraft / negative</span>
+                    </label>
+                    <div style="display: flex; gap: 8px; align-items: stretch; width: 100%; max-width: 100%; margin-top: 2px;">
+                        <button type="button" id="balance-sign-toggle" class="btn-toggle-sign" title="Toggle negative / positive sign (&plusmn;)" aria-label="Toggle sign" style="background: var(--bg-card, #1e293b); border: 1px solid var(--border-color, #334155); color: var(--text-main, #f8fafc); font-weight: 800; font-size: 1.25rem; min-width: 52px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; user-select: none; transition: all 0.15s ease;">
+                            &plusmn;
+                        </button>
+                        <input id="balance-value" placeholder="What's the available?" type="text" inputmode="decimal" pattern="[-+]?[0-9]*[.,]?[0-9]*" name="value" required style="flex: 1; min-width: 0; width: 100%; max-width: 100%; margin: 0;" />
+                    </div>
                     
                     <label for="account" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-top: 0.5rem; display: block;">Which Account?</label>
                     <select id="account" name="account_id" style="width: 100%; max-width: 100%;">
