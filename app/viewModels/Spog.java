@@ -564,6 +564,14 @@ public class Spog {
         return round2(totalAvailableCredit);
     }
 
+    public Double getTotalFunds() {
+        return round2(totalAvailableDebit + totalAvailableCredit);
+    }
+
+    public List<Account> getAllAccounts() {
+        return this.allAccounts;
+    }
+
     public Double getCreditLimit() {
         // Add up all availableLimits for CREDIT account
         Float creditLimit = allAccounts

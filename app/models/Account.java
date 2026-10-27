@@ -156,4 +156,15 @@ public class Account {
         Balance latest = getLatestBalance();
         return latest != null && latest.getValue() != null ? latest.getValue() : 0f;
     }
+
+    public void setLatestBalance(Float value) {
+        if (this.balances == null) {
+            this.balances = new ArrayList<>();
+        }
+        Balance b = new Balance();
+        b.setValue(value);
+        b.setTimestamp(System.currentTimeMillis());
+        b.setAccount(this);
+        this.balances.add(b);
+    }
 }

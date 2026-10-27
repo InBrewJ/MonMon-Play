@@ -107,6 +107,28 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Ed Says AI Panel -->
+            <div class="w3-card w3-padding w3-margin-bottom" id="ed-says-panel" style="border-left: 4px solid var(--primary); background: var(--card-bg);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; border-bottom: 1px dashed var(--border-color); padding-bottom: 0.4rem;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 32px; height: 32px; vertical-align: middle;" />
+                        <div>
+                            <div style="font-weight: 800; font-size: 1.05rem; color: var(--text-main); line-height: 1.2;">Ed says</div>
+                            <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">AI Financial Insights (Mistral)</div>
+                        </div>
+                    </div>
+                    <button id="ed-refresh-btn" class="w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; cursor: pointer;" title="Ask Ed for fresh advice">
+                        <i class="fas fa-sync-alt" id="ed-refresh-icon"></i> Ask Ed
+                    </button>
+                </div>
+                <div id="ed-says-content" style="font-size: 0.88rem; line-height: 1.55; color: var(--text-main);">
+                    <div style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); padding: 0.6rem 0;">
+                        <i class="fas fa-spinner fa-spin" style="color: var(--primary);"></i>
+                        <span>Summoning Ed's thoughts on your finances...</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Right Column -->
@@ -627,5 +649,6 @@ $(function() {
     }
 });
 </script>
+<script src="@routes.Assets.versioned("javascripts/ed-says.js")" type="text/javascript"></script>
 
 }

@@ -1,5 +1,6 @@
 package controllers;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import models.*;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.exception.TechnicalException;
@@ -10,6 +11,7 @@ import org.pac4j.play.http.PlayHttpActionAdapter;
 import org.pac4j.play.java.Secure;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.*;
+import services.MistralService;
 import viewModels.SimpleUserProfile;
 import viewModels.Spog;
 
@@ -18,6 +20,8 @@ import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -40,6 +44,7 @@ public class SpogController extends Controller {
     private final PlanRepository planRepository;
     private final PotRepository potRepository;
     private final SavingsPlanRepository savingsPlanRepository;
+    private final MistralService mistralService;
     private final HttpExecutionContext ec;
 
     @Inject
@@ -51,6 +56,7 @@ public class SpogController extends Controller {
             BalanceRepository balanceRepository,
             PotRepository potRepository,
             SavingsPlanRepository savingsPlanRepository,
+            MistralService mistralService,
             HttpExecutionContext ec
     ) {
         this.incomingRepository = incomingRepository;
@@ -60,6 +66,7 @@ public class SpogController extends Controller {
         this.planRepository = planRepository;
         this.potRepository = potRepository;
         this.savingsPlanRepository = savingsPlanRepository;
+        this.mistralService = mistralService;
         this.ec = ec;
     }
 
@@ -99,6 +106,41 @@ public class SpogController extends Controller {
     @Secure(clients = "OidcClient")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        Spog spogVm = getSpogVm(sup, request);
+        return ok(views.html.spog.render(spogVm, request, playSessionStore))
+                .addingToSession(request, "isPayday", String.valueOf(spogVm.isPayday()))
+                .addingToSession(request, "dangerDay", spogVm.getDangerDay());
+    }
+
+    @Secure(clients = "OidcClient")
+    public CompletionStage<Result> edSays(final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        boolean force = request.queryString("force").map(Boolean::parseBoolean).orElse(false);
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Spog spogVm = getSpogVm(sup, request);
+                return MistralService.buildFinancialSnapshotPrompt(spogVm);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }, ec.current()).thenCompose(prompt ->
+                mistralService.askEd(sup.getUserId(), prompt, force)
+                        .thenApply(advice -> {
+                            ObjectNode res = play.libs.Json.newObject();
+                            res.put("edSays", advice);
+                            res.put("configured", mistralService.isConfigured());
+                            return ok(res);
+                        })
+        ).exceptionally(ex -> {
+            ObjectNode err = play.libs.Json.newObject();
+            err.put("edSays", "Ed stumbled while reading your financial stars: " + ex.getMessage());
+            err.put("configured", mistralService.isConfigured());
+            return internalServerError(err);
+        });
+    }
+
+    public Spog getSpogVm(SimpleUserProfile sup, Http.Request request) throws ExecutionException, InterruptedException {
         // Plans affect how total outgoings and rent values appear
         List<Plan> allPlans = repoListToList(planRepository.list(sup.getUserId()));
         Plan firstMonthlySavingsGoal = allPlans.stream()
@@ -145,6 +187,10 @@ public class SpogController extends Controller {
                 .filter(sp -> sp != null && !sp.isArchived())
                 .findFirst()
                 .orElse(null);
+        if (activeSavingsPlan == null && firstMonthlySavingsGoal != null && firstMonthlySavingsGoal.getSplit() != null && firstMonthlySavingsGoal.getSplit() > 0) {
+            SavingsPlan autoPlan = new SavingsPlan(sup.getUserId(), "Monthly Savings Plan", (int)(firstMonthlySavingsGoal.getSplit() * 100));
+            activeSavingsPlan = this.savingsPlanRepository.add(autoPlan).toCompletableFuture().get();
+        }
         int percentIncomeAsSavings = activeSavingsPlan != null
                 ? activeSavingsPlan.getSavingsPercentage()
                 : (firstMonthlySavingsGoal != null ? (int)(firstMonthlySavingsGoal.getSplit() * 100) : 0);
@@ -256,7 +302,7 @@ public class SpogController extends Controller {
             }
         }
 
-        Spog spogVm = new Spog(
+        return new Spog(
                 surplus,
                 nextPayDay,
                 percentIncomeAsSavings,
@@ -274,9 +320,6 @@ public class SpogController extends Controller {
                 spendingPlan,
                 activeSavingsPlan
         );
-        return ok(views.html.spog.render(spogVm, request, playSessionStore))
-                .addingToSession(request, "isPayday", String.valueOf(spogVm.isPayday()))
-                .addingToSession(request, "dangerDay", spogVm.getDangerDay());
     }
 
     @Secure(clients = "OidcClient")

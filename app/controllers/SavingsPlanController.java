@@ -55,7 +55,7 @@ public class SavingsPlanController extends Controller {
         this.incomingRepository = incomingRepository;
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         String userId = sup.getUserId();
@@ -71,6 +71,22 @@ public class SavingsPlanController extends Controller {
                 .filter(p -> p != null && !p.isArchived())
                 .findFirst()
                 .orElse(null);
+
+        // SPOG and Savings Plan are the same thing:
+        // If no active SavingsPlan entity exists yet, auto-sync with the savings goal configured on SPOG
+        if (activePlan == null) {
+            List<Plan> basePlans = repoListToList(planRepository.list(userId));
+            Plan spogGoal = basePlans.stream()
+                    .filter(p -> p != null && p.getType() == Plan.PlanType.MONTHLY_SAVINGS_GOAL && !p.isArchived())
+                    .findFirst()
+                    .orElse(null);
+            int initialPercent = (spogGoal != null && spogGoal.getSplit() != null) ? (int) (spogGoal.getSplit() * 100) : 0;
+            // If user has never archived any savings plan, or has a SPOG goal, automatically initialize it
+            if (allPlans.isEmpty() || initialPercent > 0) {
+                SavingsPlan newPlan = new SavingsPlan(userId, "Monthly Savings Plan", initialPercent);
+                activePlan = savingsPlanRepository.add(newPlan).toCompletableFuture().get();
+            }
+        }
 
         if (activePlan != null && activePlan.getItems() != null) {
             for (SavingsPlanItem item : activePlan.getItems()) {
@@ -101,7 +117,7 @@ public class SavingsPlanController extends Controller {
         ));
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> createOrUpdatePlan(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
@@ -129,7 +145,7 @@ public class SavingsPlanController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.SavingsPlanController.index()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updatePercentage(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
@@ -148,7 +164,7 @@ public class SavingsPlanController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.SavingsPlanController.index()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addItem(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
@@ -191,13 +207,13 @@ public class SavingsPlanController extends Controller {
                 .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveItem(Long id, final Http.Request request) {
         return savingsPlanRepository.archiveItem(id)
                 .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archivePlan(Long id, final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
 

@@ -38,6 +38,7 @@ GET     /myBalances                  controllers.BalanceController.listBalances(
 GET     /spog                         controllers.SpogController.index(req: Request)
 GET     /spog/seed                    controllers.SpogController.seed(req: Request)
 GET     /historicSpent                controllers.SpogController.historicSpent(req: Request)
+GET     /api/ed-says                  controllers.SpogController.edSays(req: Request)
 
 # Sharing (shared outgoings and tings)
 GET     /myPlans                               controllers.PlanController.sharedOutgoings(req: Request)

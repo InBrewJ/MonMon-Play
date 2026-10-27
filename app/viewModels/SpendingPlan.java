@@ -229,6 +229,22 @@ public class SpendingPlan {
         return actualFunSpent != null ? round2(actualFunSpent) : 0.0;
     }
 
+    public Double getSpentFood() {
+        return getActualFoodSpent();
+    }
+
+    public Double getSpentFuel() {
+        return getActualFuelSpent();
+    }
+
+    public Double getSpentTransport() {
+        return getActualTransportSpent();
+    }
+
+    public Double getSpentFun() {
+        return getActualFunSpent();
+    }
+
     public Float getRemainingFood() {
         if (hasAssignedFoodAccount()) {
             return round2(Math.max(0.0f, getPlannedFoodSpend() - getActualFoodSpent().floatValue()));
