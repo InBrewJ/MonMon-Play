@@ -72,10 +72,13 @@ public class SpendingPlanAndHistoryTest {
         Spog spog = new Spog(600f, 15, 0, 2000f, 1400f, 0f, 0f, 0f, 0f, 0f, 0f, accs, accs, ukToday, null);
         assertThat(spog.getToday()).isEqualTo(ukToday);
         assertThat(spog.getDaysSinceLastPayday()).isEqualTo(0);
+        assertThat(spog.isPayday()).isTrue();
         assertThat(spog.getNextPayDate()).isEqualTo(LocalDate.of(2026, 8, 14)); // 15 Aug is Saturday
+        assertThat(spog.getDangerDay()).isEqualTo("11th"); // 14 - 3 = 11th
 
         Spog dayBefore = new Spog(600f, 15, 0, 2000f, 1400f, 0f, 0f, 0f, 0f, 0f, 0f, accs, accs, ukToday.minusDays(1), null);
         assertThat(dayBefore.getDaysUntilNextPayday()).isEqualTo(1);
+        assertThat(dayBefore.isPayday()).isFalse();
     }
 
     @Test

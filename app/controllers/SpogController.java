@@ -250,7 +250,9 @@ public class SpogController extends Controller {
                 today,
                 spendingPlan
         );
-        return ok(views.html.spog.render(spogVm, request, playSessionStore));
+        return ok(views.html.spog.render(spogVm, request, playSessionStore))
+                .addingToSession(request, "isPayday", String.valueOf(spogVm.isPayday()))
+                .addingToSession(request, "dangerDay", spogVm.getDangerDay());
     }
 
     @Secure(clients = "OidcClient")

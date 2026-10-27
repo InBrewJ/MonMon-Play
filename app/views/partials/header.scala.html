@@ -1,12 +1,49 @@
+@import play.mvc.Http.Request
+@(isPayday: Boolean = false, dangerDay: String = "")(implicit request: play.mvc.Http.Request = null)
+
+@isDiscoDay = @{
+    if (isPayday) {
+        true
+    } else if (request != null && (request.queryString("disco").isDefined && request.queryString("disco").get.headOption.contains("true") || request.session().get("isPayday").orElse("false") == "true")) {
+        true
+    } else {
+        false
+    }
+}
+
+@resolvedDangerDay = @{
+    if (dangerDay != null && !dangerDay.isEmpty) {
+        dangerDay
+    } else if (request != null && request.session().get("dangerDay").isPresent) {
+        request.session().get("dangerDay").get()
+    } else {
+        "25th"
+    }
+}
+
 <script
         type="text/javascript"
         src='@routes.Assets.versioned("javascripts/index.js")'
+></script>
+<script
+        type="text/javascript"
+        src='@routes.Assets.versioned("javascripts/disco.js")'
 ></script>
 
 <div id="ticker"></div>
 
 <header class="app-header">
     <h1><a href="/spog"><i class="fas fa-wallet" style="margin-right: 8px; color: var(--primary);"></i>MonMon</a></h1>
+
+    <!-- Spinning Disco Ball (appears on payday in the middle between MONMON and Light Mode) -->
+    <div id="disco-header-slot" class="disco-header-slot" data-is-payday="@isDiscoDay" data-danger-day="@resolvedDangerDay" style="display: none;" role="button" aria-label="Disco mode toggle" title="🎉 Payday Disco Mode! (Click to toggle sparkles)">
+        <div class="disco-hanger"></div>
+        <div class="disco-ball-wrapper">
+            <div class="disco-ball" id="disco-ball"></div>
+        </div>
+        <span class="disco-badge">PAYDAY!</span>
+    </div>
+
     <div style="display: flex; align-items: center; gap: 0.75rem;">
         <button id="theme-toggle" class="theme-toggle-btn" type="button" aria-label="Toggle theme" title="Switch to Light/Dark Mode">
             <i class="fas fa-sun" id="theme-toggle-icon"></i>

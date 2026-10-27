@@ -11,7 +11,7 @@
 )
 @main("MonMon SPOG") {
 
-@partials.header()
+@partials.header(spogVm.isPayday(), spogVm.getDangerDay())
 @partials.userDetails()
 @partials.navbar()
 

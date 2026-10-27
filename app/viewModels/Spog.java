@@ -232,6 +232,27 @@ public class Spog {
         return daysSinceLastPayday;
     }
 
+    public boolean isPayday() {
+        return this.daysSinceLastPayday == 0;
+    }
+
+    public String getDangerDay() {
+        if (this.nextPayDate == null) {
+            return "25th";
+        }
+        LocalDate danger = this.nextPayDate.minusDays(3);
+        int day = danger.getDayOfMonth();
+        if (day >= 11 && day <= 13) {
+            return day + "th";
+        }
+        switch (day % 10) {
+            case 1: return day + "st";
+            case 2: return day + "nd";
+            case 3: return day + "rd";
+            default: return day + "th";
+        }
+    }
+
     public Double getMonthlyPotTotalAvailable() {
         List<Account> tmpMonthlyPotAccount = new ArrayList<>(this.monthlyPotAccounts);
         HashMap<Account, AccountStatus> accountsMap = this.getAccountStatusMap(tmpMonthlyPotAccount);
