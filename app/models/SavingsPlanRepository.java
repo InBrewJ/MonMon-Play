@@ -20,6 +20,10 @@ public interface SavingsPlanRepository {
 
     CompletionStage<SavingsPlanItem> addItem(Long planId, SavingsPlanItem item);
 
+    CompletionStage<SavingsPlanItem> findItemById(Long itemId);
+
+    CompletionStage<SavingsPlanItem> updateItem(Long itemId, String name, SavingsPlanItem.ItemType type, Long accountId, Float targetAmount, Float monthlyAmount, Integer priority);
+
     CompletionStage<Boolean> archiveItem(Long itemId);
 
     CompletionStage<SavingsPlan> updatePercentage(Long planId, int percent);

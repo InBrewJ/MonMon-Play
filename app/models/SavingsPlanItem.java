@@ -37,17 +37,24 @@ public class SavingsPlanItem {
 
     private Float monthlyAmount = 0.0f;
 
+    private Integer priority = 1;
+
     private boolean archived = false;
 
     public SavingsPlanItem() {
     }
 
     public SavingsPlanItem(String name, ItemType type, Account account, Float targetAmount, Float monthlyAmount) {
+        this(name, type, account, targetAmount, monthlyAmount, 1);
+    }
+
+    public SavingsPlanItem(String name, ItemType type, Account account, Float targetAmount, Float monthlyAmount, Integer priority) {
         this.name = name;
         this.type = type != null ? type : ItemType.SAVINGS_TARGET;
         this.account = account;
         this.targetAmount = targetAmount != null ? targetAmount : 0.0f;
         this.monthlyAmount = monthlyAmount != null ? monthlyAmount : 0.0f;
+        this.priority = priority != null && priority > 0 ? priority : 1;
         this.archived = false;
     }
 
@@ -107,6 +114,14 @@ public class SavingsPlanItem {
         this.monthlyAmount = monthlyAmount;
     }
 
+    public Integer getPriority() {
+        return priority != null && priority > 0 ? priority : 1;
+    }
+
+    public void setPriority(Integer priority) {
+        this.priority = priority != null && priority > 0 ? priority : 1;
+    }
+
     public boolean isArchived() {
         return archived;
     }
@@ -131,6 +146,7 @@ public class SavingsPlanItem {
 
     /**
      * For a credit account, debt owed is limit - available balance.
+     * For a debit account, an overdraft debt is the negative balance amount (-balance).
      * If user explicitly specified targetAmount and no account is attached,
      * targetAmount can represent the debt.
      */
@@ -139,6 +155,15 @@ public class SavingsPlanItem {
             float limit = getAccountLimit();
             float balance = getCurrentBalance();
             return round2(Math.max(0.0f, limit - balance));
+        } else if (account != null && (account.getType() == Account.AccountType.DEBIT || account.getType() == Account.AccountType.DEBIT_SHARED_BILLS)) {
+            float balance = getCurrentBalance();
+            if (balance < 0.0f) {
+                return round2(-balance);
+            }
+            if (targetAmount != null && targetAmount > 0.0f) {
+                return round2(targetAmount);
+            }
+            return 0.0f;
         } else if (account != null && account.getType() == Account.AccountType.LOAN) {
             return round2(Math.max(0.0f, getCurrentBalance()));
         } else if (targetAmount != null && targetAmount > 0.0f) {

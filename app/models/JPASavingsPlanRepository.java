@@ -55,6 +55,16 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     }
 
     @Override
+    public CompletionStage<SavingsPlanItem> findItemById(Long itemId) {
+        return supplyAsync(() -> wrap(em -> findItemById(em, itemId)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<SavingsPlanItem> updateItem(Long itemId, String name, SavingsPlanItem.ItemType type, Long accountId, Float targetAmount, Float monthlyAmount, Integer priority) {
+        return supplyAsync(() -> wrap(em -> updateItem(em, itemId, name, type, accountId, targetAmount, monthlyAmount, priority)), executionContext);
+    }
+
+    @Override
     public CompletionStage<Boolean> archiveItem(Long itemId) {
         return supplyAsync(() -> wrap(em -> archiveItem(em, itemId)), executionContext);
     }
@@ -159,13 +169,48 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         return item;
     }
 
+    private SavingsPlanItem findItemById(EntityManager em, Long itemId) {
+        return em.find(SavingsPlanItem.class, itemId);
+    }
+
+    private SavingsPlanItem updateItem(EntityManager em, Long itemId, String name, SavingsPlanItem.ItemType type, Long accountId, Float targetAmount, Float monthlyAmount, Integer priority) {
+        SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
+        if (item == null) {
+            return null;
+        }
+        item.setName(name);
+        item.setType(type);
+        if (accountId != null && accountId > 0) {
+            Account acc = em.find(Account.class, accountId);
+            item.setAccount(acc);
+        } else {
+            item.setAccount(null);
+        }
+        item.setTargetAmount(targetAmount != null ? targetAmount : 0.0f);
+        item.setMonthlyAmount(monthlyAmount != null ? monthlyAmount : 0.0f);
+        if (priority != null && priority > 0) {
+            item.setPriority(priority);
+        }
+        SavingsPlan plan = item.getSavingsPlan();
+        if (plan != null) {
+            plan.rebalancePriorities();
+            plan.setLastUpdated(System.currentTimeMillis());
+            em.merge(plan);
+        }
+        em.merge(item);
+        return item;
+    }
+
     private Boolean archiveItem(EntityManager em, Long itemId) {
         SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
         if (item != null) {
-            item.setArchived(true);
-            if (item.getSavingsPlan() != null) {
-                item.getSavingsPlan().setLastUpdated(System.currentTimeMillis());
-                em.merge(item.getSavingsPlan());
+            SavingsPlan plan = item.getSavingsPlan();
+            if (plan != null) {
+                plan.removeItemAndRebalanceQueue(item);
+                em.merge(plan);
+            } else {
+                item.setArchived(true);
+                item.setMonthlyAmount(0.0f);
             }
             em.merge(item);
             return true;

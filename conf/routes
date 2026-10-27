@@ -53,6 +53,9 @@ GET     /mySavingsPlan                         controllers.SavingsPlanController
 POST    /savingsPlan                           controllers.SavingsPlanController.createOrUpdatePlan(req: Request)
 POST    /savingsPlan/updatePercentage          controllers.SavingsPlanController.updatePercentage(req: Request)
 POST    /savingsPlan/addItem                   controllers.SavingsPlanController.addItem(req: Request)
+GET     /editSavingsPlanItem/:id               controllers.SavingsPlanController.editItem(id: Long, req: Request)
+POST    /savingsPlan/updateItem/:id            controllers.SavingsPlanController.updateItem(id: Long, req: Request)
+POST    /savingsPlan/addAllOverdrafts          controllers.SavingsPlanController.addAllOverdrafts(req: Request)
 GET     /binSavingsPlanItem/:id                controllers.SavingsPlanController.archiveItem(id: Long, req: Request)
 GET     /binSavingsPlan/:id                    controllers.SavingsPlanController.archivePlan(id: Long, req: Request)
 

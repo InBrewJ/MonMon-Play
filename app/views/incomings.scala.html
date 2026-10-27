@@ -108,6 +108,8 @@
                             placeholder="0.00"
                             type="number"
                             step="0.01"
+                            inputmode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
                             name="netValue"
                             value='@incomingForm.field("netValue").value()'/>
                     <br />
@@ -118,6 +120,8 @@
                             min="1"
                             max="31"
                             type="number"
+                            inputmode="numeric"
+                            pattern="[0-9]*"
                             name="incomingMonthDay"
                             value='@incomingForm.field("incomingMonthDay").value()'/>
                     <br />

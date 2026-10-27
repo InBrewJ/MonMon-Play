@@ -7,9 +7,24 @@
         var sliderVal = document.getElementById('savings-plan-slider-val');
         var savingsAmountSpan = document.getElementById('savings-plan-amount');
         var sliderTargetInput = document.getElementById('savingsPercentageInput');
-        var incomingTotalEl = document.getElementById('plan-incoming-total');
 
-        var incomingTotal = incomingTotalEl ? parseFloat(incomingTotalEl.getAttribute('data-incoming')) || 0 : 0;
+        var maxPercent = slider ? (parseInt(slider.getAttribute('data-max-percent'), 10) || 100) : 100;
+
+        // Find incoming total from DOM
+        var incomingTotalEl = document.getElementById('plan-incoming-total');
+        var incomingTotal = 0;
+        if (incomingTotalEl) {
+            incomingTotal = parseFloat(incomingTotalEl.getAttribute('data-incoming')) || 0;
+        } else {
+            var allMetricBoxes = document.querySelectorAll('.metric-box');
+            allMetricBoxes.forEach(function (b) {
+                var label = b.textContent || '';
+                if (label.indexOf('Monthly Income') !== -1) {
+                    var match = label.match(/£([0-9]+(?:\.[0-9]+)?)/);
+                    if (match) incomingTotal = parseFloat(match[1]);
+                }
+            });
+        }
 
         // Initialize item rows for real-time proportional scaling
         var itemRows = document.querySelectorAll('.savings-item-row');
@@ -33,7 +48,7 @@
                 remaining: remaining,
                 type: type,
                 monthlyEl: row.querySelector('.item-monthly-val'),
-                durationEl: row.querySelector('.item-duration-val')
+                durationEl: row.querySelector('.item-duration-cell') || row.querySelector('.item-duration-val')
             });
         }
 
@@ -49,6 +64,11 @@
         }
 
         function updateSliderAndScaleItems(percent) {
+            if (percent > maxPercent) {
+                percent = maxPercent;
+                if (slider) slider.value = maxPercent;
+            }
+
             if (sliderVal) {
                 sliderVal.textContent = percent;
             }
@@ -106,6 +126,9 @@
             // Update summary metric boxes and footer in real-time
             var totalAllocatedEl = document.getElementById('total-allocated-val');
             var unallocatedEl = document.getElementById('unallocated-val');
+            var formUnallocatedEl = document.getElementById('form-unallocated-val');
+            var btnAllocateMax = document.getElementById('btn-allocate-max');
+            var btnAllocateMaxLabel = document.getElementById('btn-allocate-max-label');
             var unallocatedAlert = document.getElementById('unallocated-alert');
             var footerTotalEl = document.getElementById('footer-total-allocated');
             var footerTargetPotEl = document.getElementById('footer-target-pot');
@@ -120,17 +143,29 @@
                 footerTargetPotEl.textContent = 'Target Pot: £' + newTargetPot.toFixed(2);
             }
 
+            var unallocated = newTargetPot - newTotalAllocated;
             if (unallocatedEl) {
-                var unallocated = newTargetPot - newTotalAllocated;
                 unallocatedEl.textContent = '£' + Math.abs(unallocated).toFixed(2);
-                if (unallocatedAlert) {
-                    if (unallocated < -0.01) {
-                        unallocatedAlert.className = 'w3-panel w3-round w3-pale-red w3-border-red';
-                        unallocatedAlert.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Sliced allocations exceed monthly target by <b>£' + Math.abs(unallocated).toFixed(2) + '</b>';
-                    } else {
-                        unallocatedAlert.className = 'w3-panel w3-round w3-pale-green w3-border-green';
-                        unallocatedAlert.innerHTML = '<i class="fas fa-check-circle"></i> <b>£' + unallocated.toFixed(2) + '</b> remaining to slice';
-                    }
+                unallocatedEl.style.color = unallocated < -0.01 ? 'var(--danger)' : 'var(--text-main)';
+            }
+            if (formUnallocatedEl) {
+                formUnallocatedEl.textContent = '£' + unallocated.toFixed(2);
+                formUnallocatedEl.style.color = unallocated < -0.01 ? 'var(--danger)' : 'var(--primary)';
+            }
+            if (btnAllocateMax) {
+                var safeMax = Math.max(0, unallocated);
+                btnAllocateMax.setAttribute('data-unallocated', safeMax.toFixed(2));
+                if (btnAllocateMaxLabel) {
+                    btnAllocateMaxLabel.textContent = '£' + safeMax.toFixed(2);
+                }
+            }
+            if (unallocatedAlert) {
+                if (unallocated < -0.01) {
+                    unallocatedAlert.className = 'w3-panel w3-round w3-pale-red w3-border-red';
+                    unallocatedAlert.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Sliced allocations exceed monthly target by <b>£' + Math.abs(unallocated).toFixed(2) + '</b>';
+                } else {
+                    unallocatedAlert.className = 'w3-panel w3-round w3-pale-green w3-border-green';
+                    unallocatedAlert.innerHTML = '<i class="fas fa-check-circle"></i> <b>£' + unallocated.toFixed(2) + '</b> remaining to slice';
                 }
             }
         }
@@ -141,13 +176,26 @@
             });
         }
 
-        // Live calculation in the "Add Item" form
+        // Live calculation in the "Add / Amend Item" form
         var itemTypeSelect = document.getElementById('item-type-select');
         var accountSelect = document.getElementById('item-account-select');
         var targetAmountInput = document.getElementById('item-target-amount');
         var monthlyAmountInput = document.getElementById('item-monthly-amount');
         var previewBox = document.getElementById('item-estimate-preview');
         var targetAmountGroup = document.getElementById('target-amount-group');
+        var btnAllocateMax = document.getElementById('btn-allocate-max');
+
+        // Wire "Allocate Max" button
+        if (btnAllocateMax && monthlyAmountInput) {
+            btnAllocateMax.addEventListener('click', function (e) {
+                e.preventDefault();
+                var unallocVal = parseFloat(btnAllocateMax.getAttribute('data-unallocated')) || 0;
+                if (unallocVal > 0) {
+                    monthlyAmountInput.value = unallocVal.toFixed(2);
+                    updateEstimatePreview();
+                }
+            });
+        }
 
         function updateEstimatePreview() {
             if (!previewBox || !itemTypeSelect) {
@@ -169,19 +217,26 @@
                 var debt = 0;
                 if (accType === 'LOAN') {
                     debt = Math.max(0, balance);
+                } else if (accType === 'DEBIT' || accType === 'DEBIT_SHARED_BILLS') {
+                    debt = balance < 0 ? Math.abs(balance) : 0;
                 } else {
                     debt = Math.max(0, limit - balance);
                 }
 
                 if (!selectedOption || !selectedOption.value || selectedOption.value === '0') {
-                    previewBox.innerHTML = '<span style="color: var(--text-muted);"><i class="fas fa-info-circle"></i> Select a credit account to estimate rough payoff months.</span>';
+                    previewBox.innerHTML = '<span style="color: var(--text-muted);"><i class="fas fa-info-circle"></i> Select a credit or overdraft account to estimate payoff duration.</span>';
                     return;
                 }
 
                 if (debt <= 0) {
-                    previewBox.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> <b>0 months</b> — Account debt is £0.00 (already paid off).</span>';
+                    if (accType === 'DEBIT' || accType === 'DEBIT_SHARED_BILLS') {
+                        previewBox.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> <b>£0 overdraft</b> — Account balance is positive (£' + balance.toFixed(2) + ').</span>';
+                    } else {
+                        previewBox.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> <b>0 months</b> — Account debt is £0.00 (already paid off).</span>';
+                    }
                 } else if (monthly <= 0) {
-                    previewBox.innerHTML = '<span style="color: var(--text-main);"><i class="fas fa-clock"></i> Current debt: <b>£' + debt.toFixed(2) + '</b> (limit £' + limit.toFixed(2) + ', balance £' + balance.toFixed(2) + '). Enter a monthly allocation to estimate payoff duration.</span>';
+                    var debtLabel = (accType === 'DEBIT' || accType === 'DEBIT_SHARED_BILLS') ? 'Current overdraft' : 'Current debt';
+                    previewBox.innerHTML = '<span style="color: var(--text-main);"><i class="fas fa-clock"></i> ' + debtLabel + ': <b>£' + debt.toFixed(2) + '</b>. Enter a monthly allocation to estimate payoff duration.</span>';
                 } else {
                     var months = Math.ceil(debt / monthly);
                     previewBox.innerHTML = '<span style="color: var(--primary); font-weight: 600;"><i class="fas fa-calculator"></i> Roughly <b>' + months + ' month' + (months === 1 ? '' : 's') + '</b> to pay off £' + debt.toFixed(2) + ' debt at £' + monthly.toFixed(2) + '/month</span>';
@@ -216,9 +271,9 @@
                 var optgroups = accountSelect ? accountSelect.getElementsByTagName('optgroup') : [];
                 for (var i = 0; i < optgroups.length; i++) {
                     var groupLabel = optgroups[i].getAttribute('label') || '';
-                    if (isDebt && groupLabel.indexOf('Credit') === -1 && groupLabel.indexOf('Loan') === -1) {
+                    if (isDebt && groupLabel.indexOf('Debt') === -1 && groupLabel.indexOf('Credit') === -1 && groupLabel.indexOf('Overdraft') === -1) {
                         optgroups[i].style.opacity = '0.5';
-                    } else if (!isDebt && (groupLabel.indexOf('Credit') !== -1 || groupLabel.indexOf('Loan') !== -1)) {
+                    } else if (!isDebt && (groupLabel.indexOf('Debt') !== -1 || groupLabel.indexOf('Credit') !== -1 || groupLabel.indexOf('Overdraft') !== -1)) {
                         optgroups[i].style.opacity = '0.5';
                     } else {
                         optgroups[i].style.opacity = '1.0';

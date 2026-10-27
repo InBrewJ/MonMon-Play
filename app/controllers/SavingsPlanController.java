@@ -1,6 +1,16 @@
 package controllers;
 
-import models.*;
+import models.Account;
+import models.AccountRepository;
+import models.Incoming;
+import models.IncomingRepository;
+import models.Outgoing;
+import models.OutgoingRepository;
+import models.Plan;
+import models.PlanRepository;
+import models.SavingsPlan;
+import models.SavingsPlanItem;
+import models.SavingsPlanRepository;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
 import play.data.DynamicForm;
@@ -12,18 +22,18 @@ import play.mvc.Result;
 import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
+import static helpers.MathHelpers.round2;
 import static helpers.ModelHelpers.repoListToList;
 import static helpers.UserHelpers.getSimpleUserProfile;
 import static models.Incoming.getTotalIncomings;
+import static models.Outgoing.getTotalOutgoingsWithoutHidden;
 import static play.libs.Scala.asScala;
 
 public class SavingsPlanController extends Controller {
@@ -34,6 +44,7 @@ public class SavingsPlanController extends Controller {
     private final PlanRepository planRepository;
     private final AccountRepository accountRepository;
     private final IncomingRepository incomingRepository;
+    private final OutgoingRepository outgoingRepository;
 
     @Inject
     private SessionStore playSessionStore;
@@ -45,7 +56,8 @@ public class SavingsPlanController extends Controller {
             SavingsPlanRepository savingsPlanRepository,
             PlanRepository planRepository,
             AccountRepository accountRepository,
-            IncomingRepository incomingRepository
+            IncomingRepository incomingRepository,
+            OutgoingRepository outgoingRepository
     ) {
         this.formFactory = formFactory;
         this.ec = ec;
@@ -53,13 +65,26 @@ public class SavingsPlanController extends Controller {
         this.planRepository = planRepository;
         this.accountRepository = accountRepository;
         this.incomingRepository = incomingRepository;
+        this.outgoingRepository = outgoingRepository;
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        String userId = sup.getUserId();
+        return renderSavingsPlanView(sup.getUserId(), request, false, null);
+    }
 
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public Result editItem(Long itemId, final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        SavingsPlanItem item = savingsPlanRepository.findItemById(itemId).toCompletableFuture().get();
+        if (item == null || item.getSavingsPlan() == null || !item.getSavingsPlan().getUserId().equals(sup.getUserId())) {
+            return forbidden(views.html.error403.render());
+        }
+        return renderSavingsPlanView(sup.getUserId(), request, true, item);
+    }
+
+    private Result renderSavingsPlanView(String userId, Http.Request request, boolean editing, SavingsPlanItem editingItem) throws ExecutionException, InterruptedException {
         List<Account> allAccounts = repoListToList(accountRepository.list(userId));
         Map<Long, Account> accountById = allAccounts.stream()
                 .filter(a -> a != null && a.getId() != null)
@@ -81,7 +106,6 @@ public class SavingsPlanController extends Controller {
                     .findFirst()
                     .orElse(null);
             int initialPercent = (spogGoal != null && spogGoal.getSplit() != null) ? (int) (spogGoal.getSplit() * 100) : 0;
-            // If user has never archived any savings plan, or has a SPOG goal, automatically initialize it
             if (allPlans.isEmpty() || initialPercent > 0) {
                 SavingsPlan newPlan = new SavingsPlan(userId, "Monthly Savings Plan", initialPercent);
                 activePlan = savingsPlanRepository.add(newPlan).toCompletableFuture().get();
@@ -99,6 +123,13 @@ public class SavingsPlanController extends Controller {
             }
         }
 
+        if (editingItem != null && editingItem.getAccount() != null && editingItem.getAccount().getId() != null) {
+            Account resolved = accountById.get(editingItem.getAccount().getId());
+            if (resolved != null) {
+                editingItem.setAccount(resolved);
+            }
+        }
+
         List<SavingsPlan> previousPlans = allPlans.stream()
                 .filter(p -> p != null && p.isArchived())
                 .sorted(Comparator.comparing((SavingsPlan p) -> p.getCreatedAt() != null ? p.getCreatedAt() : 0L).reversed())
@@ -107,11 +138,33 @@ public class SavingsPlanController extends Controller {
         List<Incoming> incomings = repoListToList(incomingRepository.list(userId));
         Float incomingTotal = getTotalIncomings(incomings);
 
+        // Calculate maximum monthly savings allowed by SPOG surplus
+        List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(userId));
+        List<Plan> basePlans = repoListToList(planRepository.list(userId));
+        Plan firstBillShare = basePlans.stream().filter(p -> p != null && p.getType() == Plan.PlanType.BILL_SHARE && !p.isArchived()).findFirst().orElse(null);
+        Plan firstRentShare = basePlans.stream().filter(p -> p != null && p.getType() == Plan.PlanType.RENT_SHARE && !p.isArchived()).findFirst().orElse(null);
+
+        for (Outgoing o : allOutgoings) {
+            if (firstBillShare != null && o.isBill()) {
+                o.setCost(o.getCost() * firstBillShare.getSplit());
+            }
+            if (firstRentShare != null && o.isRent()) {
+                o.setCost(o.getCost() * firstRentShare.getSplit());
+            }
+        }
+        Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings));
+        Float maxSurplus = round2(Math.max(0.0f, incomingTotal - outgoingTotal));
+        int maxPercent = incomingTotal > 0 ? Math.min(100, Math.max(0, (int) Math.floor((maxSurplus / incomingTotal) * 100))) : 100;
+
         return ok(views.html.savingsPlan.render(
                 activePlan,
                 asScala(previousPlans),
                 asScala(allAccounts),
                 incomingTotal,
+                maxSurplus,
+                maxPercent,
+                editing,
+                editingItem,
                 request,
                 playSessionStore
         ));
@@ -142,7 +195,7 @@ public class SavingsPlanController extends Controller {
 
         return planRepository.createOrReplace(sup.getUserId(), Plan.PlanType.MONTHLY_SAVINGS_GOAL, basePlan)
                 .thenComposeAsync(bp -> savingsPlanRepository.createOrReplace(sup.getUserId(), plan), ec.current())
-                .thenApplyAsync(p -> redirect(routes.SavingsPlanController.index()), ec.current());
+                .thenApplyAsync(p -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -163,7 +216,7 @@ public class SavingsPlanController extends Controller {
                 .thenComposeAsync(bp -> incomingRepository.list(sup.getUserId()), ec.current())
                 .thenApplyAsync(incomings -> Incoming.getTotalIncomings(incomings.collect(Collectors.toList())), ec.current())
                 .thenComposeAsync(incomingTotal -> savingsPlanRepository.updatePercentageAndScaleItems(planId, percent, incomingTotal), ec.current())
-                .thenApplyAsync(p -> redirect(routes.SavingsPlanController.index()), ec.current());
+                .thenApplyAsync(p -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -203,23 +256,129 @@ public class SavingsPlanController extends Controller {
             } catch (NumberFormatException ignored) {}
         }
 
-        SavingsPlanItem item = new SavingsPlanItem(name, type, account, targetAmount, monthlyAmount);
+        Integer priority = null;
+        String priorityStr = requestData.get("priority");
+        if (priorityStr != null && !priorityStr.trim().isEmpty()) {
+            try {
+                priority = Integer.parseInt(priorityStr.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+
+        SavingsPlanItem item = new SavingsPlanItem(name, type, account, targetAmount, monthlyAmount, priority);
 
         return savingsPlanRepository.addItem(planId, item)
-                .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index()), ec.current());
+                .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> updateItem(Long itemId, final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        DynamicForm requestData = formFactory.form().bindFromRequest(request);
+
+        String name = requestData.get("name");
+        String typeStr = requestData.get("type");
+        SavingsPlanItem.ItemType type = "DEBT_PAYOFF".equalsIgnoreCase(typeStr)
+                ? SavingsPlanItem.ItemType.DEBT_PAYOFF
+                : SavingsPlanItem.ItemType.SAVINGS_TARGET;
+
+        Long accountId = null;
+        String accountIdStr = requestData.get("accountId");
+        if (accountIdStr != null && !accountIdStr.trim().isEmpty() && !accountIdStr.equals("0")) {
+            try {
+                accountId = Long.parseLong(accountIdStr.trim());
+            } catch (Exception ignored) {}
+        }
+
+        Float targetAmount = 0.0f;
+        String targetStr = requestData.get("targetAmount");
+        if (targetStr != null && !targetStr.trim().isEmpty()) {
+            try {
+                targetAmount = Float.parseFloat(targetStr.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+
+        Float monthlyAmount = 0.0f;
+        String monthlyStr = requestData.get("monthlyAmount");
+        if (monthlyStr != null && !monthlyStr.trim().isEmpty()) {
+            try {
+                monthlyAmount = Float.parseFloat(monthlyStr.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+
+        Integer priority = 1;
+        String priorityStr = requestData.get("priority");
+        if (priorityStr != null && !priorityStr.trim().isEmpty()) {
+            try {
+                priority = Integer.parseInt(priorityStr.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+
+        return savingsPlanRepository.updateItem(itemId, name, type, accountId, targetAmount, monthlyAmount, priority)
+                .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public Result addAllOverdrafts(final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        String userId = sup.getUserId();
+
+        SavingsPlan activePlan = savingsPlanRepository.getActive(userId).toCompletableFuture().get();
+        if (activePlan == null) {
+            SavingsPlan newPlan = new SavingsPlan(userId, "Monthly Savings Plan", 0);
+            activePlan = savingsPlanRepository.add(newPlan).toCompletableFuture().get();
+        }
+
+        List<Account> allAccounts = repoListToList(accountRepository.list(userId));
+        java.util.Set<Long> alreadyLinkedAccountIds = activePlan.getItems().stream()
+                .filter(i -> i.getAccount() != null && i.getAccount().getId() != null)
+                .map(i -> i.getAccount().getId())
+                .collect(Collectors.toSet());
+
+        // Find debit accounts with negative balance (overdrawn)
+        List<Account> overdrawn = allAccounts.stream()
+                .filter(a -> a != null && (a.getType() == Account.AccountType.DEBIT || a.getType() == Account.AccountType.DEBIT_SHARED_BILLS))
+                .filter(a -> a.getLatestBalanceValue() != null && a.getLatestBalanceValue() < 0f)
+                .filter(a -> !alreadyLinkedAccountIds.contains(a.getId()))
+                .collect(Collectors.toList());
+
+        // If none currently negative, also check debit accounts with configured overdraft limits
+        if (overdrawn.isEmpty()) {
+            overdrawn = allAccounts.stream()
+                    .filter(a -> a != null && (a.getType() == Account.AccountType.DEBIT || a.getType() == Account.AccountType.DEBIT_SHARED_BILLS))
+                    .filter(a -> a.getAvailableLimit() != null && a.getAvailableLimit() > 0f)
+                    .filter(a -> !alreadyLinkedAccountIds.contains(a.getId()))
+                    .collect(Collectors.toList());
+        }
+
+        int priority = activePlan.getItems().size() + 1;
+        for (Account acc : overdrawn) {
+            float overdraftDebt = acc.getLatestBalanceValue() < 0f
+                    ? Math.abs(acc.getLatestBalanceValue())
+                    : (acc.getAvailableLimit() != null ? acc.getAvailableLimit() : 0f);
+            SavingsPlanItem item = new SavingsPlanItem(
+                    acc.getName() + " Overdraft",
+                    SavingsPlanItem.ItemType.DEBT_PAYOFF,
+                    acc,
+                    overdraftDebt,
+                    0.0f,
+                    priority++
+            );
+            savingsPlanRepository.addItem(activePlan.getId(), item).toCompletableFuture().get();
+        }
+
+        return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveItem(Long id, final Http.Request request) {
         return savingsPlanRepository.archiveItem(id)
-                .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index()), ec.current());
+                .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archivePlan(Long id, final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
 
-        // Also reset/archive the MONTHLY_SAVINGS_GOAL plan
         Plan zeroPlan = new Plan();
         zeroPlan.setType(Plan.PlanType.MONTHLY_SAVINGS_GOAL);
         zeroPlan.setSplit(0.0f);
@@ -228,6 +387,6 @@ public class SavingsPlanController extends Controller {
 
         return planRepository.createOrReplace(sup.getUserId(), Plan.PlanType.MONTHLY_SAVINGS_GOAL, zeroPlan)
                 .thenComposeAsync(p -> savingsPlanRepository.archive(id), ec.current())
-                .thenApplyAsync(sp -> redirect(routes.SavingsPlanController.index()), ec.current());
+                .thenApplyAsync(sp -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
     }
 }

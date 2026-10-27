@@ -2,6 +2,7 @@ package models;
 
 import javax.persistence.*;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -106,6 +107,8 @@ public class SavingsPlan {
         }
         return items.stream()
                 .filter(i -> i != null && !i.isArchived())
+                .sorted(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.toList());
     }
 
@@ -122,7 +125,52 @@ public class SavingsPlan {
             this.items = new ArrayList<>();
         }
         item.setSavingsPlan(this);
+        if (item.getPriority() == null || item.getPriority() <= 0) {
+            item.setPriority(getItems().size() + 1);
+        }
         this.items.add(item);
+    }
+
+    /**
+     * Rebalances priorities of active items so they form a clean 1..N sequence
+     * in the current queue order.
+     */
+    public void rebalancePriorities() {
+        List<SavingsPlanItem> active = getItems();
+        for (int i = 0; i < active.size(); i++) {
+            active.get(i).setPriority(i + 1);
+        }
+    }
+
+    /**
+     * Removes an item from the savings plan and rolls its monthly allocation into the
+     * top priority item (or remaining queue head), preserving the overall savings pot.
+     * Re-indexes remaining items sequentially (1, 2, 3...) so next items move up in the queue.
+     */
+    public void removeItemAndRebalanceQueue(SavingsPlanItem itemToRemove) {
+        if (itemToRemove == null || items == null) {
+            return;
+        }
+        List<SavingsPlanItem> active = getItems();
+        if (!active.contains(itemToRemove)) {
+            return;
+        }
+
+        float amountToRollOver = itemToRemove.getMonthlyAmount() != null ? itemToRemove.getMonthlyAmount() : 0.0f;
+        itemToRemove.setArchived(true);
+        itemToRemove.setMonthlyAmount(0.0f);
+
+        List<SavingsPlanItem> remaining = getItems();
+        if (!remaining.isEmpty()) {
+            SavingsPlanItem topItem = remaining.get(0);
+            float currentTop = topItem.getMonthlyAmount() != null ? topItem.getMonthlyAmount() : 0.0f;
+            topItem.setMonthlyAmount(round2(currentTop + amountToRollOver));
+
+            for (int i = 0; i < remaining.size(); i++) {
+                remaining.get(i).setPriority(i + 1);
+            }
+        }
+        this.lastUpdated = System.currentTimeMillis();
     }
 
     public Float getTotalAllocated() {

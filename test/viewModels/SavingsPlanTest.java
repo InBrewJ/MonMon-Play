@@ -49,6 +49,23 @@ public class SavingsPlanTest {
         return savings;
     }
 
+    private Account createDebitAccount(long id, String name, float overdraftLimit, float balanceValue) {
+        Account debit = new Account();
+        debit.setId(id);
+        debit.setName(name);
+        debit.setType(Account.AccountType.DEBIT);
+        debit.setAvailableLimit(overdraftLimit);
+        debit.outgoings = Collections.emptyList();
+        debit.balances = new ArrayList<>();
+
+        Balance b = new Balance();
+        b.setValue(balanceValue);
+        b.setTimestamp(System.currentTimeMillis());
+        b.setAccount(debit);
+        debit.balances.add(b);
+        return debit;
+    }
+
     @Test
     public void testCreditPayoffCalculatesRoughMonths() {
         // Limit: 2000, Available balance: 1400 -> Debt: 600
@@ -270,5 +287,105 @@ public class SavingsPlanTest {
         assertThat(item1.getMonthlyAmount()).isEqualTo(200.0f);
         assertThat(item2.getMonthlyAmount()).isEqualTo(200.0f);
         assertThat(plan.getTotalAllocated()).isEqualTo(400.0f);
+    }
+
+    @Test
+    public void testDebitOverdraftPayoffCalculatesDebtAndRoughMonths() {
+        // Debit account with £500 overdraft limit, currently at -£300 balance
+        Account currentAccount = createDebitAccount(9L, "NatWest Current", 500f, -300f);
+
+        SavingsPlanItem item = new SavingsPlanItem(
+                "Clear Overdraft",
+                SavingsPlanItem.ItemType.DEBT_PAYOFF,
+                currentAccount,
+                null,
+                100.0f
+        );
+
+        // Debt owed is the £300 overdrawn amount
+        assertThat(item.getDebtOwed()).isEqualTo(300.0f);
+        // 300 / 100 = 3 months
+        assertThat(item.getRoughMonthsToPayoff()).isEqualTo(3);
+    }
+
+    @Test
+    public void testDebitPositiveBalanceHasZeroDebtOwed() {
+        // Debit account with £500 overdraft limit, but currently positive at +£250
+        Account currentAccount = createDebitAccount(10L, "Monzo Current", 500f, 250f);
+
+        SavingsPlanItem item = new SavingsPlanItem(
+                "Monzo",
+                SavingsPlanItem.ItemType.DEBT_PAYOFF,
+                currentAccount,
+                null,
+                50.0f
+        );
+
+        assertThat(item.getDebtOwed()).isEqualTo(0.0f);
+        assertThat(item.getRoughMonthsToPayoff()).isEqualTo(0);
+    }
+
+    @Test
+    public void testQueueOrderingByPriority() {
+        SavingsPlan plan = new SavingsPlan("user123", "Priority Plan", 20);
+
+        SavingsPlanItem itemP3 = new SavingsPlanItem("P3 Item", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 100f, 3);
+        SavingsPlanItem itemP1 = new SavingsPlanItem("P1 Item", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, null, 200f, 1);
+        SavingsPlanItem itemP2 = new SavingsPlanItem("P2 Item", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 500f, 150f, 2);
+
+        plan.addItem(itemP3);
+        plan.addItem(itemP1);
+        plan.addItem(itemP2);
+
+        List<SavingsPlanItem> active = plan.getItems();
+        assertThat(active).hasSize(3);
+        assertThat(active.get(0).getName()).isEqualTo("P1 Item");
+        assertThat(active.get(0).getPriority()).isEqualTo(1);
+        assertThat(active.get(1).getName()).isEqualTo("P2 Item");
+        assertThat(active.get(1).getPriority()).isEqualTo(2);
+        assertThat(active.get(2).getName()).isEqualTo("P3 Item");
+        assertThat(active.get(2).getPriority()).isEqualTo(3);
+    }
+
+    @Test
+    public void testQueueRolloverOnItemDeletionPreservesTotalPot() {
+        SavingsPlan plan = new SavingsPlan("user123", "Queue Rollover Plan", 20);
+
+        SavingsPlanItem p1 = new SavingsPlanItem("P1 Debt", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, null, 100.0f, 1);
+        SavingsPlanItem p2 = new SavingsPlanItem("P2 Emergency", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 150.0f, 2);
+        SavingsPlanItem p3 = new SavingsPlanItem("P3 Holiday", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 2000f, 200.0f, 3);
+
+        plan.addItem(p1);
+        plan.addItem(p2);
+        plan.addItem(p3);
+
+        // Total initially: 100 + 150 + 200 = 450
+        assertThat(plan.getTotalAllocated()).isEqualTo(450.0f);
+
+        // User removes P2: P2's 150 rolls into P1 -> P1 becomes 250. P3 moves up to P2 (200).
+        plan.removeItemAndRebalanceQueue(p2);
+
+        List<SavingsPlanItem> activeAfterP2 = plan.getItems();
+        assertThat(activeAfterP2).hasSize(2);
+        assertThat(activeAfterP2.get(0).getName()).isEqualTo("P1 Debt");
+        assertThat(activeAfterP2.get(0).getPriority()).isEqualTo(1);
+        assertThat(activeAfterP2.get(0).getMonthlyAmount()).isEqualTo(250.0f);
+
+        assertThat(activeAfterP2.get(1).getName()).isEqualTo("P3 Holiday");
+        assertThat(activeAfterP2.get(1).getPriority()).isEqualTo(2);
+        assertThat(activeAfterP2.get(1).getMonthlyAmount()).isEqualTo(200.0f);
+
+        assertThat(plan.getTotalAllocated()).isEqualTo(450.0f);
+
+        // User removes P1: P1's 250 rolls into the remaining item (formerly P3, now P1) -> new P1 becomes 200 + 250 = 450.
+        plan.removeItemAndRebalanceQueue(p1);
+
+        List<SavingsPlanItem> activeAfterP1 = plan.getItems();
+        assertThat(activeAfterP1).hasSize(1);
+        assertThat(activeAfterP1.get(0).getName()).isEqualTo("P3 Holiday");
+        assertThat(activeAfterP1.get(0).getPriority()).isEqualTo(1);
+        assertThat(activeAfterP1.get(0).getMonthlyAmount()).isEqualTo(450.0f);
+
+        assertThat(plan.getTotalAllocated()).isEqualTo(450.0f);
     }
 }
