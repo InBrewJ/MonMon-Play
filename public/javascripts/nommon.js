@@ -420,7 +420,17 @@
                 return res.json();
             })
             .then(function (data) {
-                if (!data || !data.plan) {
+                if (!data) {
+                    throw new Error('No response data received from server');
+                }
+                if (data.error && !data.plan) {
+                    throw new Error(data.error);
+                }
+                if (!data.plan) {
+                    if (data.rawPlan) {
+                        console.warn('NomMon rawPlan received:', data.rawPlan);
+                        throw new Error('Meal plan generation was incomplete. Please click Retry or Regenerate.');
+                    }
                     throw new Error('No meal plan data returned');
                 }
 
@@ -473,6 +483,7 @@
                 if (contentEl) contentEl.style.display = 'block';
             })
             .catch(function (err) {
+                console.error('NomMon plan load error:', err);
                 if (loadingEl) {
                     loadingEl.innerHTML =
                         '<div style="color: #ef4444; padding: 1.5rem;">' +

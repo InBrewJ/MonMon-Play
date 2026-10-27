@@ -424,8 +424,9 @@ public class MistralService {
                 "3. Nutrition & Dietary Variety:\n" +
                 "   - On tight budgets (£50/wk): Rely on economical protein (eggs, lentils, chickpeas, peanut butter, canned tuna, budget mince/chicken portions) and batch-cooked staples.\n" +
                 "   - On higher budgets (£115.38/wk): The user CAN AFFORD MEAT AND SEAFOOD! Ensure generous portions of fresh meat/poultry/fish are included in the grocery list and featured across daily lunches/dinners and batch recipes (e.g. Pan-Seared Salmon & Greens, Roast Chicken & Veg, Lean Beef Bolognese or Chilli Con Carne, Chicken Stir-Fry, Steak or Meatball Pasta). Nutrition should reflect abundant fresh ingredients and high-quality protein (80g-120g/day).\n" +
-                "4. Recipes: 2 to 4 simple batch-cooking or dinner recipes utilizing the purchased ingredients. Tailor recipe richness to the budget tier (frugal lentil/bean/egg batch cooking for tight budgets; delicious fresh meat, poultry, fish, and produce recipes for generous budgets).\n" +
-                "5. CRITICAL ITEM QUANTITIES & PACKAGING:\n" +
+                "4. Recipes: 2 to 3 simple batch-cooking or dinner recipes utilizing the purchased ingredients. Tailor recipe richness to the budget tier (frugal lentil/bean/egg batch cooking for tight budgets; delicious fresh meat, poultry, fish, and produce recipes for generous budgets). Instructions must be concise (3-4 steps).\n" +
+                "5. CONCISENESS & ITEM LIMITS: Keep the shopping list between 20 and 30 core supermarket items (do not list dozens of tiny herbs, spices, or bottled water). Keep daily meal descriptions concise (1 sentence each) so the full JSON response completes cleanly without truncation.\n" +
+                "6. CRITICAL ITEM QUANTITIES & PACKAGING:\n" +
                 "   - 'quantity' is STRICTLY the integer number of physical retail packages/tins/loaves to buy off the supermarket shelf (usually 1, 2, or 3). NEVER set 'quantity' to grams, millilitres, or individual grains/cubes/slices!\n" +
                 "   - 'packageSize' describes the weight or volume of that retail unit (e.g. '500g bag', '640g pack', '500g pack', '1kg bag', '340g jar', '500ml bottle', '6 pack', '800g loaf', '400g tin').\n" +
                 "   - 'estimatedPrice' is the retail price for ONE package unit (e.g. 0.55 for a 500g bag of oats, 4.60 for a 640g pack of chicken breast fillets, 4.25 for a 500g pack of lean beef mince, 1.00 for a 340g jar of peanut butter, 2.50 for a 500ml olive oil bottle).\n" +
@@ -433,7 +434,7 @@ public class MistralService {
                 "   - Example: 640g fresh chicken breasts -> name: 'Sainsbury\\'s British Chicken Breast Fillets', packageSize: '640g pack', quantity: 1, estimatedPrice: 4.60. (Total = 1 x 4.60 = £4.60).\n" +
                 "   - Example: 2 tins of chopped tomatoes -> name: 'Sainsbury\\'s Chopped Tomatoes', packageSize: '400g tin', quantity: 2, estimatedPrice: 0.35. (Total = 2 x 0.35 = £0.70).\n" +
                 "   - 'totalEstimatedCost' must strictly equal the mathematical sum of (quantity * estimatedPrice) across all items in the shoppingList.\n" +
-                "6. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
+                "7. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
                 "{\n" +
                 "  \"planTitle\": \"string\",\n" +
                 "  \"supermarket\": \"Sainsbury's\",\n" +
@@ -473,10 +474,98 @@ public class MistralService {
         }
 
         return String.format(java.util.Locale.US,
-                "Generate a 7-day NomMon meal plan and Sainsbury's shopping list.\n%s%s\nRemember: 'quantity' is STRICTLY integer count of retail physical packs (e.g. 1 pack of chicken, 1 bag of oats), NEVER grams or ml.",
+                "Generate a 7-day NomMon meal plan and Sainsbury's shopping list.\n%s%s\nKeep shopping list to 20-30 core items and meal descriptions concise so full JSON completes cleanly.\nRemember: 'quantity' is STRICTLY integer count of retail physical packs (e.g. 1 pack of chicken, 1 bag of oats), NEVER grams or ml.",
                 tierDescription,
                 (postcode != null && !postcode.trim().isEmpty() ? "\nUser location/postcode: " + postcode.trim() + "." : "")
         );
+    }
+
+    public static JsonNode attemptRepairTruncatedJson(String json, ObjectMapper mapper) {
+        if (json == null || json.isBlank()) return null;
+        String trimmed = json.trim();
+        if (trimmed.startsWith("```json")) {
+            trimmed = trimmed.substring(7);
+        } else if (trimmed.startsWith("```")) {
+            trimmed = trimmed.substring(3);
+        }
+        if (trimmed.endsWith("```")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 3);
+        }
+        trimmed = trimmed.trim();
+
+        // 1. Try parsing directly first
+        try {
+            return mapper.readTree(trimmed);
+        } catch (Exception ignored) {
+        }
+
+        // 2. Scan backwards to find a clean truncation point (e.g. after a complete property value)
+        int maxLookback = Math.min(trimmed.length(), 4000);
+        int startPos = trimmed.length();
+        int endPos = Math.max(0, trimmed.length() - maxLookback);
+
+        for (int i = startPos; i >= endPos; i--) {
+            String candidate = trimmed.substring(0, i).trim();
+            if (candidate.endsWith(",")) {
+                candidate = candidate.substring(0, candidate.length() - 1).trim();
+            }
+
+            java.util.Deque<Character> stack = new java.util.ArrayDeque<>();
+            boolean inString = false;
+            boolean escaped = false;
+            boolean validCandidate = true;
+
+            for (int j = 0; j < candidate.length(); j++) {
+                char ch = candidate.charAt(j);
+                if (escaped) {
+                    escaped = false;
+                    continue;
+                }
+                if (ch == '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if (ch == '"') {
+                    inString = !inString;
+                    continue;
+                }
+                if (!inString) {
+                    if (ch == '{') stack.push('}');
+                    else if (ch == '[') stack.push(']');
+                    else if (ch == '}' || ch == ']') {
+                        if (stack.isEmpty() || stack.peek() != ch) {
+                            validCandidate = false;
+                            break;
+                        }
+                        stack.pop();
+                    }
+                }
+            }
+
+            if (!validCandidate || inString) {
+                continue;
+            }
+
+            // Skip if candidate ends with dangling colon or incomplete key
+            if (candidate.endsWith(":") || candidate.matches(".*\"[a-zA-Z0-9_]+\"\\s*:\\s*$")) {
+                continue;
+            }
+
+            StringBuilder closer = new StringBuilder();
+            while (!stack.isEmpty()) {
+                closer.append(stack.pop());
+            }
+
+            String repaired = candidate + closer.toString();
+            try {
+                JsonNode node = mapper.readTree(repaired);
+                if (node != null && node.isObject() && (node.has("shoppingList") || node.has("planTitle"))) {
+                    return node;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     public CompletableFuture<String> generateNomMonPlan(String userId, float weeklyBudget, String postcode, boolean forceRefresh) {
@@ -513,7 +602,7 @@ public class MistralService {
             ObjectNode payload = mapper.createObjectNode();
             payload.put("model", model);
             payload.put("temperature", 0.4);
-            payload.put("max_tokens", 3000);
+            payload.put("max_tokens", 6000);
 
             ObjectNode responseFormat = payload.putObject("response_format");
             responseFormat.put("type", "json_object");
@@ -535,7 +624,7 @@ public class MistralService {
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
-                    .timeout(Duration.ofSeconds(35))
+                    .timeout(Duration.ofSeconds(60))
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
 
@@ -550,12 +639,25 @@ public class MistralService {
                                 JsonNode root = mapper.readTree(respBody);
                                 JsonNode choices = root.path("choices");
                                 if (choices.isArray() && choices.size() > 0) {
-                                    String text = choices.get(0).path("message").path("content").asText();
-                                    if (userId != null && text != null && !text.isBlank()) {
-                                        nomMonCache.put(cacheKey, new CacheEntry(text, System.currentTimeMillis()));
-                                        userLastNomMonTimestamp.put(userId, System.currentTimeMillis());
+                                    JsonNode choice0 = choices.get(0);
+                                    String text = choice0.path("message").path("content").asText();
+                                    String finishReason = choice0.path("finish_reason").asText();
+                                    if ("length".equalsIgnoreCase(finishReason)) {
+                                        log("WARN", "NomMon response was truncated by Mistral max_tokens (finish_reason=length)");
                                     }
-                                    return text;
+
+                                    JsonNode parsedPlan = attemptRepairTruncatedJson(text, mapper);
+                                    if (parsedPlan != null) {
+                                        String cleanJson = mapper.writeValueAsString(parsedPlan);
+                                        if (userId != null) {
+                                            nomMonCache.put(cacheKey, new CacheEntry(cleanJson, System.currentTimeMillis()));
+                                            userLastNomMonTimestamp.put(userId, System.currentTimeMillis());
+                                        }
+                                        return cleanJson;
+                                    } else if (text != null && !text.isBlank()) {
+                                        log("ERROR", "NomMon response could not be parsed or repaired. Raw: " + text);
+                                        return "{\"error\":\"Meal plan generation was cut short. Please click Regenerate to retry.\",\"rawPlan\":" + mapper.writeValueAsString(text) + "}";
+                                    }
                                 }
                                 log("WARN", "NomMon: choices array empty in response: " + respBody);
                                 return "{\"error\":\"Empty response from AI\"}";

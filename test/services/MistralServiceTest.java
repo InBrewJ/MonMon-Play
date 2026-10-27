@@ -1,5 +1,6 @@
 package services;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import models.Account;
@@ -246,5 +247,50 @@ public class MistralServiceTest {
         String plan115Cached = service.generateNomMonPlan("user1", 115.38f, null, false).get();
         assertThat(plan115Cached).isEqualTo(plan115);
         verify(mockHttpClient, times(2)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+    }
+
+    @Test
+    public void testAttemptRepairTruncatedJson() {
+        ObjectMapper mapper = new ObjectMapper();
+
+        // 1. Truncated mid-day on Saturday (exact user error scenario)
+        String truncated = "{\n" +
+                "  \"planTitle\": \"Generous 7-Day Plan\",\n" +
+                "  \"supermarket\": \"Sainsbury's\",\n" +
+                "  \"weeklyBudget\": 115.38,\n" +
+                "  \"totalEstimatedCost\": 108.23,\n" +
+                "  \"shoppingList\": [\n" +
+                "    {\"name\": \"Sainsbury's British Chicken Breast Fillets\", \"quantity\": 2, \"estimatedPrice\": 4.60}\n" +
+                "  ],\n" +
+                "  \"days\": [\n" +
+                "    {\n" +
+                "      \"dayName\": \"Monday\",\n" +
+                "      \"breakfast\": \"Oats\",\n" +
+                "      \"dinner\": \"Chicken\"\n" +
+                "    },\n" +
+                "    {\n" +
+                "      \"dayName\": \"Saturday\",\n" +
+                "      \"breakfast\": \"Eggs\",\n" +
+                "      \"dinner\": \"Beef chilli\",\n" +
+                "      \"snack\":";
+
+        com.fasterxml.jackson.databind.JsonNode repaired = MistralService.attemptRepairTruncatedJson(truncated, mapper);
+        assertThat(repaired).isNotNull();
+        assertThat(repaired.has("planTitle")).isTrue();
+        assertThat(repaired.path("planTitle").asText()).isEqualTo("Generous 7-Day Plan");
+        assertThat(repaired.has("shoppingList")).isTrue();
+        assertThat(repaired.path("shoppingList").size()).isEqualTo(1);
+        assertThat(repaired.has("days")).isTrue();
+        assertThat(repaired.path("days").size()).isGreaterThanOrEqualTo(1);
+
+        // 2. Valid complete JSON
+        String valid = "{\"planTitle\":\"Complete Plan\",\"shoppingList\":[]}";
+        com.fasterxml.jackson.databind.JsonNode validNode = MistralService.attemptRepairTruncatedJson(valid, mapper);
+        assertThat(validNode).isNotNull();
+        assertThat(validNode.path("planTitle").asText()).isEqualTo("Complete Plan");
+
+        // 3. Null or garbage
+        assertThat(MistralService.attemptRepairTruncatedJson(null, mapper)).isNull();
+        assertThat(MistralService.attemptRepairTruncatedJson("", mapper)).isNull();
     }
 }

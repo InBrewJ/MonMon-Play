@@ -98,9 +98,22 @@ public class NomMonController extends Controller {
                         }
                         try {
                             JsonNode parsed = mapper.readTree(rawJson);
-                            res.set("plan", parsed);
+                            if (parsed.has("error") && !parsed.has("shoppingList")) {
+                                res.put("error", parsed.path("error").asText());
+                                if (parsed.has("rawPlan")) {
+                                    res.set("rawPlan", parsed.get("rawPlan"));
+                                }
+                            } else {
+                                res.set("plan", parsed);
+                            }
                         } catch (Exception e) {
-                            res.put("rawPlan", rawJson);
+                            JsonNode repaired = services.MistralService.attemptRepairTruncatedJson(rawJson, mapper);
+                            if (repaired != null) {
+                                res.set("plan", repaired);
+                            } else {
+                                res.put("rawPlan", rawJson);
+                                res.put("error", "Meal plan generation was incomplete. Please click Regenerate to retry.");
+                            }
                         }
                         return ok(res);
                     });
