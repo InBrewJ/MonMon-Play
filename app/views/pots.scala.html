@@ -153,40 +153,40 @@ messages: play.i18n.Messages
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-top: 0.5rem; display: block;">
                         <i class="fas fa-tags" style="color: var(--primary); margin-right: 4px;"></i> Category Accounts (Optional)
                     </label>
-                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">
                         Assign dedicated accounts to track exact spending on food, fun, fuel, and transport without guesswork.
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
-                        <div>
-                            <label style="font-size: 0.8rem; font-weight: 600;">🛒 Food Account</label>
-                            <select name="foodAccountId" style="width: 100%;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-main);">🛒 Food Account</label>
+                            <select name="foodAccountId" style="width: 100%; box-sizing: border-box;">
                                 <option value="0">-- Unassigned / Shared --</option>
                                 @for(a <- accounts) {
                                     <option value="@a.id" @if(pots.exists(p => p.getFoodAccountId() != null && p.getFoodAccountId() == a.id)) {selected}>@a.name (@{a.`type`})</option>
                                 }
                             </select>
                         </div>
-                        <div>
-                            <label style="font-size: 0.8rem; font-weight: 600;">🎉 Fun Account</label>
-                            <select name="funAccountId" style="width: 100%;">
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-main);">🎉 Fun Account</label>
+                            <select name="funAccountId" style="width: 100%; box-sizing: border-box;">
                                 <option value="0">-- Unassigned / Shared --</option>
                                 @for(a <- accounts) {
                                     <option value="@a.id" @if(pots.exists(p => p.getFunAccountId() != null && p.getFunAccountId() == a.id)) {selected}>@a.name (@{a.`type`})</option>
                                 }
                             </select>
                         </div>
-                        <div>
-                            <label style="font-size: 0.8rem; font-weight: 600;">🚆 Transport Account</label>
-                            <select name="transportAccountId" style="width: 100%;">
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-main);">🚆 Transport Account</label>
+                            <select name="transportAccountId" style="width: 100%; box-sizing: border-box;">
                                 <option value="0">-- Unassigned / Shared --</option>
                                 @for(a <- accounts) {
                                     <option value="@a.id" @if(pots.exists(p => p.getTransportAccountId() != null && p.getTransportAccountId() == a.id)) {selected}>@a.name (@{a.`type`})</option>
                                 }
                             </select>
                         </div>
-                        <div>
-                            <label style="font-size: 0.8rem; font-weight: 600;">⛽ Fuel Account</label>
-                            <select name="fuelAccountId" style="width: 100%;">
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-main);">⛽ Fuel Account</label>
+                            <select name="fuelAccountId" style="width: 100%; box-sizing: border-box;">
                                 <option value="0">-- Unassigned / Shared --</option>
                                 @for(a <- accounts) {
                                     <option value="@a.id" @if(pots.exists(p => p.getFuelAccountId() != null && p.getFuelAccountId() == a.id)) {selected}>@a.name (@{a.`type`})</option>
@@ -194,31 +194,50 @@ messages: play.i18n.Messages
                             </select>
                         </div>
                     </div>
-                    <br />
 
-                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Spending Plan</label><br/>
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-top: 0.5rem;">Spending Plan</label>
                     <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem;">
                         Max monthly allowance: <b>£@surplus</b> · spent so far this month: <b>£@spentThisMonth</b>
                     </div>
-                    <select id="spendingPlanPreset" name="spendingPlanPreset">
+                    <select id="spendingPlanPreset" name="spendingPlanPreset" style="width: 100%; box-sizing: border-box;">
                         <option value="none">None</option>
                         <option value="gruelling">Gruelling (UK avg food £@viewModels.SpendingPlan.UK_AVG_WEEKLY_FOOD_SPEND/wk, no fuel/transport, rest is fun)</option>
                         <option value="custom">Custom…</option>
                     </select>
 
-                    <div id="custom-plan-fields" style="display: none; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.75rem; margin-top: 0.5rem;">
-                        <label style="font-size: 0.8rem;">Plan name</label>
-                        <input type="text" name="customPlanName" placeholder="e.g. Tight but not grim" />
-                        <label style="font-size: 0.8rem;">Food (£/month)</label>
-                        <input type="number" step="0.01" min="0" name="spendingPlanFood" class="sp-input" placeholder="@viewModels.SpendingPlan.UK_AVG_MONTHLY_FOOD_SPEND" />
-                        <label style="font-size: 0.8rem;">Fuel (£/month)</label>
-                        <input type="number" step="0.01" min="0" name="spendingPlanFuel" class="sp-input" placeholder="0" />
-                        <label style="font-size: 0.8rem;">Transport (£/month)</label>
-                        <input type="number" step="0.01" min="0" name="spendingPlanTransport" class="sp-input" placeholder="0" />
-                        <label style="font-size: 0.8rem;">Fun (£/month) — leave blank to use whatever's left over</label>
-                        <input type="number" step="0.01" min="0" name="spendingPlanFun" placeholder="leftover" />
-                        <div style="font-size: 0.85rem; margin-top: 0.4rem;">
-                            Leftover for fun: <b id="custom-leftover">£@surplus</b>
+                    <div id="custom-plan-fields" style="display: none; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 1rem; margin-top: 0.75rem; background: var(--card-bg-subtle);">
+                        <div style="margin-bottom: 0.75rem;">
+                            <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-main);">Plan name</label>
+                            <input type="text" name="customPlanName" placeholder="e.g. Tight but not grim" style="width: 100%; box-sizing: border-box; display: block;" />
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem;">
+                            <div>
+                                <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-main);">Food (£/month)</label>
+                                <input type="number" step="0.01" min="0" name="spendingPlanFood" class="sp-input" placeholder="@viewModels.SpendingPlan.UK_AVG_MONTHLY_FOOD_SPEND" style="width: 100%; box-sizing: border-box; display: block;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-main);">Fuel (£/month)</label>
+                                <input type="number" step="0.01" min="0" name="spendingPlanFuel" class="sp-input" placeholder="0" style="width: 100%; box-sizing: border-box; display: block;" />
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem;">
+                            <div>
+                                <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-main);">Transport (£/month)</label>
+                                <input type="number" step="0.01" min="0" name="spendingPlanTransport" class="sp-input" placeholder="0" style="width: 100%; box-sizing: border-box; display: block;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-main);">
+                                    Fun (£/month) <span style="font-weight: 400; font-size: 0.75rem; color: var(--text-muted);">(leave blank for leftover)</span>
+                                </label>
+                                <input type="number" step="0.01" min="0" name="spendingPlanFun" placeholder="leftover" style="width: 100%; box-sizing: border-box; display: block;" />
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem 0.85rem; margin-top: 0.5rem;">
+                            <span style="font-size: 0.82rem; color: var(--text-muted);">Calculated leftover for fun:</span>
+                            <b id="custom-leftover" style="font-size: 1.05rem; color: var(--success);">£@surplus</b>
                         </div>
                     </div>
                     <br />

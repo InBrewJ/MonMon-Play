@@ -361,7 +361,7 @@ public class HistoricSpentCalculator {
         for (int i = 1; i < valid.size(); i++) {
             Balance curr = valid.get(i);
             long tCurr = toEpochSec(curr.getTimestamp());
-            if (tCurr >= startSec && tCurr < endSec) {
+            if (tCurr >= startSec && tCurr <= endSec) {
                 Balance prev = valid.get(i - 1);
                 double delta = (double) curr.getValue() - (double) prev.getValue();
                 if (delta < 0) {

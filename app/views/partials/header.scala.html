@@ -33,7 +33,12 @@
 <div id="ticker"></div>
 
 <header class="app-header">
-    <h1><a href="/spog"><i class="fas fa-wallet" style="margin-right: 8px; color: var(--primary);"></i>MonMon</a></h1>
+    <h1>
+        <a href="/spog" title="MonMon">
+            <img src='@routes.Assets.versioned("images/monmon-monster.svg")' alt="MonMon Monster" class="monmon-logo-icon" width="38" height="38" />
+            <span>MonMon</span>
+        </a>
+    </h1>
 
     <!-- Spinning Disco Ball (appears on payday in the middle between MONMON and Light Mode) -->
     <div id="disco-header-slot" class="disco-header-slot" data-is-payday="@isDiscoDay" data-danger-day="@resolvedDangerDay" style="display: none;" role="button" aria-label="Disco mode toggle" title="🎉 Payday Disco Mode! (Click to toggle sparkles)">
