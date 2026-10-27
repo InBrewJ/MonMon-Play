@@ -18,11 +18,49 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
 
     private final JPAApi jpaApi;
     private final DatabaseExecutionContext executionContext;
+    private static volatile boolean schemaEnsured = false;
 
     @Inject
     public JPASavingsPlanRepository(JPAApi jpaApi, DatabaseExecutionContext executionContext) {
         this.jpaApi = jpaApi;
         this.executionContext = executionContext;
+        ensureSchema(jpaApi);
+    }
+
+    private static void ensureSchema(JPAApi jpaApi) {
+        if (!schemaEnsured) {
+            synchronized (JPASavingsPlanRepository.class) {
+                if (!schemaEnsured) {
+                    try {
+                        String[] statements = new String[]{
+                                "CREATE TABLE IF NOT EXISTS savings_plan (id BIGSERIAL PRIMARY KEY, user_id VARCHAR(255), savings_percentage REAL DEFAULT 0, archived BOOLEAN DEFAULT FALSE, last_updated BIGINT)",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS savings_percentage REAL DEFAULT 0",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS last_updated BIGINT",
+                                "CREATE TABLE IF NOT EXISTS savings_plan_item (id BIGSERIAL PRIMARY KEY, savings_plan_id BIGINT, name VARCHAR(255), type VARCHAR(50), account_id BIGINT, target_amount REAL DEFAULT 0, monthly_amount REAL DEFAULT 0, priority INTEGER DEFAULT 1, locked BOOLEAN DEFAULT FALSE, archived BOOLEAN DEFAULT FALSE)",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 1",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS target_amount REAL DEFAULT 0",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS monthly_amount REAL DEFAULT 0",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS account_id BIGINT",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS type VARCHAR(50)",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS name VARCHAR(255)",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS savings_plan_id BIGINT"
+                        };
+                        for (String sql : statements) {
+                            try {
+                                jpaApi.withTransaction((java.util.function.Consumer<EntityManager>) em -> {
+                                    em.createNativeQuery(sql).executeUpdate();
+                                });
+                            } catch (Exception ignored) {}
+                        }
+                        schemaEnsured = true;
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
     }
 
     @Override
