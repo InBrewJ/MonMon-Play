@@ -10,3 +10,5 @@ next up:
 3. I don't understand how the priority system works on the /savingPlans page, if I have P1 then the
    next item is normally P23 P24 P25 P26. I cannot asign a P7. Explain why and document or fix if wrong.
    Ideally there would be arrows on screen to shunt up items in the priority list. In general, also document in a README and in a helpful floating tooltip somewhere how priority affects the system of interlocked sliders.
+
+4. on /historicSpent, it looks like the spent figures are quite low. We should probably reconstruct the spending based on all of the monthly pot configurations, not just the last one. This would likely make sense as a single sql query rather than rebuilding the window in Java. What do you think?
