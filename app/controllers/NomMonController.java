@@ -87,8 +87,17 @@ public class NomMonController extends Controller {
                 budget = round2((activePot.spendingPlanFood * 12.0f) / 52.0f);
             }
 
+            int people = 1;
+            String peopleQuery = request.queryString("people").orElse(null);
+            if (peopleQuery != null && !peopleQuery.trim().isEmpty()) {
+                try {
+                    people = Math.max(1, Math.min(12, Integer.parseInt(peopleQuery.trim())));
+                } catch (Exception ignored) {}
+            }
+
             final float finalBudget = budget;
-            return mistralService.generateNomMonPlan(userId, finalBudget, postcode, force)
+            final int finalPeople = people;
+            return mistralService.generateNomMonPlan(userId, finalBudget, finalPeople, postcode, force)
                     .thenApply(rawJson -> {
                         ObjectNode res = play.libs.Json.newObject();
                         res.put("configured", mistralService.isConfigured());

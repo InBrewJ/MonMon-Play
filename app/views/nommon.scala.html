@@ -55,14 +55,27 @@
                     <span>Weekly Food Budget</span>
                     <span id="nommon-budget-tier-badge" class="badge-pill" style="font-size: 0.68rem; padding: 2px 6px; font-weight: 600;"></span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
-                    <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary);">£</span>
-                    <input type="number" id="nommon-budget-input" step="1.00" min="5" max="1000"
-                           value="@String.format(java.util.Locale.UK, "%.2f", weeklyFoodBudget.toDouble)"
-                           style="width: 110px; font-size: 1.25rem; font-weight: 700; color: var(--primary); background: transparent; border: 1px dashed var(--border-color); border-radius: 4px; padding: 1px 6px;"
-                           title="Adjust weekly food budget and press Enter or Regenerate" />
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px;">
+                    <div style="display: flex; align-items: center; gap: 2px;">
+                        <span style="font-size: 1.25rem; font-weight: 700; color: var(--primary);">£</span>
+                        <input type="number" id="nommon-budget-input" step="1.00" min="5" max="2000"
+                               value="@String.format(java.util.Locale.UK, "%.2f", weeklyFoodBudget.toDouble)"
+                               style="width: 85px; font-size: 1.25rem; font-weight: 700; color: var(--primary); background: transparent; border: 1px dashed var(--border-color); border-radius: 4px; padding: 1px 4px;"
+                               title="Adjust weekly food budget" />
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px; font-size: 0.82rem;">
+                        <i class="fas fa-users" style="color: var(--primary);" title="Household members being fed"></i>
+                        <select id="nommon-people-select" style="padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-weight: 600; font-size: 0.82rem; cursor: pointer;" title="Number of people being fed">
+                            <option value="1" selected>1 person</option>
+                            <option value="2">2 people</option>
+                            <option value="3">3 people</option>
+                            <option value="4">4 people</option>
+                            <option value="5">5 people</option>
+                            <option value="6">6+ people</option>
+                        </select>
+                    </div>
                 </div>
-                <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">From active spending plan (editable)</div>
+                <div id="nommon-budget-subtext" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">From active spending plan</div>
             </div>
             <div class="metric-box">
                 <div style="font-size: 0.78rem; color: var(--text-muted);">Estimated Basket Cost</div>

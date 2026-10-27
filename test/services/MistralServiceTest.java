@@ -199,7 +199,7 @@ public class MistralServiceTest {
         assertThat(opulentPrompt).contains("MUST SCREAM OPULENCE");
         assertThat(opulentPrompt).contains("Taste the Difference");
         assertThat(opulentPrompt).contains("Ribeye");
-        assertThat(opulentPrompt).contains("DO NOT return a £60-£80 basket");
+        assertThat(opulentPrompt).contains("DO NOT underspend!");
         assertThat(opulentPrompt).contains("176.00");
         assertThat(opulentPrompt).contains("192.00");
         assertThat(opulentPrompt).contains("SW1A 1AA");
@@ -217,7 +217,34 @@ public class MistralServiceTest {
         assertThat(budgetPrompt).contains("£50.00/week");
         assertThat(budgetPrompt).contains("MUST SCREAM FRUGALITY");
         assertThat(budgetPrompt).contains("Stamford Street Co.");
-        assertThat(budgetPrompt).contains("economical");
+        assertThat(budgetPrompt).contains("Economical");
+
+        // Household size testing:
+        // £200 for 4 people = £50/person/wk -> Frugal / Budget Staples (whereas £200 for 1 person is Pure Opulence!)
+        String familyFrugalPrompt = MistralService.buildNomMonUserPrompt(200.0f, 4, null);
+        assertThat(familyFrugalPrompt).contains("HOUSEHOLD SIZE: 4 people being fed");
+        assertThat(familyFrugalPrompt).contains("servings': 4");
+        assertThat(familyFrugalPrompt).contains("£50.00/person/week");
+        assertThat(familyFrugalPrompt).contains("FRUGAL / BUDGET STAPLES");
+
+        // £260 for 4 people = £65/person/wk -> Moderate Family
+        String familyPrompt = MistralService.buildNomMonUserPrompt(260.0f, 4, null);
+        assertThat(familyPrompt).contains("HOUSEHOLD SIZE: 4 people being fed");
+        assertThat(familyPrompt).contains("servings': 4");
+        assertThat(familyPrompt).contains("£65.00/person/week");
+        assertThat(familyPrompt).contains("MODERATE / BALANCED FAMILY");
+
+        // £500 for 4 people = £125/person/wk -> Opulent Family Luxury!
+        String opulentFamilyPrompt = MistralService.buildNomMonUserPrompt(500.0f, 4, null);
+        assertThat(opulentFamilyPrompt).contains("HOUSEHOLD SIZE: 4 people being fed");
+        assertThat(opulentFamilyPrompt).contains("PURE OPULENCE");
+        assertThat(opulentFamilyPrompt).contains("£125.00/person/week");
+
+        // Verify cache keys differentiate people
+        String key1 = MistralService.getNomMonCacheKey("user1", 200.0f, 1);
+        String key4 = MistralService.getNomMonCacheKey("user1", 200.0f, 4);
+        assertThat(key1).isNotEqualTo(key4);
+        assertThat(key4).contains("people=4");
     }
 
     @Test

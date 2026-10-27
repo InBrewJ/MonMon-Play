@@ -15,6 +15,8 @@
     var checkedItems = new Set();
     var STORAGE_CHECKED_KEY = 'nommon_checked_items';
     var STORAGE_POSTCODE_KEY = 'nommon_user_postcode';
+    var STORAGE_PEOPLE_KEY = 'nommon_people_count';
+    var peopleCount = 1;
 
     // Load saved checked items from localStorage
     function loadSavedChecks() {
@@ -357,35 +359,44 @@
         });
     }
 
-    // Update budget tier badge styling & text
-    function updateBudgetTierBadge(budget) {
+    // Update budget tier badge styling & text based on per-person weekly spend
+    function updateBudgetTierBadge(budget, people) {
         var badge = document.getElementById('nommon-budget-tier-badge');
         var subtitle = document.getElementById('nommon-basket-subtitle');
+        var subtext = document.getElementById('nommon-budget-subtext');
         if (!badge) return;
-        if (budget >= 140) {
+
+        var p = parseInt(people, 10) || 1;
+        var perPerson = budget / p;
+
+        if (subtext) {
+            subtext.textContent = '£' + perPerson.toFixed(2) + '/person/wk (' + p + ' ' + (p === 1 ? 'person' : 'people') + ')';
+        }
+
+        if (perPerson >= 120) {
             badge.textContent = 'Opulent / Gourmet Luxury';
             badge.style.background = 'rgba(168, 85, 247, 0.15)';
             badge.style.color = '#9333ea';
             badge.style.border = '1px solid #9333ea';
             if (subtitle) subtitle.textContent = 'Taste the Difference prime steaks & seafood';
-        } else if (budget >= 85) {
+        } else if (perPerson >= 80) {
             badge.textContent = 'Generous / Quality Fresh';
             badge.style.background = 'rgba(22, 163, 74, 0.15)';
             badge.style.color = '#16a34a';
             badge.style.border = '1px solid #16a34a';
             if (subtitle) subtitle.textContent = 'Fresh meat, produce & staples';
-        } else if (budget >= 55) {
+        } else if (perPerson >= 55) {
             badge.textContent = 'Moderate / Balanced';
             badge.style.background = 'rgba(59, 130, 246, 0.15)';
             badge.style.color = '#2563eb';
             badge.style.border = '1px solid #2563eb';
-            if (subtitle) subtitle.textContent = 'Balanced meat & own-brand';
+            if (subtitle) subtitle.textContent = 'Balanced meat & family staples';
         } else {
             badge.textContent = 'Frugal / Budget Staples';
             badge.style.background = 'rgba(234, 88, 12, 0.15)';
             badge.style.color = '#ea580c';
             badge.style.border = '1px solid #ea580c';
-            if (subtitle) subtitle.textContent = 'Stamford St & own-brand';
+            if (subtitle) subtitle.textContent = 'Stamford St & value staples';
         }
     }
 
@@ -403,18 +414,24 @@
                 weeklyBudget = val;
             }
         }
-        updateBudgetTierBadge(weeklyBudget);
+
+        var peopleSelect = document.getElementById('nommon-people-select');
+        if (peopleSelect) {
+            peopleCount = parseInt(peopleSelect.value, 10) || 1;
+        }
+
+        updateBudgetTierBadge(weeklyBudget, peopleCount);
 
         var loadingText = document.getElementById('nommon-loading-text');
         if (loadingText) {
-            loadingText.textContent = 'Analyzing Sainsbury\'s selections, balancing nutritional guidelines, and calculating recipes within your £' + weeklyBudget.toFixed(2) + ' budget.';
+            loadingText.textContent = 'Planning meals for ' + peopleCount + ' ' + (peopleCount === 1 ? 'person' : 'people') + ', balancing Sainsbury\'s selections and recipes within your £' + weeklyBudget.toFixed(2) + ' weekly budget.';
         }
 
         if (loadingEl) loadingEl.style.display = 'block';
         if (contentEl) contentEl.style.display = 'none';
         if (refreshIcon) refreshIcon.classList.add('fa-spin');
 
-        var url = '/api/nommon/plan?budget=' + encodeURIComponent(weeklyBudget);
+        var url = '/api/nommon/plan?budget=' + encodeURIComponent(weeklyBudget) + '&people=' + encodeURIComponent(peopleCount);
         if (force) url += '&force=true';
         if (postcode) url += '&postcode=' + encodeURIComponent(postcode);
 
@@ -451,7 +468,7 @@
                         }
                     }
                 }
-                updateBudgetTierBadge(weeklyBudget);
+                updateBudgetTierBadge(weeklyBudget, peopleCount);
 
                 // Title & Highlights
                 var titleEl = document.getElementById('plan-title-display');
@@ -541,8 +558,28 @@
 
         // Weekly Budget Input & Tier Badge
         var budgetInput = document.getElementById('nommon-budget-input');
+        var peopleSelect = document.getElementById('nommon-people-select');
+
+        if (peopleSelect) {
+            try {
+                var savedPeople = localStorage.getItem(STORAGE_PEOPLE_KEY);
+                if (savedPeople) {
+                    peopleSelect.value = savedPeople;
+                    peopleCount = parseInt(savedPeople, 10) || 1;
+                }
+            } catch (e) {}
+            peopleSelect.addEventListener('change', function () {
+                peopleCount = parseInt(peopleSelect.value, 10) || 1;
+                try {
+                    localStorage.setItem(STORAGE_PEOPLE_KEY, peopleCount);
+                } catch (e) {}
+                updateBudgetTierBadge(weeklyBudget, peopleCount);
+                fetchPlan(false);
+            });
+        }
+
         if (budgetInput) {
-            updateBudgetTierBadge(weeklyBudget);
+            updateBudgetTierBadge(weeklyBudget, peopleCount);
             budgetInput.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
@@ -553,7 +590,7 @@
                 var val = parseFloat(budgetInput.value);
                 if (!isNaN(val) && val > 0) {
                     weeklyBudget = val;
-                    updateBudgetTierBadge(val);
+                    updateBudgetTierBadge(val, peopleCount);
                 }
             });
         }

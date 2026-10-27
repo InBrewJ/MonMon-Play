@@ -134,8 +134,13 @@ public class MistralService {
         return cached != null ? cached.timestamp : null;
     }
 
+    public static String getNomMonCacheKey(String userId, float weeklyBudget, int people) {
+        int p = Math.max(1, Math.min(12, people));
+        return (userId != null ? userId : "guest") + ":budget=" + Math.round(weeklyBudget * 100.0f) + ":people=" + p;
+    }
+
     public static String getNomMonCacheKey(String userId, float weeklyBudget) {
-        return (userId != null ? userId : "guest") + ":budget=" + Math.round(weeklyBudget * 100.0f);
+        return getNomMonCacheKey(userId, weeklyBudget, 1);
     }
 
     public Long getNomMonTimestamp(String userId) {
@@ -414,31 +419,33 @@ public class MistralService {
 
     public static String buildNomMonSystemPrompt() {
         return "You are NomMon, an expert UK grocery planner and adaptive nutritionist for MonMon.\n" +
-                "Your mission is to construct a balanced 7-day meal plan, batch cooking recipes, and an itemized Sainsbury's shopping list that dynamically adapts to the user's weekly food budget.\n" +
+                "Your mission is to construct a balanced 7-day meal plan, batch cooking recipes, and an itemized Sainsbury's shopping list that dynamically adapts to the user's weekly food budget and household size (people being fed).\n" +
                 "STRICT REQUIREMENTS:\n" +
-                "1. Supermarket: Sainsbury's. Adapt product selection to the user's budget tier:\n" +
-                "   - FRUGAL / TIGHT BUDGETS (<= £55/week, e.g. £50.00): MUST SCREAM FRUGALITY! Prioritize Sainsbury's entry-tier budget brand 'Stamford Street Co.' and own-brand value essentials. Focus on economical, budget-stretching recipes (lentils, beans, eggs, oats, frozen veg).\n" +
-                "   - MODERATE BUDGETS (£55 - £85/week, e.g. £70.00): Wholesome everyday cooking. Balance Sainsbury's own-brand staples with standard fresh chicken, beef mince, eggs, and seasonal produce.\n" +
-                "   - GENEROUS BUDGETS (£85 - £140/week, e.g. £115.38): Ample spending power! Include quality fresh meats (British chicken breast fillets, lean beef mince 5%, pork loin/chops, bacon), fresh salmon fillets, fresh produce, and standard or 'Taste the Difference' items.\n" +
-                "   - OPULENT / LUXURY GOURMET BUDGETS (> £140/week, e.g. £175 - £200+): MUST SCREAM OPULENCE AND GOURMET INDULGENCE! Exclusively Sainsbury's 'Taste the Difference' (TTD) range, prime butcher cuts, and luxury seafood: 30-day aged Ribeye / Sirloin / Fillet Steaks (£9-£12/pack), Scottish Salmon Fillets (£7), Raw Jumbo King Prawns (£5.50), King Scallops (£6.50), Rack of Lamb / Lamb Chops (£8), Prosciutto di Parma, Oak Smoked Salmon, 24M Parmigiano Reggiano, French Camembert, Single Estate Extra Virgin Olive Oil, Artisan Sourdough, Organic Berries, Asparagus spears, Tenderstem broccoli, Fresh herb pots. Recipes must be gourmet restaurant-standard dining.\n" +
-                "2. Budget ceiling & scaling: The shopping basket total MUST strictly scale up or down to be between 88% and 96% of the user's weekly budget (e.g. for £50.00, target £44.00 - £48.00; for £115.38, target £101.50 - £110.70; for £200.00, target £176.00 - £192.00) leaving a 4-12% safety buffer.\n" +
-                "   CRITICAL: You MUST NOT underspend! If the user gives a £200 budget, returning a £60-£80 basket is a FAILURE. Scale quantities of luxury cuts (e.g. 2 packs of ribeyes, 2 packs of salmon/prawns, premium cheeses, olive oil) so the basket total lands firmly inside the 88%-96% target range.\n" +
-                "3. Nutrition & Dietary Variety:\n" +
-                "   - On frugal budgets (£50/wk): Rely on economical protein (eggs, lentils, chickpeas, peanut butter, canned tuna, budget mince/chicken portions) and batch-cooked staples.\n" +
-                "   - On opulent budgets (£200/wk): Abundant gourmet nutrition! Prime steaks, fresh seafood, rack of lamb, organic produce, fresh berries, artisan cheeses, high protein (100g-140g/day).\n" +
-                "4. Recipes: 2 to 3 batch-cooking or dinner recipes utilizing the purchased ingredients. Tailor recipe style to the budget tier (frugal lentil/bean batch cooking for tight budgets; gourmet restaurant recipes with steaks, seafood, and reductions for opulent budgets). Keep instructions concise (3-4 steps).\n" +
-                "5. ITEM COUNTS & BASKET VALUE: Keep the shopping list between 22 and 35 items. On higher budgets, use higher-value luxury cuts and multi-packs (e.g. £8-£12 steaks, £7 salmon, £5.50 prawns) so the basket total reaches the required 88%-96% spend target without endless tiny items.\n" +
-                "6. CRITICAL ITEM QUANTITIES & PACKAGING:\n" +
-                "   - 'quantity' is STRICTLY the integer number of physical retail packages/tins/loaves to buy off the supermarket shelf (usually 1, 2, or 3). NEVER set 'quantity' to grams, millilitres, or individual grains/cubes/slices!\n" +
+                "1. Supermarket: Sainsbury's. Adapt product selection to the per-person budget tier (calculated as weeklyBudget / peopleCount):\n" +
+                "   - FRUGAL / TIGHT BUDGETS (< £55/person/week, e.g. £50 for 1, or £200 for 4): MUST SCREAM FRUGALITY! Prioritize Sainsbury's entry-tier budget brand 'Stamford Street Co.' and own-brand value essentials. Focus on economical, budget-stretching recipes (lentils, beans, eggs, oats, bulk mince, frozen veg, hearty batch cooking).\n" +
+                "   - MODERATE BUDGETS (£55 - £80/person/week, e.g. £70 for 1, or £260 for 4): Wholesome everyday family cooking. Balance Sainsbury's own-brand staples with standard fresh chicken, beef mince, eggs, and seasonal produce.\n" +
+                "   - GENEROUS BUDGETS (£80 - £120/person/week, e.g. £115 for 1, or £400 for 4): Ample spending power! Include quality fresh meats (British chicken breast fillets, lean beef mince 5%, pork loin/chops, bacon), fresh salmon fillets, fresh produce, and standard or 'Taste the Difference' items.\n" +
+                "   - OPULENT / LUXURY GOURMET BUDGETS (>= £120/person/week, e.g. £200 for 1, or £500+ for 4): MUST SCREAM OPULENCE AND GOURMET INDULGENCE! Exclusively Sainsbury's 'Taste the Difference' (TTD) range, prime butcher cuts, and luxury seafood: 30-day aged Ribeye / Sirloin / Fillet Steaks (£9-£12/pack), Scottish Salmon Fillets (£7), Raw Jumbo King Prawns (£5.50), King Scallops (£6.50), Rack of Lamb / Lamb Chops (£8), Prosciutto di Parma, Oak Smoked Salmon, 24M Parmigiano Reggiano, French Camembert, Single Estate Extra Virgin Olive Oil, Artisan Sourdough, Organic Berries, Asparagus spears, Tenderstem broccoli, Fresh herb pots. Recipes must be gourmet restaurant-standard dining.\n" +
+                "2. Household Size & Portion Scaling:\n" +
+                "   - The plan MUST feed the exact number of people specified ('peopleCount', e.g. 1, 2, 3, 4+).\n" +
+                "   - All recipe 'servings' MUST be at least equal to peopleCount (e.g. if feeding 4, recipes must have 'servings': 4 or more).\n" +
+                "   - Shopping list physical retail pack quantities MUST be scaled to provide enough sustenance for all peopleCount individuals for 7 days (e.g. for 4 people: multiple loaves of bread, multiple packs of meats/fish or larger family/bulk packs, more milk, larger egg cartons).\n" +
+                "3. Budget ceiling & scaling: The shopping basket total MUST strictly scale up or down to be between 88% and 96% of the user's weekly budget (e.g. for £50.00, target £44.00 - £48.00; for £115.38, target £101.50 - £110.70; for £200.00, target £176.00 - £192.00) leaving a 4-12% safety buffer.\n" +
+                "   CRITICAL: You MUST NOT underspend! If the user gives a £200 budget, returning a £60-£80 basket is a FAILURE. Scale quantities of luxury cuts (e.g. 2 packs of ribeyes, 2 packs of salmon/prawns, premium cheeses, olive oil) or household quantities so the basket total lands firmly inside the 88%-96% target range.\n" +
+                "4. Nutrition & Dietary Variety: Balanced whole foods, appropriate daily calories and protein for all people being fed.\n" +
+                "5. Recipes: 2 to 3 batch-cooking or dinner recipes utilizing the purchased ingredients. Tailor recipe style to the budget tier. Each recipe must specify 'servings': peopleCount. Keep instructions concise (3-4 steps).\n" +
+                "6. ITEM COUNTS & BASKET VALUE: Keep the shopping list between 22 and 38 items. Ensure quantities (quantity * estimatedPrice) sum up correctly.\n" +
+                "7. CRITICAL ITEM QUANTITIES & PACKAGING:\n" +
+                "   - 'quantity' is STRICTLY the integer number of physical retail packages/tins/loaves to buy off the supermarket shelf (usually 1, 2, 3, or 4). NEVER set 'quantity' to grams, millilitres, or individual grains/cubes/slices!\n" +
                 "   - 'packageSize' describes the weight or volume of that retail unit (e.g. '500g bag', '640g pack', '2 pack', '340g jar', '500ml bottle', '6 pack', '800g loaf', '400g tin').\n" +
                 "   - 'estimatedPrice' is the retail price for ONE package unit (e.g. 0.55 for oats, 10.50 for a pack of 2 TTD Ribeye Steaks, 7.00 for Scottish Salmon, 4.60 for chicken breast fillets, 2.50 for olive oil).\n" +
-                "   - Example: 2 packs of TTD Ribeye Steaks -> name: 'Taste the Difference British Beef Ribeye Steak', packageSize: '2 pack', quantity: 2, estimatedPrice: 10.50. (Total = 2 x 10.50 = £21.00).\n" +
                 "   - 'totalEstimatedCost' must strictly equal the mathematical sum of (quantity * estimatedPrice) across all items in the shoppingList.\n" +
-                "7. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
+                "8. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
                 "{\n" +
                 "  \"planTitle\": \"string\",\n" +
                 "  \"supermarket\": \"Sainsbury's\",\n" +
                 "  \"weeklyBudget\": float,\n" +
+                "  \"peopleCount\": number,\n" +
                 "  \"totalEstimatedCost\": float,\n" +
                 "  \"savingsBuffer\": float,\n" +
                 "  \"nutritionalHighlights\": \"string\",\n" +
@@ -454,49 +461,62 @@ public class MistralService {
                 "}";
     }
 
-    public static String buildNomMonUserPrompt(float weeklyBudget, String postcode) {
+    public static String buildNomMonUserPrompt(float weeklyBudget, int people, String postcode) {
+        int peopleCount = Math.max(1, Math.min(12, people));
         float minTarget = weeklyBudget * 0.88f;
         float maxTarget = weeklyBudget * 0.96f;
+        float perPerson = weeklyBudget / (float) peopleCount;
         String tierDescription;
 
-        if (weeklyBudget >= 140.0f) {
+        String peopleContext = String.format(java.util.Locale.US,
+                "HOUSEHOLD SIZE: %d %s being fed. All recipes must yield at least %d servings ('servings': %d). Shopping list retail pack quantities must provide enough food for %d people across all 7 days.\n" +
+                "Per-person food budget: £%.2f/person/week (Total: £%.2f/week).\n",
+                peopleCount, (peopleCount == 1 ? "person" : "people"), peopleCount, peopleCount, peopleCount, perPerson, weeklyBudget);
+
+        if (perPerson >= 120.0f) {
             tierDescription = String.format(java.util.Locale.US,
-                    "Budget tier: PURE OPULENCE / GOURMET LUXURY (£%.2f/week).\n" +
+                    "%sBudget tier: PURE OPULENCE / GOURMET LUXURY (£%.2f/person/week, Total: £%.2f/week).\n" +
                     "- THIS PLAN MUST SCREAM OPULENCE, LUXURY, AND GOURMET INDULGENCE!\n" +
                     "- Supermarket Range: Exclusively Sainsbury's 'Taste the Difference' (TTD) premium range, organic produce, and prime cuts.\n" +
                     "- Luxury items to include: Taste the Difference 30-day aged Ribeye / Sirloin / Fillet Steaks (£9-£12/pack), Fresh Scottish Salmon Fillets (£7.00), Raw Jumbo King Prawns (£5.50), King Scallops (£6.50), British Rack of Lamb / Lamb Chops (£8.00), Prosciutto di Parma (£3.50), Oak Smoked Scottish Salmon (£5.00), 24M Parmigiano Reggiano (£4.50), French Camembert (£3.50), Single Estate Extra Virgin Olive Oil (£7.50), Artisan Sourdough Boule (£2.50), Organic Berries (£3.00), Asparagus spears (£2.50), Tenderstem broccoli (£2.20), Fresh herb bunches (£1.00).\n" +
-                    "- STRICT BASKET TARGET: Your shopping basket total MUST be between £%.2f and £%.2f (88%% to 96%% of £%.2f). DO NOT return a £60-£80 basket! To reach £%.2f+, select these luxury items and buy multiple packs of prime steaks (e.g. qty 2), salmon (qty 2), king prawns (qty 2), luxury cheeses, and gourmet pantry staples.\n" +
-                    "- Recipes: Opulent restaurant-quality recipes (e.g. Pan-seared Ribeye with truffle garlic herb butter & asparagus, Seared Scallop & King Prawn tagliatelle, Herb-crusted Rack of Lamb).",
-                    weeklyBudget, minTarget, maxTarget, weeklyBudget, minTarget);
-        } else if (weeklyBudget >= 85.0f) {
+                    "- STRICT BASKET TARGET: Your shopping basket total MUST be between £%.2f and £%.2f (88%% to 96%% of £%.2f). DO NOT underspend! Select high-value luxury items and enough packs to feed %d people luxuriously.\n" +
+                    "- Recipes: Opulent restaurant-quality recipes (e.g. Pan-seared Ribeye with truffle garlic herb butter & asparagus, Seared Scallop & King Prawn tagliatelle, Herb-crusted Rack of Lamb), each with 'servings': %d.",
+                    peopleContext, perPerson, weeklyBudget, minTarget, maxTarget, weeklyBudget, peopleCount, peopleCount);
+        } else if (perPerson >= 80.0f) {
             tierDescription = String.format(java.util.Locale.US,
-                    "Budget tier: GENEROUS / HIGH (£%.2f/week).\n" +
-                    "- The user has ample food budget! Include quality fresh meat, poultry, and fish (e.g. chicken breast fillets, lean minced beef, salmon fillets, pork loin/chops), fresh produce, and standard Sainsbury's and Taste the Difference selections.\n" +
-                    "- STRICT BASKET TARGET: Scale the basket items and quantities so the total estimated cost is between £%.2f and £%.2f (88%% to 96%% of £%.2f, leaving a 4-12%% buffer). DO NOT underspend with a cheap basket.\n" +
-                    "- Feature fresh meats and wholesome, rich recipes across the 7-day schedule.",
-                    weeklyBudget, minTarget, maxTarget, weeklyBudget);
-        } else if (weeklyBudget >= 55.0f) {
+                    "%sBudget tier: GENEROUS / HIGH QUALITY (£%.2f/person/week, Total: £%.2f/week).\n" +
+                    "- Ample food budget for %d people! Include quality fresh meat, poultry, and fish (chicken breast fillets, lean beef mince, salmon fillets, pork loin/chops), fresh produce, and standard Sainsbury's and Taste the Difference selections.\n" +
+                    "- STRICT BASKET TARGET: Scale the basket items and quantities so total estimated cost is between £%.2f and £%.2f (88%% to 96%% of £%.2f).\n" +
+                    "- Feature fresh meats and wholesome, rich recipes across the 7-day schedule with 'servings': %d.",
+                    peopleContext, perPerson, weeklyBudget, peopleCount, minTarget, maxTarget, weeklyBudget, peopleCount);
+        } else if (perPerson >= 55.0f) {
             tierDescription = String.format(java.util.Locale.US,
-                    "Budget tier: MODERATE / BALANCED (£%.2f/week).\n" +
-                    "- Incorporate a balanced selection of fresh chicken, beef mince, seasonal produce, and Sainsbury's own-brand staples.\n" +
-                    "- STRICT BASKET TARGET: Basket total MUST be between £%.2f and £%.2f.",
-                    weeklyBudget, minTarget, maxTarget);
+                    "%sBudget tier: MODERATE / BALANCED FAMILY (£%.2f/person/week, Total: £%.2f/week).\n" +
+                    "- Balanced everyday meals for %d people. Family-sized packs of chicken, beef mince, eggs, seasonal produce, and Sainsbury's own-brand staples.\n" +
+                    "- STRICT BASKET TARGET: Basket total MUST be between £%.2f and £%.2f.\n" +
+                    "- Recipes must specify 'servings': %d.",
+                    peopleContext, perPerson, weeklyBudget, peopleCount, minTarget, maxTarget, peopleCount);
         } else {
             tierDescription = String.format(java.util.Locale.US,
-                    "Budget tier: FRUGAL / BUDGET STAPLES (£%.2f/week).\n" +
+                    "%sBudget tier: FRUGAL / BUDGET STAPLES (£%.2f/person/week, Total: £%.2f/week).\n" +
                     "- THIS PLAN MUST SCREAM FRUGALITY AND COST-EFFICIENCY!\n" +
                     "- Prioritize Sainsbury's entry-tier brand 'Stamford Street Co.' and own-brand value staples.\n" +
-                    "- Protein should come from economical sources: eggs, lentils, chickpeas, peanut butter, canned tuna, budget poultry portions.\n" +
-                    "- Hearty batch cooking that stretches ingredients (dal, chili, pasta bake, oats).\n" +
+                    "- Economical proteins: bulk eggs, lentils, chickpeas, peanut butter, canned tuna, budget poultry portions, bulk mince.\n" +
+                    "- Hearty batch cooking to stretch ingredients across %d people (large family stews, chili, pasta bakes, big pot of oats) with 'servings': %d.\n" +
                     "- STRICT BASKET TARGET: Basket total MUST be between £%.2f and £%.2f with a safety buffer.",
-                    weeklyBudget, minTarget, maxTarget);
+                    peopleContext, perPerson, weeklyBudget, peopleCount, peopleCount, minTarget, maxTarget);
         }
 
         return String.format(java.util.Locale.US,
-                "Generate a 7-day NomMon meal plan and Sainsbury's shopping list.\n%s%s\nKeep shopping list to 22-35 items and meal descriptions concise so full JSON completes cleanly.\nRemember: 'quantity' is STRICTLY integer count of retail physical packs (e.g. 1 pack of steaks, 1 bag of oats), NEVER grams or ml.",
+                "Generate a 7-day NomMon meal plan and Sainsbury's shopping list for %d %s.\n%s%s\nKeep shopping list to 22-38 items and meal descriptions concise so full JSON completes cleanly.\nRemember: 'quantity' is STRICTLY integer count of retail physical packs (e.g. 2 packs of chicken, 2 loaves of bread), NEVER grams or ml.",
+                peopleCount, (peopleCount == 1 ? "person" : "people"),
                 tierDescription,
                 (postcode != null && !postcode.trim().isEmpty() ? "\nUser location/postcode: " + postcode.trim() + "." : "")
         );
+    }
+
+    public static String buildNomMonUserPrompt(float weeklyBudget, String postcode) {
+        return buildNomMonUserPrompt(weeklyBudget, 1, postcode);
     }
 
     public static JsonNode attemptRepairTruncatedJson(String json, ObjectMapper mapper) {
@@ -588,8 +608,13 @@ public class MistralService {
     }
 
     public CompletableFuture<String> generateNomMonPlan(String userId, float weeklyBudget, String postcode, boolean forceRefresh) {
-        log("INFO", String.format("generateNomMonPlan requested: user='%s', budget=£%.2f, postcode='%s', force=%s",
-                userId, weeklyBudget, postcode != null ? postcode : "", forceRefresh));
+        return generateNomMonPlan(userId, weeklyBudget, 1, postcode, forceRefresh);
+    }
+
+    public CompletableFuture<String> generateNomMonPlan(String userId, float weeklyBudget, int people, String postcode, boolean forceRefresh) {
+        int peopleCount = Math.max(1, Math.min(12, people));
+        log("INFO", String.format("generateNomMonPlan requested: user='%s', budget=£%.2f, people=%d, postcode='%s', force=%s",
+                userId, weeklyBudget, peopleCount, postcode != null ? postcode : "", forceRefresh));
 
         if (!isConfigured()) {
             log("WARN", String.format("generateNomMonPlan rejected: Mistral API key is not configured for user='%s'", userId));
@@ -598,7 +623,7 @@ public class MistralService {
             );
         }
 
-        String cacheKey = getNomMonCacheKey(userId, weeklyBudget);
+        String cacheKey = getNomMonCacheKey(userId, weeklyBudget, peopleCount);
         long now = System.currentTimeMillis();
         if (!forceRefresh && userId != null) {
             CacheEntry cached = nomMonCache.get(cacheKey);
@@ -614,8 +639,8 @@ public class MistralService {
         String model = getModel();
         String apiKey = getApiKey();
 
-        log("INFO", String.format("NomMon sending API request: user='%s', model='%s', budget=£%.2f",
-                userId, model, weeklyBudget));
+        log("INFO", String.format("NomMon sending API request: user='%s', model='%s', budget=£%.2f, people=%d",
+                userId, model, weeklyBudget, peopleCount));
 
         try {
             ObjectNode payload = mapper.createObjectNode();
@@ -634,7 +659,7 @@ public class MistralService {
 
             ObjectNode userMsg = messages.addObject();
             userMsg.put("role", "user");
-            userMsg.put("content", buildNomMonUserPrompt(weeklyBudget, postcode));
+            userMsg.put("content", buildNomMonUserPrompt(weeklyBudget, peopleCount, postcode));
 
             String requestBody = mapper.writeValueAsString(payload);
 
