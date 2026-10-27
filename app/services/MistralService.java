@@ -44,6 +44,7 @@ public class MistralService {
 
     private final Map<String, CacheEntry> userAdviceCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry> nomMonCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> userLastNomMonTimestamp = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 31L * 24L * 60L * 60L * 1000L; // 31 days TTL
 
     @Inject
@@ -133,18 +134,31 @@ public class MistralService {
         return cached != null ? cached.timestamp : null;
     }
 
+    public static String getNomMonCacheKey(String userId, float weeklyBudget) {
+        return (userId != null ? userId : "guest") + ":budget=" + Math.round(weeklyBudget * 100.0f);
+    }
+
     public Long getNomMonTimestamp(String userId) {
         if (userId == null) return null;
-        CacheEntry cached = nomMonCache.get(userId);
-        return cached != null ? cached.timestamp : null;
+        Long ts = userLastNomMonTimestamp.get(userId);
+        if (ts != null) return ts;
+        CacheEntry legacy = nomMonCache.get(userId);
+        if (legacy != null) return legacy.timestamp;
+        return nomMonCache.entrySet().stream()
+                .filter(e -> e.getKey().startsWith(userId + ":"))
+                .map(e -> e.getValue().timestamp)
+                .max(Long::compareTo)
+                .orElse(null);
     }
 
     public void clearNomMonCache(String userId) {
         if (userId != null) {
-            nomMonCache.remove(userId);
+            nomMonCache.keySet().removeIf(k -> k.startsWith(userId + ":") || k.equals(userId));
+            userLastNomMonTimestamp.remove(userId);
             log("INFO", "Cleared NomMon cache for user=" + userId);
         } else {
             nomMonCache.clear();
+            userLastNomMonTimestamp.clear();
             log("INFO", "Cleared entire NomMon cache");
         }
     }
@@ -398,6 +412,73 @@ public class MistralService {
         }
     }
 
+    public static String buildNomMonSystemPrompt() {
+        return "You are NomMon, an expert UK grocery planner and adaptive nutritionist for MonMon.\n" +
+                "Your mission is to construct a balanced 7-day meal plan, batch cooking recipes, and an itemized Sainsbury's shopping list that dynamically adapts to the user's weekly food budget.\n" +
+                "STRICT REQUIREMENTS:\n" +
+                "1. Supermarket: Sainsbury's. Adapt product selection to the user's budget tier:\n" +
+                "   - FRUGAL / TIGHT BUDGETS (<= £60/week, e.g. £50.00): Prioritize Sainsbury's entry-tier budget brand 'Stamford Street Co.' and own-brand value essentials. Focus on economical, budget-stretching recipes.\n" +
+                "   - MODERATE BUDGETS (£60 - £85/week): Balance Sainsbury's own-brand staples with standard fresh meat/poultry and fresh seasonal produce.\n" +
+                "   - GENEROUS / HIGHER BUDGETS (> £85/week, e.g. £115.38): The user has substantial spending power and CAN AFFORD MORE FOOD AND HIGHER QUALITY! Do NOT restrict them to a bare-bones budget basket or cheap fillers. Include quality fresh meats (e.g. Sainsbury's British Chicken Breast Fillets, Lean Beef Steak Mince 5%, Pork Chops/Loin, Bacon/Sausages), fresh fish/salmon fillets, fresh vegetables, berries/fruit, fresh herbs, and Sainsbury's standard or 'Taste the Difference' items alongside smart pantry staples.\n" +
+                "2. Budget ceiling & scaling: The shopping basket total MUST scale up or down to be between 88% and 96% of the user's weekly budget (e.g. for £50.00, target £44.00 - £48.00; for £115.38, target £101.50 - £110.70) leaving a 4-12% safety buffer. Never underspend significantly when the user has a generous budget.\n" +
+                "3. Nutrition & Dietary Variety:\n" +
+                "   - On tight budgets (£50/wk): Rely on economical protein (eggs, lentils, chickpeas, peanut butter, canned tuna, budget mince/chicken portions) and batch-cooked staples.\n" +
+                "   - On higher budgets (£115.38/wk): The user CAN AFFORD MEAT AND SEAFOOD! Ensure generous portions of fresh meat/poultry/fish are included in the grocery list and featured across daily lunches/dinners and batch recipes (e.g. Pan-Seared Salmon & Greens, Roast Chicken & Veg, Lean Beef Bolognese or Chilli Con Carne, Chicken Stir-Fry, Steak or Meatball Pasta). Nutrition should reflect abundant fresh ingredients and high-quality protein (80g-120g/day).\n" +
+                "4. Recipes: 2 to 4 simple batch-cooking or dinner recipes utilizing the purchased ingredients. Tailor recipe richness to the budget tier (frugal lentil/bean/egg batch cooking for tight budgets; delicious fresh meat, poultry, fish, and produce recipes for generous budgets).\n" +
+                "5. CRITICAL ITEM QUANTITIES & PACKAGING:\n" +
+                "   - 'quantity' is STRICTLY the integer number of physical retail packages/tins/loaves to buy off the supermarket shelf (usually 1, 2, or 3). NEVER set 'quantity' to grams, millilitres, or individual grains/cubes/slices!\n" +
+                "   - 'packageSize' describes the weight or volume of that retail unit (e.g. '500g bag', '640g pack', '500g pack', '1kg bag', '340g jar', '500ml bottle', '6 pack', '800g loaf', '400g tin').\n" +
+                "   - 'estimatedPrice' is the retail price for ONE package unit (e.g. 0.55 for a 500g bag of oats, 4.60 for a 640g pack of chicken breast fillets, 4.25 for a 500g pack of lean beef mince, 1.00 for a 340g jar of peanut butter, 2.50 for a 500ml olive oil bottle).\n" +
+                "   - Example: 500g of oats -> name: 'Stamford Street Co. Porridge Oats', packageSize: '500g bag', quantity: 1, estimatedPrice: 0.55. (Total = 1 x 0.55 = £0.55, NOT 500 x £0.55!).\n" +
+                "   - Example: 640g fresh chicken breasts -> name: 'Sainsbury\\'s British Chicken Breast Fillets', packageSize: '640g pack', quantity: 1, estimatedPrice: 4.60. (Total = 1 x 4.60 = £4.60).\n" +
+                "   - Example: 2 tins of chopped tomatoes -> name: 'Sainsbury\\'s Chopped Tomatoes', packageSize: '400g tin', quantity: 2, estimatedPrice: 0.35. (Total = 2 x 0.35 = £0.70).\n" +
+                "   - 'totalEstimatedCost' must strictly equal the mathematical sum of (quantity * estimatedPrice) across all items in the shoppingList.\n" +
+                "6. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
+                "{\n" +
+                "  \"planTitle\": \"string\",\n" +
+                "  \"supermarket\": \"Sainsbury's\",\n" +
+                "  \"weeklyBudget\": float,\n" +
+                "  \"totalEstimatedCost\": float,\n" +
+                "  \"savingsBuffer\": float,\n" +
+                "  \"nutritionalHighlights\": \"string\",\n" +
+                "  \"shoppingList\": [\n" +
+                "    {\"name\": \"string\", \"category\": \"Produce\"|\"Meat & Poultry\"|\"Dairy & Eggs\"|\"Bakery\"|\"Pantry & Pulses\"|\"Tins & Cans\"|\"Frozen\"|\"Other Staples\", \"packageSize\": \"string\", \"quantity\": number, \"estimatedPrice\": float}\n" +
+                "  ],\n" +
+                "  \"days\": [\n" +
+                "    {\"dayName\": \"Monday\"...\"Sunday\", \"breakfast\": \"string\", \"lunch\": \"string\", \"dinner\": \"string\", \"snack\": \"string\", \"prepNotes\": \"string\"}\n" +
+                "  ],\n" +
+                "  \"recipes\": [\n" +
+                "    {\"title\": \"string\", \"servings\": number, \"prepTimeMinutes\": number, \"cookTimeMinutes\": number, \"ingredientsUsed\": [\"string\"], \"instructions\": [\"string\"]}\n" +
+                "  ]\n" +
+                "}";
+    }
+
+    public static String buildNomMonUserPrompt(float weeklyBudget, String postcode) {
+        float minTarget = weeklyBudget * 0.88f;
+        float maxTarget = weeklyBudget * 0.96f;
+        String tierDescription;
+
+        if (weeklyBudget >= 85.0f) {
+            tierDescription = String.format(java.util.Locale.US,
+                    "Budget tier: GENEROUS / HIGH (£%.2f/week). The user can comfortably afford quality food now! Include quality fresh meat, poultry, and fish (e.g. chicken breast fillets, lean minced beef, salmon fillets, pork loin/chops), fresh vegetables/fruit, and standard Sainsbury's selections. DO NOT return a bare-bones budget basket or rely solely on cheap fillers. Scale the basket items and quantities so the total estimated cost is between £%.2f and £%.2f (leaving a prudent 4-12%% buffer). Feature fresh meat and appetizing, wholesome meals across the 7-day schedule and batch recipes.",
+                    weeklyBudget, minTarget, maxTarget);
+        } else if (weeklyBudget >= 60.0f) {
+            tierDescription = String.format(java.util.Locale.US,
+                    "Budget tier: MODERATE (£%.2f/week). Incorporate a balanced selection of fresh meat or poultry 3-4 days a week with wholesome pantry staples, eggs, dairy, and seasonal produce. Target basket total between £%.2f and £%.2f.",
+                    weeklyBudget, minTarget, maxTarget);
+        } else {
+            tierDescription = String.format(java.util.Locale.US,
+                    "Budget tier: FRUGAL / BUDGET (£%.2f/week). Focus on Sainsbury's entry-tier brand 'Stamford Street Co.' and own-brand value staples. Prioritize economical protein sources (eggs, lentils, chickpeas, peanut butter, canned tuna, budget poultry portions) and hearty batch cooking that stretches ingredients. Target basket total between £%.2f and £%.2f with a safety buffer.",
+                    weeklyBudget, minTarget, maxTarget);
+        }
+
+        return String.format(java.util.Locale.US,
+                "Generate a 7-day NomMon meal plan and Sainsbury's shopping list.\n%s%s\nRemember: 'quantity' is STRICTLY integer count of retail physical packs (e.g. 1 pack of chicken, 1 bag of oats), NEVER grams or ml.",
+                tierDescription,
+                (postcode != null && !postcode.trim().isEmpty() ? "\nUser location/postcode: " + postcode.trim() + "." : "")
+        );
+    }
+
     public CompletableFuture<String> generateNomMonPlan(String userId, float weeklyBudget, String postcode, boolean forceRefresh) {
         log("INFO", String.format("generateNomMonPlan requested: user='%s', budget=£%.2f, postcode='%s', force=%s",
                 userId, weeklyBudget, postcode != null ? postcode : "", forceRefresh));
@@ -409,13 +490,14 @@ public class MistralService {
             );
         }
 
+        String cacheKey = getNomMonCacheKey(userId, weeklyBudget);
         long now = System.currentTimeMillis();
         if (!forceRefresh && userId != null) {
-            CacheEntry cached = nomMonCache.get(userId);
+            CacheEntry cached = nomMonCache.get(cacheKey);
             if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
                 long ageSec = (now - cached.timestamp) / 1000L;
-                log("INFO", String.format("NomMon cache HIT for user='%s' (cached %ds ago). Returning cached plan.",
-                        userId, ageSec));
+                log("INFO", String.format("NomMon cache HIT for user='%s' key='%s' (cached %ds ago). Returning cached plan.",
+                        userId, cacheKey, ageSec));
                 return CompletableFuture.completedFuture(cached.text);
             }
         }
@@ -440,49 +522,11 @@ public class MistralService {
 
             ObjectNode systemMsg = messages.addObject();
             systemMsg.put("role", "system");
-            systemMsg.put("content",
-                    "You are NomMon, an expert UK grocery planner and frugal nutritionist for MonMon.\n" +
-                    "Your mission is to construct a balanced 7-day meal plan, batch cooking recipes, and an itemized Sainsbury's shopping list.\n" +
-                    "STRICT REQUIREMENTS:\n" +
-                    "1. Supermarket: Sainsbury's. Prioritize their entry-tier budget brand 'Stamford Street Co.' and own-brand essentials.\n" +
-                    "2. Budget ceiling: The shopping basket total MUST be between 88% and 96% of the user's weekly budget (e.g. for £50.00, target £45.00 - £48.00) leaving a 4-12% safety buffer.\n" +
-                    "3. Nutrition: Moderate, balanced whole foods (adequate protein 55g-70g/day, fiber, staples like oats, lentils, eggs, peanut butter, seasonal veg, wholemeal bread).\n" +
-                    "4. Recipes: 2 to 4 simple batch-cooking recipes reusing common purchased ingredients.\n" +
-                    "5. CRITICAL ITEM QUANTITIES & PACKAGING:\n" +
-                    "   - 'quantity' is STRICTLY the integer number of physical retail packages/tins/loaves to buy off the supermarket shelf (usually 1, 2, or 3). NEVER set 'quantity' to grams, millilitres, or individual grains/cubes/slices!\n" +
-                    "   - 'packageSize' describes the weight or volume of that retail unit (e.g. '500g bag', '1kg bag', '340g jar', '500ml bottle', '6 pack', '800g loaf', '400g tin').\n" +
-                    "   - 'estimatedPrice' is the retail price for ONE package unit (e.g. 0.55 for a 500g bag of oats, 1.00 for a 340g jar of peanut butter, 2.50 for a 500ml olive oil bottle).\n" +
-                    "   - Example: 500g of oats -> name: 'Stamford Street Co. Porridge Oats', packageSize: '500g bag', quantity: 1, estimatedPrice: 0.55. (Total = 1 x 0.55 = £0.55, NOT 500 x £0.55!).\n" +
-                    "   - Example: 2 tins of chopped tomatoes -> name: 'Sainsbury's Chopped Tomatoes', packageSize: '400g tin', quantity: 2, estimatedPrice: 0.35. (Total = 2 x 0.35 = £0.70).\n" +
-                    "   - 'totalEstimatedCost' must strictly equal the mathematical sum of (quantity * estimatedPrice) across all items in the shoppingList.\n" +
-                    "6. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
-                    "{\n" +
-                    "  \"planTitle\": \"string\",\n" +
-                    "  \"supermarket\": \"Sainsbury's\",\n" +
-                    "  \"weeklyBudget\": float,\n" +
-                    "  \"totalEstimatedCost\": float,\n" +
-                    "  \"savingsBuffer\": float,\n" +
-                    "  \"nutritionalHighlights\": \"string\",\n" +
-                    "  \"shoppingList\": [\n" +
-                    "    {\"name\": \"string\", \"category\": \"Produce\"|\"Bakery\"|\"Dairy & Eggs\"|\"Pantry & Pulses\"|\"Tins & Cans\"|\"Frozen\", \"packageSize\": \"string\", \"quantity\": number, \"estimatedPrice\": float}\n" +
-                    "  ],\n" +
-                    "  \"days\": [\n" +
-                    "    {\"dayName\": \"Monday\"...\"Sunday\", \"breakfast\": \"string\", \"lunch\": \"string\", \"dinner\": \"string\", \"snack\": \"string\", \"prepNotes\": \"string\"}\n" +
-                    "  ],\n" +
-                    "  \"recipes\": [\n" +
-                    "    {\"title\": \"string\", \"servings\": number, \"prepTimeMinutes\": number, \"cookTimeMinutes\": number, \"ingredientsUsed\": [\"string\"], \"instructions\": [\"string\"]}\n" +
-                    "  ]\n" +
-                    "}"
-            );
+            systemMsg.put("content", buildNomMonSystemPrompt());
 
             ObjectNode userMsg = messages.addObject();
             userMsg.put("role", "user");
-            String prompt = String.format(java.util.Locale.US,
-                    "Generate a 7-day NomMon meal plan and Sainsbury's shopping list. Weekly budget: £%.2f.%s Focus on Stamford Street Co. / Sainsbury's own brand staples. Ensure basket total is slightly below budget so there is a buffer. Remember: quantity is integer count of retail packs (e.g. 1 bag of 500g oats), NEVER grams or ml.",
-                    weeklyBudget,
-                    (postcode != null && !postcode.trim().isEmpty() ? " User location/postcode: " + postcode.trim() + "." : "")
-            );
-            userMsg.put("content", prompt);
+            userMsg.put("content", buildNomMonUserPrompt(weeklyBudget, postcode));
 
             String requestBody = mapper.writeValueAsString(payload);
 
@@ -508,7 +552,8 @@ public class MistralService {
                                 if (choices.isArray() && choices.size() > 0) {
                                     String text = choices.get(0).path("message").path("content").asText();
                                     if (userId != null && text != null && !text.isBlank()) {
-                                        nomMonCache.put(userId, new CacheEntry(text, System.currentTimeMillis()));
+                                        nomMonCache.put(cacheKey, new CacheEntry(text, System.currentTimeMillis()));
+                                        userLastNomMonTimestamp.put(userId, System.currentTimeMillis());
                                     }
                                     return text;
                                 }
@@ -521,7 +566,7 @@ public class MistralService {
                         } else {
                             String errorDetail = extractErrorMessage(respBody);
                             log("ERROR", String.format("NomMon API ERROR (HTTP %d) in %dms for user='%s': %s",
-                                    status, durationMs, userId, errorDetail));
+                                     status, durationMs, userId, errorDetail));
                             return "{\"error\":\"Mistral API returned HTTP " + status + ": " + (errorDetail != null ? errorDetail : "") + "\"}";
                         }
                     })

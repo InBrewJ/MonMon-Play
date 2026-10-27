@@ -158,7 +158,7 @@
             groups[cat].push(item);
         });
 
-        var categoryOrder = ['Produce', 'Bakery', 'Dairy & Eggs', 'Pantry & Pulses', 'Tins & Cans', 'Frozen', 'Other Staples'];
+        var categoryOrder = ['Produce', 'Meat & Poultry', 'Meat & Fish', 'Meat & Seafood', 'Dairy & Eggs', 'Bakery', 'Pantry & Pulses', 'Tins & Cans', 'Frozen', 'Other Staples'];
         var sortedCats = Object.keys(groups).sort(function (a, b) {
             var ia = categoryOrder.indexOf(a);
             var ib = categoryOrder.indexOf(b);
@@ -166,6 +166,29 @@
             if (ib === -1) ib = 99;
             return ia - ib;
         });
+
+        function getCategoryIcon(cat) {
+            var c = (cat || '').toLowerCase();
+            if (c.indexOf('meat') !== -1 || c.indexOf('poultry') !== -1 || c.indexOf('seafood') !== -1 || c.indexOf('fish') !== -1) {
+                return 'fa-drumstick-bite';
+            }
+            if (c.indexOf('produce') !== -1 || c.indexOf('fruit') !== -1 || c.indexOf('veg') !== -1) {
+                return 'fa-carrot';
+            }
+            if (c.indexOf('dairy') !== -1 || c.indexOf('egg') !== -1) {
+                return 'fa-egg';
+            }
+            if (c.indexOf('bakery') !== -1 || c.indexOf('bread') !== -1) {
+                return 'fa-bread-slice';
+            }
+            if (c.indexOf('frozen') !== -1) {
+                return 'fa-snowflake';
+            }
+            if (c.indexOf('tin') !== -1 || c.indexOf('can') !== -1) {
+                return 'fa-box-open';
+            }
+            return 'fa-tag';
+        }
 
         sortedCats.forEach(function (catName) {
             var items = groups[catName];
@@ -182,7 +205,7 @@
             header.style.borderBottom = '1px solid var(--border-color)';
             header.style.display = 'flex';
             header.style.justifyContent = 'space-between';
-            header.innerHTML = '<span><i class="fas fa-tag" style="color: var(--primary); margin-right: 6px;"></i>' + catName + '</span>' +
+            header.innerHTML = '<span><i class="fas ' + getCategoryIcon(catName) + '" style="color: var(--primary); margin-right: 6px;"></i>' + escapeHtml(catName) + '</span>' +
                 '<span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">' + items.length + ' item' + (items.length === 1 ? '' : 's') + '</span>';
             catBox.appendChild(header);
 
@@ -334,12 +357,52 @@
         });
     }
 
+    // Update budget tier badge styling & text
+    function updateBudgetTierBadge(budget) {
+        var badge = document.getElementById('nommon-budget-tier-badge');
+        var subtitle = document.getElementById('nommon-basket-subtitle');
+        if (!badge) return;
+        if (budget >= 85) {
+            badge.textContent = 'Generous / Meat & Fish';
+            badge.style.background = 'rgba(22, 163, 74, 0.15)';
+            badge.style.color = '#16a34a';
+            badge.style.border = '1px solid #16a34a';
+            if (subtitle) subtitle.textContent = 'Fresh meat, produce & staples';
+        } else if (budget >= 60) {
+            badge.textContent = 'Moderate / Balanced';
+            badge.style.background = 'rgba(59, 130, 246, 0.15)';
+            badge.style.color = '#2563eb';
+            badge.style.border = '1px solid #2563eb';
+            if (subtitle) subtitle.textContent = 'Balanced meat & own-brand';
+        } else {
+            badge.textContent = 'Frugal / Budget Staples';
+            badge.style.background = 'rgba(234, 88, 12, 0.15)';
+            badge.style.color = '#ea580c';
+            badge.style.border = '1px solid #ea580c';
+            if (subtitle) subtitle.textContent = 'Stamford St & own-brand';
+        }
+    }
+
     // Fetch Plan from Backend
     function fetchPlan(force) {
         var loadingEl = document.getElementById('nommon-loading');
         var contentEl = document.getElementById('nommon-content');
         var refreshIcon = document.getElementById('nommon-refresh-icon');
         var postcode = (document.getElementById('nommon-postcode-input').value || '').trim();
+
+        var budgetInput = document.getElementById('nommon-budget-input');
+        if (budgetInput) {
+            var val = parseFloat(budgetInput.value);
+            if (!isNaN(val) && val > 0) {
+                weeklyBudget = val;
+            }
+        }
+        updateBudgetTierBadge(weeklyBudget);
+
+        var loadingText = document.getElementById('nommon-loading-text');
+        if (loadingText) {
+            loadingText.textContent = 'Analyzing Sainsbury\'s selections, balancing nutritional guidelines, and calculating recipes within your £' + weeklyBudget.toFixed(2) + ' budget.';
+        }
 
         if (loadingEl) loadingEl.style.display = 'block';
         if (contentEl) contentEl.style.display = 'none';
@@ -362,6 +425,17 @@
                 }
 
                 currentPlan = data.plan;
+
+                if (currentPlan.weeklyBudget) {
+                    var planBudget = parseFloat(currentPlan.weeklyBudget);
+                    if (!isNaN(planBudget) && planBudget > 0) {
+                        weeklyBudget = planBudget;
+                        if (budgetInput) {
+                            budgetInput.value = weeklyBudget.toFixed(2);
+                        }
+                    }
+                }
+                updateBudgetTierBadge(weeklyBudget);
 
                 // Title & Highlights
                 var titleEl = document.getElementById('plan-title-display');
@@ -447,6 +521,25 @@
             postcodeInput.value = savedPostcode;
         }
         updateStoreLinks(savedPostcode);
+
+        // Weekly Budget Input & Tier Badge
+        var budgetInput = document.getElementById('nommon-budget-input');
+        if (budgetInput) {
+            updateBudgetTierBadge(weeklyBudget);
+            budgetInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    fetchPlan(false);
+                }
+            });
+            budgetInput.addEventListener('change', function () {
+                var val = parseFloat(budgetInput.value);
+                if (!isNaN(val) && val > 0) {
+                    weeklyBudget = val;
+                    updateBudgetTierBadge(val);
+                }
+            });
+        }
 
         // Save postcode button
         var btnSavePostcode = document.getElementById('btn-save-postcode');

@@ -182,4 +182,69 @@ public class MistralServiceTest {
         assertThat(service.getNomMonTimestamp("userNom")).isNotNull();
         assertThat(service.getNomMonTimestamp("userNom")).isGreaterThan(0L);
     }
+
+    @Test
+    public void testNomMonPromptsAdaptToBudgetTiers() {
+        String systemPrompt = MistralService.buildNomMonSystemPrompt();
+        assertThat(systemPrompt).contains("Meat & Poultry");
+        assertThat(systemPrompt).contains("GENEROUS / HIGHER BUDGETS");
+        assertThat(systemPrompt).contains("FRUGAL / TIGHT BUDGETS");
+        assertThat(systemPrompt).contains("Stamford Street Co.");
+
+        // High budget £115.38: should clearly instruct Mistral that meat/seafood is affordable
+        String highPrompt = MistralService.buildNomMonUserPrompt(115.38f, "SW1A 1AA");
+        assertThat(highPrompt).contains("GENEROUS / HIGH");
+        assertThat(highPrompt).contains("£115.38/week");
+        assertThat(highPrompt).contains("quality fresh meat");
+        assertThat(highPrompt).contains("DO NOT return a bare-bones budget basket");
+        assertThat(highPrompt).contains("SW1A 1AA");
+
+        // Frugal budget £50.00: should guide towards economical staples & batch cooking
+        String budgetPrompt = MistralService.buildNomMonUserPrompt(50.0f, null);
+        assertThat(budgetPrompt).contains("FRUGAL / BUDGET");
+        assertThat(budgetPrompt).contains("£50.00/week");
+        assertThat(budgetPrompt).contains("Stamford Street Co.");
+        assertThat(budgetPrompt).contains("economical protein");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testNomMonCacheDifferentiatesBudgets() throws ExecutionException, InterruptedException {
+        Config config = ConfigFactory.parseString("mistral { apiKey = \"test-key-nommon-cache\", model = \"mistral-small-latest\" }");
+        HttpClient mockHttpClient = mock(HttpClient.class);
+
+        HttpResponse<String> resp115 = mock(HttpResponse.class);
+        when(resp115.statusCode()).thenReturn(200);
+        when(resp115.body()).thenReturn("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"planTitle\\\":\\\"Generous Plan\\\",\\\"weeklyBudget\\\":115.38}\"}}]}");
+
+        HttpResponse<String> resp50 = mock(HttpResponse.class);
+        when(resp50.statusCode()).thenReturn(200);
+        when(resp50.body()).thenReturn("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"planTitle\\\":\\\"Budget Plan\\\",\\\"weeklyBudget\\\":50.0}\"}}]}");
+
+        when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(CompletableFuture.completedFuture(resp115))
+                .thenReturn(CompletableFuture.completedFuture(resp50));
+
+        MistralService service = new MistralService(config, mockHttpClient);
+
+        // 1. Fetch for £115.38
+        String plan115 = service.generateNomMonPlan("user1", 115.38f, null, false).get();
+        assertThat(plan115).contains("Generous Plan");
+        verify(mockHttpClient, times(1)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+        // 2. Fetch for £50.00: must NOT hit £115.38 cache; should trigger HTTP request #2
+        String plan50 = service.generateNomMonPlan("user1", 50.0f, null, false).get();
+        assertThat(plan50).contains("Budget Plan");
+        verify(mockHttpClient, times(2)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+        // 3. Repeat £50.00: should hit cache (still 2 calls)
+        String plan50Cached = service.generateNomMonPlan("user1", 50.0f, null, false).get();
+        assertThat(plan50Cached).isEqualTo(plan50);
+        verify(mockHttpClient, times(2)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+
+        // 4. Repeat £115.38: should hit cache (still 2 calls)
+        String plan115Cached = service.generateNomMonPlan("user1", 115.38f, null, false).get();
+        assertThat(plan115Cached).isEqualTo(plan115);
+        verify(mockHttpClient, times(2)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+    }
 }
