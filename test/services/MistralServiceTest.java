@@ -152,7 +152,7 @@ public class MistralServiceTest {
                 "  \"choices\": [{\n" +
                 "    \"message\": {\n" +
                 "      \"role\": \"assistant\",\n" +
-                "      \"content\": \"{\\\"planTitle\\\":\\\"Sainsbury's Budget Plan\\\",\\\"weeklyBudget\\\":50.0,\\\"totalEstimatedCost\\\":47.5,\\\"savingsBuffer\\\":2.5,\\\"shoppingList\\\":[{\\\"name\\\":\\\"Stamford St Oats 1kg\\\",\\\"category\\\":\\\"Pantry\\\",\\\"estimatedPrice\\\":0.90,\\\"quantity\\\":1}],\\\"days\\\":[{\\\"dayName\\\":\\\"Monday\\\",\\\"breakfast\\\":\\\"Porridge\\\"}],\\\"recipes\\\":[{\\\"title\\\":\\\"Oat Porridge\\\"}]}\"\n" +
+                "      \"content\": \"{\\\"planTitle\\\":\\\"Sainsbury's Budget Plan\\\",\\\"weeklyBudget\\\":50.0,\\\"totalEstimatedCost\\\":47.5,\\\"savingsBuffer\\\":2.5,\\\"shoppingList\\\":[{\\\"name\\\":\\\"Stamford St Oats\\\",\\\"category\\\":\\\"Pantry\\\",\\\"packageSize\\\":\\\"500g bag\\\",\\\"estimatedPrice\\\":0.55,\\\"quantity\\\":1}],\\\"days\\\":[{\\\"dayName\\\":\\\"Monday\\\",\\\"breakfast\\\":\\\"Porridge\\\"}],\\\"recipes\\\":[{\\\"title\\\":\\\"Oat Porridge\\\"}]}\"\n" +
                 "    }\n" +
                 "  }]\n" +
                 "}");
@@ -165,7 +165,8 @@ public class MistralServiceTest {
         // 1. Initial call
         String plan1 = service.generateNomMonPlan("userNom", 50.0f, "SW1A 1AA", false).get();
         assertThat(plan1).contains("Sainsbury's Budget Plan");
-        assertThat(plan1).contains("Stamford St Oats 1kg");
+        assertThat(plan1).contains("Stamford St Oats");
+        assertThat(plan1).contains("500g bag");
         verify(mockHttpClient, times(1)).sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
 
         // 2. Cached call

@@ -448,7 +448,14 @@ public class MistralService {
                     "2. Budget ceiling: The shopping basket total MUST be between 88% and 96% of the user's weekly budget (e.g. for £50.00, target £45.00 - £48.00) leaving a 4-12% safety buffer.\n" +
                     "3. Nutrition: Moderate, balanced whole foods (adequate protein 55g-70g/day, fiber, staples like oats, lentils, eggs, peanut butter, seasonal veg, wholemeal bread).\n" +
                     "4. Recipes: 2 to 4 simple batch-cooking recipes reusing common purchased ingredients.\n" +
-                    "5. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
+                    "5. CRITICAL ITEM QUANTITIES & PACKAGING:\n" +
+                    "   - 'quantity' is STRICTLY the integer number of physical retail packages/tins/loaves to buy off the supermarket shelf (usually 1, 2, or 3). NEVER set 'quantity' to grams, millilitres, or individual grains/cubes/slices!\n" +
+                    "   - 'packageSize' describes the weight or volume of that retail unit (e.g. '500g bag', '1kg bag', '340g jar', '500ml bottle', '6 pack', '800g loaf', '400g tin').\n" +
+                    "   - 'estimatedPrice' is the retail price for ONE package unit (e.g. 0.55 for a 500g bag of oats, 1.00 for a 340g jar of peanut butter, 2.50 for a 500ml olive oil bottle).\n" +
+                    "   - Example: 500g of oats -> name: 'Stamford Street Co. Porridge Oats', packageSize: '500g bag', quantity: 1, estimatedPrice: 0.55. (Total = 1 x 0.55 = £0.55, NOT 500 x £0.55!).\n" +
+                    "   - Example: 2 tins of chopped tomatoes -> name: 'Sainsbury's Chopped Tomatoes', packageSize: '400g tin', quantity: 2, estimatedPrice: 0.35. (Total = 2 x 0.35 = £0.70).\n" +
+                    "   - 'totalEstimatedCost' must strictly equal the mathematical sum of (quantity * estimatedPrice) across all items in the shoppingList.\n" +
+                    "6. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
                     "{\n" +
                     "  \"planTitle\": \"string\",\n" +
                     "  \"supermarket\": \"Sainsbury's\",\n" +
@@ -457,7 +464,7 @@ public class MistralService {
                     "  \"savingsBuffer\": float,\n" +
                     "  \"nutritionalHighlights\": \"string\",\n" +
                     "  \"shoppingList\": [\n" +
-                    "    {\"name\": \"string\", \"category\": \"Produce\"|\"Bakery\"|\"Dairy & Eggs\"|\"Pantry & Pulses\"|\"Tins & Cans\"|\"Frozen\", \"estimatedPrice\": float, \"quantity\": number, \"unit\": \"string\"}\n" +
+                    "    {\"name\": \"string\", \"category\": \"Produce\"|\"Bakery\"|\"Dairy & Eggs\"|\"Pantry & Pulses\"|\"Tins & Cans\"|\"Frozen\", \"packageSize\": \"string\", \"quantity\": number, \"estimatedPrice\": float}\n" +
                     "  ],\n" +
                     "  \"days\": [\n" +
                     "    {\"dayName\": \"Monday\"...\"Sunday\", \"breakfast\": \"string\", \"lunch\": \"string\", \"dinner\": \"string\", \"snack\": \"string\", \"prepNotes\": \"string\"}\n" +
@@ -471,7 +478,7 @@ public class MistralService {
             ObjectNode userMsg = messages.addObject();
             userMsg.put("role", "user");
             String prompt = String.format(java.util.Locale.US,
-                    "Generate a 7-day NomMon meal plan and Sainsbury's shopping list. Weekly budget: £%.2f.%s Focus on Stamford Street Co. / Sainsbury's own brand staples. Ensure basket total is slightly below budget so there is a buffer.",
+                    "Generate a 7-day NomMon meal plan and Sainsbury's shopping list. Weekly budget: £%.2f.%s Focus on Stamford Street Co. / Sainsbury's own brand staples. Ensure basket total is slightly below budget so there is a buffer. Remember: quantity is integer count of retail packs (e.g. 1 bag of 500g oats), NEVER grams or ml.",
                     weeklyBudget,
                     (postcode != null && !postcode.trim().isEmpty() ? " User location/postcode: " + postcode.trim() + "." : "")
             );

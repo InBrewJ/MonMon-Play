@@ -104,6 +104,35 @@
         }
     }
 
+    // Normalize item quantities and packaging sizes defensively
+    function normalizeItem(itm) {
+        var rawQty = parseInt(itm.quantity, 10);
+        if (isNaN(rawQty) || rawQty <= 0) rawQty = 1;
+
+        var price = parseFloat(itm.estimatedPrice) || 0;
+        var pkg = itm.packageSize || itm.unit || '';
+
+        // If the AI mistakenly put grams, ml, or unit counts in quantity (e.g. qty=500, unit='g' or price * qty > 20)
+        var unitLower = (itm.unit || '').toLowerCase().trim();
+        var isWeightOrVolumeUnit = ['g', 'gram', 'grams', 'ml', 'milliliter', 'millilitre', 'millilitres', 'cubes', 'leaves', 'seeds', 'cloves'].indexOf(unitLower) !== -1;
+
+        if (rawQty >= 15 || (isWeightOrVolumeUnit && rawQty > 5)) {
+            if (!pkg || pkg === itm.unit) {
+                pkg = rawQty + (unitLower ? unitLower : 'g');
+            }
+            rawQty = 1;
+        }
+
+        return {
+            name: itm.name || 'Unknown item',
+            category: itm.category || 'Other Staples',
+            packageSize: pkg,
+            quantity: rawQty,
+            estimatedPrice: price,
+            itemTotal: rawQty * price
+        };
+    }
+
     // Render Shopping List
     function renderShoppingList(list) {
         var containerEl = document.getElementById('shopping-list-categories');
@@ -122,7 +151,8 @@
 
         // Group by category
         var groups = {};
-        list.forEach(function (item) {
+        list.forEach(function (rawItem) {
+            var item = normalizeItem(rawItem);
             var cat = item.category || 'Other Staples';
             if (!groups[cat]) groups[cat] = [];
             groups[cat].push(item);
@@ -161,15 +191,16 @@
                 var row = document.createElement('div');
                 row.className = 'nommon-checklist-item' + (isChecked ? ' checked' : '');
 
-                var price = parseFloat(itm.estimatedPrice) || 0;
-                var qty = parseInt(itm.quantity, 10) || 1;
-                var itemTotal = price * qty;
+                var price = itm.estimatedPrice;
+                var qty = itm.quantity;
+                var itemTotal = itm.itemTotal;
+                var pkgLabel = itm.packageSize ? '<span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 400; margin-left: 4px;">(' + escapeHtml(itm.packageSize) + ')</span>' : '';
 
                 row.innerHTML =
                     '<div style="display: flex; align-items: center; gap: 10px;">' +
                     '  <input type="checkbox" class="nommon-item-check" data-name="' + escapeHtml(itm.name) + '" data-price="' + price + '" data-qty="' + qty + '" ' + (isChecked ? 'checked' : '') + ' style="cursor: pointer; transform: scale(1.15);" />' +
                     '  <span class="item-name" style="font-weight: 600; font-size: 0.92rem;">' + escapeHtml(itm.name) + '</span>' +
-                    (itm.unit ? '<span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 400;">(' + escapeHtml(itm.unit) + ')</span>' : '') +
+                    pkgLabel +
                     '</div>' +
                     '<div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main); white-space: nowrap;">' +
                     (qty > 1 ? '<span style="font-size: 0.78rem; font-weight: 400; color: var(--text-muted); margin-right: 4px;">' + qty + 'x £' + price.toFixed(2) + ' = </span>' : '') +
@@ -346,8 +377,15 @@
                 var basketValEl = document.getElementById('nommon-basket-val');
                 var bufferValEl = document.getElementById('nommon-buffer-val');
 
-                var estCost = parseFloat(currentPlan.totalEstimatedCost) || 0;
-                var buffer = parseFloat(currentPlan.savingsBuffer) || Math.max(0, weeklyBudget - estCost);
+                var computedBasketTotal = 0.0;
+                var list = currentPlan.shoppingList || [];
+                list.forEach(function (rawItem) {
+                    var norm = normalizeItem(rawItem);
+                    computedBasketTotal += norm.itemTotal;
+                });
+
+                var estCost = computedBasketTotal > 0 ? computedBasketTotal : (parseFloat(currentPlan.totalEstimatedCost) || 0);
+                var buffer = Math.max(0, weeklyBudget - estCost);
 
                 if (basketValEl) basketValEl.textContent = '£' + estCost.toFixed(2);
                 if (bufferValEl) bufferValEl.textContent = '£' + buffer.toFixed(2);
