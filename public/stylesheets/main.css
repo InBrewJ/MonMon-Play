@@ -1362,3 +1362,14 @@ hr {
   background: rgba(245, 158, 11, 0.25) !important;
 }
 
+/* Disable row hover highlight colors on savings plan items table */
+.savings-plan-table tr:hover,
+#sliced-items-card .w3-table tr:hover {
+  background-color: transparent !important;
+}
+
+.savings-plan-table.w3-striped tbody tr:nth-child(even):hover,
+#sliced-items-card .w3-striped tbody tr:nth-child(even):hover {
+  background-color: var(--table-stripe) !important;
+}
+
