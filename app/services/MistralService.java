@@ -417,22 +417,22 @@ public class MistralService {
                 "Your mission is to construct a balanced 7-day meal plan, batch cooking recipes, and an itemized Sainsbury's shopping list that dynamically adapts to the user's weekly food budget.\n" +
                 "STRICT REQUIREMENTS:\n" +
                 "1. Supermarket: Sainsbury's. Adapt product selection to the user's budget tier:\n" +
-                "   - FRUGAL / TIGHT BUDGETS (<= £60/week, e.g. £50.00): Prioritize Sainsbury's entry-tier budget brand 'Stamford Street Co.' and own-brand value essentials. Focus on economical, budget-stretching recipes.\n" +
-                "   - MODERATE BUDGETS (£60 - £85/week): Balance Sainsbury's own-brand staples with standard fresh meat/poultry and fresh seasonal produce.\n" +
-                "   - GENEROUS / HIGHER BUDGETS (> £85/week, e.g. £115.38): The user has substantial spending power and CAN AFFORD MORE FOOD AND HIGHER QUALITY! Do NOT restrict them to a bare-bones budget basket or cheap fillers. Include quality fresh meats (e.g. Sainsbury's British Chicken Breast Fillets, Lean Beef Steak Mince 5%, Pork Chops/Loin, Bacon/Sausages), fresh fish/salmon fillets, fresh vegetables, berries/fruit, fresh herbs, and Sainsbury's standard or 'Taste the Difference' items alongside smart pantry staples.\n" +
-                "2. Budget ceiling & scaling: The shopping basket total MUST scale up or down to be between 88% and 96% of the user's weekly budget (e.g. for £50.00, target £44.00 - £48.00; for £115.38, target £101.50 - £110.70) leaving a 4-12% safety buffer. Never underspend significantly when the user has a generous budget.\n" +
+                "   - FRUGAL / TIGHT BUDGETS (<= £55/week, e.g. £50.00): MUST SCREAM FRUGALITY! Prioritize Sainsbury's entry-tier budget brand 'Stamford Street Co.' and own-brand value essentials. Focus on economical, budget-stretching recipes (lentils, beans, eggs, oats, frozen veg).\n" +
+                "   - MODERATE BUDGETS (£55 - £85/week, e.g. £70.00): Wholesome everyday cooking. Balance Sainsbury's own-brand staples with standard fresh chicken, beef mince, eggs, and seasonal produce.\n" +
+                "   - GENEROUS BUDGETS (£85 - £140/week, e.g. £115.38): Ample spending power! Include quality fresh meats (British chicken breast fillets, lean beef mince 5%, pork loin/chops, bacon), fresh salmon fillets, fresh produce, and standard or 'Taste the Difference' items.\n" +
+                "   - OPULENT / LUXURY GOURMET BUDGETS (> £140/week, e.g. £175 - £200+): MUST SCREAM OPULENCE AND GOURMET INDULGENCE! Exclusively Sainsbury's 'Taste the Difference' (TTD) range, prime butcher cuts, and luxury seafood: 30-day aged Ribeye / Sirloin / Fillet Steaks (£9-£12/pack), Scottish Salmon Fillets (£7), Raw Jumbo King Prawns (£5.50), King Scallops (£6.50), Rack of Lamb / Lamb Chops (£8), Prosciutto di Parma, Oak Smoked Salmon, 24M Parmigiano Reggiano, French Camembert, Single Estate Extra Virgin Olive Oil, Artisan Sourdough, Organic Berries, Asparagus spears, Tenderstem broccoli, Fresh herb pots. Recipes must be gourmet restaurant-standard dining.\n" +
+                "2. Budget ceiling & scaling: The shopping basket total MUST strictly scale up or down to be between 88% and 96% of the user's weekly budget (e.g. for £50.00, target £44.00 - £48.00; for £115.38, target £101.50 - £110.70; for £200.00, target £176.00 - £192.00) leaving a 4-12% safety buffer.\n" +
+                "   CRITICAL: You MUST NOT underspend! If the user gives a £200 budget, returning a £60-£80 basket is a FAILURE. Scale quantities of luxury cuts (e.g. 2 packs of ribeyes, 2 packs of salmon/prawns, premium cheeses, olive oil) so the basket total lands firmly inside the 88%-96% target range.\n" +
                 "3. Nutrition & Dietary Variety:\n" +
-                "   - On tight budgets (£50/wk): Rely on economical protein (eggs, lentils, chickpeas, peanut butter, canned tuna, budget mince/chicken portions) and batch-cooked staples.\n" +
-                "   - On higher budgets (£115.38/wk): The user CAN AFFORD MEAT AND SEAFOOD! Ensure generous portions of fresh meat/poultry/fish are included in the grocery list and featured across daily lunches/dinners and batch recipes (e.g. Pan-Seared Salmon & Greens, Roast Chicken & Veg, Lean Beef Bolognese or Chilli Con Carne, Chicken Stir-Fry, Steak or Meatball Pasta). Nutrition should reflect abundant fresh ingredients and high-quality protein (80g-120g/day).\n" +
-                "4. Recipes: 2 to 3 simple batch-cooking or dinner recipes utilizing the purchased ingredients. Tailor recipe richness to the budget tier (frugal lentil/bean/egg batch cooking for tight budgets; delicious fresh meat, poultry, fish, and produce recipes for generous budgets). Instructions must be concise (3-4 steps).\n" +
-                "5. CONCISENESS & ITEM LIMITS: Keep the shopping list between 20 and 30 core supermarket items (do not list dozens of tiny herbs, spices, or bottled water). Keep daily meal descriptions concise (1 sentence each) so the full JSON response completes cleanly without truncation.\n" +
+                "   - On frugal budgets (£50/wk): Rely on economical protein (eggs, lentils, chickpeas, peanut butter, canned tuna, budget mince/chicken portions) and batch-cooked staples.\n" +
+                "   - On opulent budgets (£200/wk): Abundant gourmet nutrition! Prime steaks, fresh seafood, rack of lamb, organic produce, fresh berries, artisan cheeses, high protein (100g-140g/day).\n" +
+                "4. Recipes: 2 to 3 batch-cooking or dinner recipes utilizing the purchased ingredients. Tailor recipe style to the budget tier (frugal lentil/bean batch cooking for tight budgets; gourmet restaurant recipes with steaks, seafood, and reductions for opulent budgets). Keep instructions concise (3-4 steps).\n" +
+                "5. ITEM COUNTS & BASKET VALUE: Keep the shopping list between 22 and 35 items. On higher budgets, use higher-value luxury cuts and multi-packs (e.g. £8-£12 steaks, £7 salmon, £5.50 prawns) so the basket total reaches the required 88%-96% spend target without endless tiny items.\n" +
                 "6. CRITICAL ITEM QUANTITIES & PACKAGING:\n" +
                 "   - 'quantity' is STRICTLY the integer number of physical retail packages/tins/loaves to buy off the supermarket shelf (usually 1, 2, or 3). NEVER set 'quantity' to grams, millilitres, or individual grains/cubes/slices!\n" +
-                "   - 'packageSize' describes the weight or volume of that retail unit (e.g. '500g bag', '640g pack', '500g pack', '1kg bag', '340g jar', '500ml bottle', '6 pack', '800g loaf', '400g tin').\n" +
-                "   - 'estimatedPrice' is the retail price for ONE package unit (e.g. 0.55 for a 500g bag of oats, 4.60 for a 640g pack of chicken breast fillets, 4.25 for a 500g pack of lean beef mince, 1.00 for a 340g jar of peanut butter, 2.50 for a 500ml olive oil bottle).\n" +
-                "   - Example: 500g of oats -> name: 'Stamford Street Co. Porridge Oats', packageSize: '500g bag', quantity: 1, estimatedPrice: 0.55. (Total = 1 x 0.55 = £0.55, NOT 500 x £0.55!).\n" +
-                "   - Example: 640g fresh chicken breasts -> name: 'Sainsbury\\'s British Chicken Breast Fillets', packageSize: '640g pack', quantity: 1, estimatedPrice: 4.60. (Total = 1 x 4.60 = £4.60).\n" +
-                "   - Example: 2 tins of chopped tomatoes -> name: 'Sainsbury\\'s Chopped Tomatoes', packageSize: '400g tin', quantity: 2, estimatedPrice: 0.35. (Total = 2 x 0.35 = £0.70).\n" +
+                "   - 'packageSize' describes the weight or volume of that retail unit (e.g. '500g bag', '640g pack', '2 pack', '340g jar', '500ml bottle', '6 pack', '800g loaf', '400g tin').\n" +
+                "   - 'estimatedPrice' is the retail price for ONE package unit (e.g. 0.55 for oats, 10.50 for a pack of 2 TTD Ribeye Steaks, 7.00 for Scottish Salmon, 4.60 for chicken breast fillets, 2.50 for olive oil).\n" +
+                "   - Example: 2 packs of TTD Ribeye Steaks -> name: 'Taste the Difference British Beef Ribeye Steak', packageSize: '2 pack', quantity: 2, estimatedPrice: 10.50. (Total = 2 x 10.50 = £21.00).\n" +
                 "   - 'totalEstimatedCost' must strictly equal the mathematical sum of (quantity * estimatedPrice) across all items in the shoppingList.\n" +
                 "7. Output Format: Pure JSON matching this exact structure without markdown backticks:\n" +
                 "{\n" +
@@ -459,22 +459,41 @@ public class MistralService {
         float maxTarget = weeklyBudget * 0.96f;
         String tierDescription;
 
-        if (weeklyBudget >= 85.0f) {
+        if (weeklyBudget >= 140.0f) {
             tierDescription = String.format(java.util.Locale.US,
-                    "Budget tier: GENEROUS / HIGH (£%.2f/week). The user can comfortably afford quality food now! Include quality fresh meat, poultry, and fish (e.g. chicken breast fillets, lean minced beef, salmon fillets, pork loin/chops), fresh vegetables/fruit, and standard Sainsbury's selections. DO NOT return a bare-bones budget basket or rely solely on cheap fillers. Scale the basket items and quantities so the total estimated cost is between £%.2f and £%.2f (leaving a prudent 4-12%% buffer). Feature fresh meat and appetizing, wholesome meals across the 7-day schedule and batch recipes.",
-                    weeklyBudget, minTarget, maxTarget);
-        } else if (weeklyBudget >= 60.0f) {
+                    "Budget tier: PURE OPULENCE / GOURMET LUXURY (£%.2f/week).\n" +
+                    "- THIS PLAN MUST SCREAM OPULENCE, LUXURY, AND GOURMET INDULGENCE!\n" +
+                    "- Supermarket Range: Exclusively Sainsbury's 'Taste the Difference' (TTD) premium range, organic produce, and prime cuts.\n" +
+                    "- Luxury items to include: Taste the Difference 30-day aged Ribeye / Sirloin / Fillet Steaks (£9-£12/pack), Fresh Scottish Salmon Fillets (£7.00), Raw Jumbo King Prawns (£5.50), King Scallops (£6.50), British Rack of Lamb / Lamb Chops (£8.00), Prosciutto di Parma (£3.50), Oak Smoked Scottish Salmon (£5.00), 24M Parmigiano Reggiano (£4.50), French Camembert (£3.50), Single Estate Extra Virgin Olive Oil (£7.50), Artisan Sourdough Boule (£2.50), Organic Berries (£3.00), Asparagus spears (£2.50), Tenderstem broccoli (£2.20), Fresh herb bunches (£1.00).\n" +
+                    "- STRICT BASKET TARGET: Your shopping basket total MUST be between £%.2f and £%.2f (88%% to 96%% of £%.2f). DO NOT return a £60-£80 basket! To reach £%.2f+, select these luxury items and buy multiple packs of prime steaks (e.g. qty 2), salmon (qty 2), king prawns (qty 2), luxury cheeses, and gourmet pantry staples.\n" +
+                    "- Recipes: Opulent restaurant-quality recipes (e.g. Pan-seared Ribeye with truffle garlic herb butter & asparagus, Seared Scallop & King Prawn tagliatelle, Herb-crusted Rack of Lamb).",
+                    weeklyBudget, minTarget, maxTarget, weeklyBudget, minTarget);
+        } else if (weeklyBudget >= 85.0f) {
             tierDescription = String.format(java.util.Locale.US,
-                    "Budget tier: MODERATE (£%.2f/week). Incorporate a balanced selection of fresh meat or poultry 3-4 days a week with wholesome pantry staples, eggs, dairy, and seasonal produce. Target basket total between £%.2f and £%.2f.",
+                    "Budget tier: GENEROUS / HIGH (£%.2f/week).\n" +
+                    "- The user has ample food budget! Include quality fresh meat, poultry, and fish (e.g. chicken breast fillets, lean minced beef, salmon fillets, pork loin/chops), fresh produce, and standard Sainsbury's and Taste the Difference selections.\n" +
+                    "- STRICT BASKET TARGET: Scale the basket items and quantities so the total estimated cost is between £%.2f and £%.2f (88%% to 96%% of £%.2f, leaving a 4-12%% buffer). DO NOT underspend with a cheap basket.\n" +
+                    "- Feature fresh meats and wholesome, rich recipes across the 7-day schedule.",
+                    weeklyBudget, minTarget, maxTarget, weeklyBudget);
+        } else if (weeklyBudget >= 55.0f) {
+            tierDescription = String.format(java.util.Locale.US,
+                    "Budget tier: MODERATE / BALANCED (£%.2f/week).\n" +
+                    "- Incorporate a balanced selection of fresh chicken, beef mince, seasonal produce, and Sainsbury's own-brand staples.\n" +
+                    "- STRICT BASKET TARGET: Basket total MUST be between £%.2f and £%.2f.",
                     weeklyBudget, minTarget, maxTarget);
         } else {
             tierDescription = String.format(java.util.Locale.US,
-                    "Budget tier: FRUGAL / BUDGET (£%.2f/week). Focus on Sainsbury's entry-tier brand 'Stamford Street Co.' and own-brand value staples. Prioritize economical protein sources (eggs, lentils, chickpeas, peanut butter, canned tuna, budget poultry portions) and hearty batch cooking that stretches ingredients. Target basket total between £%.2f and £%.2f with a safety buffer.",
+                    "Budget tier: FRUGAL / BUDGET STAPLES (£%.2f/week).\n" +
+                    "- THIS PLAN MUST SCREAM FRUGALITY AND COST-EFFICIENCY!\n" +
+                    "- Prioritize Sainsbury's entry-tier brand 'Stamford Street Co.' and own-brand value staples.\n" +
+                    "- Protein should come from economical sources: eggs, lentils, chickpeas, peanut butter, canned tuna, budget poultry portions.\n" +
+                    "- Hearty batch cooking that stretches ingredients (dal, chili, pasta bake, oats).\n" +
+                    "- STRICT BASKET TARGET: Basket total MUST be between £%.2f and £%.2f with a safety buffer.",
                     weeklyBudget, minTarget, maxTarget);
         }
 
         return String.format(java.util.Locale.US,
-                "Generate a 7-day NomMon meal plan and Sainsbury's shopping list.\n%s%s\nKeep shopping list to 20-30 core items and meal descriptions concise so full JSON completes cleanly.\nRemember: 'quantity' is STRICTLY integer count of retail physical packs (e.g. 1 pack of chicken, 1 bag of oats), NEVER grams or ml.",
+                "Generate a 7-day NomMon meal plan and Sainsbury's shopping list.\n%s%s\nKeep shopping list to 22-35 items and meal descriptions concise so full JSON completes cleanly.\nRemember: 'quantity' is STRICTLY integer count of retail physical packs (e.g. 1 pack of steaks, 1 bag of oats), NEVER grams or ml.",
                 tierDescription,
                 (postcode != null && !postcode.trim().isEmpty() ? "\nUser location/postcode: " + postcode.trim() + "." : "")
         );

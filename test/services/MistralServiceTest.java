@@ -188,24 +188,36 @@ public class MistralServiceTest {
     public void testNomMonPromptsAdaptToBudgetTiers() {
         String systemPrompt = MistralService.buildNomMonSystemPrompt();
         assertThat(systemPrompt).contains("Meat & Poultry");
-        assertThat(systemPrompt).contains("GENEROUS / HIGHER BUDGETS");
+        assertThat(systemPrompt).contains("OPULENT / LUXURY GOURMET BUDGETS");
         assertThat(systemPrompt).contains("FRUGAL / TIGHT BUDGETS");
         assertThat(systemPrompt).contains("Stamford Street Co.");
+        assertThat(systemPrompt).contains("Taste the Difference");
+
+        // Opulent budget £200.00: should scream opulence, luxury steaks, seafood, and target £176-£192
+        String opulentPrompt = MistralService.buildNomMonUserPrompt(200.0f, "SW1A 1AA");
+        assertThat(opulentPrompt).contains("PURE OPULENCE");
+        assertThat(opulentPrompt).contains("MUST SCREAM OPULENCE");
+        assertThat(opulentPrompt).contains("Taste the Difference");
+        assertThat(opulentPrompt).contains("Ribeye");
+        assertThat(opulentPrompt).contains("DO NOT return a £60-£80 basket");
+        assertThat(opulentPrompt).contains("176.00");
+        assertThat(opulentPrompt).contains("192.00");
+        assertThat(opulentPrompt).contains("SW1A 1AA");
 
         // High budget £115.38: should clearly instruct Mistral that meat/seafood is affordable
-        String highPrompt = MistralService.buildNomMonUserPrompt(115.38f, "SW1A 1AA");
+        String highPrompt = MistralService.buildNomMonUserPrompt(115.38f, null);
         assertThat(highPrompt).contains("GENEROUS / HIGH");
         assertThat(highPrompt).contains("£115.38/week");
         assertThat(highPrompt).contains("quality fresh meat");
-        assertThat(highPrompt).contains("DO NOT return a bare-bones budget basket");
-        assertThat(highPrompt).contains("SW1A 1AA");
+        assertThat(highPrompt).contains("101.53");
 
         // Frugal budget £50.00: should guide towards economical staples & batch cooking
         String budgetPrompt = MistralService.buildNomMonUserPrompt(50.0f, null);
-        assertThat(budgetPrompt).contains("FRUGAL / BUDGET");
+        assertThat(budgetPrompt).contains("FRUGAL / BUDGET STAPLES");
         assertThat(budgetPrompt).contains("£50.00/week");
+        assertThat(budgetPrompt).contains("MUST SCREAM FRUGALITY");
         assertThat(budgetPrompt).contains("Stamford Street Co.");
-        assertThat(budgetPrompt).contains("economical protein");
+        assertThat(budgetPrompt).contains("economical");
     }
 
     @Test

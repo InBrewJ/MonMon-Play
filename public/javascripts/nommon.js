@@ -362,13 +362,19 @@
         var badge = document.getElementById('nommon-budget-tier-badge');
         var subtitle = document.getElementById('nommon-basket-subtitle');
         if (!badge) return;
-        if (budget >= 85) {
-            badge.textContent = 'Generous / Meat & Fish';
+        if (budget >= 140) {
+            badge.textContent = 'Opulent / Gourmet Luxury';
+            badge.style.background = 'rgba(168, 85, 247, 0.15)';
+            badge.style.color = '#9333ea';
+            badge.style.border = '1px solid #9333ea';
+            if (subtitle) subtitle.textContent = 'Taste the Difference prime steaks & seafood';
+        } else if (budget >= 85) {
+            badge.textContent = 'Generous / Quality Fresh';
             badge.style.background = 'rgba(22, 163, 74, 0.15)';
             badge.style.color = '#16a34a';
             badge.style.border = '1px solid #16a34a';
             if (subtitle) subtitle.textContent = 'Fresh meat, produce & staples';
-        } else if (budget >= 60) {
+        } else if (budget >= 55) {
             badge.textContent = 'Moderate / Balanced';
             badge.style.background = 'rgba(59, 130, 246, 0.15)';
             badge.style.color = '#2563eb';
