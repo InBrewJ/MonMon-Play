@@ -373,6 +373,10 @@ public class HistoricSpentCalculator {
         return resolved;
     }
 
+    public static double calculateAccountSpent(Account acc, long startSec) {
+        return calculateAccountSpent(acc, startSec, Long.MAX_VALUE);
+    }
+
     public static double calculateAccountSpent(Account acc, long startSec, long endSec) {
         if (acc == null || acc.balances == null || acc.balances.isEmpty()) {
             return 0.0;

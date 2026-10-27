@@ -327,34 +327,7 @@ public class Spog {
         }
 
         for (Account a : uniqueAccounts.values()) {
-            if (a == null || a.balances == null || a.balances.isEmpty()) {
-                continue;
-            }
-
-            List<Balance> validBalances = a.balances.stream()
-                    .filter(b -> b != null && b.getTimestamp() != null && b.getValue() != null)
-                    .collect(Collectors.toList());
-
-            if (validBalances.isEmpty()) {
-                continue;
-            }
-
-            List<Balance> sorted = new ArrayList<>(validBalances);
-            sorted.sort(Comparator
-                    .comparing((Balance b) -> toEpochSec(b.getTimestamp()))
-                    .thenComparing(b -> b.getId() != null ? b.getId() : 0L));
-
-            for (int i = 1; i < sorted.size(); i++) {
-                Balance curr = sorted.get(i);
-                long tCurr = toEpochSec(curr.getTimestamp());
-                if (tCurr >= cycleStartSec) {
-                    Balance prev = sorted.get(i - 1);
-                    double delta = (double) curr.getValue() - (double) prev.getValue();
-                    if (delta < 0) {
-                        totalSpent += (-delta);
-                    }
-                }
-            }
+            totalSpent += helpers.HistoricSpentCalculator.calculateAccountSpent(a, cycleStartSec);
         }
 
         return round2(Math.max(0.0, totalSpent));
