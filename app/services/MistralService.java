@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import models.Account;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import viewModels.SpendingPlan;
 import viewModels.Spog;
 
@@ -16,12 +18,17 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Singleton
 public class MistralService {
+    private static final Logger logger = LoggerFactory.getLogger(MistralService.class);
+    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
+
     private final Config config;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient;
@@ -48,6 +55,42 @@ public class MistralService {
     public MistralService(Config config, HttpClient httpClient) {
         this.config = config;
         this.httpClient = httpClient;
+        logConfigStatus();
+    }
+
+    private void log(String level, String msg) {
+        String timestamp = ISO_FORMATTER.format(Instant.now());
+        String formatted = String.format("[%s] [MistralService] [%s] %s", timestamp, level, msg);
+        if ("ERROR".equalsIgnoreCase(level)) {
+            logger.error(formatted);
+            System.err.println(formatted);
+        } else if ("WARN".equalsIgnoreCase(level)) {
+            logger.warn(formatted);
+            System.out.println(formatted);
+        } else {
+            logger.info(formatted);
+            System.out.println(formatted);
+        }
+    }
+
+    private void logConfigStatus() {
+        String key = getApiKey();
+        if (key.isEmpty()) {
+            log("WARN", "Mistral API key is NOT configured. Neither 'mistral.apiKey' in conf nor 'MISTRAL_API_KEY' in environment found.");
+        } else {
+            String source = (config != null && config.hasPath("mistral.apiKey") && !config.getString("mistral.apiKey").isBlank())
+                    ? "conf/application.conf (mistral.apiKey)"
+                    : "environment variable (MISTRAL_API_KEY)";
+            log("INFO", String.format("Mistral API configured successfully from %s. Key=%s, Model=%s",
+                    source, maskKey(key), getModel()));
+        }
+    }
+
+    public static String maskKey(String key) {
+        if (key == null || key.isBlank()) return "[NONE]";
+        String trimmed = key.trim();
+        if (trimmed.length() <= 8) return trimmed.substring(0, Math.min(2, trimmed.length())) + "***";
+        return trimmed.substring(0, 4) + "..." + trimmed.substring(trimmed.length() - 4) + " (len=" + trimmed.length() + ")";
     }
 
     public boolean isConfigured() {
@@ -76,8 +119,10 @@ public class MistralService {
     public void clearCache(String userId) {
         if (userId != null) {
             userAdviceCache.remove(userId);
+            log("INFO", "Cleared advice cache for user=" + userId);
         } else {
             userAdviceCache.clear();
+            log("INFO", "Cleared entire advice cache");
         }
     }
 
@@ -145,8 +190,31 @@ public class MistralService {
         return sb.toString();
     }
 
+    public static String extractErrorMessage(String respBody) {
+        if (respBody == null || respBody.isBlank()) return null;
+        try {
+            ObjectMapper om = new ObjectMapper();
+            JsonNode root = om.readTree(respBody);
+            if (root.has("message") && !root.path("message").asText().isBlank()) {
+                return root.path("message").asText();
+            }
+            if (root.has("detail") && !root.path("detail").asText().isBlank()) {
+                return root.path("detail").asText();
+            }
+            if (root.has("error") && root.path("error").has("message")) {
+                return root.path("error").path("message").asText();
+            }
+        } catch (Exception ignored) {
+        }
+        return respBody.length() > 200 ? respBody.substring(0, 200) + "..." : respBody;
+    }
+
     public CompletableFuture<String> askEd(String userId, String financialContextPrompt, boolean forceRefresh) {
+        log("INFO", String.format("askEd requested: user='%s', forceRefresh=%s, promptLength=%d",
+                userId, forceRefresh, financialContextPrompt != null ? financialContextPrompt.length() : 0));
+
         if (!isConfigured()) {
+            log("WARN", String.format("askEd rejected: Mistral API key is not configured for user='%s'", userId));
             return CompletableFuture.completedFuture(
                     "Ed needs a Mistral API key to give advice! Please configure `mistral.apiKey` in `conf/application.conf` or set the `MISTRAL_API_KEY` environment variable."
             );
@@ -156,13 +224,23 @@ public class MistralService {
         if (!forceRefresh && userId != null) {
             CacheEntry cached = userAdviceCache.get(userId);
             if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
+                long ageSec = (now - cached.timestamp) / 1000L;
+                log("INFO", String.format("askEd cache HIT for user='%s' (cached %ds ago, TTL=%ds). Returning cached advice.",
+                        userId, ageSec, CACHE_TTL_MS / 1000L));
                 return CompletableFuture.completedFuture(cached.text);
             }
         }
 
+        long startTime = System.currentTimeMillis();
+        String model = getModel();
+        String apiKey = getApiKey();
+
+        log("INFO", String.format("askEd sending API request: user='%s', model='%s', key=%s, endpoint='https://api.mistral.ai/v1/chat/completions'",
+                userId, model, maskKey(apiKey)));
+
         try {
             ObjectNode payload = mapper.createObjectNode();
-            payload.put("model", getModel());
+            payload.put("model", model);
             payload.put("temperature", 0.7);
             payload.put("max_tokens", 700);
 
@@ -186,7 +264,7 @@ public class MistralService {
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.mistral.ai/v1/chat/completions"))
-                    .header("Authorization", "Bearer " + getApiKey())
+                    .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
                     .timeout(Duration.ofSeconds(25))
@@ -195,6 +273,7 @@ public class MistralService {
 
             return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                     .thenApply(response -> {
+                        long durationMs = System.currentTimeMillis() - startTime;
                         int status = response.statusCode();
                         String respBody = response.body();
 
@@ -202,6 +281,15 @@ public class MistralService {
                             try {
                                 JsonNode root = mapper.readTree(respBody);
                                 JsonNode choices = root.path("choices");
+                                JsonNode usage = root.path("usage");
+
+                                int promptTokens = usage.path("prompt_tokens").asInt(-1);
+                                int completionTokens = usage.path("completion_tokens").asInt(-1);
+                                int totalTokens = usage.path("total_tokens").asInt(-1);
+
+                                log("INFO", String.format("Mistral API SUCCESS (HTTP 200) in %dms for user='%s'. Tokens: prompt=%d, completion=%d, total=%d",
+                                        durationMs, userId, promptTokens, completionTokens, totalTokens));
+
                                 if (choices.isArray() && choices.size() > 0) {
                                     String text = choices.get(0).path("message").path("content").asText();
                                     if (userId != null && text != null && !text.isBlank()) {
@@ -209,20 +297,46 @@ public class MistralService {
                                     }
                                     return text;
                                 }
+                                log("WARN", "Mistral API returned HTTP 200 but choices array was empty: " + respBody);
                                 return "Ed looked into the crystal ball, but found no response from Mistral.";
                             } catch (Exception e) {
+                                log("ERROR", String.format("Failed to parse Mistral HTTP 200 JSON for user='%s': %s. Raw: %s",
+                                        userId, e.getMessage(), respBody));
                                 return "Ed couldn't parse Mistral's response (" + e.getMessage() + ")";
                             }
-                        } else if (status == 401) {
-                            return "Ed says: The Mistral API key provided appears to be invalid or unauthorized. Please verify your `MISTRAL_API_KEY`.";
                         } else if (status == 429) {
-                            return "Ed says: Mistral's rate limit was reached! Give it a minute, then click 'Ask Ed' to try again.";
+                            String errorDetail = extractErrorMessage(respBody);
+                            log("WARN", String.format("Mistral API RATE LIMIT (HTTP 429) in %dms for user='%s'. Detail='%s'. Full response: %s",
+                                    durationMs, userId, errorDetail, respBody));
+                            return "Ed says: Mistral returned rate limit (HTTP 429)" +
+                                    (errorDetail != null ? ": \"" + errorDetail + "\"" : "") +
+                                    ". Please wait a moment before trying again, or check your Mistral tier/credits.";
+                        } else if (status == 401) {
+                            String errorDetail = extractErrorMessage(respBody);
+                            log("ERROR", String.format("Mistral API AUTH FAILED (HTTP 401) in %dms for user='%s' using key=%s. Detail='%s'. Full response: %s",
+                                    durationMs, userId, maskKey(apiKey), errorDetail, respBody));
+                            return "Ed says: Mistral authentication failed (HTTP 401)" +
+                                    (errorDetail != null ? ": \"" + errorDetail + "\"" : "") +
+                                    ". Check that your `MISTRAL_API_KEY` is active and correct.";
+                        } else {
+                            String errorDetail = extractErrorMessage(respBody);
+                            log("ERROR", String.format("Mistral API ERROR (HTTP %d) in %dms for user='%s'. Detail='%s'. Full response: %s",
+                                    status, durationMs, userId, errorDetail, respBody));
+                            return "Ed says: Mistral returned HTTP " + status +
+                                    (errorDetail != null ? ": \"" + errorDetail + "\"" : ": " + respBody);
                         }
-                        return "Ed says: Mistral returned HTTP " + status + ": " + respBody;
                     })
-                    .exceptionally(ex -> "Ed couldn't reach Mistral: " + ex.getMessage());
+                    .exceptionally(ex -> {
+                        long durationMs = System.currentTimeMillis() - startTime;
+                        log("ERROR", String.format("Mistral API REQUEST FAILED in %dms for user='%s': %s",
+                                durationMs, userId, ex.getMessage()));
+                        return "Ed couldn't reach Mistral (" + ex.getMessage() + "). Check server logs for details.";
+                    });
 
         } catch (Exception e) {
+            long durationMs = System.currentTimeMillis() - startTime;
+            log("ERROR", String.format("Error building Mistral request in %dms for user='%s': %s",
+                    durationMs, userId, e.getMessage()));
             return CompletableFuture.completedFuture("Ed encountered an error preparing the request: " + e.getMessage());
         }
     }

@@ -116,6 +116,10 @@ public class SpogController extends Controller {
     public CompletionStage<Result> edSays(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         boolean force = request.queryString("force").map(Boolean::parseBoolean).orElse(false);
+        String timestamp = java.time.format.DateTimeFormatter.ISO_INSTANT.format(java.time.Instant.now());
+        String userId = sup != null ? sup.getUserId() : "unknown";
+        System.out.println(String.format("[%s] [SpogController] [INFO] /api/ed-says requested: user='%s', force=%s",
+                timestamp, userId, force));
 
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -125,7 +129,7 @@ public class SpogController extends Controller {
                 throw new RuntimeException(e);
             }
         }, ec.current()).thenCompose(prompt ->
-                mistralService.askEd(sup.getUserId(), prompt, force)
+                mistralService.askEd(userId, prompt, force)
                         .thenApply(advice -> {
                             ObjectNode res = play.libs.Json.newObject();
                             res.put("edSays", advice);
@@ -133,6 +137,8 @@ public class SpogController extends Controller {
                             return ok(res);
                         })
         ).exceptionally(ex -> {
+            System.err.println(String.format("[%s] [SpogController] [ERROR] /api/ed-says exception for user='%s': %s",
+                    timestamp, userId, ex.getMessage()));
             ObjectNode err = play.libs.Json.newObject();
             err.put("edSays", "Ed stumbled while reading your financial stars: " + ex.getMessage());
             err.put("configured", mistralService.isConfigured());
