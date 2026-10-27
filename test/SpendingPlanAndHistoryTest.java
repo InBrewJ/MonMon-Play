@@ -175,4 +175,53 @@ public class SpendingPlanAndHistoryTest {
         // Daily fun pace: £70 / 15 = £4.67/day
         assertThat(sp.getAdjustedFunLeftPerDay()).isEqualTo(4.67);
     }
+
+    @Test
+    public void historicSpentUsesLastMonthlyPotInCycleAndNegativeDeltasOnly() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+        Account acc = debit(100L, "Main Current");
+
+        // Payday balance on Oct 1: 1000
+        acc.balances.add(bal(acc, 1000f, LocalDate.of(2026, 10, 1), 9));
+        // Oct 5: Spent 200 (balance drops to 800) -> delta = -200
+        acc.balances.add(bal(acc, 800f, LocalDate.of(2026, 10, 5), 12));
+        // Oct 10: Money in from outside source: +500 (balance goes up to 1300) -> delta = +500 (IGNORED)
+        acc.balances.add(bal(acc, 1300f, LocalDate.of(2026, 10, 10), 12));
+        // Oct 15: Spent 300 (balance drops to 1000) -> delta = -300
+        acc.balances.add(bal(acc, 1000f, LocalDate.of(2026, 10, 15), 14));
+
+        // Two pots created in October:
+        // Pot A: created Oct 1, archived Oct 12
+        // Pot B: created Oct 12 (the last monthly pot used in this cycle)
+        long oct1Sec = LocalDate.of(2026, 10, 1).atStartOfDay(UK).toEpochSecond();
+        long oct12Sec = LocalDate.of(2026, 10, 12).atStartOfDay(UK).toEpochSecond();
+
+        Pot potA = new Pot();
+        potA.setType(Pot.PotType.MONTHLY);
+        potA.setCreatedAt(oct1Sec);
+        potA.setLastUpdated(oct12Sec);
+        potA.setArchived(true);
+        potA.addAccount(acc);
+
+        Pot potB = new Pot();
+        potB.setType(Pot.PotType.MONTHLY);
+        potB.setCreatedAt(oct12Sec);
+        potB.setLastUpdated(oct12Sec);
+        potB.setArchived(false);
+        potB.addAccount(acc);
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                List.of(potA, potB), List.of(acc), payday, today, UK, 1000f);
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        assertThat(cycle).isNotNull();
+
+        // Must pick potB (the last monthly pot used in October)
+        assertThat(cycle.getPotConfig()).isSameAs(potB);
+
+        // Spending must be exactly 200 + 300 = 500 (using negative deltas only)
+        // The +500 deposit must NOT reduce the spending to 0!
+        assertThat(cycle.getTotalSpent()).isEqualTo(500.0);
+    }
 }

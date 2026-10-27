@@ -274,18 +274,19 @@ public class HistoricSpentCalculator {
     }
 
     /**
-     * Picks the monthly pot config that was active for the largest part of the cycle.
-     * Pots are expected sorted by createdAt. Only one monthly pot is active at a time
-     * (creating a new one soft-deletes the old), so a pot's active period runs from its
-     * createdAt until the next pot's createdAt (or its own archive time if earlier).
+     * Picks the LAST monthly pot configuration used during that month/cycle.
+     * Pots are expected sorted by createdAt ascending. If multiple monthly pots were
+     * active or configured during the cycle, the latest one used in that cycle is selected.
      */
     public static Pot findActivePotForCycle(List<Pot> pots, long cycleStartSec, long cycleEndSec) {
         if (pots == null || pots.isEmpty()) {
             return null;
         }
 
-        Pot best = null;
-        long bestOverlap = 0;
+        Pot lastUsed = null;
+        long minMeaningfulSec = 12 * 3600L; // 12 hours active duration in the cycle
+
+        // 1. Find the last pot with meaningful active duration in the cycle
         for (int i = 0; i < pots.size(); i++) {
             Pot p = pots.get(i);
             long start = p.getCreatedAt() != null ? p.getCreatedAt() : Long.MIN_VALUE;
@@ -297,16 +298,46 @@ public class HistoricSpentCalculator {
                 end = Math.min(end, p.getLastUpdated());
             }
             long overlap = Math.min(end, cycleEndSec) - Math.max(start, cycleStartSec);
-            if (overlap > 0 && overlap >= bestOverlap) {
-                best = p;
-                bestOverlap = overlap;
+            if (overlap >= minMeaningfulSec) {
+                lastUsed = p;
             }
         }
 
-        if (best != null) {
-            return best;
+        if (lastUsed != null) {
+            return lastUsed;
         }
-        return pots.get(0);
+
+        // 2. Fallback: last pot with any overlap > 0
+        for (int i = 0; i < pots.size(); i++) {
+            Pot p = pots.get(i);
+            long start = p.getCreatedAt() != null ? p.getCreatedAt() : Long.MIN_VALUE;
+            long end = (i + 1 < pots.size() && pots.get(i + 1).getCreatedAt() != null)
+                    ? pots.get(i + 1).getCreatedAt()
+                    : Long.MAX_VALUE;
+            if (p.isArchived() && p.getLastUpdated() != null && p.getCreatedAt() != null
+                    && p.getLastUpdated() > p.getCreatedAt()) {
+                end = Math.min(end, p.getLastUpdated());
+            }
+            long overlap = Math.min(end, cycleEndSec) - Math.max(start, cycleStartSec);
+            if (overlap > 0) {
+                lastUsed = p;
+            }
+        }
+
+        if (lastUsed != null) {
+            return lastUsed;
+        }
+
+        // 3. Fallback: most recent pot created on or before cycleEndSec
+        for (int i = pots.size() - 1; i >= 0; i--) {
+            Pot p = pots.get(i);
+            long start = p.getCreatedAt() != null ? p.getCreatedAt() : Long.MIN_VALUE;
+            if (start <= cycleEndSec) {
+                return p;
+            }
+        }
+
+        return pots.get(pots.size() - 1);
     }
 
     public static List<Account> resolvePotAccounts(Pot pot, List<Account> allAccounts) {
