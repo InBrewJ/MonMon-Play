@@ -1,5 +1,7 @@
 package viewModels;
 
+import models.Account;
+
 import static helpers.MathHelpers.round2;
 
 public class SpendingPlan {
@@ -17,6 +19,16 @@ public class SpendingPlan {
     private final Double spentThisMonth;
     private final int daysUntilNextPayday;
     private int daysInCycle = 0;
+
+    // Optional category accounts & actual spend
+    private String foodAccountName;
+    private String fuelAccountName;
+    private String transportAccountName;
+    private String funAccountName;
+    private Double actualFoodSpent;
+    private Double actualFuelSpent;
+    private Double actualTransportSpent;
+    private Double actualFunSpent;
 
     public SpendingPlan(
             String name,
@@ -54,11 +66,19 @@ public class SpendingPlan {
     public SpendingPlan withContext(Float maxMonthlyAllowance, Double spentThisMonth, int daysUntilNextPayday, int daysInCycle) {
         SpendingPlan sp = withContext(maxMonthlyAllowance, spentThisMonth, daysUntilNextPayday);
         sp.daysInCycle = Math.max(0, daysInCycle);
+        sp.foodAccountName = this.foodAccountName;
+        sp.fuelAccountName = this.fuelAccountName;
+        sp.transportAccountName = this.transportAccountName;
+        sp.funAccountName = this.funAccountName;
+        sp.actualFoodSpent = this.actualFoodSpent;
+        sp.actualFuelSpent = this.actualFuelSpent;
+        sp.actualTransportSpent = this.actualTransportSpent;
+        sp.actualFunSpent = this.actualFunSpent;
         return sp;
     }
 
     public SpendingPlan withContext(Float maxMonthlyAllowance, Double spentThisMonth, int daysUntilNextPayday) {
-        return new SpendingPlan(
+        SpendingPlan sp = new SpendingPlan(
                 this.name,
                 this.foodSpend,
                 this.fuelSpend,
@@ -68,6 +88,45 @@ public class SpendingPlan {
                 spentThisMonth,
                 daysUntilNextPayday
         );
+        sp.daysInCycle = this.daysInCycle;
+        sp.foodAccountName = this.foodAccountName;
+        sp.fuelAccountName = this.fuelAccountName;
+        sp.transportAccountName = this.transportAccountName;
+        sp.funAccountName = this.funAccountName;
+        sp.actualFoodSpent = this.actualFoodSpent;
+        sp.actualFuelSpent = this.actualFuelSpent;
+        sp.actualTransportSpent = this.actualTransportSpent;
+        sp.actualFunSpent = this.actualFunSpent;
+        return sp;
+    }
+
+    public SpendingPlan withCategoryTracking(
+            Account foodAccount,
+            Account fuelAccount,
+            Account transportAccount,
+            Account funAccount,
+            Double actualFoodSpent,
+            Double actualFuelSpent,
+            Double actualTransportSpent,
+            Double actualFunSpent
+    ) {
+        if (foodAccount != null) {
+            this.foodAccountName = foodAccount.getName();
+            this.actualFoodSpent = actualFoodSpent != null ? actualFoodSpent : 0.0;
+        }
+        if (fuelAccount != null) {
+            this.fuelAccountName = fuelAccount.getName();
+            this.actualFuelSpent = actualFuelSpent != null ? actualFuelSpent : 0.0;
+        }
+        if (transportAccount != null) {
+            this.transportAccountName = transportAccount.getName();
+            this.actualTransportSpent = actualTransportSpent != null ? actualTransportSpent : 0.0;
+        }
+        if (funAccount != null) {
+            this.funAccountName = funAccount.getName();
+            this.actualFunSpent = actualFunSpent != null ? actualFunSpent : 0.0;
+        }
+        return this;
     }
 
     public String getName() {
@@ -117,20 +176,104 @@ public class SpendingPlan {
         return round2(maxMonthlyAllowance - spentThisMonth.floatValue());
     }
 
-    /**
-     * Essentials still to be paid for this cycle. 'Spent this month' already includes the
-     * food/fuel/transport bought so far, so only the remaining days' share is reserved.
-     * Without cycle info (daysInCycle == 0) the full monthly amount is reserved.
-     */
-    public Float getRemainingEssentials() {
+    // Category tracking flags
+    public boolean hasAssignedFoodAccount() {
+        return foodAccountName != null;
+    }
+
+    public boolean hasAssignedFuelAccount() {
+        return fuelAccountName != null;
+    }
+
+    public boolean hasAssignedTransportAccount() {
+        return transportAccountName != null;
+    }
+
+    public boolean hasAssignedFunAccount() {
+        return funAccountName != null;
+    }
+
+    public boolean hasAnyAssignedAccount() {
+        return hasAssignedFoodAccount() || hasAssignedFuelAccount() || hasAssignedTransportAccount() || hasAssignedFunAccount();
+    }
+
+    public String getFoodAccountName() {
+        return foodAccountName;
+    }
+
+    public String getFuelAccountName() {
+        return fuelAccountName;
+    }
+
+    public String getTransportAccountName() {
+        return transportAccountName;
+    }
+
+    public String getFunAccountName() {
+        return funAccountName;
+    }
+
+    public Double getActualFoodSpent() {
+        return actualFoodSpent != null ? round2(actualFoodSpent) : 0.0;
+    }
+
+    public Double getActualFuelSpent() {
+        return actualFuelSpent != null ? round2(actualFuelSpent) : 0.0;
+    }
+
+    public Double getActualTransportSpent() {
+        return actualTransportSpent != null ? round2(actualTransportSpent) : 0.0;
+    }
+
+    public Double getActualFunSpent() {
+        return actualFunSpent != null ? round2(actualFunSpent) : 0.0;
+    }
+
+    public Float getRemainingFood() {
+        if (hasAssignedFoodAccount()) {
+            return round2(Math.max(0.0f, getPlannedFoodSpend() - getActualFoodSpent().floatValue()));
+        }
         if (daysInCycle <= 0) {
-            return getTotalPlannedEssentials();
+            return getPlannedFoodSpend();
         }
         float fraction = Math.min(1.0f, (float) daysUntilNextPayday / (float) daysInCycle);
-        return round2(getTotalPlannedEssentials() * fraction);
+        return round2(getPlannedFoodSpend() * fraction);
+    }
+
+    public Float getRemainingFuel() {
+        if (hasAssignedFuelAccount()) {
+            return round2(Math.max(0.0f, getPlannedFuelSpend() - getActualFuelSpent().floatValue()));
+        }
+        if (daysInCycle <= 0) {
+            return getPlannedFuelSpend();
+        }
+        float fraction = Math.min(1.0f, (float) daysUntilNextPayday / (float) daysInCycle);
+        return round2(getPlannedFuelSpend() * fraction);
+    }
+
+    public Float getRemainingTransport() {
+        if (hasAssignedTransportAccount()) {
+            return round2(Math.max(0.0f, getPlannedTransportSpend() - getActualTransportSpent().floatValue()));
+        }
+        if (daysInCycle <= 0) {
+            return getPlannedTransportSpend();
+        }
+        float fraction = Math.min(1.0f, (float) daysUntilNextPayday / (float) daysInCycle);
+        return round2(getPlannedTransportSpend() * fraction);
+    }
+
+    /**
+     * Essentials still to cover for this cycle. If dedicated accounts are assigned, uses the
+     * actual unspent portion of each category. Otherwise reserves the pro-rated daily share.
+     */
+    public Float getRemainingEssentials() {
+        return round2(getRemainingFood() + getRemainingFuel() + getRemainingTransport());
     }
 
     public Float getAdjustedFun() {
+        if (hasAssignedFunAccount()) {
+            return round2(getPlannedFun() - getActualFunSpent().floatValue());
+        }
         return round2(getAdjustedRemainingAllowance() - getRemainingEssentials());
     }
 
@@ -153,10 +296,14 @@ public class SpendingPlan {
         if (daysUntilNextPayday <= 0) {
             return 0.0;
         }
-        return round2((double) getPlannedFoodSpend() / daysUntilNextPayday);
+        return round2((double) getRemainingFood() / daysUntilNextPayday);
     }
 
     public int getDaysUntilNextPayday() {
         return daysUntilNextPayday;
+    }
+
+    public int getDaysInCycle() {
+        return daysInCycle;
     }
 }

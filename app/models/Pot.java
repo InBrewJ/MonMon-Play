@@ -54,6 +54,22 @@ public class Pot {
     @Column(name = "spending_plan_fun")
     public Float spendingPlanFun;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "food_account_id", nullable = true)
+    public Account foodAccount;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "fun_account_id", nullable = true)
+    public Account funAccount;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "fuel_account_id", nullable = true)
+    public Account fuelAccount;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "transport_account_id", nullable = true)
+    public Account transportAccount;
+
     public boolean archived = false;
 
     public Long getId() {
@@ -163,6 +179,58 @@ public class Pot {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public Account getFoodAccount() {
+        return foodAccount;
+    }
+
+    public void setFoodAccount(Account foodAccount) {
+        this.foodAccount = foodAccount;
+    }
+
+    public Account getFunAccount() {
+        return funAccount;
+    }
+
+    public void setFunAccount(Account funAccount) {
+        this.funAccount = funAccount;
+    }
+
+    public Account getFuelAccount() {
+        return fuelAccount;
+    }
+
+    public void setFuelAccount(Account fuelAccount) {
+        this.fuelAccount = fuelAccount;
+    }
+
+    public Account getTransportAccount() {
+        return transportAccount;
+    }
+
+    public void setTransportAccount(Account transportAccount) {
+        this.transportAccount = transportAccount;
+    }
+
+    public Long getFoodAccountId() {
+        return foodAccount != null ? foodAccount.getId() : null;
+    }
+
+    public Long getFunAccountId() {
+        return funAccount != null ? funAccount.getId() : null;
+    }
+
+    public Long getFuelAccountId() {
+        return fuelAccount != null ? fuelAccount.getId() : null;
+    }
+
+    public Long getTransportAccountId() {
+        return transportAccount != null ? transportAccount.getId() : null;
+    }
+
+    public boolean hasAssignedCategoryAccounts() {
+        return foodAccount != null || funAccount != null || fuelAccount != null || transportAccount != null;
     }
 
     public String getCreatedAtHumanReadable() {

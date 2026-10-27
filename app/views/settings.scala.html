@@ -1,6 +1,6 @@
 @import play.mvc.Http.Request
 @import org.pac4j.core.context.session._;
-@(currentRegion: String)(implicit request: play.mvc.Http.Request, playSessionStore: SessionStore, messages: play.i18n.Messages)
+@(currentRegion: String, buildNumber: String = "dev", buildTimestamp: String = "unknown", buildCommit: String = "local")(implicit request: play.mvc.Http.Request, playSessionStore: SessionStore, messages: play.i18n.Messages)
 
 @main("MonMon - Settings") {
 @partials.header()
@@ -52,6 +52,26 @@
                     <i class="fas fa-save" style="margin-right: 6px;"></i> Save Settings
                 </button>
             </form>
+        </div>
+
+        <div class="w3-card w3-padding w3-margin-bottom">
+            <div style="font-weight: 800; font-size: 1.0rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 0.85rem;">
+                <i class="fas fa-code-branch" style="color: var(--primary); margin-right: 8px;"></i> Version & Build Information
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
+                <div class="metric-box" style="margin: 0;">
+                    <div style="color: var(--text-muted); font-size: 0.8rem;">Build Number</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary);">#@buildNumber</div>
+                </div>
+                <div class="metric-box" style="margin: 0;">
+                    <div style="color: var(--text-muted); font-size: 0.8rem;">Build Datestamp</div>
+                    <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-main);">@buildTimestamp</div>
+                </div>
+                <div class="metric-box" style="margin: 0;">
+                    <div style="color: var(--text-muted); font-size: 0.8rem;">Git Commit</div>
+                    <div style="font-size: 0.95rem; font-family: monospace; font-weight: 600; color: var(--text-muted);">@buildCommit</div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

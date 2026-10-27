@@ -164,6 +164,23 @@ public class PotController extends Controller {
             }
         }
 
+        // Category account assignments
+        Account foodAcc = resolveAccountFromForm(requestData.get("foodAccountId"));
+        Account funAcc = resolveAccountFromForm(requestData.get("funAccountId"));
+        Account fuelAcc = resolveAccountFromForm(requestData.get("fuelAccountId"));
+        Account transportAcc = resolveAccountFromForm(requestData.get("transportAccountId"));
+
+        scratchPot.setFoodAccount(foodAcc);
+        scratchPot.setFunAccount(funAcc);
+        scratchPot.setFuelAccount(fuelAcc);
+        scratchPot.setTransportAccount(transportAcc);
+
+        for (Account ca : java.util.Arrays.asList(foodAcc, funAcc, fuelAcc, transportAcc)) {
+            if (ca != null && scratchPot.accounts.stream().noneMatch(a -> a.getId() != null && a.getId().equals(ca.getId()))) {
+                scratchPot.addAccount(ca);
+            }
+        }
+
         // Spending Plan
         String spendingPlanPreset = requestData.get("spendingPlanPreset"); // "gruelling", "custom", or "none"
         if ("gruelling".equalsIgnoreCase(spendingPlanPreset)) {
@@ -213,6 +230,13 @@ public class PotController extends Controller {
         scratchPot.setSpendingPlanTransport(0.0f);
         scratchPot.setSpendingPlanFun(null);
 
+        if (active != null) {
+            scratchPot.setFoodAccount(active.getFoodAccount());
+            scratchPot.setFunAccount(active.getFunAccount());
+            scratchPot.setFuelAccount(active.getFuelAccount());
+            scratchPot.setTransportAccount(active.getTransportAccount());
+        }
+
         for (Account a : accountsToKeep) {
             scratchPot.addAccount(a);
         }
@@ -220,6 +244,21 @@ public class PotController extends Controller {
         return potRepository
                 .add(scratchPot)
                 .thenApplyAsync(p -> redirect(routes.PotController.monthlyPot()).flashing("success", "Gruelling spending plan preset applied!"), ec.current());
+    }
+
+    private Account resolveAccountFromForm(String s) {
+        if (s == null || s.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            int id = Integer.parseInt(s.trim());
+            if (id <= 0) {
+                return null;
+            }
+            return accountRepository.findById(id).toCompletableFuture().get();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static Float parseFloatOrNull(String s) {

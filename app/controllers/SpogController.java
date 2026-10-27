@@ -17,6 +17,7 @@ import javax.inject.Inject;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -199,6 +200,36 @@ public class SpogController extends Controller {
                     surplus,
                     0.0,
                     0
+            );
+
+            Map<Long, Account> accountById = allAccounts.stream()
+                    .filter(a -> a != null && a.getId() != null)
+                    .collect(Collectors.toMap(Account::getId, java.util.function.Function.identity(), (a, b) -> a));
+
+            Account resolvedFoodAcc = activeMonthlyPot.getFoodAccountId() != null ? accountById.get(activeMonthlyPot.getFoodAccountId()) : null;
+            Account resolvedFuelAcc = activeMonthlyPot.getFuelAccountId() != null ? accountById.get(activeMonthlyPot.getFuelAccountId()) : null;
+            Account resolvedTransportAcc = activeMonthlyPot.getTransportAccountId() != null ? accountById.get(activeMonthlyPot.getTransportAccountId()) : null;
+            Account resolvedFunAcc = activeMonthlyPot.getFunAccountId() != null ? accountById.get(activeMonthlyPot.getFunAccountId()) : null;
+
+            LocalDate cycleStart = helpers.ModelHelpers.findLastPaydayDate(today, nextPayDay > 0 ? nextPayDay : 1);
+            java.time.ZoneId zone = helpers.BankHolidayHelper.getTimezone(region);
+            long cycleStartSec = cycleStart.atStartOfDay(zone).toEpochSecond();
+            long nowSec = today.atTime(java.time.LocalTime.MAX).atZone(zone).toEpochSecond();
+
+            Double foodSpent = resolvedFoodAcc != null ? helpers.HistoricSpentCalculator.calculateAccountSpent(resolvedFoodAcc, cycleStartSec, nowSec) : null;
+            Double fuelSpent = resolvedFuelAcc != null ? helpers.HistoricSpentCalculator.calculateAccountSpent(resolvedFuelAcc, cycleStartSec, nowSec) : null;
+            Double transportSpent = resolvedTransportAcc != null ? helpers.HistoricSpentCalculator.calculateAccountSpent(resolvedTransportAcc, cycleStartSec, nowSec) : null;
+            Double funSpent = resolvedFunAcc != null ? helpers.HistoricSpentCalculator.calculateAccountSpent(resolvedFunAcc, cycleStartSec, nowSec) : null;
+
+            spendingPlan.withCategoryTracking(
+                    resolvedFoodAcc,
+                    resolvedFuelAcc,
+                    resolvedTransportAcc,
+                    resolvedFunAcc,
+                    foodSpent,
+                    fuelSpent,
+                    transportSpent,
+                    funSpent
             );
         }
 

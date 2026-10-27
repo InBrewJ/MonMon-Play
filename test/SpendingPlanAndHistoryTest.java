@@ -135,4 +135,41 @@ public class SpendingPlanAndHistoryTest {
         assertThat(sep.getPotConfig()).isSameAs(oldPot);
         assertThat(sep.isOverspent()).isFalse();
     }
+
+    @Test
+    public void buildInfoLoadsPropertiesOrDefaults() {
+        assertThat(helpers.BuildInfo.getBuildNumber()).isNotEmpty();
+        assertThat(helpers.BuildInfo.getBuildTimestamp()).isNotEmpty();
+        assertThat(helpers.BuildInfo.getBuildCommit()).isNotEmpty();
+    }
+
+    @Test
+    public void categoryAccountTrackingCalculatesExactRemainingAndFun() {
+        Account foodAcc = debit(10L, "Groceries Card");
+        Account funAcc = debit(20L, "Monzo Fun");
+
+        SpendingPlan sp = new SpendingPlan("Custom", 200f, 0f, 0f, 100f, 300f, 100.0, 15)
+                .withCategoryTracking(foodAcc, null, null, funAcc, 70.0, 0.0, 0.0, 30.0)
+                .withContext(300f, 100.0, 15, 30);
+
+        assertThat(sp.hasAssignedFoodAccount()).isTrue();
+        assertThat(sp.hasAssignedFunAccount()).isTrue();
+        assertThat(sp.hasAssignedFuelAccount()).isFalse();
+        assertThat(sp.getFoodAccountName()).isEqualTo("Groceries Card");
+        assertThat(sp.getFunAccountName()).isEqualTo("Monzo Fun");
+
+        // Exact remaining: £200 - £70 = £130 left for food (not pro-rated 15/30 = £100)
+        assertThat(sp.getActualFoodSpent()).isEqualTo(70.0);
+        assertThat(sp.getRemainingFood()).isEqualTo(130.0f);
+
+        // Exact fun remaining: £100 planned - £30 actual spent = £70
+        assertThat(sp.getActualFunSpent()).isEqualTo(30.0);
+        assertThat(sp.getAdjustedFun()).isEqualTo(70.0f);
+        assertThat(sp.isDeficit()).isFalse();
+
+        // Daily food pace for the remaining 15 days: £130 / 15 = £8.67/day
+        assertThat(sp.getFoodLeftPerDay()).isEqualTo(8.67);
+        // Daily fun pace: £70 / 15 = £4.67/day
+        assertThat(sp.getAdjustedFunLeftPerDay()).isEqualTo(4.67);
+    }
 }

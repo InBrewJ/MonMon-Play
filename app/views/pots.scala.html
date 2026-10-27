@@ -30,6 +30,17 @@ messages: play.i18n.Messages
                 <tr><td>Transport</td><td style="text-align: right;">£@sp.getPlannedTransportSpend()</td></tr>
                 <tr><td><b>Fun (planned)</b></td><td style="text-align: right;"><b>£@sp.getPlannedFun()</b></td></tr>
             </table>
+            @if(p.hasAssignedCategoryAccounts()) {
+            <div style="margin-top: 0.5rem; font-size: 0.8rem;">
+                <span style="font-weight: 600; color: var(--text-muted);"><i class="fas fa-tags" style="color: var(--primary); margin-right: 4px;"></i>Category Accounts:</span>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem;">
+                    @if(p.getFoodAccount() != null) { <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color);">🛒 Food: @p.getFoodAccount().getName()</span> }
+                    @if(p.getFunAccount() != null) { <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color);">🎉 Fun: @p.getFunAccount().getName()</span> }
+                    @if(p.getTransportAccount() != null) { <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color);">🚆 Transport: @p.getTransportAccount().getName()</span> }
+                    @if(p.getFuelAccount() != null) { <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color);">⛽ Fuel: @p.getFuelAccount().getName()</span> }
+                </div>
+            </div>
+            }
         </div>
         }
     }
@@ -137,6 +148,52 @@ messages: play.i18n.Messages
                         </option>
                         }
                     </select>
+                    <br />
+
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-top: 0.5rem; display: block;">
+                        <i class="fas fa-tags" style="color: var(--primary); margin-right: 4px;"></i> Category Accounts (Optional)
+                    </label>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+                        Assign dedicated accounts to track exact spending on food, fun, fuel, and transport without guesswork.
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 600;">🛒 Food Account</label>
+                            <select name="foodAccountId" style="width: 100%;">
+                                <option value="0">-- Unassigned / Shared --</option>
+                                @for(a <- accounts) {
+                                    <option value="@a.id" @if(pots.exists(p => p.getFoodAccountId() != null && p.getFoodAccountId() == a.id)) {selected}>@a.name (@{a.`type`})</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 600;">🎉 Fun Account</label>
+                            <select name="funAccountId" style="width: 100%;">
+                                <option value="0">-- Unassigned / Shared --</option>
+                                @for(a <- accounts) {
+                                    <option value="@a.id" @if(pots.exists(p => p.getFunAccountId() != null && p.getFunAccountId() == a.id)) {selected}>@a.name (@{a.`type`})</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 600;">🚆 Transport Account</label>
+                            <select name="transportAccountId" style="width: 100%;">
+                                <option value="0">-- Unassigned / Shared --</option>
+                                @for(a <- accounts) {
+                                    <option value="@a.id" @if(pots.exists(p => p.getTransportAccountId() != null && p.getTransportAccountId() == a.id)) {selected}>@a.name (@{a.`type`})</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 600;">⛽ Fuel Account</label>
+                            <select name="fuelAccountId" style="width: 100%;">
+                                <option value="0">-- Unassigned / Shared --</option>
+                                @for(a <- accounts) {
+                                    <option value="@a.id" @if(pots.exists(p => p.getFuelAccountId() != null && p.getFuelAccountId() == a.id)) {selected}>@a.name (@{a.`type`})</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
                     <br />
 
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Spending Plan</label><br/>

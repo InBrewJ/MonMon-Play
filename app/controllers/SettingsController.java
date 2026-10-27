@@ -37,7 +37,15 @@ public class SettingsController extends Controller {
     @Secure(clients = "OidcClient")
     public Result index(Http.Request request) {
         String region = request.session().get("region").orElse("UK");
-        return ok(views.html.settings.render(region, request, this.sessionStore, messagesApi.preferred(request)));
+        return ok(views.html.settings.render(
+                region,
+                helpers.BuildInfo.getBuildNumber(),
+                helpers.BuildInfo.getBuildTimestamp(),
+                helpers.BuildInfo.getBuildCommit(),
+                request,
+                this.sessionStore,
+                messagesApi.preferred(request)
+        ));
     }
 
     @Secure(clients = "OidcClient")

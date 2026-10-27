@@ -22,6 +22,16 @@ public class PotAccountsMigration {
 
     @Inject
     public PotAccountsMigration(JPAApi jpaApi) {
+        // Ensure new category account columns exist on the pot table
+        String[] cols = new String[]{"food_account_id", "fun_account_id", "fuel_account_id", "transport_account_id"};
+        for (String col : cols) {
+            try {
+                jpaApi.withTransaction((java.util.function.Consumer<javax.persistence.EntityManager>) em -> {
+                    em.createNativeQuery("ALTER TABLE pot ADD COLUMN IF NOT EXISTS " + col + " BIGINT").executeUpdate();
+                });
+            } catch (Exception ignored) {}
+        }
+
         try {
             int copied = jpaApi.withTransaction((java.util.function.Function<javax.persistence.EntityManager, Integer>) em -> em.createNativeQuery(
                     "INSERT INTO pot_accounts (pot_id, account_id) " +

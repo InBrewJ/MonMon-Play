@@ -168,19 +168,76 @@
                         </div>
                         <table style="width: 100%; font-size: 0.85rem;">
                             <tr><td>Allowance left (£@sp.getMaxMonthlyAllowance() − £@sp.getSpentThisMonth() spent)</td><td style="text-align: right;">£@sp.getAdjustedRemainingAllowance()</td></tr>
-                            <tr><td>Food @if(sp.isGruelling()) {<span style="color: var(--text-muted);">(UK avg £@sp.getWeeklyFoodSpend()/wk)</span>}</td><td style="text-align: right;">£@sp.getPlannedFoodSpend()</td></tr>
-                            @if(sp.getPlannedFuelSpend() > 0) {<tr><td>Fuel</td><td style="text-align: right;">£@sp.getPlannedFuelSpend()</td></tr>}
-                            @if(sp.getPlannedTransportSpend() > 0) {<tr><td>Transport</td><td style="text-align: right;">£@sp.getPlannedTransportSpend()</td></tr>}
-                            <tr><td>Essentials still to cover (@sp.getDaysUntilNextPayday() days left)</td><td style="text-align: right;">−£@sp.getRemainingEssentials()</td></tr>
                             <tr>
-                                <td><b>Left for fun</b></td>
+                                <td>
+                                    Food
+                                    @if(sp.hasAssignedFoodAccount()) {
+                                        <span style="color: var(--text-muted); font-size: 0.78rem;">(@sp.getFoodAccountName(): £@sp.getActualFoodSpent() spent)</span>
+                                    } else if(sp.isGruelling()) {
+                                        <span style="color: var(--text-muted); font-size: 0.78rem;">(UK avg £@sp.getWeeklyFoodSpend()/wk)</span>
+                                    }
+                                </td>
+                                <td style="text-align: right;">
+                                    @if(sp.hasAssignedFoodAccount()) {
+                                        £@sp.getRemainingFood() <span style="color: var(--text-muted); font-size: 0.75rem;">/ £@sp.getPlannedFoodSpend()</span>
+                                    } else {
+                                        £@sp.getPlannedFoodSpend()
+                                    }
+                                </td>
+                            </tr>
+                            @if(sp.getPlannedFuelSpend() > 0 || sp.hasAssignedFuelAccount()) {
+                            <tr>
+                                <td>Fuel @if(sp.hasAssignedFuelAccount()) {<span style="color: var(--text-muted); font-size: 0.78rem;">(@sp.getFuelAccountName(): £@sp.getActualFuelSpent() spent)</span>}</td>
+                                <td style="text-align: right;">
+                                    @if(sp.hasAssignedFuelAccount()) {
+                                        £@sp.getRemainingFuel() <span style="color: var(--text-muted); font-size: 0.75rem;">/ £@sp.getPlannedFuelSpend()</span>
+                                    } else {
+                                        £@sp.getPlannedFuelSpend()
+                                    }
+                                </td>
+                            </tr>
+                            }
+                            @if(sp.getPlannedTransportSpend() > 0 || sp.hasAssignedTransportAccount()) {
+                            <tr>
+                                <td>Transport @if(sp.hasAssignedTransportAccount()) {<span style="color: var(--text-muted); font-size: 0.78rem;">(@sp.getTransportAccountName(): £@sp.getActualTransportSpent() spent)</span>}</td>
+                                <td style="text-align: right;">
+                                    @if(sp.hasAssignedTransportAccount()) {
+                                        £@sp.getRemainingTransport() <span style="color: var(--text-muted); font-size: 0.75rem;">/ £@sp.getPlannedTransportSpend()</span>
+                                    } else {
+                                        £@sp.getPlannedTransportSpend()
+                                    }
+                                </td>
+                            </tr>
+                            }
+                            <tr>
+                                <td>
+                                    Essentials still to cover
+                                    @if(sp.hasAssignedFoodAccount()) {
+                                        <span style="color: var(--text-muted); font-size: 0.78rem;">(unspent essentials)</span>
+                                    } else {
+                                        <span style="color: var(--text-muted); font-size: 0.78rem;">(@sp.getDaysUntilNextPayday() days left)</span>
+                                    }
+                                </td>
+                                <td style="text-align: right;">−£@sp.getRemainingEssentials()</td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <b>Left for fun</b>
+                                    @if(sp.hasAssignedFunAccount()) {
+                                        <span style="color: var(--text-muted); font-size: 0.78rem;">(@sp.getFunAccountName(): £@sp.getActualFunSpent() spent)</span>
+                                    }
+                                </td>
                                 <td style="text-align: right; font-weight: 800; color: @if(sp.isDeficit()) {var(--danger)} else {var(--success)};">
                                     @if(sp.isDeficit()) { −£@sp.getAbsoluteDeficit() } else { £@sp.getAdjustedFun() }
                                 </td>
                             </tr>
                         </table>
                         @if(!sp.isDeficit()) {
-                            <div style="font-size: 0.8rem; color: var(--text-muted);">≈ £@sp.getAdjustedFunLeftPerDay()/day fun for @sp.getDaysUntilNextPayday() days</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                ≈ £@sp.getAdjustedFunLeftPerDay()/day fun
+                                @if(sp.getRemainingFood() > 0) { · £@sp.getFoodLeftPerDay()/day food }
+                                for @sp.getDaysUntilNextPayday() days
+                            </div>
                         } else {
                             <div style="font-size: 0.8rem; color: var(--danger);">Essentials alone exceed what's left this month.</div>
                         }
