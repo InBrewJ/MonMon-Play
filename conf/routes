@@ -46,6 +46,15 @@ GET     /binPlan/:id                           controllers.PlanController.archiv
 GET     /plans                                 controllers.PlanController.getPlansComplete(req: Request)
 GET     /plans/updateSavingsPayoffPercentage   controllers.PlanController.setBasicSavingsPlan(percent: Int, req: Request)
 
+# Savings Plan
+GET     /savingsPlan                           controllers.SavingsPlanController.index(req: Request)
+GET     /mySavingsPlan                         controllers.SavingsPlanController.index(req: Request)
+POST    /savingsPlan                           controllers.SavingsPlanController.createOrUpdatePlan(req: Request)
+POST    /savingsPlan/updatePercentage          controllers.SavingsPlanController.updatePercentage(req: Request)
+POST    /savingsPlan/addItem                   controllers.SavingsPlanController.addItem(req: Request)
+GET     /binSavingsPlanItem/:id                controllers.SavingsPlanController.archiveItem(id: Long, req: Request)
+GET     /binSavingsPlan/:id                    controllers.SavingsPlanController.archivePlan(id: Long, req: Request)
+
 # Monthly pot (setting up spending sources per month)
 GET     /myMonthlyPot                               controllers.PotController.monthlyPot(req: Request)
 POST    /pot                                        controllers.PotController.addPot(req: Request)

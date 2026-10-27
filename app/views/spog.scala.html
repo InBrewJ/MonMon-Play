@@ -249,8 +249,11 @@
             <!-- Payday & Savings Plan Card -->
             <div class="w3-card w3-padding w3-margin-bottom" style="text-align: center;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                    <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
-                        <i class="fas fa-piggy-bank" style="color: var(--primary); margin-right: 6px;"></i> Savings Plan
+                    <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-piggy-bank" style="color: var(--primary);"></i> Savings Plan
+                        <a href="/savingsPlan" title="Expand savings plan" class="savings-expand-btn" style="color: var(--primary); padding: 2px 5px; border-radius: 4px; font-size: 0.85rem; text-decoration: none;">
+                            <i class="fas fa-expand-alt"></i>
+                        </a>
                     </span>
                     <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); border: 1px solid #c7d2fe;">
                         Next Pay: <span id="next-payday-ddmmyyyy">@spogVm.getNextPayDate()</span> (@spogVm.getDaysUntilNextPayday()d away)
@@ -269,6 +272,39 @@
                 <div style="margin-top: 1rem;">
                     <a id="savings-slider-val-target" href="/plans/updateSavingsPayoffPercentage?percent=@spogVm.getPercentageIncomeAsSavings()" class="w3-button w3-round" style="display: inline-block;">Update savings plan</a>
                 </div>
+
+                @if(spogVm.hasSavingsPlan() && !spogVm.getSavingsPlan().getItems().isEmpty()) {
+                    @defining(spogVm.getSavingsPlan()) { svp =>
+                    <div style="margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.65rem; font-size: 0.85rem; text-align: left;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                            <span style="font-weight: 700;">
+                                <i class="fas fa-list-ul" style="color: var(--primary); margin-right: 4px;"></i> Sliced Items (@svp.getItems().size())
+                            </span>
+                            <a href="/savingsPlan" style="font-size: 0.8rem;">manage</a>
+                        </div>
+                        <table style="width: 100%; font-size: 0.82rem;">
+                            @for(item <- svp.getItems()) {
+                                <tr>
+                                    <td>
+                                        @item.getName()
+                                        @if(item.getAccount() != null) {
+                                            <span style="color: var(--text-muted); font-size: 0.75rem;">(@item.getAccount().getName())</span>
+                                        }
+                                    </td>
+                                    <td style="text-align: right; font-weight: 600;">
+                                        £@item.getMonthlyAmount()
+                                        @if(item.getType() == models.SavingsPlanItem.ItemType.DEBT_PAYOFF) {
+                                            @if(item.getRoughMonthsToPayoff() != null) {
+                                                <span style="color: var(--text-muted); font-size: 0.72rem; font-weight: 400; display: block;">~@item.getRoughMonthsToPayoff() mo</span>
+                                            }
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </table>
+                    </div>
+                    }
+                }
             </div>
 
             <!-- Account Overview Card -->

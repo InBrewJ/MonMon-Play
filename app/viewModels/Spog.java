@@ -40,6 +40,7 @@ public class Spog {
     private final HashMap<Account, AccountStatus> accountStatusMap;
     private final LocalDate today;
     private final SpendingPlan spendingPlan;
+    private final models.SavingsPlan savingsPlan;
     private Double totalAvailableDebit;
     private Double totalAvailableCredit;
 
@@ -92,8 +93,32 @@ public class Spog {
                 LocalDate today,
                 SpendingPlan spendingPlan
     ) {
+        this(surplus, nextPayday, percentageIncomeAsSavings, incomingTotal, outgoingTotal,
+                rentCost, remainderRentCost, billsCost, remainderBillsCost,
+                completedOutgoingsSum, pendingOutgoingsSum, allAccounts, monthlyPotAccounts,
+                today, spendingPlan, null);
+    }
+
+    public Spog(Float surplus,
+                int nextPayday,
+                int percentageIncomeAsSavings,
+                Float incomingTotal,
+                Float outgoingTotal,
+                Float rentCost,
+                Float remainderRentCost,
+                Float billsCost,
+                Float remainderBillsCost,
+                Float completedOutgoingsSum,
+                Float pendingOutgoingsSum,
+                List<Account> allAccounts,
+                List<Account> monthlyPotAccounts,
+                LocalDate today,
+                SpendingPlan spendingPlan,
+                models.SavingsPlan savingsPlan
+    ) {
         LocalDate now = today != null ? today : helpers.BankHolidayHelper.nowInRegion("UK");
         this.today = now;
+        this.savingsPlan = savingsPlan;
         this.monthlyPotAccounts = this.resolveMonthlyPotAccounts(monthlyPotAccounts, allAccounts);
         // takes savings plan into account, this seems lame
         this.outgoingTotal = outgoingTotal;
@@ -300,6 +325,14 @@ public class Spog {
 
     public boolean hasSpendingPlan() {
         return spendingPlan != null;
+    }
+
+    public models.SavingsPlan getSavingsPlan() {
+        return savingsPlan;
+    }
+
+    public boolean hasSavingsPlan() {
+        return savingsPlan != null && !savingsPlan.isArchived();
     }
 
     public LocalDate getToday() {

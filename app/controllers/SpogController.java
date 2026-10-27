@@ -39,6 +39,7 @@ public class SpogController extends Controller {
     private final BalanceRepository balanceRepository;
     private final PlanRepository planRepository;
     private final PotRepository potRepository;
+    private final SavingsPlanRepository savingsPlanRepository;
     private final HttpExecutionContext ec;
 
     @Inject
@@ -49,6 +50,7 @@ public class SpogController extends Controller {
             IncomingRepository incomingRepository,
             BalanceRepository balanceRepository,
             PotRepository potRepository,
+            SavingsPlanRepository savingsPlanRepository,
             HttpExecutionContext ec
     ) {
         this.incomingRepository = incomingRepository;
@@ -57,6 +59,7 @@ public class SpogController extends Controller {
         this.balanceRepository = balanceRepository;
         this.planRepository = planRepository;
         this.potRepository = potRepository;
+        this.savingsPlanRepository = savingsPlanRepository;
         this.ec = ec;
     }
 
@@ -138,7 +141,13 @@ public class SpogController extends Controller {
         Float remainderRentCost = totalRentCost - rentCost;
 
         Float surplus = round2(incomingTotal - outgoingTotal);
-        int percentIncomeAsSavings = firstMonthlySavingsGoal != null ? (int)(firstMonthlySavingsGoal.getSplit() * 100) : 0;
+        SavingsPlan activeSavingsPlan = repoListToList(this.savingsPlanRepository.list(sup.getUserId())).stream()
+                .filter(sp -> sp != null && !sp.isArchived())
+                .findFirst()
+                .orElse(null);
+        int percentIncomeAsSavings = activeSavingsPlan != null
+                ? activeSavingsPlan.getSavingsPercentage()
+                : (firstMonthlySavingsGoal != null ? (int)(firstMonthlySavingsGoal.getSplit() * 100) : 0);
         Float savingsPlanCost = (((float)percentIncomeAsSavings / 100) * (incomingTotal));
         System.out.println("percentIncomeAsSavings :: " + percentIncomeAsSavings / 100);
         System.out.println("Savings plan cost :: " + savingsPlanCost);
@@ -233,6 +242,20 @@ public class SpogController extends Controller {
             );
         }
 
+        if (activeSavingsPlan != null && activeSavingsPlan.getItems() != null) {
+            Map<Long, Account> accountById = allAccounts.stream()
+                    .filter(a -> a != null && a.getId() != null)
+                    .collect(Collectors.toMap(Account::getId, java.util.function.Function.identity(), (a, b) -> a));
+            for (SavingsPlanItem item : activeSavingsPlan.getItems()) {
+                if (item.getAccount() != null && item.getAccount().getId() != null) {
+                    Account resolved = accountById.get(item.getAccount().getId());
+                    if (resolved != null) {
+                        item.setAccount(resolved);
+                    }
+                }
+            }
+        }
+
         Spog spogVm = new Spog(
                 surplus,
                 nextPayDay,
@@ -248,7 +271,8 @@ public class SpogController extends Controller {
                 allAccounts,
                 monthlyPotAccounts,
                 today,
-                spendingPlan
+                spendingPlan,
+                activeSavingsPlan
         );
         return ok(views.html.spog.render(spogVm, request, playSessionStore))
                 .addingToSession(request, "isPayday", String.valueOf(spogVm.isPayday()))
