@@ -43,7 +43,7 @@ public class MistralService {
     }
 
     private final Map<String, CacheEntry> userAdviceCache = new ConcurrentHashMap<>();
-    private static final long CACHE_TTL_MS = 15 * 60 * 1000L; // 15 minutes TTL
+    private static final long CACHE_TTL_MS = 31L * 24L * 60L * 60L * 1000L; // 31 days TTL
 
     @Inject
     public MistralService(Config config) {
