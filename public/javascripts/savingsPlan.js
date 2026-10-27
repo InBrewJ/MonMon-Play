@@ -23,6 +23,7 @@
         var sliderTargetInput = document.getElementById('savingsPercentageInput');
 
         var maxPercent = slider ? (parseInt(slider.getAttribute('data-max-percent'), 10) || 100) : 100;
+        var maxSurplus = slider ? (parseFloat(slider.getAttribute('data-max-surplus')) || 0) : 0;
 
         // Find incoming total from DOM
         var incomingTotalEl = document.getElementById('plan-incoming-total');
@@ -377,6 +378,13 @@
             if (totalAllocatedEl) totalAllocatedEl.textContent = '£' + newTotalAllocated.toFixed(2);
             if (footerTotalEl) footerTotalEl.textContent = '£' + newTotalAllocated.toFixed(2);
             if (footerTargetPotEl) footerTargetPotEl.textContent = 'Target Pot: £' + newTargetPot.toFixed(2);
+
+            // Update Breadline (MAX / month remaining on SPOG)
+            var breadline = Math.max(0, maxSurplus - newTargetPot);
+            var breadlineEl = document.getElementById('savings-plan-breadline');
+            var breadlineMetricEl = document.getElementById('breadline-metric-val');
+            if (breadlineEl) breadlineEl.textContent = '£' + breadline.toFixed(2);
+            if (breadlineMetricEl) breadlineMetricEl.textContent = '£' + breadline.toFixed(2);
 
             var unallocated = newTargetPot - newTotalAllocated;
             if (unallocatedEl) {

@@ -60,7 +60,7 @@
                 </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
                 <div class="metric-box" id="plan-incoming-total" data-incoming="@incomingTotal">
                     <div style="font-size: 0.8rem; color: var(--text-muted);">Monthly Income</div>
                     <div style="font-size: 1.3rem; font-weight: 700; color: var(--text-main);">£@incomingTotal</div>
@@ -70,6 +70,18 @@
                     <div style="font-size: 1.3rem; font-weight: 700; color: var(--primary);">
                         £@activePlan.getTargetAmount(incomingTotal)
                         <span style="font-size: 0.85rem; font-weight: 400; color: var(--text-muted);">(@activePlan.getSavingsPercentage()%)</span>
+                    </div>
+                </div>
+                <div class="metric-box" style="border-left: 3px solid #16a34a;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between;">
+                        <span>MAX / Month</span>
+                        <span class="badge-pill" style="background: rgba(34, 197, 94, 0.15); color: #16a34a; font-size: 0.7rem; font-weight: 700;">Breadline</span>
+                    </div>
+                    <div id="breadline-metric-val" style="font-size: 1.3rem; font-weight: 700; color: #16a34a;">
+                        £@String.format(java.util.Locale.UK, "%.2f", Math.max(0.0, (maxSurplus - activePlan.getTargetAmount(incomingTotal)).toDouble))
+                    </div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
+                        Remaining on SPOG
                     </div>
                 </div>
                 <div class="metric-box">
@@ -92,6 +104,9 @@
                     Savings & Debt Payoff Target:
                     <span id="savings-plan-slider-val" style="color: var(--primary); font-size: 1.1rem; font-weight: 700;">@activePlan.getSavingsPercentage()</span>% of income
                     (<span id="savings-plan-amount" style="font-weight: 700;">£@activePlan.getTargetAmount(incomingTotal)</span> of £@incomingTotal)
+                    <span style="font-weight: 500; font-size: 0.88rem; color: var(--text-muted); margin-left: 8px;">
+                        • Leaves <b>MAX / month: <span id="savings-plan-breadline" style="color: #16a34a; font-weight: 700;">£@String.format(java.util.Locale.UK, "%.2f", Math.max(0.0, (maxSurplus - activePlan.getTargetAmount(incomingTotal)).toDouble))</span></b>
+                    </span>
                 </label>
                 <div class="slidecontainer" style="padding: 0.25rem 0;">
                     <input type="range"
