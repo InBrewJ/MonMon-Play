@@ -12,3 +12,5 @@ next up:
    Ideally there would be arrows on screen to shunt up items in the priority list. In general, also document in a README and in a helpful floating tooltip somewhere how priority affects the system of interlocked sliders.
 
 4. on /historicSpent, it looks like the spent figures are quite low. We should probably reconstruct the spending based on all of the monthly pot configurations, not just the last one. This would likely make sense as a single sql query rather than rebuilding the window in Java. What do you think?
+
+5. the sainsburys store picker has a URL like this: https://stores.sainsburys.co.uk/list/place/@55.95965,-3.45707/1/all -> so we need to get the lat lon from the postcode first, or perhaps open street map would be more reliable?
