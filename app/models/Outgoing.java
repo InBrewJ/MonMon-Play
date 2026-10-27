@@ -128,7 +128,7 @@ public class Outgoing {
     }
 
     public int getEffectiveOutgoingDay() {
-        return getEffectiveOutgoingDay(java.time.LocalDate.now());
+        return getEffectiveOutgoingDay(helpers.BankHolidayHelper.nowInRegion("UK"));
     }
 
     public boolean isAdjustedForMonth(java.time.LocalDate asOf) {
@@ -136,7 +136,7 @@ public class Outgoing {
     }
 
     public boolean isAdjustedForMonth() {
-        return isAdjustedForMonth(java.time.LocalDate.now());
+        return isAdjustedForMonth(helpers.BankHolidayHelper.nowInRegion("UK"));
     }
 
     public Account getAccount() {

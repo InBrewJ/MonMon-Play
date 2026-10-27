@@ -1,0 +1,146 @@
+@import play.mvc.Http.Request
+@import helper._
+@import viewModels._
+@import org.pac4j.core.context.session._;
+@(
+    vm: HistoricSpentViewModel
+)(
+    implicit
+    request: Http.Request,
+    playSessionStore: SessionStore
+)
+@main("MonMon - Spending History") {
+
+@partials.header()
+@partials.userDetails()
+@partials.navbar()
+
+<div class="w3-content" style="max-width: 1100px; padding: 0 1rem 3rem 1rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin: 0.5rem 0 1rem 0;">
+        <h3 style="margin: 0;"><i class="fas fa-history" style="color: var(--primary); margin-right: 8px;"></i>Spent This Month — History</h3>
+        <a href="/spog" class="w3-button w3-round w3-small"><i class="fas fa-arrow-left"></i> Back to SPOG</a>
+    </div>
+
+    @if(!vm.hasHistory()) {
+        <div class="w3-card w3-padding"><p style="color: var(--text-muted);">No spending history yet.</p></div>
+    } else {
+        <div class="w3-row-padding" style="margin: 0 -8px 1rem -8px;">
+            <div class="w3-third">
+                <div class="w3-card w3-padding" style="text-align: center;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Avg per completed cycle</div>
+                    <div style="font-size: 1.5rem; font-weight: 800;">£@vm.getAverageMonthlySpend()</div>
+                </div>
+            </div>
+            <div class="w3-third">
+                <div class="w3-card w3-padding" style="text-align: center;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Highest</div>
+                    @if(vm.getHighestSpendCycle() != null) {
+                        <div style="font-size: 1.5rem; font-weight: 800; color: var(--danger);">£@vm.getHighestSpendCycle().getTotalSpent()</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">@vm.getHighestSpendCycle().getCycleDateRange()</div>
+                    } else { <div>—</div> }
+                </div>
+            </div>
+            <div class="w3-third">
+                <div class="w3-card w3-padding" style="text-align: center;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Lowest</div>
+                    @if(vm.getLowestSpendCycle() != null) {
+                        <div style="font-size: 1.5rem; font-weight: 800; color: var(--success);">£@vm.getLowestSpendCycle().getTotalSpent()</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">@vm.getLowestSpendCycle().getCycleDateRange()</div>
+                    } else { <div>—</div> }
+                </div>
+            </div>
+        </div>
+
+        <div class="w3-card w3-padding">
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0;">
+                One row per pay cycle. Each cycle uses the monthly pot config active at the time (including soft-deleted pots).
+                The budget reflects the actual starting pot balance for each cycle, with real spending and over/under values.
+            </p>
+            @for(c <- vm.getCycles()) {
+            <details style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.75rem 1rem; margin-bottom: 0.75rem; background: var(--card-bg); @if(c.isCurrentCycle()) {border-left: 4px solid var(--primary);}">
+                <summary style="cursor: pointer; list-style: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <b>@c.getCycleDateRange()</b>
+                            @if(c.isCurrentCycle()) {
+                                <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); margin-left: 6px;">Day @c.getDaysElapsed() of @c.getDaysInCycle()</span>
+                            }
+                        </div>
+                        <div>
+                            <span style="font-size: 1.15rem; font-weight: 800;">£@c.getTotalSpent()</span>
+                            <span style="font-size: 0.85rem; color: var(--text-muted);">/ £@c.getMonthlyBudget()</span>
+                            <span class="badge-pill @if(c.isOverspent()) {badge-danger} else {badge-success}" style="margin-left: 6px;">
+                                @if(c.isOverspent()) { £@c.getAbsoluteOverspend() over } else { £@c.getAbsoluteOverspend() under }
+                            </span>
+                        </div>
+                    </div>
+                    <div style="height: 6px; background: var(--card-bg-subtle); border-radius: 3px; margin-top: 0.5rem; overflow: hidden;">
+                        <div style="height: 100%; width: @c.getBudgetUtilizationPercent()%; background: @if(c.isOverspent()) {var(--danger)} else {var(--success)};"></div>
+                    </div>
+                </summary>
+                <div style="font-size: 0.85rem; margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.6rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 0.6rem;">
+                        <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                            <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Starting Pot (Budget)</span>
+                            <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£@c.getStartingPotValue()</div>
+                        </div>
+                        <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                            <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Ending Pot Balance</span>
+                            <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£@c.getEndingPotValue()</div>
+                        </div>
+                        <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                            <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Spending Pace</span>
+                            <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£@c.getActualDailySpend() / day</div>
+                        </div>
+                    </div>
+
+                    <div style="color: var(--text-muted); margin-bottom: 0.5rem; font-size: 0.82rem;">
+                        Pot config:
+                        @if(c.getPotConfig() == null) {
+                            none (defaulting to debit accounts)
+                        } else {
+                            created @c.getPotConfig().getCreatedAtHumanReadable() @if(c.getPotConfig().isArchived()) {(soft-deleted)} · @c.getSpendingPlanSummary()
+                        }
+                    </div>
+
+                    @if(c.getAccountBreakdowns().isEmpty) {
+                        <div style="color: var(--text-muted);">No recorded spending in this cycle.</div>
+                    } else {
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.4rem;">
+                            <thead>
+                                <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border-color); text-align: left;">
+                                    <th style="padding: 4px 6px;">Account</th>
+                                    <th style="padding: 4px 6px; text-align: right;">Start Value</th>
+                                    <th style="padding: 4px 6px; text-align: right;">End Value</th>
+                                    <th style="padding: 4px 6px; text-align: right;">Spent in Cycle</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for(item <- c.getAccountBreakdowns()) {
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <td style="padding: 6px;">
+                                        <b>@item.getAccountName()</b>
+                                        <span style="color: var(--text-muted); font-size: 0.75rem;">(@item.getAccountType())</span>
+                                    </td>
+                                    <td style="padding: 6px; text-align: right;">£@item.getStartBalance()</td>
+                                    <td style="padding: 6px; text-align: right;">£@item.getEndBalance()</td>
+                                    <td style="padding: 6px; text-align: right; font-weight: 700;">£@item.getAmountSpent()</td>
+                                </tr>
+                                }
+                                <tr style="font-weight: 800; background: var(--card-bg-subtle);">
+                                    <td style="padding: 6px;">Total Monthly Pot</td>
+                                    <td style="padding: 6px; text-align: right;">£@c.getStartingPotValue()</td>
+                                    <td style="padding: 6px; text-align: right;">£@c.getEndingPotValue()</td>
+                                    <td style="padding: 6px; text-align: right; color: var(--primary);">£@c.getTotalSpent()</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </details>
+            }
+        </div>
+    }
+</div>
+
+}

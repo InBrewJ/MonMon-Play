@@ -102,7 +102,7 @@ public class Incoming {
     }
 
     public int getEffectiveIncomingMonthDay() {
-        return getEffectiveIncomingMonthDay(java.time.LocalDate.now());
+        return getEffectiveIncomingMonthDay(helpers.BankHolidayHelper.nowInRegion("UK"));
     }
 
     public boolean isAdjustedForMonth(java.time.LocalDate asOf) {
@@ -110,7 +110,7 @@ public class Incoming {
     }
 
     public boolean isAdjustedForMonth() {
-        return isAdjustedForMonth(java.time.LocalDate.now());
+        return isAdjustedForMonth(helpers.BankHolidayHelper.nowInRegion("UK"));
     }
 
     public static Float getTotalIncomings(List<Incoming> incomings) {

@@ -23,4 +23,5 @@ public interface PotRepository {
     // List _without_ archived (for displayed)
     CompletionStage<Stream<Pot>> list(String userId);
 
+    CompletionStage<Integer> archiveActiveMonthlyPots(String userId);
 }

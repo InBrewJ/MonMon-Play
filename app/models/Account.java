@@ -27,10 +27,9 @@ public class Account {
     @Column(name = "userId")
     public String userId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name="pot_id")
+    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "accounts")
     @JsonIgnore
-    public Pot pot;
+    public List<Pot> pots = new ArrayList<>();
 
     public String name;
     public String nickname;
@@ -125,8 +124,22 @@ public class Account {
     }
 
     public void setPot(Pot pot) {
-        System.out.println("Setting this account to :: " + pot.type + " id :: " + pot.id);
-        this.pot = pot;
+        if (this.pots == null) {
+            this.pots = new ArrayList<>();
+        }
+        if (pot != null && !this.pots.contains(pot)) {
+            this.pots.add(pot);
+        }
+    }
+
+    @JsonIgnore
+    public List<Pot> getPots() {
+        return pots;
+    }
+
+    @JsonIgnore
+    public Pot getPot() {
+        return (pots != null && !pots.isEmpty()) ? pots.get(0) : null;
     }
 
     public Balance getLatestBalance() {

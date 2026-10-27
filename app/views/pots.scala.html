@@ -5,6 +5,9 @@
 @(
 accounts: Seq[Account],
 pots: Seq[Pot],
+archivedPots: Seq[Pot],
+surplus: java.lang.Float,
+spentThisMonth: java.lang.Double,
 editingPot: Boolean
 )(
 implicit
@@ -12,6 +15,26 @@ request: Http.Request,
 playSessionStore: SessionStore,
 messages: play.i18n.Messages
 )
+@planSummary(p: Pot) = {
+    @if(p.hasSpendingPlan()) {
+        @defining(new viewModels.SpendingPlan(p.getSpendingPlanName(), p.getSpendingPlanFood(), p.getSpendingPlanFuel(), p.getSpendingPlanTransport(), p.getSpendingPlanFun(), surplus, spentThisMonth, 0)) { sp =>
+        <div style="margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.75rem;">
+            <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.4rem;">
+                <i class="fas fa-clipboard-list" style="color: var(--primary); margin-right: 4px;"></i>
+                Spending plan: <span class="badge-pill" style="background: var(--warning-light); color: var(--warning);">@sp.getName()</span>
+            </div>
+            <table style="width: 100%; font-size: 0.85rem;">
+                <tr><td>Max monthly allowance</td><td style="text-align: right;">£@sp.getMaxMonthlyAllowance()</td></tr>
+                <tr><td>Food @if(sp.isGruelling()) {<span style="color: var(--text-muted);">(UK avg £@viewModels.SpendingPlan.UK_AVG_WEEKLY_FOOD_SPEND/wk)</span>}</td><td style="text-align: right;">£@sp.getPlannedFoodSpend()</td></tr>
+                <tr><td>Fuel</td><td style="text-align: right;">£@sp.getPlannedFuelSpend()</td></tr>
+                <tr><td>Transport</td><td style="text-align: right;">£@sp.getPlannedTransportSpend()</td></tr>
+                <tr><td><b>Fun (planned)</b></td><td style="text-align: right;"><b>£@sp.getPlannedFun()</b></td></tr>
+            </table>
+        </div>
+        }
+    }
+}
+
 @main("MonMon Pots") {
 
 @partials.header()
@@ -19,11 +42,14 @@ messages: play.i18n.Messages
 @partials.navbar()
 
 <div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
+    @if(request.flash().get("success").isPresent) {
+        <div class="w3-panel w3-pale-green w3-border-green w3-round" style="border-left: 4px solid; padding: 8px 14px;">@request.flash().get("success").get()</div>
+    }
     <div class="w3-row-padding">
         <div class="w3-half">
             <div class="w3-card w3-padding w3-margin-bottom">
                 <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
-                    <i class="fas fa-archive" style="color: var(--primary); margin-right: 6px;"></i> Configured Pots
+                    <i class="fas fa-archive" style="color: var(--primary); margin-right: 6px;"></i> Active Pot
                 </div>
 
                 @if(pots.isEmpty) {
@@ -53,16 +79,48 @@ messages: play.i18n.Messages
                             </div>
                             }
                         </div>
+                        @planSummary(p)
+                        @if(!p.hasSpendingPlan() && p.getType() == Pot.PotType.MONTHLY) {
+                            <form method="POST" action="@routes.PotController.applyGruelling()" style="margin-top: 0.75rem;">
+                                @helper.CSRF.formField
+                                <button class="w3-button w3-round w3-small" title="Keeps these accounts, adds the Gruelling spending plan">
+                                    <i class="fas fa-bread-slice"></i> Apply 'Gruelling' plan
+                                </button>
+                            </form>
+                        }
                     </div>
                     }
                 }
             </div>
+
+            @if(archivedPots.nonEmpty) {
+            <div class="w3-card w3-padding w3-margin-bottom">
+                <details>
+                    <summary style="cursor: pointer; font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
+                        <i class="fas fa-history" style="color: var(--primary); margin-right: 6px;"></i> Previous Pot Configs (@archivedPots.size)
+                    </summary>
+                    @for(p <- archivedPots) {
+                    <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.6rem 0.9rem; margin-top: 0.6rem; font-size: 0.85rem; opacity: 0.85;">
+                        <div><b>@{p.`type`}</b> · @p.getCreatedAtHumanReadable → @p.getLastUpdatedHumanReadable</div>
+                        <div style="color: var(--text-muted);">
+                            @if(p.accounts.isEmpty) { (no accounts recorded) } else { @p.accounts.map(_.name).mkString(", ") }
+                            @if(p.hasSpendingPlan()) { · plan: @p.getSpendingPlanName() }
+                        </div>
+                    </div>
+                    }
+                    <p style="margin-top: 0.6rem;"><a href="@routes.SpogController.historicSpent()"><i class="fas fa-chart-bar"></i> See historic spending</a></p>
+                </details>
+            </div>
+            }
         </div>
         <div class="w3-half">
             <div class="w3-card w3-padding w3-margin-bottom">
                 <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
                     <i class="fas fa-plus-circle" style="color: var(--primary); margin-right: 6px;"></i> Configure New Pot
                 </div>
+                <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0;">
+                    Saving a new monthly pot soft-deletes the current one; old configs are kept for spending history.
+                </p>
 
                 <form method="POST" action="@routes.PotController.addPot()">
                     @helper.CSRF.formField
@@ -74,11 +132,38 @@ messages: play.i18n.Messages
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Select Accounts for This Pot (Hold Ctrl / Cmd to select multiple)</label><br/>
                     <select id="accounts" name="accounts" multiple style="height: 140px;">
                         @for(a <- accounts) {
-                        <option value="@a.id">
+                        <option value="@a.id" @if(pots.exists(p => p.accounts.exists(pa => pa.id == a.id))) {selected}>
                             @a.name (@{a.`type`}) - Current: £@a.getLatestBalanceValue()
                         </option>
                         }
                     </select>
+                    <br />
+
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Spending Plan</label><br/>
+                    <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+                        Max monthly allowance: <b>£@surplus</b> · spent so far this month: <b>£@spentThisMonth</b>
+                    </div>
+                    <select id="spendingPlanPreset" name="spendingPlanPreset">
+                        <option value="none">None</option>
+                        <option value="gruelling">Gruelling (UK avg food £@viewModels.SpendingPlan.UK_AVG_WEEKLY_FOOD_SPEND/wk, no fuel/transport, rest is fun)</option>
+                        <option value="custom">Custom…</option>
+                    </select>
+
+                    <div id="custom-plan-fields" style="display: none; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.75rem; margin-top: 0.5rem;">
+                        <label style="font-size: 0.8rem;">Plan name</label>
+                        <input type="text" name="customPlanName" placeholder="e.g. Tight but not grim" />
+                        <label style="font-size: 0.8rem;">Food (£/month)</label>
+                        <input type="number" step="0.01" min="0" name="spendingPlanFood" class="sp-input" placeholder="@viewModels.SpendingPlan.UK_AVG_MONTHLY_FOOD_SPEND" />
+                        <label style="font-size: 0.8rem;">Fuel (£/month)</label>
+                        <input type="number" step="0.01" min="0" name="spendingPlanFuel" class="sp-input" placeholder="0" />
+                        <label style="font-size: 0.8rem;">Transport (£/month)</label>
+                        <input type="number" step="0.01" min="0" name="spendingPlanTransport" class="sp-input" placeholder="0" />
+                        <label style="font-size: 0.8rem;">Fun (£/month) — leave blank to use whatever's left over</label>
+                        <input type="number" step="0.01" min="0" name="spendingPlanFun" placeholder="leftover" />
+                        <div style="font-size: 0.85rem; margin-top: 0.4rem;">
+                            Leftover for fun: <b id="custom-leftover">£@surplus</b>
+                        </div>
+                    </div>
                     <br />
                     <button class="w3-button w3-round">Save Pot Configuration</button>
                 </form>
@@ -86,5 +171,25 @@ messages: play.i18n.Messages
         </div>
     </div>
 </div>
+
+<script>
+    (function () {
+        var preset = document.getElementById('spendingPlanPreset');
+        var fields = document.getElementById('custom-plan-fields');
+        var leftover = document.getElementById('custom-leftover');
+        var allowance = @surplus;
+        function toggle() { fields.style.display = preset.value === 'custom' ? 'block' : 'none'; }
+        function recalc() {
+            var total = 0;
+            document.querySelectorAll('.sp-input').forEach(function (i) { total += parseFloat(i.value) || 0; });
+            var left = allowance - total;
+            leftover.textContent = (left < 0 ? '-£' : '£') + Math.abs(left).toFixed(2);
+            leftover.style.color = left < 0 ? 'var(--danger)' : '';
+        }
+        preset.addEventListener('change', toggle);
+        document.querySelectorAll('.sp-input').forEach(function (i) { i.addEventListener('input', recalc); });
+        toggle();
+    })();
+</script>
 
 }

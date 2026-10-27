@@ -242,7 +242,7 @@ public class BalanceController extends Controller {
 
         // 3. Compute paydays across past 5 years up to next month
         int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
-        java.time.LocalDate nowLocalDate = java.time.LocalDate.now();
+        java.time.LocalDate nowLocalDate = helpers.BankHolidayHelper.nowInRegion("UK");
         java.time.ZoneId ukZone = java.time.ZoneId.of("Europe/London");
         java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy");
 

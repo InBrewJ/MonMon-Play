@@ -44,6 +44,11 @@ public class JPAPotRepository implements PotRepository {
         return supplyAsync(() -> wrap(em -> archive(em, potId)), executionContext);
     }
 
+    @Override
+    public CompletionStage<Integer> archiveActiveMonthlyPots(String userId) {
+        return supplyAsync(() -> wrap(em -> archiveActiveMonthly(em, userId)), executionContext);
+    }
+
     private <T> T wrap(Function<EntityManager, T> function) {
         return jpaApi.withTransaction(function);
     }
@@ -51,8 +56,30 @@ public class JPAPotRepository implements PotRepository {
     private Pot archive(EntityManager em, int potId) {
         Pot toArchive = em.find(Pot.class, (long)potId);
         toArchive.setArchived(true);
+        toArchive.setLastUpdated(helpers.TimeHelpers.generateUnixTimestamp());
         em.persist(toArchive);
         return toArchive;
+    }
+
+    private Integer archiveActiveMonthly(EntityManager em, String userId) {
+        try {
+            List<Pot> activeMonthlyPots = em.createQuery(
+                    "select p from Pot p where p.userId = :userId and p.type = :type and p.archived = false",
+                    Pot.class)
+                    .setParameter("userId", userId)
+                    .setParameter("type", Pot.PotType.MONTHLY)
+                    .getResultList();
+            long now = helpers.TimeHelpers.generateUnixTimestamp();
+            for (Pot p : activeMonthlyPots) {
+                p.setArchived(true);
+                p.setLastUpdated(now);
+                em.persist(p);
+            }
+            return activeMonthlyPots.size();
+        } catch (Exception e) {
+            System.err.println("Error archiving active monthly pots: " + e.getMessage());
+            return 0;
+        }
     }
 
     private Pot insert(EntityManager em, Pot pot) {

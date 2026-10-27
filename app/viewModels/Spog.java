@@ -38,6 +38,8 @@ public class Spog {
     private final List<Account> allAccounts;
     private final List<Account> monthlyPotAccounts;
     private final HashMap<Account, AccountStatus> accountStatusMap;
+    private final LocalDate today;
+    private final SpendingPlan spendingPlan;
     private Double totalAvailableDebit;
     private Double totalAvailableCredit;
 
@@ -55,7 +57,43 @@ public class Spog {
                 List<Account> allAccounts,
                 List<Account> monthlyPotAccounts
     ) {
-        LocalDate now = LocalDate.now();
+        this(
+                surplus,
+                nextPayday,
+                percentageIncomeAsSavings,
+                incomingTotal,
+                outgoingTotal,
+                rentCost,
+                remainderRentCost,
+                billsCost,
+                remainderBillsCost,
+                completedOutgoingsSum,
+                pendingOutgoingsSum,
+                allAccounts,
+                monthlyPotAccounts,
+                helpers.BankHolidayHelper.nowInRegion("UK"),
+                null
+        );
+    }
+
+    public Spog(Float surplus,
+                int nextPayday,
+                int percentageIncomeAsSavings,
+                Float incomingTotal,
+                Float outgoingTotal,
+                Float rentCost,
+                Float remainderRentCost,
+                Float billsCost,
+                Float remainderBillsCost,
+                Float completedOutgoingsSum,
+                Float pendingOutgoingsSum,
+                List<Account> allAccounts,
+                List<Account> monthlyPotAccounts,
+                LocalDate today,
+                SpendingPlan spendingPlan
+    ) {
+        LocalDate now = today != null ? today : helpers.BankHolidayHelper.nowInRegion("UK");
+        this.today = now;
         this.monthlyPotAccounts = this.resolveMonthlyPotAccounts(monthlyPotAccounts, allAccounts);
         // takes savings plan into account, this seems lame
         this.outgoingTotal = outgoingTotal;
@@ -83,6 +121,12 @@ public class Spog {
         this.allAccounts = allAccounts;
         this.accountStatusMap = this.getAccountStatusMap(this.allAccounts);
         this.adjustedLeftPerDay = this.calculateAdjustedLeftPerDay();
+
+        if (spendingPlan != null) {
+            this.spendingPlan = spendingPlan.withContext(this.surplus, this.getSpentThisMonth(), this.daysUntilNextPayday, this.daysBetweenPaydays);
+        } else {
+            this.spendingPlan = null;
+        }
     }
 
     // MWM-48 this could be the 'monthly pot'
@@ -222,11 +266,23 @@ public class Spog {
         return resolved;
     }
 
-    private static long toEpochSec(Long timestamp) {
+    public static long toEpochSec(Long timestamp) {
         if (timestamp == null) {
             return 0L;
         }
         return timestamp > 10_000_000_000L ? timestamp / 1000L : timestamp;
+    }
+
+    public SpendingPlan getSpendingPlan() {
+        return spendingPlan;
+    }
+
+    public boolean hasSpendingPlan() {
+        return spendingPlan != null;
+    }
+
+    public LocalDate getToday() {
+        return today;
     }
 
     public Double getSpentThisMonth() {
@@ -234,7 +290,7 @@ public class Spog {
             return 0.0;
         }
 
-        LocalDate now = LocalDate.now();
+        LocalDate now = this.today != null ? this.today : helpers.BankHolidayHelper.nowInRegion("UK");
         LocalDate lastPayDate = helpers.ModelHelpers.findLastPaydayDate(now, this.nextPayday);
         long cycleStartSec = lastPayDate.atStartOfDay(java.time.ZoneId.of("Europe/London")).toEpochSecond();
 
@@ -384,12 +440,13 @@ public class Spog {
         System.out.println("getAccountStatusMap :: ");
         System.out.println("accounts size :: " + accounts.size());
 
+        LocalDate asOfDate = this.today != null ? this.today : helpers.BankHolidayHelper.nowInRegion("UK");
         for (Account a : accounts) {
-            Float alreadyPaidSum = findAlreadyPaid(a.outgoings, LocalDate.now(), nextPayday)
+            Float alreadyPaidSum = findAlreadyPaid(a.outgoings, asOfDate, nextPayday)
                             .stream()
                             .filter(o -> !o.isArchived())
                             .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
-            Float yetToPaySum = findYetToPay(a.outgoings, LocalDate.now(), nextPayday)
+            Float yetToPaySum = findYetToPay(a.outgoings, asOfDate, nextPayday)
                     .stream()
                     .filter(o -> !o.isArchived())
                     .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);

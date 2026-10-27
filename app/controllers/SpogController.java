@@ -144,13 +144,16 @@ public class SpogController extends Controller {
         surplus -= savingsPlanCost;
         int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
 
+        String region = request.session().get("region").orElse("UK");
+        LocalDate today = helpers.BankHolidayHelper.nowInRegion(region);
+
         // Scratch
-        List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(LocalDate.now(), nextPayDay, sup.getUserId()));
+        List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(today, nextPayDay, sup.getUserId()));
         for (Outgoing o: completedOutgoings) {
             System.out.println("Already paid :: " + o.getName() + " on " + o.getOutgoingDay());
         }
         System.out.println("C_Outgoings sum: " + completedOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum));
-        List<Outgoing> pendingOutgoings = repoListToList(outgoingRepository.yetToPay(LocalDate.now(), nextPayDay, sup.getUserId()));
+        List<Outgoing> pendingOutgoings = repoListToList(outgoingRepository.yetToPay(today, nextPayDay, sup.getUserId()));
         for (Outgoing o: pendingOutgoings) {
             System.out.println("Pending :: " + o.getName() + " on " + o.getOutgoingDay());
         }
@@ -172,16 +175,33 @@ public class SpogController extends Controller {
 
         List<Account> allAccounts = repoListToList(this.accountRepository.list(sup.getUserId()));
         List<Pot> monthlyPots = repoListToList(this.potRepository.list(sup.getUserId()));
-        java.util.Set<Long> monthlyPotAccountIds = monthlyPots.stream()
+        Pot activeMonthlyPot = monthlyPots.stream()
                 .filter(p -> p.getType() == Pot.PotType.MONTHLY)
                 .findFirst()
-                .map(p -> p.accounts != null
-                        ? p.accounts.stream().map(Account::getId).collect(Collectors.toSet())
-                        : Collections.<Long>emptySet())
-                .orElse(Collections.emptySet());
+                .orElse(null);
+
+        java.util.Set<Long> monthlyPotAccountIds = activeMonthlyPot != null && activeMonthlyPot.accounts != null
+                ? activeMonthlyPot.accounts.stream().map(Account::getId).collect(Collectors.toSet())
+                : Collections.<Long>emptySet();
+
         List<Account> monthlyPotAccounts = allAccounts.stream()
                 .filter(a -> monthlyPotAccountIds.contains(a.getId()))
                 .collect(Collectors.toList());
+
+        viewModels.SpendingPlan spendingPlan = null;
+        if (activeMonthlyPot != null && activeMonthlyPot.hasSpendingPlan()) {
+            spendingPlan = new viewModels.SpendingPlan(
+                    activeMonthlyPot.getSpendingPlanName(),
+                    activeMonthlyPot.getSpendingPlanFood(),
+                    activeMonthlyPot.getSpendingPlanFuel(),
+                    activeMonthlyPot.getSpendingPlanTransport(),
+                    activeMonthlyPot.getSpendingPlanFun(),
+                    surplus,
+                    0.0,
+                    0
+            );
+        }
+
         Spog spogVm = new Spog(
                 surplus,
                 nextPayDay,
@@ -195,9 +215,41 @@ public class SpogController extends Controller {
                 completedOutgoingsSum,
                 pendingOutgoingsSum,
                 allAccounts,
-                monthlyPotAccounts
+                monthlyPotAccounts,
+                today,
+                spendingPlan
         );
         return ok(views.html.spog.render(spogVm, request, playSessionStore));
+    }
+
+    @Secure(clients = "OidcClient")
+    public Result historicSpent(final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        String region = request.session().get("region").orElse("UK");
+        java.time.ZoneId zone = helpers.BankHolidayHelper.getTimezone(region);
+        LocalDate today = helpers.BankHolidayHelper.nowInRegion(region);
+
+        int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
+        int nominalPayday = nextPayDay > 0 ? nextPayDay : 1;
+
+        List<Account> allAccounts = repoListToList(this.accountRepository.list(sup.getUserId()));
+        List<Pot> allPots = repoListToList(this.potRepository.listComplete(sup.getUserId()));
+        List<Incoming> allIncomings = repoListToList(incomingRepository.list(sup.getUserId()));
+        List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
+        Float incomingTotal = Incoming.getTotalIncomings(allIncomings);
+        Float outgoingTotal = round2(Outgoing.getTotalOutgoingsWithoutHidden(allOutgoings));
+        Float monthlySurplus = round2(incomingTotal - outgoingTotal);
+
+        viewModels.HistoricSpentViewModel viewModel = helpers.HistoricSpentCalculator.calculate(
+                allPots,
+                allAccounts,
+                nominalPayday,
+                today,
+                zone,
+                monthlySurplus
+        );
+
+        return ok(views.html.historicSpent.render(viewModel, request, playSessionStore));
     }
 
     // Ideally, seed should only be possible by someone

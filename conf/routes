@@ -37,6 +37,7 @@ GET     /myBalances                  controllers.BalanceController.listBalances(
 # SPOG ('Single Pane of Glass')
 GET     /spog                         controllers.SpogController.index(req: Request)
 GET     /spog/seed                    controllers.SpogController.seed(req: Request)
+GET     /historicSpent                controllers.SpogController.historicSpent(req: Request)
 
 # Sharing (shared outgoings and tings)
 GET     /myPlans                               controllers.PlanController.sharedOutgoings(req: Request)
@@ -48,6 +49,7 @@ GET     /plans/updateSavingsPayoffPercentage   controllers.PlanController.setBas
 # Monthly pot (setting up spending sources per month)
 GET     /myMonthlyPot                               controllers.PotController.monthlyPot(req: Request)
 POST    /pot                                        controllers.PotController.addPot(req: Request)
+POST    /pot/applyGruelling                         controllers.PotController.applyGruelling(req: Request)
 GET     /binPot/:id                                 controllers.PotController.archivePot(id: Int, req: Request)
 
 # Settings
