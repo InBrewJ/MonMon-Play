@@ -132,4 +132,43 @@ public class Plan {
     public void setCost(Float cost) {
         this.cost = cost;
     }
+
+    public String getYourPercentage() {
+        if (split == null || split <= 0) return "0%";
+        float pct = split * 100.0f;
+        if (Math.abs(pct - Math.round(pct)) < 0.05f) {
+            return Math.round(pct) + "%";
+        }
+        return String.format(java.util.Locale.US, "%.1f%%", pct);
+    }
+
+    public String getOthersPercentage() {
+        if (split == null || split <= 0) return "100%";
+        float others = Math.max(0.0f, (1.0f - split) * 100.0f);
+        if (Math.abs(others - Math.round(others)) < 0.05f) {
+            return Math.round(others) + "%";
+        }
+        return String.format(java.util.Locale.US, "%.1f%%", others);
+    }
+
+    public Integer getPeopleCountIfEqual() {
+        if (split == null || split <= 0) return null;
+        float approxPeople = 1.0f / split;
+        int rounded = Math.round(approxPeople);
+        if (rounded >= 2 && Math.abs(approxPeople - rounded) < 0.02f) {
+            return rounded;
+        }
+        return null;
+    }
+
+    public String getHumanReadableSplit() {
+        if (split == null || split <= 0) return "0%";
+        Integer people = getPeopleCountIfEqual();
+        String yourPct = getYourPercentage();
+        String othersPct = getOthersPercentage();
+        if (people != null) {
+            return String.format("You pay %s (1/%d share) · Others pay %s", yourPct, people, othersPct);
+        }
+        return String.format("You pay %s · Others pay %s", yourPct, othersPct);
+    }
 }

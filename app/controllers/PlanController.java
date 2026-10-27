@@ -4,6 +4,8 @@ import models.Incoming;
 import models.IncomingRepository;
 import models.Plan;
 import models.PlanRepository;
+import models.Pot;
+import models.PotRepository;
 import models.SavingsPlan;
 import models.SavingsPlanRepository;
 import org.pac4j.core.context.session.SessionStore;
@@ -34,6 +36,7 @@ public class PlanController extends Controller {
     private final HttpExecutionContext ec;
     private final PlanRepository planRepository;
     private final SavingsPlanRepository savingsPlanRepository;
+    private final PotRepository potRepository;
     private final IncomingRepository incomingRepository;
     private MessagesApi messagesApi;
     private final Form<Plan> form;
@@ -47,6 +50,7 @@ public class PlanController extends Controller {
             MessagesApi messagesApi,
             PlanRepository planRepository,
             SavingsPlanRepository savingsPlanRepository,
+            PotRepository potRepository,
             IncomingRepository incomingRepository,
             HttpExecutionContext ec
     ) {
@@ -54,6 +58,7 @@ public class PlanController extends Controller {
         this.messagesApi = messagesApi;
         this.planRepository = planRepository;
         this.savingsPlanRepository = savingsPlanRepository;
+        this.potRepository = potRepository;
         this.incomingRepository = incomingRepository;
         this.form = formFactory.form(Plan.class);
         this.ec = ec;
@@ -104,28 +109,64 @@ public class PlanController extends Controller {
     public CompletionStage<Result> addPlan(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Plan plan = formFactory.form(Plan.class).bindFromRequest(request).get();
-        Float humanSplitFromForm = Float.parseFloat(request.body().asFormUrlEncoded().get("humanSplit")[0]);
-        Float split = (float)1 / (float)humanSplitFromForm;
-        System.out.println("Split from number of humans :: " + split);
+        java.util.Map<String, String[]> formParams = request.body().asFormUrlEncoded();
+
+        float split = 0.5f;
+        String shareMode = formParams != null && formParams.containsKey("shareMode") ? formParams.get("shareMode")[0] : "PEOPLE";
+
+        if ("PERCENT".equalsIgnoreCase(shareMode)) {
+            if (formParams != null && formParams.containsKey("splitPercent") && !formParams.get("splitPercent")[0].trim().isEmpty()) {
+                float pct = Float.parseFloat(formParams.get("splitPercent")[0].trim());
+                split = Math.max(0.01f, Math.min(100.0f, pct)) / 100.0f;
+            }
+        } else {
+            // "PEOPLE" mode: "How many people share"
+            float people = 2.0f;
+            if (formParams != null && formParams.containsKey("peopleCount") && !formParams.get("peopleCount")[0].trim().isEmpty()) {
+                people = Float.parseFloat(formParams.get("peopleCount")[0].trim());
+            } else if (formParams != null && formParams.containsKey("humanSplit") && !formParams.get("humanSplit")[0].trim().isEmpty()) {
+                people = Float.parseFloat(formParams.get("humanSplit")[0].trim());
+            }
+            if (people < 1.0f) people = 1.0f;
+            split = 1.0f / people;
+        }
+
         plan.setSplit(split);
         plan.setUserId(sup.getUserId());
+        if (plan.getScope() == null) {
+            plan.setScope(Plan.PlanScope.PERMANENT);
+        }
+
         return planRepository
-                .add(plan)
-                .thenApplyAsync(p -> redirect(routes.PlanController.sharedOutgoings()), ec.current());
+                .createOrReplace(sup.getUserId(), plan.getType(), plan)
+                .thenApplyAsync(p -> redirect(routes.PlanController.sharedOutgoings())
+                        .flashing("success", "Sharing agreement for " + (plan.getType() == Plan.PlanType.BILL_SHARE ? "Bills" : "Rent") + " saved successfully!"), ec.current());
     }
 
     @Secure(clients = "OidcClient")
-    public Result sharedOutgoings(final Http.Request request) throws ExecutionException, InterruptedException {
+    public CompletionStage<Result> sharedOutgoings(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        List<Plan> plans = repoListToList(planRepository.list(sup.getUserId()));
-        return ok(
-                views.html.plans.render(
-                        asScala(plans),
-                        this.form,
-                        request,
-                        playSessionStore
-                )
-        );
+        return planRepository.list(sup.getUserId()).thenComposeAsync(plansStream -> {
+            List<Plan> plans = plansStream.collect(Collectors.toList());
+            return savingsPlanRepository.getActive(sup.getUserId()).thenComposeAsync(activeSavingsPlan ->
+                potRepository.list(sup.getUserId()).thenApplyAsync(potsStream -> {
+                    Pot activeMonthlyPot = potsStream
+                            .filter(p -> p != null && p.getType() == Pot.PotType.MONTHLY)
+                            .findFirst()
+                            .orElse(null);
+                    return ok(
+                            views.html.plans.render(
+                                    asScala(plans),
+                                    activeSavingsPlan,
+                                    activeMonthlyPot,
+                                    this.form,
+                                    request,
+                                    playSessionStore
+                            )
+                    );
+                }, ec.current())
+            , ec.current());
+        }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")

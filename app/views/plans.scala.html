@@ -1,63 +1,369 @@
 @import play.mvc.Http.Request
 @import helper._
 @import org.pac4j.core.context.session._;
-@import viewModels._
+@import models._
 @(
     plans: Seq[Plan],
-    planForm: Form[Plan]
+    activeSavingsPlan: SavingsPlan = null,
+    activeMonthlyPot: Pot = null,
+    planForm: Form[Plan] = null
 )(
     implicit
     request: Http.Request,
     playSessionStore: SessionStore,
 )
-@main("MonMonSharing is caring") {
+
+@formatSplit(split: Float) = @{
+    if (split <= 0.0f) "0%"
+    else {
+        val pct = split * 100.0f
+        val others = math.max(0.0f, (1.0f - split) * 100.0f)
+        val approxPeople = 1.0f / split
+        val rounded = math.round(approxPeople)
+        val yourFmt = if (pct % 1 == 0) f"$pct%.0f%%" else f"$pct%.1f%%"
+        val othersFmt = if (others % 1 == 0) f"$others%.0f%%" else f"$others%.1f%%"
+        if (rounded >= 2 && math.abs(approxPeople - rounded) < 0.02f) {
+            s"You pay $yourFmt (1/${rounded} share) · Others pay $othersFmt"
+        } else {
+            s"You pay $yourFmt · Others pay $othersFmt"
+        }
+    }
+}
+
+@main("MonMon — Plans & Sharing Hub") {
 
 @partials.header()
 @partials.userDetails()
 @partials.navbar()
 
-<div class="w3-content" style="max-width: 1500px">
-    <div class="w3-row">
-        <div class="w3-half w3-padding w3-center">
-            <div class="w3-card w3-padding w3-margin">
-                <p><b> These are apparently your plans:</b></p>
-                <ul id="plans">
-                    @for(p <- plans) {
-                    <li>
-                        @{p.`type`} (you pay ~@p.split) (@p.scope)
-                        <a href="/binPlan/@p.id" onclick="return confirm('Are you sure you want to delete this plan?');">
-                            <i class="fas fa-trash-alt"></i>
-                        </a>
-                    </li>
-                    }
-                </ul>
+<div class="w3-content" style="max-width: 1200px; padding: 0 1rem 3rem;">
+
+    @if(request.flash().get("success").isPresent()) {
+        <div class="w3-panel w3-round" style="background: rgba(34, 197, 94, 0.15); border-left: 4px solid #22c55e; color: var(--text-main); padding: 10px 16px; margin: 1rem 0;">
+            <i class="fas fa-check-circle" style="color: #22c55e; margin-right: 6px;"></i> @request.flash().get("success").get()
+        </div>
+    }
+
+    <!-- Header & SPOG link -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1.25rem; flex-wrap: wrap; gap: 10px;">
+        <div>
+            <h2 style="margin: 0; font-weight: 800; display: inline-flex; align-items: center; gap: 10px; color: var(--text-main);">
+                <i class="fas fa-sliders-h" style="color: var(--primary);"></i>
+                Plans & Sharing Hub
+            </h2>
+            <div style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;">
+                Central dashboard for your financial plans, savings goals, monthly spending allowances, and shared expense agreements.
             </div>
         </div>
-        <div class="w3-half w3-padding">
-            <div class="w3-card w3-padding w3-margin">
-                <form method="POST" action="@routes.PlanController.addPlan()">
-                    @helper.CSRF.formField
-                    <select id="type" name="type">
-                        <option value="BILL_SHARE">Bill Sharing</option>
-                        <option value="RENT_SHARE">Rent Sharing</option>
-                    </select>
-                    <br />
-                    <select style="visibility: hidden;" id="scope" name="scope">
-                        <option value="THIS_MONTH_ONLY">Just this month</option>
-                        <option value="TWO_PLUS_MONTH">More frequently</option>
-                        <option selected value="PERMANENT">Forever</option>
-                    </select>
-                    <br />
-                    <input placeholder="How many people share?" step="0.01" type="number" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" name="humanSplit" />
-                    <br />
-                    <br />
-                    <textarea id="notes" name="notes" rows="4" cols="50">Any notes?</textarea>
-                    <br />
-                    <button>Add Plan</button>
-                </form>
-            </div>
+        <div>
+            <a href="/spog" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.85rem;">
+                <i class="fas fa-arrow-left"></i> Back to SPOG
+            </a>
         </div>
     </div>
+
+    <!-- 1. Central Planning Hub: 3 Navigation Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+
+        <!-- Card 1: Savings Plan -->
+        <div class="w3-card w3-padding" style="border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border-color);">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <div style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-piggy-bank" style="color: var(--primary);"></i> Savings Plan
+                    </div>
+                    @if(activeSavingsPlan != null) {
+                        <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.72rem; font-weight: 700;">ACTIVE</span>
+                    } else {
+                        <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); font-size: 0.72rem; font-weight: 600;">NOT CONFIGURED</span>
+                    }
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); min-height: 48px;">
+                    @if(activeSavingsPlan != null) {
+                        <div><strong>@activeSavingsPlan.getName()</strong> · @activeSavingsPlan.getSavingsPercentage()% of net income</div>
+                        <div style="font-size: 0.78rem; margin-top: 4px;">Allocated to @activeSavingsPlan.getItems().size() debt payoff & savings target items.</div>
+                    } else {
+                        <div>Set your savings target percentage and slice it up into debt payoffs and savings pots.</div>
+                    }
+                </div>
+            </div>
+            <a href="@routes.SavingsPlanController.index()" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; width: 100%; margin-top: 1rem; font-weight: 600; text-align: center; text-decoration: none;">
+                <i class="fas fa-arrow-right"></i> Manage Savings Plan
+            </a>
+        </div>
+
+        <!-- Card 2: Spending Plan -->
+        <div class="w3-card w3-padding" style="border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border-color);">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <div style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-archive" style="color: #f59e0b;"></i> Spending Plan
+                    </div>
+                    @if(activeMonthlyPot != null && activeMonthlyPot.hasSpendingPlan()) {
+                        <span class="badge-pill" style="background: rgba(245, 158, 11, 0.15); color: #d97706; font-size: 0.72rem; font-weight: 700;">ACTIVE</span>
+                    } else {
+                        <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); font-size: 0.72rem; font-weight: 600;">NOT CONFIGURED</span>
+                    }
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); min-height: 48px;">
+                    @if(activeMonthlyPot != null && activeMonthlyPot.hasSpendingPlan()) {
+                        <div>Preset: <strong>@activeMonthlyPot.getSpendingPlanName()</strong></div>
+                        <div style="font-size: 0.78rem; margin-top: 4px;">
+                            Food: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanFood().toDouble)/mo
+                            @if(activeMonthlyPot.getSpendingPlanFuel() != null && activeMonthlyPot.getSpendingPlanFuel() > 0) { · Fuel: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanFuel().toDouble)/mo }
+                            @if(activeMonthlyPot.getSpendingPlanTransport() != null && activeMonthlyPot.getSpendingPlanTransport() > 0) { · Transport: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanTransport().toDouble)/mo }
+                        </div>
+                    } else {
+                        <div>Configure your monthly spending pots and category allowances (food, fuel, transport, and fun).</div>
+                    }
+                </div>
+            </div>
+            <a href="@routes.PotController.monthlyPot()" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; width: 100%; margin-top: 1rem; font-weight: 600; text-align: center; text-decoration: none;">
+                <i class="fas fa-arrow-right"></i> Manage Spending Plan
+            </a>
+        </div>
+
+        <!-- Card 3: NomMon Meal Planner -->
+        <div class="w3-card w3-padding" style="border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border-color);">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <div style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-utensils" style="color: #ea580c;"></i> NomMon Meal Planner
+                    </div>
+                    <span class="badge-pill" style="background: rgba(234, 88, 12, 0.15); color: #ea580c; font-size: 0.72rem; font-weight: 700;">SAINSBURY'S</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); min-height: 48px;">
+                    <div>AI grocery assistant targeting Stamford Street Co. staples.</div>
+                    <div style="font-size: 0.78rem; margin-top: 4px;">7-day meal plan, batch cooking recipes, and interactive checklist linked to your food budget.</div>
+                </div>
+            </div>
+            <a href="@routes.NomMonController.index()" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; width: 100%; margin-top: 1rem; font-weight: 600; text-align: center; text-decoration: none;">
+                <i class="fas fa-arrow-right"></i> Open NomMon
+            </a>
+        </div>
+
+    </div>
+
+    <!-- 2. Bill & Rent Sharing Workspace -->
+    <div class="w3-card w3-padding w3-margin-bottom" style="border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+            <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-users" style="color: var(--primary);"></i> Bill & Rent Sharing Agreements
+            </h3>
+            <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.35rem;">
+                Split household bills and rent with flatmates or a partner. MonMon scales any outgoing tagged as <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.75rem;">Bill</span> or <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.75rem;">Rent</span> by your share when calculating your monthly surplus and daily SPOG allowance.
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+
+            <!-- Left Column: Active Agreements -->
+            <div>
+                <h4 style="margin: 0 0 0.75rem 0; font-size: 1rem; font-weight: 700; color: var(--text-main);">
+                    Active Sharing Agreements
+                </h4>
+
+                @defining(plans.filter(p => p != null && !p.isArchived() && (p.getType() == Plan.PlanType.BILL_SHARE || p.getType() == Plan.PlanType.RENT_SHARE))) { activeAgreements =>
+                    @if(activeAgreements.isEmpty) {
+                        <div style="padding: 1.5rem; text-align: center; background: var(--card-bg-subtle); border-radius: 8px; border: 1px dashed var(--border-color); color: var(--text-muted);">
+                            <i class="fas fa-receipt" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
+                            <div style="font-weight: 600; font-size: 0.9rem;">No shared agreements active yet</div>
+                            <div style="font-size: 0.8rem; margin-top: 4px;">Use the form to create a bill or rent sharing plan.</div>
+                        </div>
+                    } else {
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            @for(p <- activeAgreements) {
+                                <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 16px; position: relative;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            @if(p.getType() == Plan.PlanType.BILL_SHARE) {
+                                                <i class="fas fa-file-invoice-dollar" style="color: var(--primary); font-size: 1.1rem;"></i>
+                                                <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">Bill Sharing</span>
+                                            } else {
+                                                <i class="fas fa-home" style="color: #10b981; font-size: 1.1rem;"></i>
+                                                <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">Rent Sharing</span>
+                                            }
+                                        </div>
+                                        <a href="/binPlan/@p.getId()"
+                                           onclick="return confirm('Are you sure you want to delete this sharing agreement?');"
+                                           class="btn-action btn-delete"
+                                           title="Delete agreement">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </a>
+                                    </div>
+
+                                    <div style="margin: 6px 0;">
+                                        <span class="badge-pill" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; font-weight: 700; font-size: 0.82rem;">
+                                            @formatSplit(p.getSplit())
+                                        </span>
+                                    </div>
+
+                                    @if(p.getNotes() != null && !p.getNotes().trim().isEmpty()) {
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; font-style: italic;">
+                                            &ldquo;@p.getNotes()&rdquo;
+                                        </div>
+                                    }
+
+                                    <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 8px;">
+                                        Applies to all outgoings tagged as @if(p.getType() == Plan.PlanType.BILL_SHARE) { <strong>Bill</strong> } else { <strong>Rent</strong> }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- Right Column: Create / Update Agreement Form -->
+            <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem;">
+                <h4 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 700; color: var(--text-main);">
+                    Add or Update Sharing Plan
+                </h4>
+
+                <form method="POST" action="@routes.PlanController.addPlan()" id="sharingPlanForm">
+                    @helper.CSRF.formField
+
+                    <!-- Agreement Type -->
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+                        Agreement Type
+                    </label>
+                    <select id="type" name="type" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 1rem;">
+                        <option value="BILL_SHARE">Bill Sharing (Utilities, Broadband, Groceries, etc.)</option>
+                        <option value="RENT_SHARE">Rent Sharing (Monthly rent)</option>
+                    </select>
+
+                    <input type="hidden" id="scope" name="scope" value="PERMANENT" />
+
+                    <!-- Split Mode Selector -->
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+                        How would you like to split?
+                    </label>
+                    <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem;">
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem; color: var(--text-main);">
+                            <input type="radio" name="shareMode" value="PEOPLE" id="modePeople" checked style="cursor: pointer;" />
+                            <span>How many people share</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem; color: var(--text-main);">
+                            <input type="radio" name="shareMode" value="PERCENT" id="modePercent" style="cursor: pointer;" />
+                            <span>Split %</span>
+                        </label>
+                    </div>
+
+                    <!-- Input for "PEOPLE" Mode -->
+                    <div id="peopleInputGroup" style="margin-bottom: 1rem;">
+                        <label for="peopleCount" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">
+                            Number of people sharing equally (including you):
+                        </label>
+                        <input type="number" id="peopleCount" name="peopleCount" value="4" min="1" step="1"
+                               style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);" />
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                            e.g. 4 people means you pay 1/4 (25%), and the other 3 pay 75%.
+                        </div>
+                    </div>
+
+                    <!-- Input for "PERCENT" Mode -->
+                    <div id="percentInputGroup" style="margin-bottom: 1rem; display: none;">
+                        <label for="splitPercent" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">
+                            Your share percentage (%):
+                        </label>
+                        <div style="position: relative;">
+                            <input type="number" id="splitPercent" name="splitPercent" value="20" min="0.1" max="100" step="0.1"
+                                   style="width: 100%; padding: 8px 28px 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);" />
+                            <span style="position: absolute; right: 10px; top: 8px; color: var(--text-muted); font-weight: 700;">%</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                            e.g. 20% means you pay 20% of the bills and the other people pay 80%.
+                        </div>
+                    </div>
+
+                    <!-- Live Calculation Preview Pill -->
+                    <div id="splitLivePreview" style="margin-bottom: 1rem; padding: 10px 14px; border-radius: 8px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); font-size: 0.86rem; color: var(--text-main);">
+                        <i class="fas fa-calculator" style="color: var(--primary); margin-right: 6px;"></i>
+                        <span id="previewText">You pay <strong>25%</strong> · Others pay <strong>75%</strong></span>
+                    </div>
+
+                    <!-- Notes -->
+                    <label for="notes" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+                        Notes / Agreement Description (optional)
+                    </label>
+                    <textarea id="notes" name="notes" rows="2" placeholder="e.g. 4-way flatmate split for WiFi & Energy"
+                              style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 1rem; box-sizing: border-box;"></textarea>
+
+                    <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; width: 100%; cursor: pointer;">
+                        <i class="fas fa-save"></i> Save Sharing Agreement
+                    </button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
 </div>
+
+<script>
+    (function () {
+        var modePeople = document.getElementById('modePeople');
+        var modePercent = document.getElementById('modePercent');
+        var peopleGroup = document.getElementById('peopleInputGroup');
+        var percentGroup = document.getElementById('percentInputGroup');
+        var peopleInput = document.getElementById('peopleCount');
+        var percentInput = document.getElementById('splitPercent');
+        var previewText = document.getElementById('previewText');
+
+        function updatePreview() {
+            var isPeople = modePeople.checked;
+            var yourPct = 50.0;
+            var othersPct = 50.0;
+
+            if (isPeople) {
+                var people = parseFloat(peopleInput.value) || 1.0;
+                if (people < 1.0) people = 1.0;
+                yourPct = (1.0 / people) * 100.0;
+                othersPct = 100.0 - yourPct;
+
+                var yourShareFmt = yourPct % 1 === 0 ? yourPct.toFixed(0) : yourPct.toFixed(1);
+                var othersShareFmt = othersPct % 1 === 0 ? othersPct.toFixed(0) : othersPct.toFixed(1);
+
+                var fractionStr = people % 1 === 0 && people >= 2 ? ' (1/' + Math.round(people) + 'th share)' : '';
+                previewText.innerHTML = 'You pay <strong>' + yourShareFmt + '%' + fractionStr + '</strong> (e.g. £' + (yourPct).toFixed(2) + ' on a £100 bill) · Other people pay <strong>' + othersShareFmt + '%</strong> (e.g. £' + (othersPct).toFixed(2) + ')';
+            } else {
+                var pct = parseFloat(percentInput.value) || 0.0;
+                if (pct < 0.1) pct = 0.1;
+                if (pct > 100.0) pct = 100.0;
+                yourPct = pct;
+                othersPct = 100.0 - yourPct;
+
+                var yourShareFmt = yourPct % 1 === 0 ? yourPct.toFixed(0) : yourPct.toFixed(1);
+                var othersShareFmt = othersPct % 1 === 0 ? othersPct.toFixed(0) : othersPct.toFixed(1);
+
+                previewText.innerHTML = 'You pay <strong>' + yourShareFmt + '%</strong> (e.g. £' + (yourPct).toFixed(2) + ' on a £100 bill) · Other people pay <strong>' + othersShareFmt + '%</strong> (e.g. £' + (othersPct).toFixed(2) + ')';
+            }
+        }
+
+        function toggleMode() {
+            if (modePeople.checked) {
+                peopleGroup.style.display = 'block';
+                percentGroup.style.display = 'none';
+            } else {
+                peopleGroup.style.display = 'none';
+                percentGroup.style.display = 'block';
+            }
+            updatePreview();
+        }
+
+        if (modePeople && modePercent) {
+            modePeople.addEventListener('change', toggleMode);
+            modePercent.addEventListener('change', toggleMode);
+        }
+        if (peopleInput) {
+            peopleInput.addEventListener('input', updatePreview);
+        }
+        if (percentInput) {
+            percentInput.addEventListener('input', updatePreview);
+        }
+
+        updatePreview();
+    })();
+</script>
 
 }

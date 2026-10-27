@@ -213,4 +213,40 @@ public class ModelHelpersTest {
         Float allowance = ModelHelpers.calculateMonthlyAllowance(incomings, outgoings, plans);
         assertThat(allowance).isEqualTo(834.61f);
     }
+
+    @Test
+    public void testPlanHumanReadableSplitAndPercentages() {
+        models.Plan fourWay = new models.Plan();
+        fourWay.setSplit(0.25f);
+        assertThat(fourWay.getYourPercentage()).isEqualTo("25%");
+        assertThat(fourWay.getOthersPercentage()).isEqualTo("75%");
+        assertThat(fourWay.getPeopleCountIfEqual()).isEqualTo(4);
+        assertThat(fourWay.getHumanReadableSplit()).isEqualTo("You pay 25% (1/4 share) · Others pay 75%");
+
+        models.Plan customSplit = new models.Plan();
+        customSplit.setSplit(0.20f);
+        assertThat(customSplit.getYourPercentage()).isEqualTo("20%");
+        assertThat(customSplit.getOthersPercentage()).isEqualTo("80%");
+        assertThat(customSplit.getHumanReadableSplit()).contains("You pay 20%");
+        assertThat(customSplit.getHumanReadableSplit()).contains("Others pay 80%");
+    }
+
+    @Test
+    public void testCalculateMonthlyAllowanceWithCustomBillSharePercentage() {
+        Incoming salary = new Incoming();
+        salary.setNetValue(2000f);
+
+        Outgoing energy = new Outgoing();
+        energy.setName("Energy");
+        energy.setCost(200f);
+        energy.setBill(true);
+
+        models.Plan billShare = new models.Plan();
+        billShare.setType(models.Plan.PlanType.BILL_SHARE);
+        billShare.setSplit(0.20f); // 20% split -> user pays £40
+
+        Float allowance = ModelHelpers.calculateMonthlyAllowance(List.of(salary), List.of(energy), List.of(billShare));
+        // Outgoings = 200 * 0.20 = 40. Allowance = 2000 - 40 = 1960.
+        assertThat(allowance).isEqualTo(1960.0f);
+    }
 }
