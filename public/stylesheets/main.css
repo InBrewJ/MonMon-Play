@@ -1479,14 +1479,15 @@ hr {
 .spog-deck-nav {
   display: none;
   position: sticky;
-  top: 56px;
+  top: 54px;
   z-index: 90;
   background: var(--bg-main);
-  padding: 8px 0;
+  padding: 8px 4px 10px 4px;
   margin-bottom: 12px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   gap: 8px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .spog-deck-nav::-webkit-scrollbar {
@@ -1496,28 +1497,54 @@ hr {
 .spog-nav-pill {
   flex: 1 0 auto;
   text-align: center;
-  padding: 8px 14px;
-  border-radius: 20px;
-  font-size: 0.84rem;
+  padding: 7px 14px;
+  border-radius: 9999px;
+  font-size: 0.82rem;
   font-weight: 600;
   background: var(--card-bg-subtle);
   border: 1px solid var(--border-color);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
   user-select: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  opacity: 0.75;
+}
+
+.spog-nav-pill:hover,
+.spog-nav-pill:focus {
+  opacity: 1;
+  color: var(--text-main);
+  border-color: var(--primary-text);
 }
 
 .spog-nav-pill.active {
+  opacity: 1;
   background: var(--primary);
   color: #ffffff;
   border-color: var(--primary);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+  font-weight: 700;
+  box-shadow: 0 3px 10px rgba(99, 102, 241, 0.45);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.spog-nav-pill.active i {
+  color: #ffffff;
+}
+
+.spog-nav-pill.active::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: #ffffff;
+  border-radius: 50%;
+  margin-left: 2px;
+  opacity: 0.9;
 }
 
 /* SPOG Details Accordions for Secondary Info */
@@ -1620,6 +1647,12 @@ hr {
     box-sizing: border-box;
     margin-bottom: 0 !important;
   }
+
+  /* Physical card swipe sequence matches tabs: 1. Daily Pot -> 2. Spent -> 3. Savings -> 4. Accounts */
+  #spog-card-pot { order: 1; }
+  #spog-card-spent { order: 2; }
+  #spog-card-savings { order: 3; }
+  #spog-card-accounts { order: 4; }
 }
 
 @media (min-width: 769px) {
