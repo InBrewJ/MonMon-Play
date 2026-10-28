@@ -65,6 +65,22 @@ public class JPANetWorthAssetRepository implements NetWorthAssetRepository {
     }
 
     @Override
+    public CompletionStage<Stream<NetWorthAsset>> listAll(String userId) {
+        return supplyAsync(() -> wrap(em -> {
+            try {
+                List<NetWorthAsset> list = em.createQuery(
+                        "select a from NetWorthAsset a where a.userId = :userId order by a.createdAt asc",
+                        NetWorthAsset.class)
+                        .setParameter("userId", userId)
+                        .getResultList();
+                return list.stream();
+            } catch (Exception e) {
+                return Stream.empty();
+            }
+        }), executionContext);
+    }
+
+    @Override
     public CompletionStage<NetWorthAsset> update(Long id, String name, NetWorthAsset.AssetCategory category, Double value, String notes) {
         return supplyAsync(() -> wrap(em -> {
             NetWorthAsset a = em.find(NetWorthAsset.class, id);

@@ -99,6 +99,10 @@ public class NetWorthViewModel {
         return customAssets;
     }
 
+    public List<Account> getAccounts() {
+        return accounts;
+    }
+
     public List<Account> getCashAccounts() {
         return cashAccounts;
     }

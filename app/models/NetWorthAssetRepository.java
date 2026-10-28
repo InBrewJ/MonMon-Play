@@ -16,6 +16,8 @@ public interface NetWorthAssetRepository {
 
     CompletionStage<Stream<NetWorthAsset>> list(String userId);
 
+    CompletionStage<Stream<NetWorthAsset>> listAll(String userId);
+
     CompletionStage<NetWorthAsset> update(Long id, String name, NetWorthAsset.AssetCategory category, Double value, String notes);
 
     CompletionStage<Boolean> archive(Long id);

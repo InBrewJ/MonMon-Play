@@ -4,7 +4,8 @@
 @import models._
 @import org.pac4j.core.context.session._;
 @(
-    vm: NetWorthViewModel
+    vm: NetWorthViewModel,
+    chartHistoryJson: String
 )(
     implicit
     request: Http.Request,
@@ -85,20 +86,22 @@
         </div>
     </div>
 
-    <!-- Ed Says: Retirement & Financial Independence Horizon -->
-    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem; position: relative;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 0.75rem;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="background: var(--primary); color: #fff; border-radius: 50%; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 900;">E</span>
-                <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem;">Ed Says — Retirement & Independence Horizon</h4>
-                <span id="ed-networth-status" style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;"></span>
+    <!-- Financial Independence & 4% SWR Horizon Card -->
+    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
+            <div>
+                <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-seedling" style="color: var(--success);"></i> Financial Independence & Portfolio Horizon
+                </h4>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">4% Safe Withdrawal Rate (SWR) & grocery coverage from liquid + pension assets.</div>
             </div>
-            <button id="ed-networth-refresh-btn" type="button" class="w3-button w3-round w3-small w3-border" style="font-size: 0.8rem;" title="Ask Ed again with latest figures">
-                <i class="fas fa-sync-alt" style="margin-right: 4px;"></i> Refresh Ed's Assessment
+            <button type="button" class="open-ed-modal-btn w3-button w3-round w3-small w3-border" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: var(--card-bg-subtle);" title="Ask Ed for his advice">
+                <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 20px; height: 20px; vertical-align: middle;" />
+                <span>Ed Says</span>
             </button>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 1rem; background: var(--card-bg-subtle); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; background: var(--card-bg-subtle); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
             <div>
                 <span style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Investable Portfolio (Cash + Pension)</span>
                 <div style="font-weight: 800; font-size: 1.15rem; color: var(--primary);">£@vm.getInvestablePortfolio()</div>
@@ -114,9 +117,44 @@
                 </div>
             </div>
         </div>
+    </div>
 
-        <div id="ed-networth-content" style="color: var(--text-main); font-size: 0.92rem; min-height: 80px;">
-            <p style="color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Ed is surveying your portfolio and retirement horizon...</p>
+    <!-- Net Worth Trajectory Chart Card -->
+    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 8px;">
+            <div>
+                <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-chart-area" style="color: var(--primary);"></i> Net Worth Trajectory
+                </h4>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+                    Pensions, cash &amp; savings, and fixed assets over time.
+                </div>
+            </div>
+
+            <!-- Time Filter Buttons: 1 Year, 2 Years, 5 Years, 10 Years -->
+            <div class="btn-group" style="display: inline-flex; gap: 2px; background: var(--card-bg-subtle); padding: 2px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <button type="button" class="btn-nw-filter" data-range="1y" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 700; border-radius: 6px; border: none; background: var(--primary); color: #fff; cursor: pointer;">1 Year</button>
+                <button type="button" class="btn-nw-filter" data-range="2y" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 600; border-radius: 6px; border: none; background: transparent; color: var(--text-muted); cursor: pointer;">2 Years</button>
+                <button type="button" class="btn-nw-filter" data-range="5y" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 600; border-radius: 6px; border: none; background: transparent; color: var(--text-muted); cursor: pointer;">5 Years</button>
+                <button type="button" class="btn-nw-filter" data-range="10y" style="padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 600; border-radius: 6px; border: none; background: transparent; color: var(--text-muted); cursor: pointer;">10 Years</button>
+            </div>
+        </div>
+
+        <!-- Interactive HTML5 Canvas Chart -->
+        <div id="nw-chart-container" style="position: relative; width: 100%; height: 300px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px;">
+            <canvas id="networth-chart" style="width: 100%; height: 100%; display: block;"></canvas>
+            <div id="nw-chart-tooltip" style="display: none; position: absolute; background: var(--ticker-bg); color: var(--ticker-text); padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; pointer-events: none; border: 1px solid var(--border-color); box-shadow: var(--shadow-lg); z-index: 100; white-space: nowrap; line-height: 1.5;"></div>
+        </div>
+
+        <!-- Legend & Indicators -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted); flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <span><span style="display: inline-block; width: 12px; height: 3px; background: #8b5cf6; vertical-align: middle; margin-right: 5px; border-radius: 2px;"></span> Pensions</span>
+                <span><span style="display: inline-block; width: 12px; height: 3px; background: #10b981; vertical-align: middle; margin-right: 5px; border-radius: 2px;"></span> Cash &amp; Savings</span>
+                <span><span style="display: inline-block; width: 12px; height: 3px; background: #f59e0b; vertical-align: middle; margin-right: 5px; border-radius: 2px;"></span> Fixed Assets</span>
+                <span><span style="display: inline-block; width: 12px; height: 2px; border-top: 2px dashed var(--primary); vertical-align: middle; margin-right: 5px;"></span> Total Net Worth</span>
+            </div>
+            <span id="nw-chart-range-label" style="font-weight: 600;">Showing Last 1 Year</span>
         </div>
     </div>
 
@@ -407,7 +445,64 @@
     </div>
 </div>
 
-<script src="/assets/javascripts/edNetWorth.js"></script>
+<!-- Floating Action Button for Ed (Bottom Left, Mobile & Desktop) -->
+<button type="button" id="btn-ed-fab" class="fab-ed" title="Ed says">
+    <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" />
+</button>
+
+<!-- Ed Says Modal (Net Worth & Retirement) -->
+<div id="ed-modal" class="modal-backdrop">
+    <div class="modal-content-card" style="max-width: 580px;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 1.1rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 28px; height: 28px; vertical-align: middle;" />
+                <span>Ed Says — Retirement & Independence Horizon</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="ed-refresh-btn w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; cursor: pointer;" title="Ask Ed for fresh advice">
+                    <i class="fas fa-sync-alt ed-refresh-icon"></i> Ask Ed
+                </button>
+                <button type="button" id="ed-close-btn" style="background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 1.25rem; max-height: calc(85vh - 70px); overflow-y: auto;">
+            <!-- Mini context inside modal -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 1rem; background: var(--card-bg-subtle); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.8rem;">
+                <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.7rem; text-transform: uppercase; font-weight: 700;">Investable:</span>
+                    <strong style="color: var(--primary);">£@vm.getInvestablePortfolio()</strong>
+                </div>
+                <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.7rem; text-transform: uppercase; font-weight: 700;">4% SWR:</span>
+                    <strong style="color: var(--success);">£@vm.getAnnualSafeWithdrawal()/yr</strong>
+                </div>
+                <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.7rem; text-transform: uppercase; font-weight: 700;">Food Coverage:</span>
+                    <strong style="color: @if(vm.getFoodCoveredPercent() >= 100) {var(--success)} else {var(--primary)};">@vm.getFoodCoveredPercent()%</strong>
+                </div>
+            </div>
+
+            <div class="ed-says-content" style="font-size: 0.9rem; line-height: 1.6; color: var(--text-main);">
+                <div style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); padding: 0.6rem 0;">
+                    <i class="fas fa-spinner fa-spin" style="color: var(--primary);"></i>
+                    <span>Summoning Ed's thoughts on your net worth and retirement horizon...</span>
+                </div>
+            </div>
+            <div class="ed-says-footer" style="display: none; margin-top: 0.85rem; padding-top: 0.5rem; border-top: 1px dashed var(--border-color); font-size: 0.74rem; color: var(--text-muted); text-align: right;">
+                <i class="far fa-clock" style="margin-right: 4px;"></i><span class="ed-last-spoke-text"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.netWorthHistory = @play.twirl.api.Html(chartHistoryJson);
+</script>
+<script src="@routes.Assets.versioned("javascripts/networth-chart.js")" type="text/javascript"></script>
+<script src="@routes.Assets.versioned("javascripts/edNetWorth.js")" type="text/javascript"></script>
 <script>
     function openEditModal(id, name, category, value, notes) {
         document.getElementById('edit-asset-form').action = '/netWorth/updateAsset/' + id;

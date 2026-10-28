@@ -238,7 +238,7 @@ public class SpogController extends Controller {
         Float pendingOutgoingsSum = pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         // Scratch end
 
-        List<Account> allAccounts = repoListToList(this.accountRepository.listComplete(sup.getUserId()));
+        List<Account> allAccounts = repoListToList(this.accountRepository.list(sup.getUserId()));
         List<Pot> monthlyPots = repoListToList(this.potRepository.list(sup.getUserId()));
         Pot activeMonthlyPot = monthlyPots.stream()
                 .filter(p -> p.getType() == Pot.PotType.MONTHLY)

@@ -30,6 +30,7 @@ public class NetWorthController extends Controller {
 
     private final AccountRepository accountRepository;
     private final NetWorthAssetRepository assetRepository;
+    private final BalanceRepository balanceRepository;
     private final IncomingRepository incomingRepository;
     private final OutgoingRepository outgoingRepository;
     private final PlanRepository planRepository;
@@ -45,6 +46,7 @@ public class NetWorthController extends Controller {
     public NetWorthController(
             AccountRepository accountRepository,
             NetWorthAssetRepository assetRepository,
+            BalanceRepository balanceRepository,
             IncomingRepository incomingRepository,
             OutgoingRepository outgoingRepository,
             PlanRepository planRepository,
@@ -55,6 +57,7 @@ public class NetWorthController extends Controller {
     ) {
         this.accountRepository = accountRepository;
         this.assetRepository = assetRepository;
+        this.balanceRepository = balanceRepository;
         this.incomingRepository = incomingRepository;
         this.outgoingRepository = outgoingRepository;
         this.planRepository = planRepository;
@@ -90,7 +93,20 @@ public class NetWorthController extends Controller {
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         NetWorthViewModel vm = buildViewModel(sup, request);
-        return ok(views.html.netWorth.render(vm, request, playSessionStore));
+
+        String region = request.session().get("region").orElse("UK");
+        LocalDate today = BankHolidayHelper.nowInRegion(region);
+        java.time.ZoneId zone = java.time.ZoneId.of("Europe/London");
+
+        List<Account> accounts = vm.getAccounts();
+        List<NetWorthAsset> allAssets = repoListToList(this.assetRepository.listAll(sup.getUserId()));
+        List<Balance> balances = repoListToList(this.balanceRepository.list(sup.getUserId()));
+
+        List<helpers.NetWorthHistoryCalculator.HistoryPoint> points =
+                helpers.NetWorthHistoryCalculator.calculate(accounts, balances, allAssets, today, zone);
+        String chartHistoryJson = helpers.NetWorthHistoryCalculator.buildChartHistoryJson(points);
+
+        return ok(views.html.netWorth.render(vm, chartHistoryJson, request, playSessionStore));
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -182,6 +198,10 @@ public class NetWorthController extends Controller {
                             ObjectNode res = play.libs.Json.newObject();
                             res.put("edSays", advice);
                             res.put("configured", mistralService.isConfigured());
+                            Long lastSpoke = mistralService.getLastNetWorthSpokeTimestamp(sup.getUserId());
+                            if (lastSpoke != null) {
+                                res.put("lastSpoke", lastSpoke);
+                            }
                             return ok(res);
                         })
         ).exceptionally(ex -> {

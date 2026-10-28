@@ -47,6 +47,7 @@ public class NetWorthControllerTest {
     public void testNetWorthIndexRendersWithAssetsAndPensions() throws Exception {
         AccountRepository accountRepo = mock(AccountRepository.class);
         NetWorthAssetRepository assetRepo = mock(NetWorthAssetRepository.class);
+        BalanceRepository balanceRepo = mock(BalanceRepository.class);
         IncomingRepository incomingRepo = mock(IncomingRepository.class);
         OutgoingRepository outgoingRepo = mock(OutgoingRepository.class);
         PlanRepository planRepo = mock(PlanRepository.class);
@@ -64,21 +65,24 @@ public class NetWorthControllerTest {
         pension.setType(Account.AccountType.PENSION);
         Balance pb = new Balance();
         pb.setValue(45000f);
-        pb.setTimestamp(System.currentTimeMillis());
+        pb.setTimestamp(System.currentTimeMillis() / 1000L);
         pension.balances = List.of(pb);
 
         NetWorthAsset car = new NetWorthAsset("u-123", "2018 Ford Focus", NetWorthAsset.AssetCategory.VEHICLE, 9000.0, "Daily driver");
         car.setId(1L);
 
+        when(accountRepo.listComplete("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.of(pension)));
         when(accountRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.of(pension)));
         when(assetRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.of(car)));
+        when(assetRepo.listAll("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.of(car)));
+        when(balanceRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.empty()));
         when(incomingRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.empty()));
         when(outgoingRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.empty()));
         when(planRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.empty()));
         when(potRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(Stream.empty()));
 
         NetWorthController controller = new NetWorthController(
-                accountRepo, assetRepo, incomingRepo, outgoingRepo, planRepo, potRepo,
+                accountRepo, assetRepo, balanceRepo, incomingRepo, outgoingRepo, planRepo, potRepo,
                 mistralService, formFactory, ec
         );
         injectSessionStore(controller, sessionStore);
@@ -93,6 +97,9 @@ public class NetWorthControllerTest {
         assertThat(body).contains("Nest Pension");
         assertThat(body).contains("2018 Ford Focus");
         assertThat(body).contains("Ed Says — Retirement & Independence Horizon");
+        assertThat(body).contains("Net Worth Trajectory");
+        assertThat(body).contains("btn-nw-filter");
+        assertThat(body).contains("networth-chart");
     }
 
     @Test
@@ -122,8 +129,9 @@ public class NetWorthControllerTest {
         savedAsset.setId(5L);
         when(assetRepo.add(any(NetWorthAsset.class))).thenReturn(CompletableFuture.completedFuture(savedAsset));
 
+        BalanceRepository balanceRepo = mock(BalanceRepository.class);
         NetWorthController controller = new NetWorthController(
-                accountRepo, assetRepo, incomingRepo, outgoingRepo, planRepo, potRepo,
+                accountRepo, assetRepo, balanceRepo, incomingRepo, outgoingRepo, planRepo, potRepo,
                 mistralService, formFactory, ec
         );
         injectSessionStore(controller, sessionStore);
@@ -162,8 +170,9 @@ public class NetWorthControllerTest {
         when(mistralService.askEdNetWorth(eq("u-123"), anyString(), eq(false)))
                 .thenReturn(CompletableFuture.completedFuture("You have enough bread to survive the winter."));
 
+        BalanceRepository balanceRepo = mock(BalanceRepository.class);
         NetWorthController controller = new NetWorthController(
-                accountRepo, assetRepo, incomingRepo, outgoingRepo, planRepo, potRepo,
+                accountRepo, assetRepo, balanceRepo, incomingRepo, outgoingRepo, planRepo, potRepo,
                 mistralService, formFactory, ec
         );
         injectSessionStore(controller, sessionStore);

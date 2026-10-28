@@ -137,6 +137,12 @@ public class MistralService {
         return cached != null ? cached.timestamp : null;
     }
 
+    public Long getLastNetWorthSpokeTimestamp(String userId) {
+        if (userId == null) return null;
+        CacheEntry cached = userNetWorthAdviceCache.get(userId);
+        return cached != null ? cached.timestamp : null;
+    }
+
     public static String getNomMonCacheKey(String userId, float weeklyBudget, int people) {
         int p = Math.max(1, Math.min(12, people));
         return (userId != null ? userId : "guest") + ":budget=" + Math.round(weeklyBudget * 100.0f) + ":people=" + p;
