@@ -379,6 +379,59 @@ public class SavingsPlanController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public Result addAllCreditCards(final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        String userId = sup.getUserId();
+
+        SavingsPlan activePlan = savingsPlanRepository.getActive(userId).toCompletableFuture().get();
+        if (activePlan == null) {
+            SavingsPlan newPlan = new SavingsPlan(userId, "Monthly Savings Plan", 0);
+            activePlan = savingsPlanRepository.add(newPlan).toCompletableFuture().get();
+        }
+
+        List<Account> allAccounts = repoListToList(accountRepository.list(userId));
+        java.util.Set<Long> alreadyLinkedAccountIds = activePlan.getItems().stream()
+                .filter(i -> i.getAccount() != null && i.getAccount().getId() != null)
+                .map(i -> i.getAccount().getId())
+                .collect(Collectors.toSet());
+
+        // Find credit accounts that have an outstanding balance and are not already in the plan
+        List<Account> creditCardsWithBalance = allAccounts.stream()
+                .filter(a -> a != null && a.getType() == Account.AccountType.CREDIT)
+                .filter(a -> !alreadyLinkedAccountIds.contains(a.getId()))
+                .filter(a -> {
+                    float limit = a.getAvailableLimit() != null ? a.getAvailableLimit() : 0f;
+                    float balance = a.getLatestBalanceValue() != null ? a.getLatestBalanceValue() : 0f;
+                    float debt = Math.max(0f, limit - balance);
+                    return debt > 0f || (limit == 0f && balance > 0f);
+                })
+                .collect(Collectors.toList());
+
+        // Append to the priority list with a priority lower than anything already in the list
+        int priority = activePlan.getItems().size() + 1;
+        for (Account acc : creditCardsWithBalance) {
+            float limit = acc.getAvailableLimit() != null ? acc.getAvailableLimit() : 0f;
+            float balance = acc.getLatestBalanceValue() != null ? acc.getLatestBalanceValue() : 0f;
+            float debt = Math.max(0f, limit - balance);
+            if (debt <= 0f && limit == 0f && balance > 0f) {
+                debt = balance;
+            }
+
+            SavingsPlanItem item = new SavingsPlanItem(
+                    acc.getName(),
+                    SavingsPlanItem.ItemType.DEBT_PAYOFF,
+                    acc,
+                    debt,
+                    0.0f,
+                    priority++
+            );
+            savingsPlanRepository.addItem(activePlan.getId(), item).toCompletableFuture().get();
+        }
+
+        return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveItem(Long id, final Http.Request request) {
         return savingsPlanRepository.archiveItem(id)
                 .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());

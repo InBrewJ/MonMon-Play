@@ -441,6 +441,12 @@
                         Unallocated: <strong id="form-unallocated-val" style="color: var(--primary);">£@activePlan.getUnallocatedAmount(incomingTotal)</strong>
                     </span>
                     @if(!editing) {
+                        <form method="POST" action="/savingsPlan/addAllCreditCards" style="margin: 0; display: inline;">
+                            @helper.CSRF.formField
+                            <button type="submit" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; cursor: pointer;" title="Add all credit cards with a balance into your priority queue">
+                                <i class="fas fa-credit-card" style="color: var(--primary); margin-right: 4px;"></i>Add All Credit Cards
+                            </button>
+                        </form>
                         <form method="POST" action="/savingsPlan/addAllOverdrafts" style="margin: 0; display: inline;">
                             @helper.CSRF.formField
                             <button type="submit" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; cursor: pointer;" title="Add all active overdrafts directly into your savings plan">

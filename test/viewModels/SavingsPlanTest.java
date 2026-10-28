@@ -490,4 +490,80 @@ public class SavingsPlanTest {
         // Shunting P3 down should return false (already at bottom)
         assertThat(plan.moveItemDown(103L)).isFalse();
     }
+
+    @Test
+    public void testAddCreditCardsWithBalanceAppendsLowerPriorityItems() {
+        SavingsPlan plan = new SavingsPlan("user123", "Credit Payoff Plan", 20);
+
+        // Pre-existing item (Priority 1)
+        SavingsPlanItem existingItem = new SavingsPlanItem("Emergency Fund", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 100f, 1);
+        existingItem.setId(1L);
+        plan.addItem(existingItem);
+        assertThat(plan.getItems().size()).isEqualTo(1);
+        assertThat(plan.getItems().get(0).getPriority()).isEqualTo(1);
+
+        // Credit Card A: Limit 1000, Balance 800 -> Debt 200 (Has balance)
+        Account ccA = createCreditAccount(10L, "Amex Platinum", 1000f, 800f);
+
+        // Credit Card B: Limit 500, Balance 500 -> Debt 0 (Paid off / No balance)
+        Account ccB = createCreditAccount(11L, "Barclaycard", 500f, 500f);
+
+        // Credit Card C: Limit 2000, Balance 1500 -> Debt 500 (Has balance)
+        Account ccC = createCreditAccount(12L, "Natwest Credit", 2000f, 1500f);
+
+        List<Account> allAccounts = List.of(ccA, ccB, ccC);
+
+        java.util.Set<Long> alreadyLinked = plan.getItems().stream()
+                .filter(i -> i.getAccount() != null && i.getAccount().getId() != null)
+                .map(i -> i.getAccount().getId())
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<Account> toAdd = allAccounts.stream()
+                .filter(a -> a.getType() == Account.AccountType.CREDIT)
+                .filter(a -> !alreadyLinked.contains(a.getId()))
+                .filter(a -> {
+                    float limit = a.getAvailableLimit() != null ? a.getAvailableLimit() : 0f;
+                    float balance = a.getLatestBalanceValue() != null ? a.getLatestBalanceValue() : 0f;
+                    float debt = Math.max(0f, limit - balance);
+                    return debt > 0f || (limit == 0f && balance > 0f);
+                })
+                .collect(java.util.stream.Collectors.toList());
+
+        // ccB has debt 0, so only ccA and ccC should be selected
+        assertThat(toAdd).extracting(Account::getName).containsExactly("Amex Platinum", "Natwest Credit");
+
+        // Append to plan with priority lower than anything already in the list
+        int priority = plan.getItems().size() + 1;
+        for (Account acc : toAdd) {
+            float limit = acc.getAvailableLimit() != null ? acc.getAvailableLimit() : 0f;
+            float balance = acc.getLatestBalanceValue() != null ? acc.getLatestBalanceValue() : 0f;
+            float debt = Math.max(0f, limit - balance);
+            SavingsPlanItem item = new SavingsPlanItem(
+                    acc.getName(),
+                    SavingsPlanItem.ItemType.DEBT_PAYOFF,
+                    acc,
+                    debt,
+                    0.0f,
+                    priority++
+            );
+            plan.addItem(item);
+        }
+
+        List<SavingsPlanItem> active = plan.getItems();
+        assertThat(active).hasSize(3);
+
+        // Item 1: Emergency Fund (P1)
+        assertThat(active.get(0).getName()).isEqualTo("Emergency Fund");
+        assertThat(active.get(0).getPriority()).isEqualTo(1);
+
+        // Item 2: Amex Platinum (P2, lower priority than existing P1)
+        assertThat(active.get(1).getName()).isEqualTo("Amex Platinum");
+        assertThat(active.get(1).getPriority()).isEqualTo(2);
+        assertThat(active.get(1).getDebtOwed()).isEqualTo(200.0f);
+
+        // Item 3: Natwest Credit (P3, lower priority than P1 and P2)
+        assertThat(active.get(2).getName()).isEqualTo("Natwest Credit");
+        assertThat(active.get(2).getPriority()).isEqualTo(3);
+        assertThat(active.get(2).getDebtOwed()).isEqualTo(500.0f);
+    }
 }
