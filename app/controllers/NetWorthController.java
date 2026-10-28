@@ -100,6 +100,9 @@ public class NetWorthController extends Controller {
 
         List<Account> accounts = vm.getAccounts();
         List<NetWorthAsset> allAssets = repoListToList(this.assetRepository.listAll(sup.getUserId()));
+        if (allAssets.isEmpty() && vm.getCustomAssets() != null && !vm.getCustomAssets().isEmpty()) {
+            allAssets = vm.getCustomAssets();
+        }
         List<Balance> balances = repoListToList(this.balanceRepository.list(sup.getUserId()));
 
         List<helpers.NetWorthHistoryCalculator.HistoryPoint> points =

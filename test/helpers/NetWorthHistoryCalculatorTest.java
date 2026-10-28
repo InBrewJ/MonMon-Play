@@ -129,4 +129,26 @@ public class NetWorthHistoryCalculatorTest {
         assertThat(json).contains("\"cashSavings\":19000.0");
         assertThat(json).contains("\"fixedAssets\":200000.0");
     }
+
+    @Test
+    public void testAssetAddedTodayShowsAcrossHistoryUntilArchived() {
+        ZoneId zone = ZoneId.of("Europe/London");
+        LocalDate today = LocalDate.of(2026, 10, 28);
+
+        // User enters their house today
+        NetWorthAsset house = new NetWorthAsset("u-1", "House", NetWorthAsset.AssetCategory.PROPERTY, 350000.0, "Family home");
+        house.setId(12L);
+        house.createdAt = System.currentTimeMillis();
+        house.updatedAt = System.currentTimeMillis();
+        house.archived = false;
+
+        List<NetWorthHistoryCalculator.HistoryPoint> points =
+                NetWorthHistoryCalculator.calculate(java.util.Collections.emptyList(), null, List.of(house), today, zone);
+
+        assertThat(points).isNotEmpty();
+        for (NetWorthHistoryCalculator.HistoryPoint p : points) {
+            assertThat(p.getFixedAssets()).isEqualTo(350000.0);
+            assertThat(p.getTotal()).isEqualTo(350000.0);
+        }
+    }
 }

@@ -7,5 +7,6 @@ public class MigrationModule extends AbstractModule {
     protected void configure() {
         bind(PotAccountsMigration.class).asEagerSingleton();
         bind(SavingsPlanMigration.class).asEagerSingleton();
+        bind(NetWorthAssetMigration.class).asEagerSingleton();
     }
 }

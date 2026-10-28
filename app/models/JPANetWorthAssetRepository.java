@@ -101,8 +101,10 @@ public class JPANetWorthAssetRepository implements NetWorthAssetRepository {
         return supplyAsync(() -> wrap(em -> {
             NetWorthAsset a = em.find(NetWorthAsset.class, id);
             if (a != null) {
+                long now = System.currentTimeMillis();
                 a.setArchived(true);
-                a.setUpdatedAt(System.currentTimeMillis());
+                a.setDeletedAt(now);
+                a.setUpdatedAt(now);
                 em.merge(a);
                 return true;
             }

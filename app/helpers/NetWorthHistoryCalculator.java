@@ -220,14 +220,15 @@ public class NetWorthHistoryCalculator {
         double sum = 0.0;
         for (NetWorthAsset asset : assets) {
             if (asset == null) continue;
-            long startSec = asset.getCreatedAt() != null ? (asset.getCreatedAt() / 1000L) : 0L;
-            long endSec = (asset.isArchived() && asset.getUpdatedAt() != null) ? (asset.getUpdatedAt() / 1000L) : Long.MAX_VALUE;
-
-            if (timestampSec >= startSec && timestampSec < endSec) {
-                double val = asset.getValue() != null ? asset.getValue() : 0.0;
-                sum += Math.max(0.0, val);
+            // If asset was archived / deleted, it dropped to 0 from its deletion timestamp onwards
+            if (asset.isArchived() && asset.getUpdatedAt() != null) {
+                long deleteSec = asset.getUpdatedAt() / 1000L;
+                if (timestampSec >= deleteSec) {
+                    continue;
+                }
             }
-            // If timestampSec >= endSec, asset was deleted / sold, so its value is 0!
+            double val = asset.getValue() != null ? asset.getValue() : 0.0;
+            sum += Math.max(0.0, val);
         }
         return round2(sum);
     }

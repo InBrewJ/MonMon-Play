@@ -962,6 +962,31 @@ hr {
 }
 
 /* Modal Scratchpad */
+/* Universal Background Scroll Lock & Overscroll Containment for Modals */
+html.modal-scroll-locked,
+body.modal-scroll-locked {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+}
+
+.modal-backdrop,
+.w3-modal,
+.waiting-list-modal-overlay {
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-content-card,
+.w3-modal-content,
+.waiting-list-modal-dialog,
+.waiting-list-modal-card {
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
 .modal-backdrop {
   display: none;
   position: fixed;

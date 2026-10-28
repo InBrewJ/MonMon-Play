@@ -36,8 +36,14 @@ public class NetWorthAsset {
 
     public boolean archived = false;
 
+    @Column(name = "created_at")
     public Long createdAt;
+
+    @Column(name = "updated_at")
     public Long updatedAt;
+
+    @Column(name = "deleted_at")
+    public Long deletedAt;
 
     public NetWorthAsset() {
         this.createdAt = System.currentTimeMillis();
@@ -123,6 +129,14 @@ public class NetWorthAsset {
 
     public void setUpdatedAt(Long updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Long deletedAt) {
+        this.deletedAt = deletedAt;
     }
 
     public String getCategoryHumanReadable() {

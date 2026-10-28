@@ -512,6 +512,22 @@
         document.getElementById('edit-notes').value = notes;
         document.getElementById('edit-asset-modal').style.display = 'block';
     }
+
+    window.addEventListener('click', function(e) {
+        var addModal = document.getElementById('add-asset-modal');
+        var editModal = document.getElementById('edit-asset-modal');
+        if (e.target === addModal) addModal.style.display = 'none';
+        if (e.target === editModal) editModal.style.display = 'none';
+    });
+
+    window.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            var addModal = document.getElementById('add-asset-modal');
+            var editModal = document.getElementById('edit-asset-modal');
+            if (addModal) addModal.style.display = 'none';
+            if (editModal) editModal.style.display = 'none';
+        }
+    });
 </script>
 
 }
