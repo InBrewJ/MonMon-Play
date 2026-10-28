@@ -387,7 +387,6 @@ public class SavingsPlanController extends Controller {
                     .collect(Collectors.toList());
         }
 
-        int priority = activePlan.getItems().size() + 1;
         for (Account acc : overdrawn) {
             float overdraftDebt = acc.getLatestBalanceValue() < 0f
                     ? Math.abs(acc.getLatestBalanceValue())
@@ -398,7 +397,7 @@ public class SavingsPlanController extends Controller {
                     acc,
                     overdraftDebt,
                     0.0f,
-                    priority++
+                    null
             );
             savingsPlanRepository.addItem(activePlan.getId(), item).toCompletableFuture().get();
         }
@@ -438,8 +437,7 @@ public class SavingsPlanController extends Controller {
                 })
                 .collect(Collectors.toList());
 
-        // Append to the priority list with a priority lower than anything already in the list
-        int priority = activePlan.getItems().size() + 1;
+        // Append to the priority list cleanly at the tail of the queue
         for (Account acc : creditCardsWithBalance) {
             float limit = acc.getAvailableLimit() != null ? acc.getAvailableLimit() : 0f;
             float balance = acc.getLatestBalanceValue() != null ? acc.getLatestBalanceValue() : 0f;
@@ -454,7 +452,7 @@ public class SavingsPlanController extends Controller {
                     acc,
                     debt,
                     0.0f,
-                    priority++
+                    null
             );
             savingsPlanRepository.addItem(activePlan.getId(), item).toCompletableFuture().get();
         }

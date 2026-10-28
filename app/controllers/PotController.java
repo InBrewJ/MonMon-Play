@@ -38,6 +38,7 @@ public class PotController extends Controller {
     private final IncomingRepository incomingRepository;
     private final OutgoingRepository outgoingRepository;
     private final PlanRepository planRepository;
+    private final CustomSpendingPlanRepository customSpendingPlanRepository;
 
     @Inject
     private SessionStore playSessionStore;
@@ -51,6 +52,7 @@ public class PotController extends Controller {
             IncomingRepository incomingRepository,
             OutgoingRepository outgoingRepository,
             PlanRepository planRepository,
+            CustomSpendingPlanRepository customSpendingPlanRepository,
             HttpExecutionContext ec
     ) {
         this.formFactory = formFactory;
@@ -60,6 +62,7 @@ public class PotController extends Controller {
         this.incomingRepository = incomingRepository;
         this.outgoingRepository = outgoingRepository;
         this.planRepository = planRepository;
+        this.customSpendingPlanRepository = customSpendingPlanRepository;
         this.form = formFactory.form(Pot.class);
         this.ec = ec;
     }
@@ -112,6 +115,8 @@ public class PotController extends Controller {
             spentThisMonth = round2(spentThisMonth);
         }
 
+        List<CustomSpendingPlan> savedCustomPlans = repoListToList(customSpendingPlanRepository.list(sup.getUserId()));
+
         return ok(
                 views.html.pots.render(
                         asScala(accounts),
@@ -120,6 +125,7 @@ public class PotController extends Controller {
                         surplus,
                         spentThisMonth,
                         false,
+                        asScala(savedCustomPlans),
                         request,
                         playSessionStore,
                         messagesApi.preferred(request)
@@ -191,26 +197,95 @@ public class PotController extends Controller {
         }
 
         // Spending Plan
-        String spendingPlanPreset = requestData.get("spendingPlanPreset"); // "gruelling", "custom", or "none"
+        String spendingPlanPreset = requestData.get("spendingPlanPreset"); // "gruelling", "custom", "saved_<id>", or "none"
+        String sectionsJsonPayload = requestData.get("sectionsJsonPayload");
+        String customName = requestData.get("customPlanName");
+        boolean saveTemplate = "true".equalsIgnoreCase(requestData.get("savePlanTemplate"));
+
+        List<SpendingPlanSection> sections = new ArrayList<>();
+        if (sectionsJsonPayload != null && !sectionsJsonPayload.trim().isEmpty()) {
+            try {
+                sections = play.libs.Json.mapper().readValue(
+                        sectionsJsonPayload,
+                        new com.fasterxml.jackson.core.type.TypeReference<List<SpendingPlanSection>>() {}
+                );
+            } catch (Exception ignored) {}
+        }
+
         if ("gruelling".equalsIgnoreCase(spendingPlanPreset)) {
             scratchPot.setSpendingPlanName("Gruelling");
             scratchPot.setSpendingPlanFood(viewModels.SpendingPlan.UK_AVG_MONTHLY_FOOD_SPEND);
             scratchPot.setSpendingPlanFuel(0.0f);
             scratchPot.setSpendingPlanTransport(0.0f);
             scratchPot.setSpendingPlanFun(null); // Leftover from allowance
-        } else if ("custom".equalsIgnoreCase(spendingPlanPreset)) {
-            String customName = requestData.get("customPlanName");
-            scratchPot.setSpendingPlanName(customName != null && !customName.trim().isEmpty() ? customName.trim() : "Custom");
-            scratchPot.setSpendingPlanFood(parseFloatOrNull(requestData.get("spendingPlanFood")));
-            scratchPot.setSpendingPlanFuel(parseFloatOrNull(requestData.get("spendingPlanFuel")));
-            scratchPot.setSpendingPlanTransport(parseFloatOrNull(requestData.get("spendingPlanTransport")));
-            scratchPot.setSpendingPlanFun(parseFloatOrNull(requestData.get("spendingPlanFun")));
+            List<SpendingPlanSection> gruellingSections = java.util.Collections.singletonList(
+                    new SpendingPlanSection("Food", viewModels.SpendingPlan.UK_AVG_MONTHLY_FOOD_SPEND, scratchPot.getFoodAccountId())
+            );
+            scratchPot.setSpendingSections(gruellingSections);
+        } else if ("custom".equalsIgnoreCase(spendingPlanPreset) || (spendingPlanPreset != null && spendingPlanPreset.startsWith("saved_"))) {
+            String planName = customName != null && !customName.trim().isEmpty() ? customName.trim() : "Custom";
+            scratchPot.setSpendingPlanName(planName);
+
+            if (!sections.isEmpty()) {
+                scratchPot.setSpendingSections(sections);
+                // Also assign category accounts on pot if matches Food/Fuel/Transport
+                for (SpendingPlanSection sec : sections) {
+                    if ("food".equalsIgnoreCase(sec.getHeading())) {
+                        scratchPot.setSpendingPlanFood(sec.getAmount());
+                        if (sec.getAccountId() != null) {
+                            try {
+                                scratchPot.setFoodAccount(accountRepository.findById(sec.getAccountId().intValue()).toCompletableFuture().get());
+                            } catch (Exception ignored) {}
+                        }
+                    } else if ("fuel".equalsIgnoreCase(sec.getHeading())) {
+                        scratchPot.setSpendingPlanFuel(sec.getAmount());
+                        if (sec.getAccountId() != null) {
+                            try {
+                                scratchPot.setFuelAccount(accountRepository.findById(sec.getAccountId().intValue()).toCompletableFuture().get());
+                            } catch (Exception ignored) {}
+                        }
+                    } else if ("transport".equalsIgnoreCase(sec.getHeading())) {
+                        scratchPot.setSpendingPlanTransport(sec.getAmount());
+                        if (sec.getAccountId() != null) {
+                            try {
+                                scratchPot.setTransportAccount(accountRepository.findById(sec.getAccountId().intValue()).toCompletableFuture().get());
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            } else {
+                // Fallback to individual form inputs
+                Float food = parseFloatOrNull(requestData.get("spendingPlanFood"));
+                Float fuel = parseFloatOrNull(requestData.get("spendingPlanFuel"));
+                Float transport = parseFloatOrNull(requestData.get("spendingPlanTransport"));
+                Float fun = parseFloatOrNull(requestData.get("spendingPlanFun"));
+                scratchPot.setSpendingPlanFood(food);
+                scratchPot.setSpendingPlanFuel(fuel);
+                scratchPot.setSpendingPlanTransport(transport);
+                scratchPot.setSpendingPlanFun(fun);
+
+                List<SpendingPlanSection> legacySecs = new ArrayList<>();
+                if (food != null && food > 0f) legacySecs.add(new SpendingPlanSection("Food", food, scratchPot.getFoodAccountId()));
+                if (fuel != null && fuel > 0f) legacySecs.add(new SpendingPlanSection("Fuel", fuel, scratchPot.getFuelAccountId()));
+                if (transport != null && transport > 0f) legacySecs.add(new SpendingPlanSection("Transport", transport, scratchPot.getTransportAccountId()));
+                scratchPot.setSpendingSections(legacySecs);
+                sections = legacySecs;
+            }
+
+            if (saveTemplate && !sections.isEmpty()) {
+                try {
+                    customSpendingPlanRepository.createOrUpdate(sup.getUserId(), planName, sections).toCompletableFuture().get();
+                } catch (Exception e) {
+                    System.err.println("Error saving custom spending plan template: " + e.getMessage());
+                }
+            }
         } else {
             scratchPot.setSpendingPlanName(null);
             scratchPot.setSpendingPlanFood(null);
             scratchPot.setSpendingPlanFuel(null);
             scratchPot.setSpendingPlanTransport(null);
             scratchPot.setSpendingPlanFun(null);
+            scratchPot.setSpendingSections(Collections.emptyList());
         }
 
         return potRepository

@@ -68,6 +68,22 @@ public class SavingsPlanItem {
         this.id = id;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SavingsPlanItem that = (SavingsPlanItem) o;
+        if (id != null && that.id != null) {
+            return id.equals(that.id);
+        }
+        return super.equals(o);
+    }
+
+    @Override
+    public int hashCode() {
+        return id != null ? id.hashCode() : super.hashCode();
+    }
+
     public SavingsPlan getSavingsPlan() {
         return savingsPlan;
     }

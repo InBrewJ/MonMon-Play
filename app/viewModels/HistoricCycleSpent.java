@@ -218,14 +218,22 @@ public class HistoricCycleSpent {
             return "Gruelling (UK Avg Food £50/wk, £0 Fuel/Transport)";
         }
         StringBuilder sb = new StringBuilder(name).append(" (");
-        if (potConfig.getSpendingPlanFood() != null && potConfig.getSpendingPlanFood() > 0) {
-            sb.append("Food: £").append(potConfig.getSpendingPlanFood()).append(", ");
-        }
-        if (potConfig.getSpendingPlanFuel() != null && potConfig.getSpendingPlanFuel() > 0) {
-            sb.append("Fuel: £").append(potConfig.getSpendingPlanFuel()).append(", ");
-        }
-        if (potConfig.getSpendingPlanTransport() != null && potConfig.getSpendingPlanTransport() > 0) {
-            sb.append("Transport: £").append(potConfig.getSpendingPlanTransport()).append(", ");
+        if (potConfig.getSpendingSections() != null && !potConfig.getSpendingSections().isEmpty()) {
+            for (models.SpendingPlanSection sec : potConfig.getSpendingSections()) {
+                if (sec.getAmount() != null && sec.getAmount() > 0) {
+                    sb.append(sec.getHeading()).append(": £").append(sec.getAmount()).append(", ");
+                }
+            }
+        } else {
+            if (potConfig.getSpendingPlanFood() != null && potConfig.getSpendingPlanFood() > 0) {
+                sb.append("Food: £").append(potConfig.getSpendingPlanFood()).append(", ");
+            }
+            if (potConfig.getSpendingPlanFuel() != null && potConfig.getSpendingPlanFuel() > 0) {
+                sb.append("Fuel: £").append(potConfig.getSpendingPlanFuel()).append(", ");
+            }
+            if (potConfig.getSpendingPlanTransport() != null && potConfig.getSpendingPlanTransport() > 0) {
+                sb.append("Transport: £").append(potConfig.getSpendingPlanTransport()).append(", ");
+            }
         }
         if (sb.toString().endsWith(", ")) {
             sb.setLength(sb.length() - 2);

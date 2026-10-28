@@ -208,13 +208,20 @@ public class SavingsPlan {
             return;
         }
         List<SavingsPlanItem> active = getItems();
-        if (!active.contains(itemToRemove)) {
+        SavingsPlanItem target = null;
+        for (SavingsPlanItem itm : active) {
+            if (itm != null && (itm.equals(itemToRemove) || (itemToRemove.getId() != null && itemToRemove.getId().equals(itm.getId())))) {
+                target = itm;
+                break;
+            }
+        }
+        if (target == null) {
             return;
         }
 
-        float amountToRollOver = itemToRemove.getMonthlyAmount() != null ? itemToRemove.getMonthlyAmount() : 0.0f;
-        itemToRemove.setArchived(true);
-        itemToRemove.setMonthlyAmount(0.0f);
+        float amountToRollOver = target.getMonthlyAmount() != null ? target.getMonthlyAmount() : 0.0f;
+        target.setArchived(true);
+        target.setMonthlyAmount(0.0f);
 
         List<SavingsPlanItem> remaining = getItems();
         if (!remaining.isEmpty()) {

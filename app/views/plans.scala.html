@@ -109,9 +109,15 @@
                     @if(activeMonthlyPot != null && activeMonthlyPot.hasSpendingPlan()) {
                         <div>Preset: <strong>@activeMonthlyPot.getSpendingPlanName()</strong></div>
                         <div style="font-size: 0.78rem; margin-top: 4px;">
-                            Food: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanFood().toDouble)/mo
-                            @if(activeMonthlyPot.getSpendingPlanFuel() != null && activeMonthlyPot.getSpendingPlanFuel() > 0) { · Fuel: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanFuel().toDouble)/mo }
-                            @if(activeMonthlyPot.getSpendingPlanTransport() != null && activeMonthlyPot.getSpendingPlanTransport() > 0) { · Transport: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanTransport().toDouble)/mo }
+                            @if(activeMonthlyPot.getSpendingSections() != null && !activeMonthlyPot.getSpendingSections().isEmpty) {
+                                @for((s, sIdx) <- activeMonthlyPot.getSpendingSections().zipWithIndex) {
+                                    @if(sIdx > 0) { · } @s.getHeading(): £@String.format(java.util.Locale.UK, "%.2f", s.getAmount().toDouble)/mo
+                                }
+                            } else {
+                                Food: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanFood().toDouble)/mo
+                                @if(activeMonthlyPot.getSpendingPlanFuel() != null && activeMonthlyPot.getSpendingPlanFuel() > 0) { · Fuel: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanFuel().toDouble)/mo }
+                                @if(activeMonthlyPot.getSpendingPlanTransport() != null && activeMonthlyPot.getSpendingPlanTransport() > 0) { · Transport: £@String.format(java.util.Locale.UK, "%.2f", activeMonthlyPot.getSpendingPlanTransport().toDouble)/mo }
+                            }
                         </div>
                     } else {
                         <div>Configure your monthly spending pots and category allowances (food, fuel, transport, and fun).</div>

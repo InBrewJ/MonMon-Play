@@ -76,6 +76,9 @@ public class SpogController extends Controller {
     @Inject
     private SessionStore playSessionStore;
 
+    @Inject
+    private models.BankTransactionRepository bankTransactionRepository;
+
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result protectedIndex(Http.Request request) {
         return protectedIndexView(request);
@@ -255,16 +258,28 @@ public class SpogController extends Controller {
 
         viewModels.SpendingPlan spendingPlan = null;
         if (activeMonthlyPot != null && activeMonthlyPot.hasSpendingPlan()) {
-            spendingPlan = new viewModels.SpendingPlan(
-                    activeMonthlyPot.getSpendingPlanName(),
-                    activeMonthlyPot.getSpendingPlanFood(),
-                    activeMonthlyPot.getSpendingPlanFuel(),
-                    activeMonthlyPot.getSpendingPlanTransport(),
-                    activeMonthlyPot.getSpendingPlanFun(),
-                    surplus,
-                    0.0,
-                    0
-            );
+            List<models.SpendingPlanSection> potSections = activeMonthlyPot.getSpendingSections();
+            if (potSections != null && !potSections.isEmpty()) {
+                spendingPlan = new viewModels.SpendingPlan(
+                        activeMonthlyPot.getSpendingPlanName(),
+                        potSections,
+                        activeMonthlyPot.getSpendingPlanFun(),
+                        surplus,
+                        0.0,
+                        0
+                );
+            } else {
+                spendingPlan = new viewModels.SpendingPlan(
+                        activeMonthlyPot.getSpendingPlanName(),
+                        activeMonthlyPot.getSpendingPlanFood(),
+                        activeMonthlyPot.getSpendingPlanFuel(),
+                        activeMonthlyPot.getSpendingPlanTransport(),
+                        activeMonthlyPot.getSpendingPlanFun(),
+                        surplus,
+                        0.0,
+                        0
+                );
+            }
 
             Map<Long, Account> accountById = allAccounts.stream()
                     .filter(a -> a != null && a.getId() != null)
@@ -295,6 +310,19 @@ public class SpogController extends Controller {
                     transportSpent,
                     funSpent
             );
+
+            Map<Long, Double> spentByAccount = new java.util.HashMap<>();
+            if (potSections != null) {
+                for (models.SpendingPlanSection sec : potSections) {
+                    if (sec.getAccountId() != null && !spentByAccount.containsKey(sec.getAccountId())) {
+                        Account acc = accountById.get(sec.getAccountId());
+                        if (acc != null) {
+                            spentByAccount.put(sec.getAccountId(), helpers.HistoricSpentCalculator.calculateAccountSpent(acc, cycleStartSec, nowSec));
+                        }
+                    }
+                }
+            }
+            spendingPlan.withCustomTracking(accountById, spentByAccount);
         }
 
         if (activeSavingsPlan != null && activeSavingsPlan.getItems() != null) {
@@ -368,6 +396,20 @@ public class SpogController extends Controller {
         List<Plan> allPlans = repoListToList(this.planRepository.list(sup.getUserId()));
         Float monthlySurplus = helpers.ModelHelpers.calculateMonthlyAllowance(allIncomings, allOutgoings, allPlans, today);
 
+        java.time.LocalDate currentCycleStart = helpers.ModelHelpers.findLastPaydayDate(today, nominalPayday);
+        java.time.LocalDate currentCycleEnd = helpers.ModelHelpers.findNextPaydayDate(today, nominalPayday);
+        long cycleStartSec = currentCycleStart.atStartOfDay(zone).toEpochSecond();
+        long cycleEndSec = currentCycleEnd.atStartOfDay(zone).toEpochSecond();
+
+        java.util.Map<Long, Double> tblSpent = java.util.Collections.emptyMap();
+        if (bankTransactionRepository != null) {
+            try {
+                tblSpent = bankTransactionRepository.getAccountsSpentSumMap(sup.getUserId(), cycleStartSec, cycleEndSec)
+                        .toCompletableFuture().get();
+            } catch (Exception ignored) {
+            }
+        }
+
         viewModels.HistoricSpentViewModel viewModel = helpers.HistoricSpentCalculator.calculate(
                 allPots,
                 allAccounts,
@@ -375,7 +417,8 @@ public class SpogController extends Controller {
                 nominalPayday,
                 today,
                 zone,
-                monthlySurplus
+                monthlySurplus,
+                tblSpent
         );
 
         return ok(views.html.historicSpent.render(viewModel, request, playSessionStore));

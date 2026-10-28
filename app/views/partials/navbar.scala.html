@@ -13,6 +13,7 @@
     else if (target == "pot" && (path.startsWith("/myMonthlyPot") || path.startsWith("/pots"))) "active"
     else if (target == "networth" && path.startsWith("/netWorth")) "active"
     else if (target == "nommon" && path.startsWith("/nommon")) "active"
+    else if (target == "bank" && path.startsWith("/bank")) "active"
     else if (target == "settings" && path.startsWith("/settings")) "active"
     else ""
 }
@@ -29,6 +30,7 @@
             <li class="crumb @isActive("pot")"><a href="/myMonthlyPot"><i class="fas fa-archive"></i> Monthly Pot</a></li>
             <li class="crumb @isActive("networth")"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
             <li class="crumb @isActive("nommon")"><a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a></li>
+            <li class="crumb @isActive("bank")"><a href="/bank"><i class="fas fa-exchange-alt"></i> Bank Sync</a></li>
             <li class="crumb @isActive("settings")"><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
             <li class="crumb"><a href="/centralLogout" style="color: var(--danger);"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
         </ol>

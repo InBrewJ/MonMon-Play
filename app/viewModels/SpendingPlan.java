@@ -1,6 +1,9 @@
 package viewModels;
 
 import models.Account;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 import static helpers.MathHelpers.round2;
 
@@ -19,6 +22,7 @@ public class SpendingPlan {
     private final Double spentThisMonth;
     private final int daysUntilNextPayday;
     private int daysInCycle = 0;
+    private final java.util.List<SectionViewModel> sections = new java.util.ArrayList<>();
 
     // Optional category accounts & actual spend
     private String foodAccountName;
@@ -29,6 +33,97 @@ public class SpendingPlan {
     private Double actualFuelSpent;
     private Double actualTransportSpent;
     private Double actualFunSpent;
+
+    public static class SectionViewModel {
+        private final String heading;
+        private final Float plannedAmount;
+        private final Long accountId;
+        private String accountName;
+        private Double actualSpent;
+
+        public SectionViewModel(String heading, Float plannedAmount, Long accountId) {
+            this.heading = heading != null ? heading.trim() : "";
+            this.plannedAmount = plannedAmount != null ? plannedAmount : 0.0f;
+            this.accountId = (accountId != null && accountId > 0) ? accountId : null;
+            this.actualSpent = 0.0;
+        }
+
+        public String getHeading() {
+            return heading;
+        }
+
+        public Float getPlannedAmount() {
+            return round2(plannedAmount);
+        }
+
+        public Long getAccountId() {
+            return accountId;
+        }
+
+        public boolean hasAssignedAccount() {
+            return accountName != null;
+        }
+
+        public String getAccountName() {
+            return accountName;
+        }
+
+        public void setAccountName(String accountName) {
+            this.accountName = accountName;
+        }
+
+        public Double getActualSpent() {
+            return actualSpent != null ? round2(actualSpent) : 0.0;
+        }
+
+        public void setActualSpent(Double actualSpent) {
+            this.actualSpent = actualSpent != null ? actualSpent : 0.0;
+        }
+
+        public Float getRemaining(int daysUntilNextPayday, int daysInCycle) {
+            if (hasAssignedAccount()) {
+                return round2(Math.max(0.0f, plannedAmount - getActualSpent().floatValue()));
+            }
+            if (daysInCycle <= 0) {
+                return getPlannedAmount();
+            }
+            float fraction = Math.min(1.0f, (float) Math.max(0, daysUntilNextPayday) / (float) daysInCycle);
+            return round2(getPlannedAmount() * fraction);
+        }
+
+        public Float getRemaining() {
+            return getRemaining(0, 0);
+        }
+    }
+
+    public SpendingPlan(
+            String name,
+            java.util.List<models.SpendingPlanSection> sectionsList,
+            Float customFunSpend,
+            Float maxMonthlyAllowance,
+            Double spentThisMonth,
+            int daysUntilNextPayday
+    ) {
+        this.name = name != null && !name.trim().isEmpty() ? name.trim() : "Custom";
+        this.customFunSpend = customFunSpend;
+        this.maxMonthlyAllowance = maxMonthlyAllowance != null ? maxMonthlyAllowance : 0.0f;
+        this.spentThisMonth = spentThisMonth != null ? spentThisMonth : 0.0;
+        this.daysUntilNextPayday = Math.max(0, daysUntilNextPayday);
+
+        float food = 0f, fuel = 0f, trans = 0f;
+        if (sectionsList != null) {
+            for (models.SpendingPlanSection s : sectionsList) {
+                SectionViewModel vm = new SectionViewModel(s.getHeading(), s.getAmount(), s.getAccountId());
+                this.sections.add(vm);
+                if ("food".equalsIgnoreCase(s.getHeading())) food = s.getAmount();
+                else if ("fuel".equalsIgnoreCase(s.getHeading())) fuel = s.getAmount();
+                else if ("transport".equalsIgnoreCase(s.getHeading())) trans = s.getAmount();
+            }
+        }
+        this.foodSpend = food;
+        this.fuelSpend = fuel;
+        this.transportSpend = trans;
+    }
 
     public SpendingPlan(
             String name,
@@ -48,6 +143,16 @@ public class SpendingPlan {
         this.maxMonthlyAllowance = maxMonthlyAllowance != null ? maxMonthlyAllowance : 0.0f;
         this.spentThisMonth = spentThisMonth != null ? spentThisMonth : 0.0;
         this.daysUntilNextPayday = Math.max(0, daysUntilNextPayday);
+
+        if (this.foodSpend > 0f) {
+            this.sections.add(new SectionViewModel("Food", this.foodSpend, null));
+        }
+        if (this.fuelSpend > 0f) {
+            this.sections.add(new SectionViewModel("Fuel", this.fuelSpend, null));
+        }
+        if (this.transportSpend > 0f) {
+            this.sections.add(new SectionViewModel("Transport", this.transportSpend, null));
+        }
     }
 
     public static SpendingPlan createGruelling(Float maxMonthlyAllowance, Double spentThisMonth, int daysUntilNextPayday) {
@@ -97,7 +202,36 @@ public class SpendingPlan {
         sp.actualFuelSpent = this.actualFuelSpent;
         sp.actualTransportSpent = this.actualTransportSpent;
         sp.actualFunSpent = this.actualFunSpent;
+        sp.sections.clear();
+        for (SectionViewModel s : this.sections) {
+            SectionViewModel copy = new SectionViewModel(s.getHeading(), s.getPlannedAmount(), s.getAccountId());
+            copy.setAccountName(s.getAccountName());
+            copy.setActualSpent(s.getActualSpent());
+            sp.sections.add(copy);
+        }
         return sp;
+    }
+
+    public List<SectionViewModel> getSections() {
+        return sections;
+    }
+
+    public boolean hasCustomSections() {
+        return !sections.isEmpty();
+    }
+
+    public SpendingPlan withCustomTracking(java.util.Map<Long, Account> accountById, java.util.Map<Long, Double> spentByAccount) {
+        for (SectionViewModel s : sections) {
+            if (s.getAccountId() != null) {
+                Account acc = accountById != null ? accountById.get(s.getAccountId()) : null;
+                if (acc != null) {
+                    s.setAccountName(acc.getName());
+                    Double spent = spentByAccount != null ? spentByAccount.get(acc.getId()) : null;
+                    s.setActualSpent(spent != null ? spent : 0.0);
+                }
+            }
+        }
+        return this;
     }
 
     public SpendingPlan withCategoryTracking(
@@ -154,6 +288,15 @@ public class SpendingPlan {
     }
 
     public Float getTotalPlannedEssentials() {
+        if (!sections.isEmpty()) {
+            float sum = 0f;
+            for (SectionViewModel s : sections) {
+                if (s.getPlannedAmount() != null) {
+                    sum += s.getPlannedAmount();
+                }
+            }
+            return round2(sum);
+        }
         return round2(getPlannedFoodSpend() + getPlannedFuelSpend() + getPlannedTransportSpend());
     }
 
@@ -283,6 +426,13 @@ public class SpendingPlan {
      * actual unspent portion of each category. Otherwise reserves the pro-rated daily share.
      */
     public Float getRemainingEssentials() {
+        if (!sections.isEmpty()) {
+            float sum = 0f;
+            for (SectionViewModel s : sections) {
+                sum += s.getRemaining(daysUntilNextPayday, daysInCycle);
+            }
+            return round2(sum);
+        }
         return round2(getRemainingFood() + getRemainingFuel() + getRemainingTransport());
     }
 

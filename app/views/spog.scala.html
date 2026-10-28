@@ -278,6 +278,27 @@
                         </div>
                         <table style="width: 100%; font-size: 0.85rem;">
                             <tr><td>Allowance left (£@sp.getMaxMonthlyAllowance() − £@sp.getSpentThisMonth() spent)</td><td style="text-align: right;">£@sp.getAdjustedRemainingAllowance()</td></tr>
+                            @if(sp.hasCustomSections()) {
+                                @for(sec <- sp.getSections()) {
+                                    <tr>
+                                        <td>
+                                            @sec.getHeading()
+                                            @if(sec.hasAssignedAccount()) {
+                                                <span style="color: var(--text-muted); font-size: 0.78rem;">(@sec.getAccountName(): £@sec.getActualSpent() spent)</span>
+                                            } else if("food".equalsIgnoreCase(sec.getHeading()) && sp.isGruelling()) {
+                                                <span style="color: var(--text-muted); font-size: 0.78rem;">(UK avg £@sp.getWeeklyFoodSpend()/wk)</span>
+                                            }
+                                        </td>
+                                        <td style="text-align: right;">
+                                            @if(sec.hasAssignedAccount()) {
+                                                £@sec.getRemaining() <span style="color: var(--text-muted); font-size: 0.75rem;">/ £@sec.getPlannedAmount()</span>
+                                            } else {
+                                                £@sec.getPlannedAmount()
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            } else {
                             <tr>
                                 <td>
                                     Food
@@ -318,6 +339,7 @@
                                     }
                                 </td>
                             </tr>
+                            }
                             }
                             <tr>
                                 <td>

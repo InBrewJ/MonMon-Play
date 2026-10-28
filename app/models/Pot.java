@@ -54,6 +54,9 @@ public class Pot {
     @Column(name = "spending_plan_fun")
     public Float spendingPlanFun;
 
+    @Column(name = "spending_plan_sections_json", columnDefinition = "TEXT")
+    public String spendingPlanSectionsJson;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "food_account_id", nullable = true)
     public Account foodAccount;
@@ -171,6 +174,48 @@ public class Pot {
 
     public void setSpendingPlanFun(Float spendingPlanFun) {
         this.spendingPlanFun = spendingPlanFun;
+    }
+
+    public String getSpendingPlanSectionsJson() {
+        return spendingPlanSectionsJson;
+    }
+
+    public void setSpendingPlanSectionsJson(String spendingPlanSectionsJson) {
+        this.spendingPlanSectionsJson = spendingPlanSectionsJson;
+    }
+
+    public List<SpendingPlanSection> getSpendingSections() {
+        if (spendingPlanSectionsJson != null && !spendingPlanSectionsJson.trim().isEmpty()) {
+            try {
+                List<SpendingPlanSection> parsed = play.libs.Json.mapper().readValue(
+                        spendingPlanSectionsJson,
+                        new com.fasterxml.jackson.core.type.TypeReference<List<SpendingPlanSection>>() {}
+                );
+                if (parsed != null && !parsed.isEmpty()) {
+                    return parsed;
+                }
+            } catch (Exception ignored) {}
+        }
+        // Fallback / legacy synthesis from individual columns
+        List<SpendingPlanSection> legacy = new ArrayList<>();
+        if (spendingPlanFood != null && spendingPlanFood > 0f) {
+            legacy.add(new SpendingPlanSection("Food", spendingPlanFood, foodAccount != null ? foodAccount.getId() : null));
+        }
+        if (spendingPlanFuel != null && spendingPlanFuel > 0f) {
+            legacy.add(new SpendingPlanSection("Fuel", spendingPlanFuel, fuelAccount != null ? fuelAccount.getId() : null));
+        }
+        if (spendingPlanTransport != null && spendingPlanTransport > 0f) {
+            legacy.add(new SpendingPlanSection("Transport", spendingPlanTransport, transportAccount != null ? transportAccount.getId() : null));
+        }
+        return legacy;
+    }
+
+    public void setSpendingSections(List<SpendingPlanSection> sections) {
+        try {
+            this.spendingPlanSectionsJson = play.libs.Json.mapper().writeValueAsString(sections != null ? sections : new ArrayList<>());
+        } catch (Exception e) {
+            this.spendingPlanSectionsJson = "[]";
+        }
     }
 
     public boolean isArchived() {

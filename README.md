@@ -149,15 +149,30 @@ Please see the Play documentation for more details:
 
 ## Savings Plan: Priority Queue & Interlocked Sliders
 
-### Priority Queue Mechanics (P1 .. PN)
-- **Queue Rank:** Priorities are strict sequential ranks (`P1`, `P2`, `P3`, etc.). `P1` represents the highest priority debt payoff or savings target.
-- **Shunting with Arrows:** Each item row includes up (`▲`) and down (`▼`) shunt buttons. Clicking an arrow swaps the item with its neighbor and automatically rebalances the entire plan to clean `1..N` integers in the database.
-- **Priority Rollover:** When a debt payoff target is completed or an item is deleted (`removeItemAndRebalanceQueue`), 100% of its freed monthly budget automatically cascades into the top-priority remaining item (`P1`). This implements the classic debt avalanche/snowball principle.
-- **Interlocked Sliders:**
-  - The monthly savings target forms a fixed total pot (derived from income savings percentage).
-  - Individual item sliders are interlocked: adjusting any unlocked item dynamically scales remaining unlocked items proportionally so that the sum of slices strictly reconciles to the target pot.
-  - Locked items (`Fixed`) remain immune to automatic scaling.
-  - Penny rounding errors are automatically reconciled on the final unlocked item.
+### Priority Queue Algorithm & Mechanics (P1 .. PN)
+
+#### How Priority Values are Calculated & Why the Bug Happened
+1. **The Intended Model**:
+   - Each active item in a user's savings plan represents a debt payoff or savings target with a discrete queue rank: `P1, P2, P3, ... PN`.
+   - `P1` is the highest-priority target in the queue.
+   - When items are moved up or down using the shunt arrows (`▲` and `▼`), the item swaps places with its neighbor and the entire active queue is re-indexed from `1` to `N` contiguously (`1, 2, 3, ...`).
+   - When an item is deleted or paid off, its monthly budget allocation rolls over into `P1` (debt avalanche/snowball), and the remaining items shift up one rank (`P(k) -> P(k-1)`).
+
+2. **Root Cause Analysis: Why did items jump to P1, P23, P24 and why were down arrows disabled?**:
+   - **Non-contiguous initial priorities**: In `SavingsPlanController.addAllCreditCards` and `addAllOverdrafts`, items were appended in a loop using `int priority = activePlan.getItems().size() + 1; priority++`. In an account with 32 accounts, if accounts 22, 23, 24 were credit accounts with balances, their raw priorities were set to 23, 24, etc.
+   - **Controller rendering bypassed self-healing**: `JPASavingsPlanRepository.getActive(userId)` contained a self-healing check to rebalance priorities to contiguous `1..N`. However, `SavingsPlanController.renderSavingsPlanView` did NOT call `getActive(userId)`—it called `savingsPlanRepository.listComplete(userId)`, which performed a raw JPA query without running the self-healing routine! As soon as any edit occurred, raw gaps from previous operations or deleted items were exposed.
+   - **Broken reference equality on archive**: `SavingsPlanItem` did not implement `equals()` and `hashCode()`. When `removeItemAndRebalanceQueue(item)` checked `if (!active.contains(itemToRemove)) return;`, JPA object reference mismatch caused the method to abort silently without archiving or rebalancing remaining items, leaving disconnected priority gaps in the database.
+   - **Broken Down Arrow condition in UI**: In `savingsPlan.scala.html`, the down arrow disable condition was written as:
+     `@if(item.getPriority() >= activePlan.getItems().size()){disabled}`
+     If a plan had 3 active items but their stored priorities were `P1`, `P23`, and `P24`, the second item (`P23`) evaluated `23 >= 3 -> true`. Thus, the down arrow was permanently disabled even though it was only the 2nd item in a 3-item list!
+   - **Strict position-based indexing**: The down arrow and up arrow must be disabled strictly based on the item's 0-based index in the active list (`index == 0` for up, `index == items.size() - 1` for down), never by checking the priority integer against total item count.
+
+3. **The Fix Plan**:
+   - Make all priority assignment, shunting, and archiving strictly deterministic and self-healing:
+     - On any fetch (both `getActive` and `listComplete`/`renderSavingsPlanView`), self-heal non-contiguous priorities to clean `1..N` integers in the database.
+     - Implement proper `equals()` and `hashCode()` on `SavingsPlanItem` based on entity `id`.
+     - In `moveItemUp` and `moveItemDown`, locate the item by `id`, swap with its predecessor/successor in the active list, and rewrite priorities `1..N`.
+     - In `savingsPlan.scala.html`, use `items.zipWithIndex` to disable the up arrow on index 0 and down arrow on index `size - 1`.
 
 ---
 
@@ -171,4 +186,60 @@ Please see the Play documentation for more details:
 - **Rollover to General Outgoings:**
   - When the due year and month roll around, the bill automatically appears in the active monthly outgoings list ("Monthly & Due Now") and is factored into that month's spending total and SPOG metrics.
   - In non-due months/years, it remains neatly organized under the "Yearly Bills" tab with a countdown to the next payment year, without artificially depressing current monthly disposable income.
+
+---
+
+## Custom Spending Plans: N Arbitrary Headings & User Templates
+
+1. **Arbitrary Headings ($N$ Sections)**:
+   - Monthly pots are no longer restricted to the legacy fixed 4 categories (Food, Fuel, Transport, Fun).
+   - Users can create any number of custom sections (e.g. Groceries, Commute, Coffee & Treats, Hobbies, Gym, Holiday Fund).
+   - Each section has a heading, planned amount, and optional linked account.
+   - Any money left over in the pot after planned essential sections is automatically allocated to disposable Fun.
+   - Pro-rated daily targets adapt dynamically as days elapse in the cycle.
+
+2. **Saved User Templates (`CustomSpendingPlan`)**:
+   - Custom configurations can be saved directly to the user's account with a template name.
+   - When creating future monthly pots, users can select any of their saved templates from a dropdown, automatically prefilling the section builder.
+   - Full backward compatibility: legacy pots without sections fall back cleanly to the legacy Food, Fuel, Transport, Fun columns.
+
+---
+
+## Accurate Mode: Available-Based Ledger (ABL) vs Transaction-Based Ledger (TBL)
+
+### 1. The Dual-Ledger Concept
+- **Available-Based Ledger (ABL)**:
+  - Spend is derived from the net delta between start and end balance snapshots across cycle boundaries.
+  - Indispensable for manual savings accounts, pensions, mortgages, and loans where direct Open Banking feeds are either non-existent or irrelevant to monthly disposable tracking.
+- **Transaction-Based Ledger (TBL / Accurate Mode)**:
+  - Directly sums individual line-item debits and credits from Open Banking feeds or uploaded bank statements.
+  - Eliminates discrepancies caused by pending holds, delayed postings, or intra-month transfers.
+  - Hybrid unification: Accounts with transaction feeds use TBL, while pensions/savings/unlinked accounts continue using ABL.
+
+### 2. Developer-Friendly Open Banking in Late 2026: Plaid vs TrueLayer
+- **Plaid** (Chosen Provider):
+  - **Self-Serve Access**: Direct signup without mandatory "Contact Sales" or "Talk to Us" hurdles (see [Plaid Pricing](https://plaid.com/en-gb/pricing/)).
+  - **Free Tier & Sandbox**: Generous sandbox environment and free development tier supporting up to 100 live linked items—ideal for single-developer setups and personal environments with 32+ accounts.
+  - **Modern Cursor API**: Plaid `/transactions/sync` provides incremental synchronization with automatic cursor pagination, pending/posted status flags, and standardized UK category taxonomies.
+- **TrueLayer**:
+  - Requires enterprise merchant onboarding and compliance reviews for production data feeds in the UK, making it less frictionless for indie developers.
+
+### 3. Handling 32 Accounts at Scale
+- **MockBankSyncProvider**:
+  - Simulates high-volume transaction feeds across all 32 accounts (generating hundreds of realistic transactions with merchants like Tesco, Sainsbury's, Shell, Costa Coffee, TFL).
+  - Syncs all 32 accounts in under 150ms.
+- **High-Performance PostgreSQL Rollups**:
+  - Per project guidelines, heavy time-series processing is executed inside PostgreSQL (`GROUP BY t.accountId`) rather than pulling raw records into Java memory:
+    ```sql
+    SELECT t.accountId, COALESCE(SUM(t.amount), 0.0)
+    FROM bank_transaction t
+    WHERE t.userId = :userId AND t.timestamp >= :startSec AND t.timestamp <= :endSec AND t.amount > 0
+    GROUP BY t.accountId
+    ```
+
+### 4. Statement Upload & "Dangerously Rewrite History"
+- Users can upload or paste CSV bank statements (supporting standard exports from Monzo, Starling, HSBC, Barclays, Lloyds, and Amex).
+- **Dangerously Rewrite History Option**:
+  - When checked, purges existing transactions within the statement's date range for that specific account and re-inserts the clean statement transactions.
+  - Enables repairing corrupted transaction histories or replacing estimated feeds with reconciled official statements.
 

@@ -1,0 +1,232 @@
+@(accounts: Seq[models.Account],
+  recentTransactions: Seq[models.BankTransaction],
+  providerName: String,
+  plaidConfigured: Boolean,
+  accountsSyncedCount: Int,
+  totalTxCount: Int,
+  userProfile: viewModels.SimpleUserProfile)(implicit request: play.mvc.Http.Request, messages: play.i18n.Messages)
+
+@main("MonMon - Accurate Mode & Bank Sync") {
+<div class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
+    @partials.navbar()
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h1 style="margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-primary, #1e293b);">
+                <i class="fas fa-satellite-dish" style="color: #6366f1; margin-right: 8px;"></i>
+                Accurate Mode &amp; Bank Sync
+            </h1>
+            <p style="margin: 4px 0 0 0; color: var(--text-secondary, #64748b); font-size: 0.95rem;">
+                Dual-ledger architecture: Transaction-Based Ledger (TBL) with Available-Based Ledger (ABL) fallback.
+            </p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <span class="badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
+                <i class="fas fa-check-circle"></i> Provider: @providerName
+            </span>
+            <span class="badge" style="background: #dcfce7; color: #15803d; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
+                <i class="fas fa-layer-group"></i> 32-Account Scale Ready
+            </span>
+        </div>
+    </div>
+
+    @if(request.flash().get("info").isPresent) {
+        <div class="w3-panel w3-blue w3-round" style="padding: 12px 16px; margin-bottom: 20px;">
+            <i class="fas fa-info-circle"></i> @request.flash().get("info").get()
+        </div>
+    }
+    @if(request.flash().get("error").isPresent) {
+        <div class="w3-panel w3-red w3-round" style="padding: 12px 16px; margin-bottom: 20px;">
+            <i class="fas fa-exclamation-triangle"></i> @request.flash().get("error").get()
+        </div>
+    }
+
+    <!-- Explanatory Architecture Banner -->
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 1.05rem; font-weight: 600; color: #334155;">
+            <i class="fas fa-balance-scale" style="color: #6366f1;"></i> Available Based Ledger (ABL) vs Transaction Based Ledger (TBL)
+        </h3>
+        <p style="margin: 0; color: #475569; font-size: 0.9rem; line-height: 1.5;">
+            <strong>ABL (Available-Based Ledger):</strong> Derives spend from balance delta snapshots. Essential for pensions, mortgages, and manual savings accounts where open banking transaction feeds are unavailable.<br/>
+            <strong>TBL (Transaction-Based Ledger / Accurate Mode):</strong> Directly sums line-item transaction debits via Open Banking (Plaid) or CSV statement imports. PostgreSQL rollups aggregate 32+ accounts in milliseconds without in-memory Java crunching.
+        </p>
+    </div>
+
+    <div class="w3-row-padding" style="margin: 0 -12px;">
+        <!-- Sync Actions Card -->
+        <div class="w3-col m6" style="margin-bottom: 24px;">
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); height: 100%;">
+                <h3 style="margin: 0 0 12px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
+                    <i class="fas fa-sync" style="color: #6366f1;"></i> Sync Accounts
+                </h3>
+                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 16px;">
+                    Pull transaction data across all eligible bank and credit card accounts. Handles 32+ accounts with high volume feeds.
+                </p>
+
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <form action="/bank/sync/all" method="POST" style="margin: 0;">
+                        <input type="hidden" name="provider" value="MOCK" />
+                        <button type="submit" class="w3-button w3-indigo w3-round" style="font-weight: 600; padding: 10px 18px;">
+                            <i class="fas fa-vial"></i> Sync All with Mock Provider
+                        </button>
+                    </form>
+
+                    <form action="/bank/sync/all" method="POST" style="margin: 0;">
+                        <input type="hidden" name="provider" value="PLAID" />
+                        <button type="submit" class="w3-button w3-teal w3-round" style="font-weight: 600; padding: 10px 18px;" @if(!plaidConfigured){title="Requires PLAID_CLIENT_ID and PLAID_SECRET"}>
+                            <i class="fas fa-university"></i> Sync All with Plaid API
+                        </button>
+                    </form>
+                </div>
+
+                @if(!plaidConfigured) {
+                    <p style="margin-top: 12px; font-size: 0.8rem; color: #94a3b8;">
+                        <i class="fas fa-info-circle"></i> Plaid developer keys not configured in environment yet. Use the <strong>Mock Provider</strong> or upload statements below to test with all 32 accounts.
+                    </p>
+                }
+            </div>
+        </div>
+
+        <!-- Statement Upload Card -->
+        <div class="w3-col m6" style="margin-bottom: 24px;">
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); height: 100%;">
+                <h3 style="margin: 0 0 12px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
+                    <i class="fas fa-file-upload" style="color: #6366f1;"></i> Statement Upload (CSV)
+                </h3>
+                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 16px;">
+                    Upload an export from Monzo, Starling, HSBC, Barclays, or paste CSV data.
+                </p>
+
+                <form action="/bank/statement/upload" method="POST">
+                    <div style="margin-bottom: 12px;">
+                        <label style="font-size: 0.85rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">Target Account</label>
+                        <select name="accountId" class="w3-select w3-border w3-round" required style="padding: 8px;">
+                            @for(acc <- accounts) {
+                                <option value="@acc.getId()">@acc.getName() (@acc.getType())</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <label style="font-size: 0.85rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">CSV Statement Data</label>
+                        <textarea name="csvContent" rows="3" class="w3-input w3-border w3-round" placeholder="Date,Description,Amount&#10;2026-10-25,Tesco Superstore,-34.50&#10;2026-10-26,Shell Petrol,-45.00" required style="font-family: monospace; font-size: 0.85rem;"></textarea>
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-size: 0.85rem; color: #dc2626; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="rewriteHistory" value="true" class="w3-check" />
+                            <span><strong>Dangerously rewrite history:</strong> Purge existing transactions in the statement's date range and replace with this upload.</span>
+                        </label>
+                    </div>
+
+                    <button type="submit" class="w3-button w3-blue-grey w3-round" style="font-weight: 600;">
+                        <i class="fas fa-upload"></i> Upload &amp; Ingest Statement
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Accounts Status Table -->
+    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px;">
+        <h3 style="margin: 0 0 16px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
+            <i class="fas fa-university" style="color: #6366f1;"></i> Configured Accounts (@accounts.size() Total)
+        </h3>
+
+        <div style="overflow-x: auto;">
+            <table class="w3-table w3-striped w3-bordered">
+                <thead>
+                    <tr style="background: #f8fafc; color: #475569;">
+                        <th>Account</th>
+                        <th>Type</th>
+                        <th>Ledger Mode</th>
+                        <th>Sync Source</th>
+                        <th style="text-align: right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for(acc <- accounts) {
+                        <tr>
+                            <td><strong>@acc.getName()</strong></td>
+                            <td><span class="badge" style="background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">@acc.getType()</span></td>
+                            <td>
+                                @if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
+                                    <span style="color: #64748b; font-size: 0.85rem;"><i class="fas fa-hand-paper"></i> ABL (Manual Delta)</span>
+                                } else {
+                                    <span style="color: #16a34a; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-check"></i> TBL (Accurate Mode)</span>
+                                }
+                            </td>
+                            <td>
+                                @if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
+                                    Manual Entry
+                                } else {
+                                    @providerName / Statement
+                                }
+                            </td>
+                            <td style="text-align: right;">
+                                @if(acc.getType() != models.Account.AccountType.PENSION && acc.getType() != models.Account.AccountType.LOAN) {
+                                    <div style="display: inline-flex; gap: 6px;">
+                                        <form action="/bank/sync/account/@acc.getId()" method="POST" style="margin: 0;">
+                                            <input type="hidden" name="provider" value="@providerName" />
+                                            <button type="submit" class="w3-button w3-tiny w3-indigo w3-round" title="Sync this account">
+                                                <i class="fas fa-sync"></i>
+                                            </button>
+                                        </form>
+                                        <form action="/bank/transactions/clear/@acc.getId()" method="POST" style="margin: 0;" onsubmit="return confirm('Clear all transactions for @acc.getName()?');">
+                                            <button type="submit" class="w3-button w3-tiny w3-red w3-round" title="Purge transactions">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Recent Transactions Table -->
+    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
+                <i class="fas fa-list" style="color: #6366f1;"></i> Recent Ingested Transactions (@recentTransactions.size())
+            </h3>
+        </div>
+
+        @if(recentTransactions.isEmpty) {
+            <p style="color: #64748b; font-size: 0.9rem; margin: 0;">
+                No transactions ingested yet. Click <strong>Sync All with Mock Provider</strong> above or upload a statement to populate.
+            </p>
+        } else {
+            <div style="overflow-x: auto;">
+                <table class="w3-table w3-striped w3-bordered">
+                    <thead>
+                        <tr style="background: #f8fafc; color: #475569;">
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Category</th>
+                            <th>Source</th>
+                            <th style="text-align: right;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for(tx <- recentTransactions) {
+                            <tr>
+                                <td style="font-family: monospace; font-size: 0.85rem;">@tx.getDate()</td>
+                                <td><strong>@tx.getDescription()</strong></td>
+                                <td><span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">@tx.getCategory()</span></td>
+                                <td><span class="badge" style="background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">@tx.getSource()</span></td>
+                                <td style="text-align: right; font-weight: 600; color: @if(tx.getAmount() > 0){#dc2626}else{#16a34a};">
+                                    £@String.format("%.2f", tx.getAmount())
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+}

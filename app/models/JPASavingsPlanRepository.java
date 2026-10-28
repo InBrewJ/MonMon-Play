@@ -194,6 +194,25 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         return plan;
     }
 
+    private void selfHealPlanPriorities(EntityManager em, SavingsPlan plan) {
+        if (plan == null || plan.isArchived()) return;
+        List<SavingsPlanItem> items = plan.getItems();
+        boolean needsRebalance = false;
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).getPriority() == null || items.get(i).getPriority() != (i + 1)) {
+                needsRebalance = true;
+                break;
+            }
+        }
+        if (needsRebalance) {
+            plan.rebalancePriorities();
+            for (SavingsPlanItem itm : items) {
+                em.merge(itm);
+            }
+            em.merge(plan);
+        }
+    }
+
     private SavingsPlan getActive(EntityManager em, String userId) {
         try {
             List<SavingsPlan> active = em.createQuery(
@@ -206,22 +225,7 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
                 return null;
             }
             SavingsPlan plan = active.get(0);
-            // Self-heal: ensure contiguous priorities 1..N across all active items
-            List<SavingsPlanItem> items = plan.getItems();
-            boolean needsRebalance = false;
-            for (int i = 0; i < items.size(); i++) {
-                if (items.get(i).getPriority() == null || items.get(i).getPriority() != (i + 1)) {
-                    needsRebalance = true;
-                    break;
-                }
-            }
-            if (needsRebalance) {
-                plan.rebalancePriorities();
-                for (SavingsPlanItem itm : items) {
-                    em.merge(itm);
-                }
-                em.merge(plan);
-            }
+            selfHealPlanPriorities(em, plan);
             return plan;
         } catch (Exception e) {
             System.err.println("Error fetching active savings plan: " + e.getMessage());
@@ -398,6 +402,9 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
                     .setParameter("userId", userId)
                     .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
                     .getResultList();
+            for (SavingsPlan p : plans) {
+                selfHealPlanPriorities(em, p);
+            }
             return plans.stream();
         } catch (Exception e) {
             return Collections.<SavingsPlan>emptyList().stream();
@@ -412,6 +419,9 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
                     .setParameter("userId", userId)
                     .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
                     .getResultList();
+            for (SavingsPlan p : plans) {
+                selfHealPlanPriorities(em, p);
+            }
             return plans.stream();
         } catch (Exception e) {
             return Collections.<SavingsPlan>emptyList().stream();

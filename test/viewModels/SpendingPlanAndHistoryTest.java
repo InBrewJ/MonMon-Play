@@ -510,4 +510,63 @@ public class SpendingPlanAndHistoryTest {
         assertThat(septCycle).isNotNull();
         assertThat(septCycle.getStartingTotalBalance()).isEqualTo(2200.0); // 200 + 2000
     }
+
+    @Test
+    public void arbitraryBudgetHeadingsCanHaveNSectionsWithLeftoverForFun() {
+        List<models.SpendingPlanSection> sections = List.of(
+                new models.SpendingPlanSection("Food", 250f, null),
+                new models.SpendingPlanSection("Fuel", 60f, null),
+                new models.SpendingPlanSection("Gym", 40f, null),
+                new models.SpendingPlanSection("Subscriptions", 30f, null),
+                new models.SpendingPlanSection("Childcare", 120f, null)
+        );
+
+        // Max allowance 800, 0 spent, 30 days left
+        SpendingPlan sp = new SpendingPlan("Family Mode", sections, null, 800f, 0.0, 30);
+
+        assertThat(sp.hasCustomSections()).isTrue();
+        assertThat(sp.getSections()).hasSize(5);
+        // Total essentials: 250 + 60 + 40 + 30 + 120 = 500
+        assertThat(sp.getTotalPlannedEssentials()).isEqualTo(500.0f);
+        // Leftover for fun: 800 - 500 = 300
+        assertThat(sp.getPlannedFun()).isEqualTo(300.0f);
+    }
+
+    @Test
+    public void potSerializesAndDeserializesCustomSections() {
+        Pot pot = new Pot();
+        pot.setSpendingPlanName("Custom N-Sections Plan");
+
+        List<models.SpendingPlanSection> sections = List.of(
+                new models.SpendingPlanSection("Groceries", 200f, 10L),
+                new models.SpendingPlanSection("Commute", 80f, 20L),
+                new models.SpendingPlanSection("Coffee & Treats", 50f, null)
+        );
+        pot.setSpendingSections(sections);
+
+        List<models.SpendingPlanSection> recovered = pot.getSpendingSections();
+        assertThat(recovered).hasSize(3);
+        assertThat(recovered.get(0).getHeading()).isEqualTo("Groceries");
+        assertThat(recovered.get(0).getAmount()).isEqualTo(200f);
+        assertThat(recovered.get(0).getAccountId()).isEqualTo(10L);
+
+        assertThat(recovered.get(1).getHeading()).isEqualTo("Commute");
+        assertThat(recovered.get(1).getAmount()).isEqualTo(80f);
+
+        assertThat(recovered.get(2).getHeading()).isEqualTo("Coffee & Treats");
+        assertThat(recovered.get(2).getAmount()).isEqualTo(50f);
+    }
+
+    @Test
+    public void customSpendingPlanStoresAndRetrievesSections() {
+        models.CustomSpendingPlan plan = new models.CustomSpendingPlan("user123", "Student Budget", List.of(
+                new models.SpendingPlanSection("Food", 150f, null),
+                new models.SpendingPlanSection("Books", 30f, null),
+                new models.SpendingPlanSection("Going Out", 70f, null)
+        ));
+
+        assertThat(plan.getName()).isEqualTo("Student Budget");
+        assertThat(plan.getSections()).hasSize(3);
+        assertThat(plan.getTotalSectionsAmount()).isEqualTo(250.0f);
+    }
 }

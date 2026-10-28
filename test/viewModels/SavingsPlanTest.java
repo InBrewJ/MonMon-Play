@@ -566,4 +566,72 @@ public class SavingsPlanTest {
         assertThat(active.get(2).getPriority()).isEqualTo(3);
         assertThat(active.get(2).getDebtOwed()).isEqualTo(500.0f);
     }
+
+    @Test
+    public void testSelfHealRebalancesNonContiguousPrioritiesWithGapsLikeP1P23P24() {
+        SavingsPlan plan = new SavingsPlan("user123", "Gap Recovery Plan", 20);
+
+        SavingsPlanItem item1 = new SavingsPlanItem("Item 1", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 100f, 50f, 1);
+        item1.setId(1L);
+        SavingsPlanItem item2 = new SavingsPlanItem("Item 2", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, 500f, 50f, 23);
+        item2.setId(23L);
+        SavingsPlanItem item3 = new SavingsPlanItem("Item 3", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, 700f, 50f, 24);
+        item3.setId(24L);
+
+        plan.getAllItems().add(item1);
+        plan.getAllItems().add(item2);
+        plan.getAllItems().add(item3);
+
+        // Before rebalance: items are ordered P1, P23, P24
+        List<SavingsPlanItem> before = plan.getItems();
+        assertThat(before.get(0).getPriority()).isEqualTo(1);
+        assertThat(before.get(1).getPriority()).isEqualTo(23);
+        assertThat(before.get(2).getPriority()).isEqualTo(24);
+
+        // Rebalance should self-heal priorities to 1, 2, 3
+        plan.rebalancePriorities();
+
+        List<SavingsPlanItem> after = plan.getItems();
+        assertThat(after.get(0).getPriority()).isEqualTo(1);
+        assertThat(after.get(1).getPriority()).isEqualTo(2);
+        assertThat(after.get(2).getPriority()).isEqualTo(3);
+
+        // Shunting down item 1 should move it to priority 2, and item 2 to priority 1
+        boolean moved = plan.moveItemDown(1L);
+        assertThat(moved).isTrue();
+
+        List<SavingsPlanItem> afterMove = plan.getItems();
+        assertThat(afterMove.get(0).getName()).isEqualTo("Item 2");
+        assertThat(afterMove.get(0).getPriority()).isEqualTo(1);
+        assertThat(afterMove.get(1).getName()).isEqualTo("Item 1");
+        assertThat(afterMove.get(1).getPriority()).isEqualTo(2);
+        assertThat(afterMove.get(2).getName()).isEqualTo("Item 3");
+        assertThat(afterMove.get(2).getPriority()).isEqualTo(3);
+    }
+
+    @Test
+    public void testRemovalByItemWithSameIdEvenIfDifferentJavaReference() {
+        SavingsPlan plan = new SavingsPlan("user123", "Removal Reference Test", 20);
+
+        SavingsPlanItem originalItem = new SavingsPlanItem("Item 1", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 100f, 50f, 1);
+        originalItem.setId(10L);
+        SavingsPlanItem nextItem = new SavingsPlanItem("Item 2", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 200f, 50f, 2);
+        nextItem.setId(20L);
+
+        plan.addItem(originalItem);
+        plan.addItem(nextItem);
+
+        // Simulate separate detached entity representing item 10
+        SavingsPlanItem separateInstance = new SavingsPlanItem("Item 1", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 100f, 50f, 1);
+        separateInstance.setId(10L);
+
+        plan.removeItemAndRebalanceQueue(separateInstance);
+
+        List<SavingsPlanItem> active = plan.getItems();
+        assertThat(active).hasSize(1);
+        assertThat(active.get(0).getId()).isEqualTo(20L);
+        assertThat(active.get(0).getPriority()).isEqualTo(1);
+        // Cascaded monthly amount
+        assertThat(active.get(0).getMonthlyAmount()).isEqualTo(100.0f);
+    }
 }

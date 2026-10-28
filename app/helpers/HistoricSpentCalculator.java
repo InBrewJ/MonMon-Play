@@ -67,6 +67,19 @@ public class HistoricSpentCalculator {
             ZoneId zone,
             Float monthlySurplus
     ) {
+        return calculate(allPots, allAccounts, allIncomings, nominalPayday, today, zone, monthlySurplus, Collections.emptyMap());
+    }
+
+    public static HistoricSpentViewModel calculate(
+            List<Pot> allPots,
+            List<Account> allAccounts,
+            List<Incoming> allIncomings,
+            int nominalPayday,
+            LocalDate today,
+            ZoneId zone,
+            Float monthlySurplus,
+            Map<Long, Double> tblSpentByAccount
+    ) {
         if (allAccounts == null) {
             allAccounts = Collections.emptyList();
         }
@@ -178,7 +191,12 @@ public class HistoricSpentCalculator {
                 double accInflow = getAccountPaydayInflow(acc, cycleIncomings, currCycleStart);
                 double startBal = getAccountStartBalance(acc, cycleStartSec, cycleEndSec, accInflow);
                 double endBal = getAccountEndBalance(acc, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
-                double accSpent = calculateAccountNetSpent(acc, cycleStartSec, effectiveEndSec, startBal, endBal);
+                double accSpent;
+                if (isCurrent && tblSpentByAccount != null && tblSpentByAccount.containsKey(acc.getId())) {
+                    accSpent = round2(tblSpentByAccount.get(acc.getId()));
+                } else {
+                    accSpent = calculateAccountNetSpent(acc, cycleStartSec, effectiveEndSec, startBal, endBal);
+                }
 
                 if (acc.isArchived() && startBal == 0.0 && endBal == 0.0 && accSpent == 0.0) {
                     continue;

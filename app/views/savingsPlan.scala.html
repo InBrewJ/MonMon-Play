@@ -258,7 +258,8 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @for(item <- activePlan.getItems()) {
+                            @defining(activePlan.getItems()) { activeItems =>
+                            @for((item, itemIdx) <- activeItems.zipWithIndex) {
                                 <tr class="savings-item-row"
                                     data-id="@item.getId()"
                                     data-name="@item.getName()"
@@ -278,13 +279,13 @@
                                             <div style="display: inline-flex; flex-direction: column; gap: 1px;">
                                                 <form method="POST" action="/savingsPlan/moveUp/@item.getId()" style="margin: 0; padding: 0; display: inline;">
                                                     @helper.CSRF.formField
-                                                    <button type="submit" title="Shunt item up in priority queue" @if(item.getPriority() <= 1){disabled} style="border: none; background: transparent; cursor: @if(item.getPriority() <= 1){default}else{pointer}; padding: 1px 3px; font-size: 0.75rem; color: @if(item.getPriority() <= 1){var(--border-color)}else{var(--primary)}; line-height: 1;">
+                                                    <button type="submit" title="Shunt item up in priority queue" @if(itemIdx == 0){disabled} style="border: none; background: transparent; cursor: @if(itemIdx == 0){default}else{pointer}; padding: 1px 3px; font-size: 0.75rem; color: @if(itemIdx == 0){var(--border-color)}else{var(--primary)}; line-height: 1;">
                                                         <i class="fas fa-chevron-up"></i>
                                                     </button>
                                                 </form>
                                                 <form method="POST" action="/savingsPlan/moveDown/@item.getId()" style="margin: 0; padding: 0; display: inline;">
                                                     @helper.CSRF.formField
-                                                    <button type="submit" title="Shunt item down in priority queue" @if(item.getPriority() >= activePlan.getItems().size()){disabled} style="border: none; background: transparent; cursor: @if(item.getPriority() >= activePlan.getItems().size()){default}else{pointer}; padding: 1px 3px; font-size: 0.75rem; color: @if(item.getPriority() >= activePlan.getItems().size()){var(--border-color)}else{var(--primary)}; line-height: 1;">
+                                                    <button type="submit" title="Shunt item down in priority queue" @if(itemIdx >= activeItems.size() - 1){disabled} style="border: none; background: transparent; cursor: @if(itemIdx >= activeItems.size() - 1){default}else{pointer}; padding: 1px 3px; font-size: 0.75rem; color: @if(itemIdx >= activeItems.size() - 1){var(--border-color)}else{var(--primary)}; line-height: 1;">
                                                         <i class="fas fa-chevron-down"></i>
                                                     </button>
                                                 </form>
@@ -411,6 +412,7 @@
                                         </div>
                                     </td>
                                 </tr>
+                            }
                             }
                         </tbody>
                         <tfoot>
