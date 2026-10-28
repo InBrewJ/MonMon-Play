@@ -40,7 +40,7 @@ public class BankTransaction {
 
     private String category;
 
-    private String source = "MANUAL"; // PLAID, MOCK, FILE_UPLOAD, MANUAL
+    private String source = "MANUAL"; // MONZO, MOCK, FILE_UPLOAD, MANUAL
 
     private boolean pending = false;
 

@@ -1,14 +1,14 @@
+@import helper._
 @(accounts: Seq[models.Account],
   recentTransactions: Seq[models.BankTransaction],
-  linkedItems: Seq[models.PlaidItem],
+  monzoConnection: models.MonzoConnection,
   providerName: String,
-  plaidConfigured: Boolean,
+  isMonzoConnected: Boolean,
   accountsSyncedCount: Int,
   totalTxCount: Int,
   userProfile: viewModels.SimpleUserProfile)(implicit request: play.mvc.Http.Request, messages: play.i18n.Messages)
 
-@main("MonMon - Accurate Mode & Bank Sync") {
-<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+@main("MonMon - Accurate Mode & Monzo Bank Sync") {
 
 <div class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
     @partials.navbar()
@@ -17,22 +17,25 @@
         <div>
             <h1 style="margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-primary, #1e293b);">
                 <i class="fas fa-satellite-dish" style="color: #6366f1; margin-right: 8px;"></i>
-                Accurate Mode &amp; Bank Sync
+                Accurate Mode &amp; Monzo Sync
             </h1>
             <p style="margin: 4px 0 0 0; color: var(--text-secondary, #64748b); font-size: 0.95rem;">
-                Dual-ledger architecture: Transaction-Based Ledger (TBL) with Available-Based Ledger (ABL) fallback.
+                Dual-ledger architecture: Monzo API (Debit &amp; Flex Credit Card) with Available-Based Ledger (ABL) fallback.
             </p>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            @if(isMonzoConnected) {
+                <span class="badge" style="background: #dcfce7; color: #15803d; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
+                    <i class="fas fa-check-circle"></i> Monzo Connected (Debit + Flex)
+                </span>
+            } else {
+                <span class="badge" style="background: #fef3c7; color: #b45309; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
+                    <i class="fas fa-exclamation-circle"></i> Monzo Not Connected
+                </span>
+            }
             <span class="badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
-                <i class="fas fa-check-circle"></i> Provider: @providerName
-            </span>
-            <span class="badge" style="background: #dcfce7; color: #15803d; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
                 <i class="fas fa-layer-group"></i> 32-Account Scale Ready
             </span>
-            <button id="plaid-link-button" type="button" class="w3-button w3-black w3-round" style="font-weight: 600; padding: 8px 16px;">
-                <i class="fas fa-link" style="color: #60a5fa; margin-right: 4px;"></i> Connect Bank via Plaid Link
-            </button>
         </div>
     </div>
 
@@ -47,38 +50,58 @@
         </div>
     }
 
-    <!-- Dynamic Plaid Status Alert -->
-    <div id="plaid-status-banner" style="display: none; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem;"></div>
-
-    <!-- Linked Plaid Institutions Card -->
-    @if(!linkedItems.isEmpty) {
-        <div style="background: white; border: 1px solid #c7d2fe; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(99,102,241,0.08);">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div>
-                    <h3 style="margin: 0; font-size: 1.05rem; font-weight: 600; color: #3730a3;">
-                        <i class="fas fa-university" style="color: #6366f1;"></i> Connected Open Banking Institutions (@linkedItems.size())
-                    </h3>
-                    <p style="margin: 2px 0 0 0; color: #4338ca; font-size: 0.85rem;">
-                        Live transaction feeds will pull from these connections.
-                    </p>
-                </div>
+    <!-- Monzo Direct Connection Card -->
+    <div style="background: white; border: 1px solid #fed7aa; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(249,115,22,0.08); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #9a3412;">
+                    <i class="fas fa-bolt" style="color: #ea580c; margin-right: 6px;"></i>
+                    Monzo Developer API (Debit Current Accounts &amp; Monzo Flex Credit Cards)
+                </h3>
+                <p style="margin: 4px 0 0 0; color: #7c2d12; font-size: 0.9rem;">
+                    100% free direct API. Connect your personal Monzo account to sync all transactions for your <strong>Debit account</strong> and <strong>Monzo Flex credit card</strong>.
+                </p>
             </div>
-            <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
-                @for(item <- linkedItems) {
-                    <div style="background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 8px 12px; display: inline-flex; align-items: center; gap: 10px;">
-                        <span style="font-weight: 600; font-size: 0.9rem; color: #312e81;">
-                            <i class="fas fa-landmark" style="margin-right: 4px;"></i> @if(item.getInstitutionName() != null){@item.getInstitutionName()}else{Bank Item}
-                        </span>
-                        <form action="/bank/plaid/item/delete/@item.getId()" method="POST" style="margin: 0;" onsubmit="return confirm('Unlink this bank institution?');">
-                            <button type="submit" class="w3-button w3-tiny w3-text-red" style="padding: 2px 6px; border-radius: 4px;" title="Unlink institution">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </form>
-                    </div>
-                }
-            </div>
+            @if(isMonzoConnected) {
+                <form action="/bank/monzo/disconnect" method="POST" style="margin: 0;" onsubmit="return confirm('Disconnect Monzo integration?');">
+                    @helper.CSRF.formField
+                    <button type="submit" class="w3-button w3-small w3-pale-red w3-round" style="font-weight: 600;">
+                        <i class="fas fa-unlink"></i> Disconnect Monzo
+                    </button>
+                </form>
+            }
         </div>
-    }
+
+        @if(!isMonzoConnected) {
+            <div style="margin-top: 16px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 8px; padding: 14px 16px;">
+                <p style="margin: 0 0 10px 0; font-size: 0.85rem; color: #9a3412;">
+                    <strong>Quick Setup (Personal Access Token):</strong>
+                    <ol style="margin: 4px 0 0 0; padding-left: 20px; font-size: 0.85rem; color: #7c2d12; line-height: 1.6;">
+                        <li>Go to <a href="https://developers.monzo.com/" target="_blank" rel="noopener" style="color: #ea580c; font-weight: 600; text-decoration: underline;">developers.monzo.com</a> and sign in with your Monzo email.</li>
+                        <li>Click the magic link in your email and tap the notification prompt on your Monzo mobile app.</li>
+                        <li>Copy your <strong>Access Token</strong> (from the top-right menu or API Playground) and paste it below.</li>
+                    </ol>
+                </p>
+
+                <form action="/bank/monzo/token" method="POST" style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                    @helper.CSRF.formField
+                    <input type="text" name="accessToken" class="w3-input w3-border w3-round" placeholder="eyJhbGciOiJFUzI1NiIs..." required style="flex: 1; min-width: 280px; font-family: monospace; font-size: 0.85rem;" />
+                    <button type="submit" class="w3-button w3-round" style="background: #ea580c; color: white; font-weight: 600;">
+                        <i class="fas fa-plug"></i> Connect Monzo
+                    </button>
+                </form>
+            </div>
+        } else {
+            <div style="margin-top: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <span style="color: #166534; font-size: 0.9rem; font-weight: 600;">
+                    <i class="fas fa-check-circle" style="color: #16a34a;"></i> Active Monzo Connection (User ID: @monzoConnection.getMonzoUserId())
+                </span>
+                <span style="color: #475569; font-size: 0.85rem;">
+                    Syncs both Monzo Current (Debit) and Monzo Flex (Credit Card)
+                </span>
+            </div>
+        }
+    </div>
 
     <!-- Account Compatibility Matrix & Dual Ledger Architecture -->
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
@@ -86,24 +109,24 @@
             <i class="fas fa-balance-scale" style="color: #6366f1;"></i> Account Compatibility Matrix &amp; Dual-Ledger System
         </h3>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 12px;">
-            <div style="background: white; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px;">
-                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #15803d;">
-                    <i class="fas fa-check-circle"></i> Compatible with Plaid &amp; TBL
+            <div style="background: white; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px 14px;">
+                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #ea580c;">
+                    <i class="fas fa-bolt"></i> Monzo API Supported (TBL Mode)
                 </h4>
                 <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 0.85rem; line-height: 1.5;">
-                    <li><strong>Current &amp; Debit Accounts:</strong> Monzo, Starling, HSBC, Barclays, Lloyds, NatWest, Santander, Revolut.</li>
-                    <li><strong>Credit Cards:</strong> Amex, Barclaycard, Capital One, MBNA, Halifax Credit (Open Banking supports UK credit cards).</li>
-                    <li><strong>Easy-Access Savings / Pots:</strong> Retail bank instant pots with transactional feeds.</li>
+                    <li><strong>Monzo Current / Debit:</strong> Regular current accounts (`uk_retail`) and joint accounts.</li>
+                    <li><strong>Monzo Flex Credit Card:</strong> Virtual/physical installment credit line (`uk_monzo_flex`).</li>
+                    <li><strong>Monzo Savings Pots:</strong> Standard instant pots.</li>
                 </ul>
             </div>
-            <div style="background: white; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px 14px;">
-                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #c2410c;">
-                    <i class="fas fa-hand-paper"></i> Incompatible: Manual ABL Delta Entry
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #475569;">
+                    <i class="fas fa-hand-paper"></i> Manual ABL / Statement Mode
                 </h4>
                 <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 0.85rem; line-height: 1.5;">
-                    <li><strong>Pensions:</strong> SIPP, Workplace pensions (Nest, Aviva, Scottish Widows). No open banking transactional APIs exist.</li>
-                    <li><strong>Loans &amp; Mortgages:</strong> Fixed debt balances. Tracked via balance amortization.</li>
-                    <li><strong>Niche Savings / Bonds:</strong> NS&amp;I Premium Bonds, Fixed-rate cash ISAs, locked investment accounts.</li>
+                    <li><strong>External Banks (HSBC, Barclays, Amex):</strong> Ingest via CSV statement upload or track via balance delta.</li>
+                    <li><strong>Pensions:</strong> SIPP &amp; Workplace (Nest, Aviva). No open banking feeds; track via balance delta.</li>
+                    <li><strong>Loans &amp; Mortgages:</strong> Tracked via balance amortization.</li>
                 </ul>
             </div>
         </div>
@@ -117,30 +140,26 @@
                     <i class="fas fa-sync" style="color: #6366f1;"></i> Sync Accounts
                 </h3>
                 <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 16px;">
-                    Pull transaction data across all eligible bank and credit card accounts. Handles 32+ accounts with high volume feeds.
+                    Pull transactions across your connected accounts.
                 </p>
 
                 <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                     <form action="/bank/sync/all" method="POST" style="margin: 0;">
-                        <input type="hidden" name="provider" value="MOCK" />
-                        <button type="submit" class="w3-button w3-indigo w3-round" style="font-weight: 600; padding: 10px 18px;">
-                            <i class="fas fa-vial"></i> Sync All with Mock Provider
+                        @helper.CSRF.formField
+                        <input type="hidden" name="provider" value="MONZO" />
+                        <button type="submit" class="w3-button w3-round" style="background: #ea580c; color: white; font-weight: 600; padding: 10px 18px;" @if(!isMonzoConnected){disabled title="Connect Monzo above first"}>
+                            <i class="fas fa-bolt"></i> Sync with Monzo API
                         </button>
                     </form>
 
                     <form action="/bank/sync/all" method="POST" style="margin: 0;">
-                        <input type="hidden" name="provider" value="PLAID" />
-                        <button type="submit" class="w3-button w3-teal w3-round" style="font-weight: 600; padding: 10px 18px;" @if(!plaidConfigured){title="Requires PLAID_CLIENT_ID and PLAID_SECRET"}>
-                            <i class="fas fa-university"></i> Sync All with Plaid API
+                        @helper.CSRF.formField
+                        <input type="hidden" name="provider" value="MOCK" />
+                        <button type="submit" class="w3-button w3-indigo w3-round" style="font-weight: 600; padding: 10px 18px;">
+                            <i class="fas fa-vial"></i> Sync All (Mock Provider)
                         </button>
                     </form>
                 </div>
-
-                @if(!plaidConfigured) {
-                    <p style="margin-top: 12px; font-size: 0.8rem; color: #94a3b8;">
-                        <i class="fas fa-info-circle"></i> Plaid developer keys not configured in environment yet. Use the <strong>Mock Provider</strong> or upload statements below to test with all 32 accounts.
-                    </p>
-                }
             </div>
         </div>
 
@@ -151,10 +170,11 @@
                     <i class="fas fa-file-upload" style="color: #6366f1;"></i> Statement Upload (CSV)
                 </h3>
                 <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 16px;">
-                    Upload an export from Monzo, Starling, HSBC, Barclays, or paste CSV data.
+                    For other accounts (Amex, Barclaycard, HSBC), drop in a CSV statement.
                 </p>
 
                 <form action="/bank/statement/upload" method="POST">
+                    @helper.CSRF.formField
                     <div style="margin-bottom: 12px;">
                         <label style="font-size: 0.85rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">Target Account</label>
                         <select name="accountId" class="w3-select w3-border w3-round" required style="padding: 8px;">
@@ -228,6 +248,7 @@
                                 @if(acc.getType() != models.Account.AccountType.PENSION && acc.getType() != models.Account.AccountType.LOAN) {
                                     <div style="display: inline-flex; gap: 6px; align-items: center;">
                                         <form action="/bank/account/@acc.getId()/toggle-mode" method="POST" style="margin: 0;">
+                                            @helper.CSRF.formField
                                             @if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
                                                 <button type="submit" class="w3-button w3-tiny w3-round w3-pale-green w3-hover-green" title="Switch to TBL Accurate Mode (retains all balance history)">
                                                     <i class="fas fa-exchange-alt"></i> Use TBL
@@ -239,12 +260,14 @@
                                             }
                                         </form>
                                         <form action="/bank/sync/account/@acc.getId()" method="POST" style="margin: 0;">
+                                            @helper.CSRF.formField
                                             <input type="hidden" name="provider" value="@providerName" />
                                             <button type="submit" class="w3-button w3-tiny w3-indigo w3-round" title="Sync this account">
                                                 <i class="fas fa-sync"></i>
                                             </button>
                                         </form>
                                         <form action="/bank/transactions/clear/@acc.getId()" method="POST" style="margin: 0;" onsubmit="return confirm('Clear all transactions for @acc.getName()?');">
+                                            @helper.CSRF.formField
                                             <button type="submit" class="w3-button w3-tiny w3-red w3-round" title="Purge transactions">
                                                 <i class="fas fa-trash"></i>
                                             </button>
@@ -269,7 +292,7 @@
 
         @if(recentTransactions.isEmpty) {
             <p style="color: #64748b; font-size: 0.9rem; margin: 0;">
-                No transactions ingested yet. Click <strong>Sync All with Mock Provider</strong> above, connect via Plaid Link, or upload a statement to populate.
+                No transactions ingested yet. Connect your Monzo account above, click <strong>Sync All (Mock Provider)</strong>, or upload a statement to populate.
             </p>
         } else {
             <div style="overflow-x: auto;">
@@ -301,95 +324,4 @@
         }
     </div>
 </div>
-
-<script type="text/javascript">
-(function() {
-    var linkBtn = document.getElementById('plaid-link-button');
-    var statusBanner = document.getElementById('plaid-status-banner');
-
-    function showStatus(msg, isError) {
-        if (!statusBanner) return;
-        statusBanner.style.display = 'block';
-        statusBanner.style.background = isError ? '#fee2e2' : '#dcfce7';
-        statusBanner.style.color = isError ? '#991b1b' : '#166534';
-        statusBanner.style.border = '1px solid ' + (isError ? '#f87171' : '#86efac');
-        statusBanner.innerHTML = msg;
-    }
-
-    if (linkBtn) {
-        linkBtn.addEventListener('click', function() {
-            linkBtn.disabled = true;
-            linkBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initializing Plaid Link...';
-
-            fetch('/bank/plaid/link-token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(function(res) {
-                return res.json();
-            })
-            .then(function(data) {
-                if (data.error) {
-                    showStatus('Error starting Plaid Link: ' + data.error, true);
-                    linkBtn.disabled = false;
-                    linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
-                    return;
-                }
-
-                if (typeof Plaid === 'undefined') {
-                    showStatus('Plaid Link SDK is loading or unavailable. If testing offline, use the Mock Provider.', true);
-                    linkBtn.disabled = false;
-                    linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
-                    return;
-                }
-
-                var handler = Plaid.create({
-                    token: data.link_token,
-                    onSuccess: function(public_token, metadata) {
-                        showStatus('<i class="fas fa-spinner fa-spin"></i> Exchanging bank token and syncing initial transactions...', false);
-                        fetch('/bank/plaid/exchange-token', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                public_token: public_token,
-                                institution_id: metadata && metadata.institution ? metadata.institution.institution_id : 'unknown',
-                                institution_name: metadata && metadata.institution ? metadata.institution.name : 'Bank'
-                            })
-                        })
-                        .then(function(resp) { return resp.json(); })
-                        .then(function(result) {
-                            if (result.success) {
-                                showStatus('<i class="fas fa-check-circle"></i> Successfully connected ' + (result.institution || 'bank') + '! Reloading...', false);
-                                setTimeout(function() { window.location.reload(); }, 1200);
-                            } else {
-                                showStatus('Exchange error: ' + (result.error || 'Failed to exchange token'), true);
-                                linkBtn.disabled = false;
-                                linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
-                            }
-                        })
-                        .catch(function(err) {
-                            showStatus('Network error during exchange: ' + err.message, true);
-                            linkBtn.disabled = false;
-                            linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
-                        });
-                    },
-                    onExit: function(err, metadata) {
-                        linkBtn.disabled = false;
-                        linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
-                        if (err != null) {
-                            showStatus('Plaid Link exited: ' + err.display_message, true);
-                        }
-                    }
-                });
-                handler.open();
-            })
-            .catch(function(err) {
-                showStatus('Failed to request link token: ' + err.message, true);
-                linkBtn.disabled = false;
-                linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
-            });
-        });
-    }
-})();
-</script>
 }

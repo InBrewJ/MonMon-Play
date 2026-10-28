@@ -216,20 +216,31 @@ Please see the Play documentation for more details:
   - Eliminates discrepancies caused by pending holds, delayed postings, or intra-month transfers.
   - Hybrid unification: Accounts with transaction feeds use TBL, while pensions/savings/unlinked accounts continue using ABL.
 
-### 2. Developer-Friendly Open Banking in Late 2026: Plaid vs TrueLayer
-- **Plaid** (Chosen Provider):
-  - **Self-Serve Access**: Direct signup without mandatory "Contact Sales" or "Talk to Us" hurdles (see [Plaid Pricing](https://plaid.com/en-gb/pricing/)).
-  - **Free Tier & Sandbox**: Generous sandbox environment and free development tier supporting up to 100 live linked items—ideal for single-developer setups and personal environments with 32+ accounts.
-  - **Modern Cursor API**: Plaid `/transactions/sync` provides incremental synchronization with automatic cursor pagination, pending/posted status flags, and standardized UK category taxonomies.
-- **TrueLayer**:
-  - Requires enterprise merchant onboarding and compliance reviews for production data feeds in the UK, making it less frictionless for indie developers.
+### 2. Live Bank Feeds: Monzo Developer API (Debit Current Accounts & Monzo Flex Credit Cards)
+- **Zero Cost & Free Developer Platform**:
+  - Unlike aggregators (TrueLayer, Tink, Yapily) that charge heavy monthly minimums or require enterprise sales calls, and GoCardless which closed public signups, **Monzo provides an official, 100% free developer API** ([developers.monzo.com](https://developers.monzo.com)).
+  - Supports both instant **Personal Access Tokens (PAT)** (copy-pasted from the developer portal) and **OAuth 2.0 authorization code flow**.
+- **Supported Account Types**:
+  - **Debit Accounts (`uk_retail` & `uk_retail_joint`)**: Personal current accounts and joint accounts.
+  - **Monzo Flex (`uk_monzo_flex`)**: Monzo's credit card / installment credit line is directly supported. Querying `GET /transactions?account_id={flex_id}` pulls all Flex transactions.
+- **Amounts & Currency**:
+  - Monzo stores amounts in integer pence (e.g. `-2450` for £24.50 spend). MonMon automatically normalizes pence into pounds and extracts rich merchant metadata.
+- **Incompatible Accounts (Pensions, Mortgages & Loans)**:
+  - Open Banking standards do not provide consumer transaction APIs for pensions (SIPP, Nest) or mortgages. MonMon automatically keeps these on ABL (Available-Based Ledger) balance delta tracking.
 
-### 3. Handling 32 Accounts at Scale
+### 3. Non-Destructive Ledger Mode Switch (TBL vs ABL)
+- **100% Data Preservation**:
+  - `balance` records and `bank_transaction` records live in completely separate tables.
+  - Toggling an account between **TBL** (Transaction-Based) and **ABL** (Available-Based) on `/bank` NEVER deletes any historical balances or transactions.
+  - When switched to ABL, MonMon calculates spend using start and end balance deltas (`startBal - endBal + inflow`).
+  - When switched to TBL, MonMon calculates spend from exact line-item transaction debits.
+  - Older historical cycles prior to connecting Monzo automatically render using historical balance snapshots, ensuring uninterrupted continuity.
+
+### 4. Handling 32 Accounts at Scale & High-Performance Rollups
 - **MockBankSyncProvider**:
-  - Simulates high-volume transaction feeds across all 32 accounts (generating hundreds of realistic transactions with merchants like Tesco, Sainsbury's, Shell, Costa Coffee, TFL).
-  - Syncs all 32 accounts in under 150ms.
-- **High-Performance PostgreSQL Rollups**:
-  - Per project guidelines, heavy time-series processing is executed inside PostgreSQL (`GROUP BY t.accountId`) rather than pulling raw records into Java memory:
+  - Simulates high-volume transaction feeds across all 32 accounts in under 150ms.
+- **PostgreSQL Group-By Rollup**:
+  - Aggregates monthly spend per account directly inside PostgreSQL (`GROUP BY t.accountId`) rather than pulling raw records into Java memory:
     ```sql
     SELECT t.accountId, COALESCE(SUM(t.amount), 0.0)
     FROM bank_transaction t
@@ -237,9 +248,9 @@ Please see the Play documentation for more details:
     GROUP BY t.accountId
     ```
 
-### 4. Statement Upload & "Dangerously Rewrite History"
-- Users can upload or paste CSV bank statements (supporting standard exports from Monzo, Starling, HSBC, Barclays, Lloyds, and Amex).
+### 5. Statement Upload & "Dangerously Rewrite History"
+- Users can upload or paste CSV bank statements for non-Monzo accounts (Amex, Barclaycard, HSBC, Lloyds).
 - **Dangerously Rewrite History Option**:
-  - When checked, purges existing transactions within the statement's date range for that specific account and re-inserts the clean statement transactions.
-  - Enables repairing corrupted transaction histories or replacing estimated feeds with reconciled official statements.
+  - Purges existing transactions within the statement's date range for that specific account and re-inserts the clean statement transactions.
+  - Enables repairing corrupted transaction feeds with reconciled official statements.
 

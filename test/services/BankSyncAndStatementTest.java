@@ -254,81 +254,92 @@ public class BankSyncAndStatementTest {
         assertThat(acc.getBalances()).hasSize(2); // Balance data 100% preserved!
     }
 
-    private static class InMemoryPlaidItemRepository implements models.PlaidItemRepository {
-        final List<models.PlaidItem> items = new ArrayList<>();
+    private static class InMemoryMonzoConnectionRepository implements models.MonzoConnectionRepository {
+        models.MonzoConnection connection;
 
         @Override
-        public CompletionStage<models.PlaidItem> save(models.PlaidItem item) {
-            if (item.getId() == null) {
-                item.setId((long) (items.size() + 1));
-            }
-            items.removeIf(i -> i.getId().equals(item.getId()));
-            items.add(item);
-            return CompletableFuture.completedFuture(item);
+        public CompletionStage<models.MonzoConnection> save(models.MonzoConnection conn) {
+            this.connection = conn;
+            return CompletableFuture.completedFuture(conn);
         }
 
         @Override
-        public CompletionStage<List<models.PlaidItem>> findByUserId(String userId) {
-            List<models.PlaidItem> userItems = new ArrayList<>();
-            for (models.PlaidItem i : items) {
-                if (userId.equals(i.getUserId())) {
-                    userItems.add(i);
-                }
+        public CompletionStage<Optional<models.MonzoConnection>> findByUserId(String userId) {
+            if (connection != null && userId.equals(connection.getUserId())) {
+                return CompletableFuture.completedFuture(Optional.of(connection));
             }
-            return CompletableFuture.completedFuture(userItems);
+            return CompletableFuture.completedFuture(Optional.empty());
         }
 
         @Override
-        public CompletionStage<models.PlaidItem> findByItemId(String itemId) {
-            for (models.PlaidItem i : items) {
-                if (itemId.equals(i.getItemId())) return CompletableFuture.completedFuture(i);
-            }
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<Boolean> delete(Long id) {
-            boolean removed = items.removeIf(i -> i.getId().equals(id));
-            return CompletableFuture.completedFuture(removed);
+        public CompletionStage<Boolean> deleteByUserId(String userId) {
+            boolean existed = connection != null;
+            this.connection = null;
+            return CompletableFuture.completedFuture(existed);
         }
     }
 
     @Test
-    public void testPlaidLinkFlowCreatesTokenAndExchangesPublicToken() {
+    public void testMonzoAccountInfoRecognizesDebitAndMonzoFlexCreditCards() {
+        MonzoBankSyncProvider.MonzoAccountInfo debit =
+                new MonzoBankSyncProvider.MonzoAccountInfo("acc_123", "uk_retail", "Personal Current Account", false);
+        MonzoBankSyncProvider.MonzoAccountInfo flex =
+                new MonzoBankSyncProvider.MonzoAccountInfo("acc_flex_456", "uk_monzo_flex", "Monzo Flex Credit Card", false);
+        MonzoBankSyncProvider.MonzoAccountInfo joint =
+                new MonzoBankSyncProvider.MonzoAccountInfo("acc_joint_789", "uk_retail_joint", "Joint Account", false);
+
+        assertThat(debit.isDebit()).isTrue();
+        assertThat(debit.isFlexCreditCard()).isFalse();
+        assertThat(debit.getDisplayName()).contains("Current Account (Debit)");
+
+        assertThat(flex.isFlexCreditCard()).isTrue();
+        assertThat(flex.isDebit()).isFalse();
+        assertThat(flex.getDisplayName()).contains("Monzo Flex (Credit Card)");
+
+        assertThat(joint.isDebit()).isTrue();
+        assertThat(joint.getDisplayName()).contains("Joint Account (Debit)");
+    }
+
+    @Test
+    public void testMonzoSyncSkipsIncompatiblePensionAndLoanAccounts() {
         com.typesafe.config.Config config = com.typesafe.config.ConfigFactory.empty();
         InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
-        InMemoryPlaidItemRepository itemRepo = new InMemoryPlaidItemRepository();
+        InMemoryMonzoConnectionRepository connRepo = new InMemoryMonzoConnectionRepository();
         StatementParserService parser = new StatementParserService(txRepo);
 
-        PlaidBankSyncProvider plaidProvider = new PlaidBankSyncProvider(config, txRepo, itemRepo, parser);
+        MonzoBankSyncProvider provider = new MonzoBankSyncProvider(config, txRepo, connRepo, parser);
 
-        // 1. Create Link Token
-        String linkToken = plaidProvider.createLinkToken("user123").toCompletableFuture().join();
-        assertThat(linkToken).contains("mock-link-token-user123");
-
-        // 2. Exchange public token from Plaid Link modal
-        models.PlaidItem saved = plaidProvider.exchangePublicToken("user123", "public-sandbox-abc", "ins_monzo", "Monzo Bank")
-                .toCompletableFuture().join();
-        assertThat(saved).isNotNull();
-        assertThat(saved.getInstitutionName()).isEqualTo("Monzo Bank");
-
-        // Verify it was stored in the repository
-        List<models.PlaidItem> userItems = itemRepo.findByUserId("user123").toCompletableFuture().join();
-        assertThat(userItems).hasSize(1);
-        assertThat(userItems.get(0).getInstitutionName()).isEqualTo("Monzo Bank");
-
-        // 3. Incompatible accounts (Pensions/Loans) are skipped from Plaid sync
         Account pension = new Account();
-        pension.setId(201L);
+        pension.setId(301L);
         pension.setName("Workplace Pension");
         pension.setType(Account.AccountType.PENSION);
-        BankSyncService.SyncResult penRes = plaidProvider.syncAccount(pension, 30).toCompletableFuture().join();
+        BankSyncService.SyncResult penRes = provider.syncAccount(pension, 30).toCompletableFuture().join();
         assertThat(penRes.isSuccess()).isTrue();
         assertThat(penRes.getMessage()).contains("Pension/Loan requires manual ABL entry");
 
-        // 4. Delete/Unlink item
-        Boolean unlinked = itemRepo.delete(saved.getId()).toCompletableFuture().join();
-        assertThat(unlinked).isTrue();
-        assertThat(itemRepo.findByUserId("user123").toCompletableFuture().join()).isEmpty();
+        Account loan = new Account();
+        loan.setId(302L);
+        loan.setName("Car Loan");
+        loan.setType(Account.AccountType.LOAN);
+        BankSyncService.SyncResult loanRes = provider.syncAccount(loan, 30).toCompletableFuture().join();
+        assertThat(loanRes.isSuccess()).isTrue();
+        assertThat(loanRes.getMessage()).contains("Pension/Loan requires manual ABL entry");
+    }
+
+    @Test
+    public void testMonzoConnectionRepositorySaveFindAndDelete() {
+        InMemoryMonzoConnectionRepository repo = new InMemoryMonzoConnectionRepository();
+        models.MonzoConnection conn = new models.MonzoConnection("user_abc", "token_123", "refresh_123", "monzo_u_123", 999999999L);
+
+        models.MonzoConnection saved = repo.save(conn).toCompletableFuture().join();
+        assertThat(saved.getAccessToken()).isEqualTo("token_123");
+
+        Optional<models.MonzoConnection> found = repo.findByUserId("user_abc").toCompletableFuture().join();
+        assertThat(found).isPresent();
+        assertThat(found.get().getMonzoUserId()).isEqualTo("monzo_u_123");
+
+        Boolean deleted = repo.deleteByUserId("user_abc").toCompletableFuture().join();
+        assertThat(deleted).isTrue();
+        assertThat(repo.findByUserId("user_abc").toCompletableFuture().join()).isEmpty();
     }
 }

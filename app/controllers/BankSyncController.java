@@ -1,13 +1,12 @@
 package controllers;
 
-import helpers.ModelHelpers;
 import helpers.UserHelpers;
 import models.Account;
 import models.AccountRepository;
 import models.BankTransaction;
 import models.BankTransactionRepository;
-import models.PlaidItem;
-import models.PlaidItemRepository;
+import models.MonzoConnection;
+import models.MonzoConnectionRepository;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
 import play.data.DynamicForm;
@@ -19,18 +18,25 @@ import play.mvc.Http;
 import play.mvc.Result;
 import services.BankSyncService;
 import services.MockBankSyncProvider;
-import services.PlaidBankSyncProvider;
+import services.MonzoBankSyncProvider;
 import services.StatementParserService;
 import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
-import static helpers.ModelHelpers.repoListToList;
 import static play.libs.Json.toJson;
 import static play.libs.Scala.asScala;
 
@@ -38,9 +44,9 @@ public class BankSyncController extends Controller {
 
     private final AccountRepository accountRepository;
     private final BankTransactionRepository bankTransactionRepository;
-    private final PlaidItemRepository plaidItemRepository;
+    private final MonzoConnectionRepository monzoConnectionRepository;
     private final MockBankSyncProvider mockBankSyncProvider;
-    private final PlaidBankSyncProvider plaidBankSyncProvider;
+    private final MonzoBankSyncProvider monzoBankSyncProvider;
     private final StatementParserService statementParserService;
     private final FormFactory formFactory;
     private final MessagesApi messagesApi;
@@ -52,18 +58,18 @@ public class BankSyncController extends Controller {
     @Inject
     public BankSyncController(AccountRepository accountRepository,
                               BankTransactionRepository bankTransactionRepository,
-                              PlaidItemRepository plaidItemRepository,
+                              MonzoConnectionRepository monzoConnectionRepository,
                               MockBankSyncProvider mockBankSyncProvider,
-                              PlaidBankSyncProvider plaidBankSyncProvider,
+                              MonzoBankSyncProvider monzoBankSyncProvider,
                               StatementParserService statementParserService,
                               FormFactory formFactory,
                               MessagesApi messagesApi,
                               HttpExecutionContext ec) {
         this.accountRepository = accountRepository;
         this.bankTransactionRepository = bankTransactionRepository;
-        this.plaidItemRepository = plaidItemRepository;
+        this.monzoConnectionRepository = monzoConnectionRepository;
         this.mockBankSyncProvider = mockBankSyncProvider;
-        this.plaidBankSyncProvider = plaidBankSyncProvider;
+        this.monzoBankSyncProvider = monzoBankSyncProvider;
         this.statementParserService = statementParserService;
         this.formFactory = formFactory;
         this.messagesApi = messagesApi;
@@ -71,10 +77,10 @@ public class BankSyncController extends Controller {
     }
 
     private BankSyncService resolveProvider(String providerName) {
-        if ("PLAID".equalsIgnoreCase(providerName)) {
-            return plaidBankSyncProvider;
+        if ("MOCK".equalsIgnoreCase(providerName)) {
+            return mockBankSyncProvider;
         }
-        return mockBankSyncProvider;
+        return monzoBankSyncProvider;
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -85,16 +91,16 @@ public class BankSyncController extends Controller {
             List<Account> accounts = accStream.collect(Collectors.toList());
             return bankTransactionRepository.listRecent(sup.getUserId(), 100).thenComposeAsync(txStream -> {
                 List<BankTransaction> txList = txStream.collect(Collectors.toList());
-                return plaidItemRepository.findByUserId(sup.getUserId()).thenApplyAsync(linkedItems -> {
-                    boolean isPlaidConfigured = plaidBankSyncProvider.isConfigured();
-                    String providerName = isPlaidConfigured ? "PLAID" : "MOCK";
+                return monzoConnectionRepository.findByUserId(sup.getUserId()).thenApplyAsync(monzoConnOpt -> {
+                    boolean isMonzoConnected = monzoConnOpt.isPresent();
+                    String providerName = isMonzoConnected ? "MONZO" : "MOCK";
 
                     return ok(views.html.bankSync.render(
                             asScala(accounts),
                             asScala(txList),
-                            asScala(linkedItems),
+                            monzoConnOpt.orElse(null),
                             providerName,
-                            isPlaidConfigured,
+                            isMonzoConnected,
                             accounts.size(),
                             txList.size(),
                             sup,
@@ -151,6 +157,129 @@ public class BankSyncController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> saveMonzoToken(final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        DynamicForm form = formFactory.form().bindFromRequest(request);
+
+        String token = form.get("accessToken");
+        if (token == null || token.trim().isEmpty()) {
+            return CompletableFuture.completedFuture(
+                    redirect(routes.BankSyncController.index()).flashing("error", "Personal Access Token cannot be empty."));
+        }
+        final String cleanToken = token.trim();
+
+        // Validate token by fetching Monzo accounts (supports Debit and Monzo Flex)
+        return monzoBankSyncProvider.fetchAccounts(cleanToken).thenComposeAsync(monzoAccounts -> {
+            MonzoConnection conn = new MonzoConnection(
+                    sup.getUserId(),
+                    cleanToken,
+                    null,
+                    "monzo-user",
+                    System.currentTimeMillis() + (86400L * 365L * 1000L) // Personal access token
+            );
+            return monzoConnectionRepository.save(conn).thenComposeAsync(saved -> {
+                // Immediately trigger sync
+                return accountRepository.list(sup.getUserId()).thenComposeAsync(accStream -> {
+                    List<Account> accounts = accStream.collect(Collectors.toList());
+                    return monzoBankSyncProvider.syncAllUserAccounts(sup.getUserId(), accounts, 30).thenApplyAsync(res -> {
+                        return redirect(routes.BankSyncController.index())
+                                .flashing("info", "Monzo connected successfully! Discovered " + monzoAccounts.size() + " accounts (including Debit & Monzo Flex). " + res.getMessage());
+                    }, ec.current());
+                }, ec.current());
+            }, ec.current());
+        }, ec.current()).exceptionally(err -> {
+            return redirect(routes.BankSyncController.index())
+                    .flashing("error", "Failed to connect to Monzo: " + err.getMessage() + ". Check that your token was copied correctly from developers.monzo.com");
+        });
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public Result connectMonzoOAuth(final Http.Request request) {
+        String clientId = monzoBankSyncProvider.getClientId();
+        if (clientId == null || clientId.trim().isEmpty()) {
+            return redirect(routes.BankSyncController.index())
+                    .flashing("error", "Monzo OAuth client ID is not configured. Use the Personal Access Token field below instead!");
+        }
+        String redirectUri = URLEncoder.encode(monzoBankSyncProvider.getRedirectUri(), StandardCharsets.UTF_8);
+        String state = URLEncoder.encode(request.session().get("userId").orElse("user"), StandardCharsets.UTF_8);
+        String url = "https://auth.monzo.com/?client_id=" + clientId + "&redirect_uri=" + redirectUri + "&response_type=code&state=" + state;
+        return redirect(url);
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> monzoOAuthCallback(String code, String state, final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        if (code == null || code.trim().isEmpty()) {
+            return CompletableFuture.completedFuture(
+                    redirect(routes.BankSyncController.index()).flashing("error", "Missing OAuth authorization code from Monzo."));
+        }
+
+        try {
+            String clientId = monzoBankSyncProvider.getClientId();
+            String clientSecret = monzoBankSyncProvider.getClientSecret();
+            String redirectUri = monzoBankSyncProvider.getRedirectUri();
+
+            String formBody = "grant_type=authorization_code" +
+                    "&client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8) +
+                    "&client_secret=" + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8) +
+                    "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8) +
+                    "&code=" + URLEncoder.encode(code, StandardCharsets.UTF_8);
+
+            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.monzo.com/oauth2/token"))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(formBody))
+                    .build();
+
+            return client.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+                    .thenComposeAsync(response -> {
+                        if (response.statusCode() != 200) {
+                            return CompletableFuture.completedFuture(
+                                    redirect(routes.BankSyncController.index())
+                                            .flashing("error", "Monzo token exchange error: " + response.body()));
+                        }
+                        try {
+                            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                            com.fasterxml.jackson.databind.JsonNode json = mapper.readTree(response.body());
+                            String accessToken = json.path("access_token").asText();
+                            String refreshToken = json.path("refresh_token").asText(null);
+                            String monzoUserId = json.path("user_id").asText("monzo-user");
+                            long expiresIn = json.path("expires_in").asLong(21600L);
+
+                            MonzoConnection conn = new MonzoConnection(
+                                    sup.getUserId(),
+                                    accessToken,
+                                    refreshToken,
+                                    monzoUserId,
+                                    System.currentTimeMillis() + (expiresIn * 1000L)
+                            );
+
+                            return monzoConnectionRepository.save(conn).thenApplyAsync(saved -> {
+                                return redirect(routes.BankSyncController.index())
+                                        .flashing("info", "Monzo connected via OAuth! Approve data access on your Monzo mobile app if prompted.");
+                            }, ec.current());
+                        } catch (Exception e) {
+                            return CompletableFuture.completedFuture(
+                                    redirect(routes.BankSyncController.index())
+                                            .flashing("error", "Failed to parse Monzo OAuth response: " + e.getMessage()));
+                        }
+                    }, ec.current());
+        } catch (Exception e) {
+            return CompletableFuture.completedFuture(
+                    redirect(routes.BankSyncController.index()).flashing("error", "OAuth failure: " + e.getMessage()));
+        }
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> disconnectMonzo(final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        return monzoConnectionRepository.deleteByUserId(sup.getUserId())
+                .thenApplyAsync(deleted -> redirect(routes.BankSyncController.index())
+                        .flashing("info", "Disconnected Monzo integration."), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> uploadStatement(final Http.Request request) {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
         DynamicForm form = formFactory.form().bindFromRequest(request);
@@ -178,59 +307,6 @@ public class BankSyncController extends Controller {
             return CompletableFuture.completedFuture(
                     redirect(routes.BankSyncController.index()).flashing("error", "Invalid account ID."));
         }
-    }
-
-    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
-    public CompletionStage<Result> createPlaidLinkToken(final Http.Request request) {
-        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
-        return plaidBankSyncProvider.createLinkToken(sup.getUserId())
-                .thenApplyAsync(linkToken -> {
-                    com.fasterxml.jackson.databind.node.ObjectNode json = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
-                    json.put("link_token", linkToken);
-                    return ok(json);
-                }, ec.current())
-                .exceptionally(err -> {
-                    com.fasterxml.jackson.databind.node.ObjectNode json = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
-                    json.put("error", err.getMessage());
-                    return internalServerError(json);
-                });
-    }
-
-    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
-    public CompletionStage<Result> exchangePlaidPublicToken(final Http.Request request) {
-        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
-        com.fasterxml.jackson.databind.JsonNode json = request.body().asJson();
-        if (json == null || !json.has("public_token")) {
-            return CompletableFuture.completedFuture(badRequest("Missing public_token in payload"));
-        }
-        String publicToken = json.path("public_token").asText();
-        String institutionId = json.path("institution_id").asText("unknown");
-        String institutionName = json.path("institution_name").asText("Bank Account");
-
-        return plaidBankSyncProvider.exchangePublicToken(sup.getUserId(), publicToken, institutionId, institutionName)
-                .thenComposeAsync(item -> {
-                    return plaidBankSyncProvider.syncPlaidTransactions(sup.getUserId(), null, item.getAccessToken(), null)
-                            .thenApplyAsync(res -> {
-                                com.fasterxml.jackson.databind.node.ObjectNode resp = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
-                                resp.put("success", true);
-                                resp.put("institution", institutionName);
-                                resp.put("message", res.getMessage());
-                                return ok(resp);
-                            }, ec.current());
-                }, ec.current())
-                .exceptionally(err -> {
-                    com.fasterxml.jackson.databind.node.ObjectNode resp = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
-                    resp.put("success", false);
-                    resp.put("error", err.getMessage());
-                    return internalServerError(resp);
-                });
-    }
-
-    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
-    public CompletionStage<Result> deletePlaidItem(Long id, final Http.Request request) {
-        return plaidItemRepository.delete(id)
-                .thenApplyAsync(deleted -> redirect(routes.BankSyncController.index())
-                        .flashing("info", "Unlinked Plaid bank connection."), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
