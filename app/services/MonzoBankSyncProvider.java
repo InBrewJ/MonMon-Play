@@ -296,17 +296,33 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 List<CompletableFuture<List<BankTransaction>>> futures = new ArrayList<>();
 
                 for (MonzoAccountInfo mAcc : monzoAccounts) {
-                    // Find matching MonMon account if mapped, or map to corresponding type
+                    // Match to specific MonMon account (prioritizing matching name e.g. "Monzo" / "Flex")
                     Long monmonAccId = null;
                     if (accounts != null) {
-                        for (Account a : accounts) {
-                            if (mAcc.isFlexCreditCard() && a.getType() == Account.AccountType.CREDIT) {
-                                monmonAccId = a.getId();
-                                break;
-                            } else if (mAcc.isDebit() && a.getType() == Account.AccountType.DEBIT) {
-                                monmonAccId = a.getId();
-                                break;
-                            }
+                        if (mAcc.isFlexCreditCard()) {
+                            // Find credit account named Flex or Monzo first
+                            monmonAccId = accounts.stream()
+                                    .filter(a -> a.getType() == Account.AccountType.CREDIT &&
+                                            (a.getName().toLowerCase().contains("flex") || a.getName().toLowerCase().contains("monzo")))
+                                    .map(Account::getId)
+                                    .findFirst()
+                                    .orElseGet(() -> accounts.stream()
+                                            .filter(a -> a.getType() == Account.AccountType.CREDIT)
+                                            .map(Account::getId)
+                                            .findFirst()
+                                            .orElse(null));
+                        } else if (mAcc.isDebit()) {
+                            // Find debit account named Monzo first
+                            monmonAccId = accounts.stream()
+                                    .filter(a -> a.getType() == Account.AccountType.DEBIT &&
+                                            a.getName().toLowerCase().contains("monzo"))
+                                    .map(Account::getId)
+                                    .findFirst()
+                                    .orElseGet(() -> accounts.stream()
+                                            .filter(a -> a.getType() == Account.AccountType.DEBIT)
+                                            .map(Account::getId)
+                                            .findFirst()
+                                            .orElse(null));
                         }
                     }
 
