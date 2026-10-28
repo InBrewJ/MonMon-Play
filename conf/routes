@@ -112,6 +112,8 @@ POST    /bank/monzo/token                           controllers.BankSyncControll
 GET     /bank/monzo/connect                         controllers.BankSyncController.connectMonzoOAuth(req: Request)
 GET     /bank/monzo/callback                        controllers.BankSyncController.monzoOAuthCallback(code: String, state: String, req: Request)
 POST    /bank/monzo/disconnect                      controllers.BankSyncController.disconnectMonzo(req: Request)
++ nocsrf
+POST    /api/monzo/webhook                          controllers.BankSyncController.handleMonzoWebhook(req: Request)
 
 # Auth + Authz (via pac4j / keycloak / OpenIDConnect, see SecurityModule)
 GET     /oidc/index.html            controllers.SpogController.oidcIndex(req: Request)

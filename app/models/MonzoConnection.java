@@ -29,6 +29,15 @@ public class MonzoConnection {
 
     private Long lastSyncedAt;
 
+    private String webhookDebitId;
+
+    private String webhookFlexId;
+
+    @Column(length = 500)
+    private String webhookUrl;
+
+    private Long lastReceivedAt;
+
     public MonzoConnection() {
     }
 
@@ -104,5 +113,42 @@ public class MonzoConnection {
 
     public void setLastSyncedAt(Long lastSyncedAt) {
         this.lastSyncedAt = lastSyncedAt;
+    }
+
+    public String getWebhookDebitId() {
+        return webhookDebitId;
+    }
+
+    public void setWebhookDebitId(String webhookDebitId) {
+        this.webhookDebitId = webhookDebitId;
+    }
+
+    public String getWebhookFlexId() {
+        return webhookFlexId;
+    }
+
+    public void setWebhookFlexId(String webhookFlexId) {
+        this.webhookFlexId = webhookFlexId;
+    }
+
+    public String getWebhookUrl() {
+        return webhookUrl;
+    }
+
+    public void setWebhookUrl(String webhookUrl) {
+        this.webhookUrl = webhookUrl;
+    }
+
+    public Long getLastReceivedAt() {
+        return lastReceivedAt;
+    }
+
+    public void setLastReceivedAt(Long lastReceivedAt) {
+        this.lastReceivedAt = lastReceivedAt;
+    }
+
+    public boolean hasActiveWebhooks() {
+        return (webhookDebitId != null && !webhookDebitId.isEmpty()) ||
+               (webhookFlexId != null && !webhookFlexId.isEmpty());
     }
 }

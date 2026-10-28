@@ -42,6 +42,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
     private final MonzoConnectionRepository monzoConnectionRepository;
     private final StatementParserService statementParserService;
     private final BalanceRepository balanceRepository;
+    private final models.AccountRepository accountRepository;
     private final HttpClient httpClient;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -81,8 +82,18 @@ public class MonzoBankSyncProvider implements BankSyncService {
                                  BankTransactionRepository bankTransactionRepository,
                                  MonzoConnectionRepository monzoConnectionRepository,
                                  StatementParserService statementParserService,
+                                 BalanceRepository balanceRepository,
+                                 models.AccountRepository accountRepository) {
+        this(config, bankTransactionRepository, monzoConnectionRepository, statementParserService, balanceRepository, accountRepository,
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
+    }
+
+    public MonzoBankSyncProvider(Config config,
+                                 BankTransactionRepository bankTransactionRepository,
+                                 MonzoConnectionRepository monzoConnectionRepository,
+                                 StatementParserService statementParserService,
                                  BalanceRepository balanceRepository) {
-        this(config, bankTransactionRepository, monzoConnectionRepository, statementParserService, balanceRepository,
+        this(config, bankTransactionRepository, monzoConnectionRepository, statementParserService, balanceRepository, null,
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
     }
 
@@ -90,7 +101,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
                                  BankTransactionRepository bankTransactionRepository,
                                  MonzoConnectionRepository monzoConnectionRepository,
                                  StatementParserService statementParserService) {
-        this(config, bankTransactionRepository, monzoConnectionRepository, statementParserService, null,
+        this(config, bankTransactionRepository, monzoConnectionRepository, statementParserService, null, null,
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
     }
 
@@ -99,12 +110,14 @@ public class MonzoBankSyncProvider implements BankSyncService {
                                  MonzoConnectionRepository monzoConnectionRepository,
                                  StatementParserService statementParserService,
                                  BalanceRepository balanceRepository,
+                                 models.AccountRepository accountRepository,
                                  HttpClient httpClient) {
         this.config = config;
         this.bankTransactionRepository = bankTransactionRepository;
         this.monzoConnectionRepository = monzoConnectionRepository;
         this.statementParserService = statementParserService;
         this.balanceRepository = balanceRepository;
+        this.accountRepository = accountRepository;
         this.httpClient = httpClient;
     }
 
@@ -170,6 +183,252 @@ public class MonzoBankSyncProvider implements BankSyncService {
                         throw new RuntimeException("Failed to parse Monzo accounts: " + e.getMessage());
                     }
                 });
+    }
+
+    public CompletionStage<MonzoConnection> registerWebhooks(MonzoConnection conn, String baseUrl) {
+        if (conn == null || conn.getAccessToken() == null || conn.getAccessToken().trim().isEmpty()) {
+            return CompletableFuture.completedFuture(conn);
+        }
+
+        String webhookCallbackUrl = baseUrl.replaceAll("/+$", "") + "/api/monzo/webhook?userId=" +
+                URLEncoder.encode(conn.getUserId(), StandardCharsets.UTF_8);
+
+        return fetchAccounts(conn.getAccessToken()).thenCompose(accounts -> {
+            List<CompletableFuture<String>> futures = new ArrayList<>();
+            MonzoAccountInfo debitAcc = accounts.stream().filter(MonzoAccountInfo::isDebit).findFirst().orElse(null);
+            MonzoAccountInfo flexAcc = accounts.stream().filter(MonzoAccountInfo::isFlexCreditCard).findFirst().orElse(null);
+
+            CompletableFuture<String> debitWebhookFuture = debitAcc != null
+                    ? createMonzoWebhook(conn.getAccessToken(), debitAcc.id, webhookCallbackUrl)
+                    : CompletableFuture.completedFuture(null);
+
+            CompletableFuture<String> flexWebhookFuture = flexAcc != null
+                    ? createMonzoWebhook(conn.getAccessToken(), flexAcc.id, webhookCallbackUrl)
+                    : CompletableFuture.completedFuture(null);
+
+            return CompletableFuture.allOf(debitWebhookFuture, flexWebhookFuture).thenCompose(v -> {
+                String debitWhId = debitWebhookFuture.join();
+                String flexWhId = flexWebhookFuture.join();
+
+                conn.setWebhookUrl(webhookCallbackUrl);
+                if (debitWhId != null) {
+                    conn.setWebhookDebitId(debitWhId);
+                }
+                if (flexWhId != null) {
+                    conn.setWebhookFlexId(flexWhId);
+                }
+
+                return monzoConnectionRepository.save(conn);
+            });
+        }).exceptionally(err -> {
+            System.err.println("Failed to register Monzo webhooks: " + err.getMessage());
+            return conn;
+        });
+    }
+
+    private CompletableFuture<String> createMonzoWebhook(String accessToken, String accountId, String callbackUrl) {
+        String formBody = "account_id=" + URLEncoder.encode(accountId, StandardCharsets.UTF_8) +
+                "&url=" + URLEncoder.encode(callbackUrl, StandardCharsets.UTF_8);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(MONZO_API_BASE + "/webhooks"))
+                .header("Authorization", "Bearer " + accessToken)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .timeout(Duration.ofSeconds(10))
+                .POST(HttpRequest.BodyPublishers.ofString(formBody))
+                .build();
+
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() == 200 || response.statusCode() == 201) {
+                        try {
+                            JsonNode json = mapper.readTree(response.body());
+                            return json.path("webhook").path("id").asText(null);
+                        } catch (Exception e) {
+                            return null;
+                        }
+                    }
+                    System.err.println("Monzo webhook creation returned status " + response.statusCode() + ": " + response.body());
+                    return null;
+                }).toCompletableFuture();
+    }
+
+    public CompletionStage<Boolean> handleWebhookEvent(String userId, JsonNode payload) {
+        if (payload == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+
+        String eventType = payload.path("type").asText("");
+        if (!"transaction.created".equalsIgnoreCase(eventType)) {
+            // Test webhook ping or unhandled event type
+            return CompletableFuture.completedFuture(true);
+        }
+
+        JsonNode data = payload.get("data");
+        if (data == null || data.isNull()) {
+            return CompletableFuture.completedFuture(false);
+        }
+
+        // Skip declined transactions
+        if (data.path("decline_reason").isTextual() && !data.path("decline_reason").asText().isEmpty()) {
+            return CompletableFuture.completedFuture(true);
+        }
+
+        String txId = data.path("id").asText();
+        String monzoAccId = data.path("account_id").asText();
+        long amountPence = data.path("amount").asLong(0L);
+
+        // MonMon expense convention: spend is positive float, credit/deposit is negative float
+        float amountPounds = Math.abs(amountPence) / 100.0f;
+        if (amountPence > 0) {
+            amountPounds = -amountPounds;
+        }
+
+        String createdStr = data.path("created").asText();
+        long epochSec = Instant.now().getEpochSecond();
+        String dateStr = LocalDate.now().toString();
+        try {
+            Instant inst = Instant.parse(createdStr);
+            epochSec = inst.getEpochSecond();
+            dateStr = inst.atZone(ZoneOffset.UTC).toLocalDate().toString();
+        } catch (Exception ignored) {
+        }
+
+        String description = data.path("description").asText("Monzo Transaction");
+        String merchantName = null;
+        String category = data.path("category").asText("General");
+        String merchantAddress = null;
+        Double latitude = null;
+        Double longitude = null;
+        String merchantEmoji = null;
+
+        JsonNode merchantNode = data.get("merchant");
+        if (merchantNode != null && !merchantNode.isNull()) {
+            merchantName = merchantNode.path("name").asText(null);
+            if (merchantName != null && !merchantName.trim().isEmpty()) {
+                description = merchantName;
+            }
+            if (merchantNode.has("category") && !merchantNode.path("category").asText().isEmpty()) {
+                category = merchantNode.path("category").asText();
+            }
+            if (merchantNode.has("emoji") && !merchantNode.path("emoji").asText().isEmpty()) {
+                merchantEmoji = merchantNode.path("emoji").asText();
+            }
+            JsonNode addressNode = merchantNode.get("address");
+            if (addressNode != null && !addressNode.isNull()) {
+                if (addressNode.has("formatted") && !addressNode.path("formatted").asText().isEmpty()) {
+                    merchantAddress = addressNode.path("formatted").asText();
+                } else if (addressNode.has("short_formatted")) {
+                    merchantAddress = addressNode.path("short_formatted").asText();
+                }
+                if (addressNode.has("latitude") && addressNode.get("latitude").isNumber()) {
+                    latitude = addressNode.get("latitude").asDouble();
+                }
+                if (addressNode.has("longitude") && addressNode.get("longitude").isNumber()) {
+                    longitude = addressNode.get("longitude").asDouble();
+                }
+            }
+        }
+
+        boolean isFlex = data.path("metadata").path("is_flex_direct_virtual_card_tx").asBoolean(false)
+                || data.path("metadata").has("monzo_flex_id")
+                || data.path("metadata").has("backing_loan_id");
+
+        CompletionStage<Optional<MonzoConnection>> connFuture = (userId != null && !userId.trim().isEmpty())
+                ? monzoConnectionRepository.findByUserId(userId)
+                : monzoConnectionRepository.findFirst();
+
+        final String finalDesc = description;
+        final String finalMerchant = merchantName;
+        final String finalCategory = category;
+        final String finalAddress = merchantAddress;
+        final Double finalLat = latitude;
+        final Double finalLon = longitude;
+        final String finalEmoji = merchantEmoji;
+        final float finalAmount = amountPounds;
+        final long finalEpochSec = epochSec;
+        final String finalDateStr = dateStr;
+
+        return connFuture.thenCompose(connOpt -> {
+            if (connOpt.isEmpty()) {
+                return CompletableFuture.completedFuture(false);
+            }
+            MonzoConnection conn = connOpt.get();
+            String effectiveUserId = conn.getUserId();
+
+            CompletionStage<List<Account>> accFuture = (accountRepository != null)
+                    ? accountRepository.list(effectiveUserId).thenApply(s -> s.collect(Collectors.toList()))
+                    : CompletableFuture.completedFuture(Collections.emptyList());
+
+            return accFuture.thenCompose(accounts -> {
+                Account matchedAcc = null;
+                if (!accounts.isEmpty()) {
+                    if (isFlex) {
+                        matchedAcc = accounts.stream()
+                                .filter(a -> a.getType() == Account.AccountType.CREDIT &&
+                                        (a.getName().toLowerCase().contains("flex") || a.getName().toLowerCase().contains("monzo")))
+                                .findFirst()
+                                .orElseGet(() -> accounts.stream()
+                                        .filter(a -> a.getType() == Account.AccountType.CREDIT)
+                                        .findFirst()
+                                        .orElse(accounts.get(0)));
+                    } else {
+                        matchedAcc = accounts.stream()
+                                .filter(a -> a.getType() == Account.AccountType.DEBIT &&
+                                        a.getName().toLowerCase().contains("monzo"))
+                                .findFirst()
+                                .orElseGet(() -> accounts.stream()
+                                        .filter(a -> a.getType() == Account.AccountType.DEBIT)
+                                        .findFirst()
+                                        .orElse(accounts.get(0)));
+                    }
+                }
+
+                Long accountId = matchedAcc != null ? matchedAcc.getId() : null;
+                BankTransaction tx = new BankTransaction(
+                        effectiveUserId,
+                        accountId,
+                        txId,
+                        finalEpochSec,
+                        finalDateStr,
+                        finalAmount,
+                        finalDesc,
+                        finalMerchant,
+                        finalCategory,
+                        "MONZO",
+                        false
+                );
+                tx.setMerchantAddress(finalAddress);
+                tx.setLatitude(finalLat);
+                tx.setLongitude(finalLon);
+                tx.setMerchantEmoji(finalEmoji);
+
+                final Account targetAccount = matchedAcc;
+                return bankTransactionRepository.save(tx).thenCompose(savedTx -> {
+                    // Refresh balance immediately for ABL/TBL balance tracking
+                    if (balanceRepository != null && targetAccount != null && monzoAccId != null && !monzoAccId.isEmpty()) {
+                        return fetchBalance(conn.getAccessToken(), monzoAccId).thenCompose(balVal -> {
+                            if (balVal != null) {
+                                Balance bal = new Balance();
+                                bal.setUserId(effectiveUserId);
+                                bal.setValue(balVal);
+                                bal.setAccount(targetAccount);
+                                bal.setTimestamp(Instant.now().getEpochSecond());
+                                return balanceRepository.add(bal).thenApply(b -> true);
+                            }
+                            return CompletableFuture.completedFuture(true);
+                        });
+                    }
+                    return CompletableFuture.completedFuture(true);
+                }).thenCompose(v -> {
+                    conn.setLastReceivedAt(Instant.now().getEpochSecond());
+                    return monzoConnectionRepository.save(conn).thenApply(c -> true);
+                });
+            });
+        }).exceptionally(err -> {
+            System.err.println("Error processing Monzo webhook: " + err.getMessage());
+            return false;
+        });
     }
 
     public CompletionStage<Float> fetchBalance(String accessToken, String monzoAccountId) {
@@ -324,14 +583,13 @@ public class MonzoBankSyncProvider implements BankSyncService {
 
         return monzoConnectionRepository.findByUserId(account.getUserId()).thenCompose(connOpt -> {
             if (connOpt.isEmpty()) {
-                return CompletableFuture.completedFuture(SyncResult.error("No Monzo connection found. Enter your Personal Access Token or connect via Monzo OAuth."));
+                return CompletableFuture.completedFuture(SyncResult.error("No Monzo connection found. Enter your Personal Access Token."));
             }
             MonzoConnection conn = connOpt.get();
             return fetchAccounts(conn.getAccessToken()).thenCompose(monzoAccounts -> {
                 if (monzoAccounts.isEmpty()) {
                     return CompletableFuture.completedFuture(SyncResult.error("No active accounts found on your Monzo profile."));
                 }
-                // Match Monzo account: if account is CREDIT, try uk_monzo_flex; otherwise uk_retail
                 MonzoAccountInfo targetCandidate = null;
                 if (account.getType() == Account.AccountType.CREDIT) {
                     targetCandidate = monzoAccounts.stream().filter(MonzoAccountInfo::isFlexCreditCard).findFirst().orElse(null);
@@ -342,23 +600,22 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 final MonzoAccountInfo target = targetCandidate;
 
                 if (balanceRepository != null) {
-                    fetchBalance(conn.getAccessToken(), target.id).thenAccept(balVal -> {
+                    return fetchBalance(conn.getAccessToken(), target.id).thenCompose(balVal -> {
                         if (balVal != null) {
                             Balance bal = new Balance();
                             bal.setUserId(account.getUserId());
                             bal.setValue(balVal);
                             bal.setAccount(account);
                             bal.setTimestamp(Instant.now().getEpochSecond());
-                            balanceRepository.add(bal);
+                            return balanceRepository.add(bal).thenApply(b ->
+                                    SyncResult.ok(1, "Balance refreshed (£" + String.format("%.2f", balVal) + ") for " + account.getName() + ". Webhooks stream transactions automatically in real time."));
                         }
+                        return CompletableFuture.completedFuture(SyncResult.ok(0, "Monzo connected. Transactions stream automatically via webhooks."));
                     });
                 }
-
-                return fetchTransactions(account.getUserId(), account.getId(), conn.getAccessToken(), target.id, daysBack)
-                        .thenCompose(bankTransactionRepository::saveAll)
-                        .thenApply(count -> SyncResult.ok(count, "Successfully synced " + count + " transactions from " + target.getDisplayName()));
+                return CompletableFuture.completedFuture(SyncResult.ok(0, "Monzo connected. Transactions stream automatically via webhooks."));
             });
-        }).exceptionally(err -> SyncResult.error("Monzo sync error: " + err.getMessage()));
+        }).exceptionally(err -> SyncResult.error("Monzo error: " + err.getMessage()));
     }
 
     @Override
@@ -366,7 +623,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
         return monzoConnectionRepository.findByUserId(userId).thenCompose(connOpt -> {
             if (connOpt.isEmpty()) {
                 return CompletableFuture.completedFuture(SyncResult.error(
-                        "No Monzo connection active. Paste your Monzo Personal Access Token or connect with Monzo on the dashboard."));
+                        "No Monzo connection active. Enter your Monzo Personal Access Token on the dashboard."));
             }
             MonzoConnection conn = connOpt.get();
 
@@ -375,83 +632,38 @@ public class MonzoBankSyncProvider implements BankSyncService {
                     return CompletableFuture.completedFuture(SyncResult.ok(0, "No Monzo accounts found."));
                 }
 
-                // Identify debit and Monzo Flex accounts
-                List<CompletableFuture<List<BankTransaction>>> futures = new ArrayList<>();
-
+                List<CompletableFuture<Void>> balFutures = new ArrayList<>();
                 for (MonzoAccountInfo mAcc : monzoAccounts) {
-                    // Match to specific MonMon account (prioritizing matching name e.g. "Monzo" / "Flex")
-                    Long monmonAccId = null;
+                    Account matched = null;
                     if (accounts != null) {
                         if (mAcc.isFlexCreditCard()) {
-                            // Find credit account named Flex or Monzo first
-                            monmonAccId = accounts.stream()
-                                    .filter(a -> a.getType() == Account.AccountType.CREDIT &&
-                                            (a.getName().toLowerCase().contains("flex") || a.getName().toLowerCase().contains("monzo")))
-                                    .map(Account::getId)
-                                    .findFirst()
-                                    .orElseGet(() -> accounts.stream()
-                                            .filter(a -> a.getType() == Account.AccountType.CREDIT)
-                                            .map(Account::getId)
-                                            .findFirst()
-                                            .orElse(null));
+                            matched = accounts.stream().filter(a -> a.getType() == Account.AccountType.CREDIT &&
+                                    (a.getName().toLowerCase().contains("flex") || a.getName().toLowerCase().contains("monzo"))).findFirst().orElse(null);
                         } else if (mAcc.isDebit()) {
-                            // Find debit account named Monzo first
-                            monmonAccId = accounts.stream()
-                                    .filter(a -> a.getType() == Account.AccountType.DEBIT &&
-                                            a.getName().toLowerCase().contains("monzo"))
-                                    .map(Account::getId)
-                                    .findFirst()
-                                    .orElseGet(() -> accounts.stream()
-                                            .filter(a -> a.getType() == Account.AccountType.DEBIT)
-                                            .map(Account::getId)
-                                            .findFirst()
-                                            .orElse(null));
+                            matched = accounts.stream().filter(a -> a.getType() == Account.AccountType.DEBIT &&
+                                    a.getName().toLowerCase().contains("monzo")).findFirst().orElse(null);
                         }
                     }
-
-                    if (balanceRepository != null && monmonAccId != null && accounts != null) {
-                        final Long targetAccId = monmonAccId;
-                        Account accRef = accounts.stream().filter(a -> a.getId().equals(targetAccId)).findFirst().orElse(null);
-                        if (accRef != null) {
-                            fetchBalance(conn.getAccessToken(), mAcc.id).thenAccept(balVal -> {
-                                if (balVal != null) {
-                                    Balance bal = new Balance();
-                                    bal.setUserId(userId);
-                                    bal.setValue(balVal);
-                                    bal.setAccount(accRef);
-                                    bal.setTimestamp(Instant.now().getEpochSecond());
-                                    balanceRepository.add(bal);
-                                }
-                            });
-                        }
+                    if (balanceRepository != null && matched != null) {
+                        final Account targetAcc = matched;
+                        balFutures.add(fetchBalance(conn.getAccessToken(), mAcc.id).thenCompose(balVal -> {
+                            if (balVal != null) {
+                                Balance bal = new Balance();
+                                bal.setUserId(userId);
+                                bal.setValue(balVal);
+                                bal.setAccount(targetAcc);
+                                bal.setTimestamp(Instant.now().getEpochSecond());
+                                return balanceRepository.add(bal).thenAccept(b -> {});
+                            }
+                            return CompletableFuture.completedFuture((Void) null);
+                        }).toCompletableFuture());
                     }
-
-                    futures.add(fetchTransactions(userId, monmonAccId, conn.getAccessToken(), mAcc.id, daysBack).toCompletableFuture());
                 }
 
-                return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                        .thenCompose(v -> {
-                            List<BankTransaction> allTx = new ArrayList<>();
-                            for (CompletableFuture<List<BankTransaction>> f : futures) {
-                                try {
-                                    allTx.addAll(f.join());
-                                } catch (Exception ignored) {
-                                }
-                            }
-
-                            return bankTransactionRepository.saveAll(allTx).thenApply(savedCount -> {
-                                List<String> details = monzoAccounts.stream()
-                                        .map(m -> m.getDisplayName() + " (" + m.id + ")")
-                                        .collect(Collectors.toList());
-                                return SyncResult.ok(
-                                        savedCount,
-                                        "Successfully synced " + savedCount + " transactions across " + monzoAccounts.size() + " Monzo accounts (Debit & Monzo Flex).",
-                                        details
-                                );
-                            });
-                        });
+                return CompletableFuture.allOf(balFutures.toArray(new CompletableFuture[0])).thenApply(v ->
+                        SyncResult.ok(monzoAccounts.size(), "Live balances refreshed for " + monzoAccounts.size() + " Monzo accounts. Webhooks stream transactions automatically in real time."));
             });
-        }).exceptionally(err -> SyncResult.error("Monzo sync error: " + err.getMessage()));
+        }).exceptionally(err -> SyncResult.error("Monzo refresh error: " + err.getMessage()));
     }
 
     @Override

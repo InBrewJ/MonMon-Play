@@ -21,6 +21,7 @@ public class AccountStatus {
 
     private FreshnessStatus freshnessStatus = FreshnessStatus.NO_PAYMENT_DUE;
     private String freshnessMessage = "";
+    private Long latestBalanceTimestamp;
 
     AccountStatus(Float alreadyPaid, Float pending, Double lastBalance, Account.AccountType accountType, Float availableLimit) {
         this.alreadyPaid = alreadyPaid;
@@ -42,6 +43,14 @@ public class AccountStatus {
 
     public String getFreshnessMessage() {
         return freshnessMessage;
+    }
+
+    public Long getLatestBalanceTimestamp() {
+        return latestBalanceTimestamp;
+    }
+
+    public void setLatestBalanceTimestamp(Long latestBalanceTimestamp) {
+        this.latestBalanceTimestamp = latestBalanceTimestamp;
     }
 
     public boolean isFresh() {

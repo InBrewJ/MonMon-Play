@@ -478,7 +478,7 @@
                                     </div>
 
                                     <!-- Account Freshness Indicator (User Request Item 2) -->
-                                    <div style="margin: 0.25rem 0 0.45rem 0;">
+                                    <div style="margin: 0.25rem 0 0.45rem 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                                         @if(status.getFreshnessStatus() == viewModels.AccountStatus.FreshnessStatus.FRESH) {
                                             <a href="/myBalances?accountId=@a.getId()" class="badge-pill badge-freshness-fresh" title="@status.getFreshnessMessage() · Click to update balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
                                                 <i class="fas fa-check-circle"></i> Up to date · <u>Update</u>
@@ -495,6 +495,11 @@
                                             <a href="/myBalances?accountId=@a.getId()" class="badge-pill badge-freshness-neutral" title="@status.getFreshnessMessage() · Click to record balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
                                                 <i class="fas fa-calendar-check"></i> No payments due · <u>Update</u>
                                             </a>
+                                        }
+                                        @if(status.getLatestBalanceTimestamp() != null) {
+                                            <span style="font-size: 0.72rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px;" title="Last recorded balance snapshot">
+                                                <i class="fas fa-history" style="font-size: 0.68rem;"></i> @helpers.TimeHelpers.timeAgo(status.getLatestBalanceTimestamp())
+                                            </span>
                                         }
                                     </div>
 

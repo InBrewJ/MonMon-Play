@@ -48,7 +48,11 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                                         ")",
                                 "CREATE INDEX IF NOT EXISTS idx_bt_user ON bank_transaction (user_id)",
                                 "CREATE INDEX IF NOT EXISTS idx_bt_account ON bank_transaction (account_id)",
-                                "CREATE INDEX IF NOT EXISTS idx_bt_time ON bank_transaction (timestamp)"
+                                "CREATE INDEX IF NOT EXISTS idx_bt_time ON bank_transaction (timestamp)",
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS merchant_address VARCHAR(500)",
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION",
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION",
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS merchant_emoji VARCHAR(50)"
                         };
                         jpaApi.withTransaction(em -> {
                             for (String sql : statements) {

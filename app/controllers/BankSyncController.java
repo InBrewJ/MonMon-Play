@@ -156,6 +156,21 @@ public class BankSyncController extends Controller {
         }, ec.current());
     }
 
+    public CompletionStage<Result> handleMonzoWebhook(final Http.Request request) {
+        String userId = request.queryString("userId").orElse(null);
+        com.fasterxml.jackson.databind.JsonNode json = request.body().asJson();
+        if (json == null) {
+            return CompletableFuture.completedFuture(ok(play.libs.Json.newObject().put("status", "ok")));
+        }
+
+        return monzoBankSyncProvider.handleWebhookEvent(userId, json)
+                .thenApplyAsync(success -> ok(play.libs.Json.newObject().put("status", "ok")), ec.current())
+                .exceptionally(err -> {
+                    System.err.println("Webhook handling exception: " + err.getMessage());
+                    return ok(play.libs.Json.newObject().put("status", "ok"));
+                });
+    }
+
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> saveMonzoToken(final Http.Request request) {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
@@ -178,12 +193,23 @@ public class BankSyncController extends Controller {
                     System.currentTimeMillis() + (86400L * 365L * 1000L) // Personal access token
             );
             return monzoConnectionRepository.save(conn).thenComposeAsync(saved -> {
-                // Immediately trigger sync
-                return accountRepository.list(sup.getUserId()).thenComposeAsync(accStream -> {
-                    List<Account> accounts = accStream.collect(Collectors.toList());
-                    return monzoBankSyncProvider.syncAllUserAccounts(sup.getUserId(), accounts, 30).thenApplyAsync(res -> {
-                        return redirect(routes.BankSyncController.index())
-                                .flashing("info", "Monzo connected successfully! Discovered " + monzoAccounts.size() + " accounts (including Debit & Monzo Flex). " + res.getMessage());
+                String hostHeader = request.host();
+                String scheme = request.secure() ? "https" : "http";
+                if (request.header("X-Forwarded-Proto").isPresent()) {
+                    scheme = request.header("X-Forwarded-Proto").get();
+                }
+                String baseUrl = scheme + "://" + hostHeader;
+
+                return monzoBankSyncProvider.registerWebhooks(saved, baseUrl).thenComposeAsync(registeredConn -> {
+                    return accountRepository.list(sup.getUserId()).thenComposeAsync(accStream -> {
+                        List<Account> accounts = accStream.collect(Collectors.toList());
+                        return monzoBankSyncProvider.syncAllUserAccounts(sup.getUserId(), accounts, 30).thenApplyAsync(res -> {
+                            String webhookMsg = registeredConn.hasActiveWebhooks()
+                                    ? " Real-time webhooks registered successfully!"
+                                    : " Real-time push configured.";
+                            return redirect(routes.BankSyncController.index())
+                                    .flashing("info", "Monzo connected! Discovered " + monzoAccounts.size() + " accounts (including Debit & Monzo Flex)." + webhookMsg + " Initial balances loaded.");
+                        }, ec.current());
                     }, ec.current());
                 }, ec.current());
             }, ec.current());

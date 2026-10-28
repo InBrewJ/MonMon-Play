@@ -12,5 +12,7 @@ public interface MonzoConnectionRepository {
 
     CompletionStage<Optional<MonzoConnection>> findByUserId(String userId);
 
+    CompletionStage<Optional<MonzoConnection>> findFirst();
+
     CompletionStage<Boolean> deleteByUserId(String userId);
 }

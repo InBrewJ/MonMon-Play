@@ -273,6 +273,11 @@ public class BankSyncAndStatementTest {
         }
 
         @Override
+        public CompletionStage<Optional<models.MonzoConnection>> findFirst() {
+            return CompletableFuture.completedFuture(Optional.ofNullable(connection));
+        }
+
+        @Override
         public CompletionStage<Boolean> deleteByUserId(String userId) {
             boolean existed = connection != null;
             this.connection = null;
@@ -365,6 +370,75 @@ public class BankSyncAndStatementTest {
         List<models.Balance> savedBalances = balanceRepo.list("user_xyz").toCompletableFuture().join().collect(Collectors.toList());
         assertThat(savedBalances).hasSize(1);
         assertThat(savedBalances.get(0).getValue()).isEqualTo(1250.75f);
+    }
+
+    @Test
+    public void testHandleWebhookEventParsesLocationAndSavesTransaction() throws Exception {
+        com.typesafe.config.Config config = com.typesafe.config.ConfigFactory.empty();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+        InMemoryMonzoConnectionRepository connRepo = new InMemoryMonzoConnectionRepository();
+        InMemoryBalanceRepository balanceRepo = new InMemoryBalanceRepository();
+        StatementParserService parser = new StatementParserService(txRepo);
+
+        models.MonzoConnection conn = new models.MonzoConnection("user1", "access_tok", "refresh_tok", "monzo_user1", 999999999L);
+        connRepo.save(conn).toCompletableFuture().join();
+
+        Account debitAcc = new Account();
+        debitAcc.setId(101L);
+        debitAcc.setName("Monzo Current");
+        debitAcc.setType(Account.AccountType.DEBIT);
+        debitAcc.setUserId("user1");
+
+        models.AccountRepository accRepo = org.mockito.Mockito.mock(models.AccountRepository.class);
+        org.mockito.Mockito.when(accRepo.list("user1"))
+                .thenReturn(CompletableFuture.completedFuture(Stream.of(debitAcc)));
+
+        MonzoBankSyncProvider provider = new MonzoBankSyncProvider(config, txRepo, connRepo, parser, balanceRepo, accRepo);
+
+        String webhookJson = "{\n" +
+                "  \"type\": \"transaction.created\",\n" +
+                "  \"data\": {\n" +
+                "    \"id\": \"tx_test_12345\",\n" +
+                "    \"account_id\": \"acc_0000B8tDR6WlkkoFEOsxcJ\",\n" +
+                "    \"amount\": -525,\n" +
+                "    \"created\": \"2026-10-28T14:30:00Z\",\n" +
+                "    \"currency\": \"GBP\",\n" +
+                "    \"description\": \"GREGGS ABBEY WOOD\",\n" +
+                "    \"merchant\": {\n" +
+                "      \"name\": \"Greggs\",\n" +
+                "      \"emoji\": \"🥖\",\n" +
+                "      \"category\": \"eating_out\",\n" +
+                "      \"address\": {\n" +
+                "        \"formatted\": \"7 Wilton Road, London SE2 9RH, United Kingdom\",\n" +
+                "        \"latitude\": 51.490015,\n" +
+                "        \"longitude\": 0.1212292\n" +
+                "      }\n" +
+                "    }\n" +
+                "  }\n" +
+                "}";
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode payload = mapper.readTree(webhookJson);
+
+        Boolean result = provider.handleWebhookEvent("user1", payload).toCompletableFuture().join();
+        assertThat(result).isTrue();
+
+        assertThat(txRepo.storage).hasSize(1);
+        BankTransaction tx = txRepo.storage.get(0);
+        assertThat(tx.getExternalId()).isEqualTo("tx_test_12345");
+        assertThat(tx.getAmount()).isEqualTo(5.25f);
+        assertThat(tx.getDescription()).isEqualTo("Greggs");
+        assertThat(tx.getMerchantName()).isEqualTo("Greggs");
+        assertThat(tx.getCategory()).isEqualTo("eating_out");
+        assertThat(tx.getMerchantAddress()).isEqualTo("7 Wilton Road, London SE2 9RH, United Kingdom");
+        assertThat(tx.getLatitude()).isEqualTo(51.490015);
+        assertThat(tx.getLongitude()).isEqualTo(0.1212292);
+        assertThat(tx.getMerchantEmoji()).isEqualTo("🥖");
+
+        // Verify connection lastReceivedAt updated
+        Optional<models.MonzoConnection> updatedConn = connRepo.findByUserId("user1").toCompletableFuture().join();
+        assertThat(updatedConn).isPresent();
+        assertThat(updatedConn.get().getLastReceivedAt()).isNotNull();
     }
 
     static class InMemoryBalanceRepository implements models.BalanceRepository {

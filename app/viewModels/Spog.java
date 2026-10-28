@@ -517,6 +517,7 @@ public class Spog {
             }
 
             AccountStatus accStatus = new AccountStatus(alreadyPaidSum, yetToPaySum, (double)latestBalance, a.getType(), a.getAvailableLimit());
+            accStatus.setLatestBalanceTimestamp(latestBalObj != null ? latestBalObj.getTimestamp() : null);
 
             // Compute freshness: check whether latest balance was recorded after the last outgoing payment was due
             if (latestBalObj == null || latestBalObj.getTimestamp() == null) {

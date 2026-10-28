@@ -92,13 +92,34 @@
                 </form>
             </div>
         } else {
-            <div style="margin-top: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <span style="color: #166534; font-size: 0.9rem; font-weight: 600;">
-                    <i class="fas fa-check-circle" style="color: #16a34a;"></i> Active Monzo Connection (User ID: @monzoConnection.getMonzoUserId())
-                </span>
-                <span style="color: #475569; font-size: 0.85rem;">
-                    Syncs both Monzo Current (Debit) and Monzo Flex (Credit Card)
-                </span>
+            <div style="margin-top: 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                    <span style="color: #166534; font-size: 0.95rem; font-weight: 700;">
+                        <i class="fas fa-satellite-dish" style="color: #16a34a; margin-right: 4px;"></i> Real-Time Push Stream Active
+                    </span>
+                    <span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
+                        @if(monzoConnection.getLastReceivedAt() != null) {
+                            <i class="fas fa-clock"></i> Last received from Monzo @helpers.TimeHelpers.timeAgo(monzoConnection.getLastReceivedAt())
+                        } else {
+                            <i class="fas fa-circle-notch fa-spin"></i> Awaiting first transaction event
+                        }
+                    </span>
+                </div>
+                <div style="color: #475569; font-size: 0.85rem; line-height: 1.6;">
+                    <div><strong>Connected Accounts:</strong> Monzo Current (`uk_retail`) &amp; Monzo Flex Credit Card (`uk_monzo_flex`)</div>
+                    @if(monzoConnection.getWebhookUrl() != null) {
+                        <div style="margin-top: 4px; font-family: monospace; font-size: 0.8rem; color: #64748b; word-break: break-all;">
+                            <strong>Webhook URL:</strong> @monzoConnection.getWebhookUrl()
+                        </div>
+                    }
+                    @if(monzoConnection.getWebhookDebitId() != null || monzoConnection.getWebhookFlexId() != null) {
+                        <div style="margin-top: 4px; font-size: 0.8rem; color: #64748b;">
+                            <strong>Active Webhooks:</strong>
+                            @if(monzoConnection.getWebhookDebitId() != null) { <span class="badge" style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-family: monospace;">Debit: @monzoConnection.getWebhookDebitId()</span> }
+                            @if(monzoConnection.getWebhookFlexId() != null) { <span class="badge" style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-family: monospace;">Flex: @monzoConnection.getWebhookFlexId()</span> }
+                        </div>
+                    }
+                </div>
             </div>
         }
     </div>
@@ -133,30 +154,22 @@
     </div>
 
     <div class="w3-row-padding" style="margin: 0 -12px;">
-        <!-- Sync Actions Card -->
+        <!-- Real-Time Stream Card -->
         <div class="w3-col m6" style="margin-bottom: 24px;">
             <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); height: 100%;">
                 <h3 style="margin: 0 0 12px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
-                    <i class="fas fa-sync" style="color: #6366f1;"></i> Sync Accounts
+                    <i class="fas fa-satellite-dish" style="color: #6366f1;"></i> Real-Time Push Stream (Webhooks)
                 </h3>
                 <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 16px;">
-                    Pull transactions across your connected accounts.
+                    Monzo transactions, balances, and merchant location data stream into MonMon in real time whenever activity occurs. Set it once and forget it!
                 </p>
 
                 <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                     <form action="/bank/sync/all" method="POST" style="margin: 0;">
                         @helper.CSRF.formField
-                        <input type="hidden" name="provider" value="MONZO" />
-                        <button type="submit" class="w3-button w3-round" style="background: #ea580c; color: white; font-weight: 600; padding: 10px 18px;" @if(!isMonzoConnected){disabled title="Connect Monzo above first"}>
-                            <i class="fas fa-bolt"></i> Sync with Monzo API
-                        </button>
-                    </form>
-
-                    <form action="/bank/sync/all" method="POST" style="margin: 0;">
-                        @helper.CSRF.formField
                         <input type="hidden" name="provider" value="MOCK" />
                         <button type="submit" class="w3-button w3-indigo w3-round" style="font-weight: 600; padding: 10px 18px;">
-                            <i class="fas fa-vial"></i> Sync All (Mock Provider)
+                            <i class="fas fa-vial"></i> Test Ingest (Mock Provider)
                         </button>
                     </form>
                 </div>
@@ -223,6 +236,7 @@
                 </thead>
                 <tbody>
                     @for(acc <- accounts) {
+                        @defining(acc.getName().toLowerCase().contains("monzo") || (acc.getType() == models.Account.AccountType.CREDIT && acc.getName().toLowerCase().contains("flex"))) { isMonzoAcc =>
                         <tr>
                             <td><strong>@acc.getName()</strong></td>
                             <td><span class="badge" style="background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">@acc.getType()</span></td>
@@ -236,12 +250,21 @@
                                 }
                             </td>
                             <td>
-                                @if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
+                                @if(isMonzoAcc && isMonzoConnected) {
+                                    <div>
+                                        <span style="color: #15803d; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-satellite-dish"></i> Monzo Webhook (Push)</span>
+                                        @if(monzoConnection != null && monzoConnection.getLastReceivedAt() != null) {
+                                            <div style="color: #64748b; font-size: 0.75rem; margin-top: 2px;">
+                                                <i class="fas fa-bolt" style="color: #ea580c;"></i> Live @helpers.TimeHelpers.timeAgo(monzoConnection.getLastReceivedAt())
+                                            </div>
+                                        }
+                                    </div>
+                                } else if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
                                     Manual Entry
                                 } else if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
                                     Balance Snapshots
                                 } else {
-                                    @providerName / Statement
+                                    Statement / Manual
                                 }
                             </td>
                             <td style="text-align: right;">
@@ -259,13 +282,15 @@
                                                 </button>
                                             }
                                         </form>
-                                        <form action="/bank/sync/account/@acc.getId()" method="POST" style="margin: 0;">
-                                            @helper.CSRF.formField
-                                            <input type="hidden" name="provider" value="@providerName" />
-                                            <button type="submit" class="w3-button w3-tiny w3-indigo w3-round" title="Sync this account">
-                                                <i class="fas fa-sync"></i>
-                                            </button>
-                                        </form>
+                                        @if(isMonzoAcc && isMonzoConnected) {
+                                            <form action="/bank/sync/account/@acc.getId()" method="POST" style="margin: 0;">
+                                                @helper.CSRF.formField
+                                                <input type="hidden" name="provider" value="MONZO" />
+                                                <button type="submit" class="w3-button w3-tiny w3-round" style="background: #ea580c; color: white;" title="Refresh Monzo live balance">
+                                                    <i class="fas fa-bolt"></i> Balance
+                                                </button>
+                                            </form>
+                                        }
                                         <form action="/bank/transactions/clear/@acc.getId()" method="POST" style="margin: 0;" onsubmit="return confirm('Clear all transactions for @acc.getName()?');">
                                             @helper.CSRF.formField
                                             <button type="submit" class="w3-button w3-tiny w3-red w3-round" title="Purge transactions">
@@ -276,7 +301,12 @@
                                 }
                             </td>
                         </tr>
+                        }
                     }
+                </tbody>
+            </table>
+        </div>
+    </div>
                 </tbody>
             </table>
         </div>

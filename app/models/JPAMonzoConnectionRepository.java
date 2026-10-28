@@ -41,7 +41,11 @@ public class JPAMonzoConnectionRepository implements MonzoConnectionRepository {
                                         "created_at BIGINT, " +
                                         "last_synced_at BIGINT" +
                                         ")",
-                                "CREATE INDEX IF NOT EXISTS idx_mc_user ON monzo_connection (user_id)"
+                                "CREATE INDEX IF NOT EXISTS idx_mc_user ON monzo_connection (user_id)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhook_debit_id VARCHAR(255)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhook_flex_id VARCHAR(255)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhook_url VARCHAR(500)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS last_received_at BIGINT"
                         };
                         jpaApi.withTransaction(em -> {
                             for (String sql : statements) {
@@ -96,6 +100,21 @@ public class JPAMonzoConnectionRepository implements MonzoConnectionRepository {
                 List<MonzoConnection> list = em.createQuery(
                         "select m from MonzoConnection m where m.userId = :userId", MonzoConnection.class)
                         .setParameter("userId", userId)
+                        .getResultList();
+                return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+            } catch (Exception e) {
+                return Optional.empty();
+            }
+        }), executionContext);
+    }
+
+    @Override
+    public CompletionStage<Optional<MonzoConnection>> findFirst() {
+        return supplyAsync(() -> wrap(em -> {
+            try {
+                List<MonzoConnection> list = em.createQuery(
+                        "select m from MonzoConnection m order by m.id desc", MonzoConnection.class)
+                        .setMaxResults(1)
                         .getResultList();
                 return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
             } catch (Exception e) {

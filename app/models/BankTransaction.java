@@ -40,6 +40,15 @@ public class BankTransaction {
 
     private String category;
 
+    @Column(length = 500)
+    private String merchantAddress;
+
+    private Double latitude;
+
+    private Double longitude;
+
+    private String merchantEmoji;
+
     private String source = "MANUAL"; // MONZO, MOCK, FILE_UPLOAD, MANUAL
 
     private boolean pending = false;
@@ -166,5 +175,37 @@ public class BankTransaction {
 
     public void setCreatedAt(Long createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getMerchantAddress() {
+        return merchantAddress;
+    }
+
+    public void setMerchantAddress(String merchantAddress) {
+        this.merchantAddress = merchantAddress;
+    }
+
+    public Double getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
+    }
+
+    public Double getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
+    }
+
+    public String getMerchantEmoji() {
+        return merchantEmoji;
+    }
+
+    public void setMerchantEmoji(String merchantEmoji) {
+        this.merchantEmoji = merchantEmoji;
     }
 }
