@@ -43,8 +43,10 @@ public class NetWorthAssetMigration {
                 "created_at BIGINT",
                 "updated_at BIGINT",
                 "deleted_at BIGINT",
+                "acquired_at BIGINT",
                 "createdat BIGINT",
-                "updatedat BIGINT"
+                "updatedat BIGINT",
+                "acquiredat BIGINT"
         };
         for (String colDef : cols) {
             try {
@@ -68,6 +70,15 @@ public class NetWorthAssetMigration {
                 } catch (Exception ignored) {}
                 try {
                     em.createNativeQuery("UPDATE net_worth_asset SET updatedat = " + todayMs + " WHERE updatedat IS NULL OR updatedat = 0").executeUpdate();
+                } catch (Exception ignored) {}
+                try {
+                    em.createNativeQuery("UPDATE net_worth_asset SET acquired_at = created_at WHERE (acquired_at IS NULL OR acquired_at = 0) AND created_at IS NOT NULL AND created_at > 0").executeUpdate();
+                } catch (Exception ignored) {}
+                try {
+                    em.createNativeQuery("UPDATE net_worth_asset SET acquired_at = " + todayMs + " WHERE acquired_at IS NULL OR acquired_at = 0").executeUpdate();
+                } catch (Exception ignored) {}
+                try {
+                    em.createNativeQuery("UPDATE net_worth_asset SET acquiredat = acquired_at WHERE (acquiredat IS NULL OR acquiredat = 0) AND acquired_at IS NOT NULL").executeUpdate();
                 } catch (Exception ignored) {}
                 try {
                     em.createNativeQuery("UPDATE net_worth_asset SET deleted_at = " + todayMs + " WHERE archived = true AND (deleted_at IS NULL OR deleted_at = 0)").executeUpdate();

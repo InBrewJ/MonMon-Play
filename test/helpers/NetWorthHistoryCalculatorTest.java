@@ -74,18 +74,21 @@ public class NetWorthHistoryCalculatorTest {
         savingsAcc.balances = List.of(sb1, sb2);
 
         // 3. Fixed Assets
-        // Flat: created 3 years ago, active
+        // Flat: acquired 3 years ago, active
         NetWorthAsset flat = new NetWorthAsset("u-1", "Edinburgh Flat", NetWorthAsset.AssetCategory.PROPERTY, 200000.0, "Home");
         flat.setId(10L);
-        flat.createdAt = today.minusYears(3).atStartOfDay(zone).toEpochSecond() * 1000L;
+        flat.acquiredAt = today.minusYears(3).atStartOfDay(zone).toEpochSecond() * 1000L;
+        flat.createdAt = flat.acquiredAt;
         flat.updatedAt = flat.createdAt;
         flat.archived = false;
 
-        // Car: created 2 years ago, sold (archived) 6 months ago
+        // Car: acquired 2 years ago, sold (archived) 6 months ago
         NetWorthAsset car = new NetWorthAsset("u-1", "Ford Fiesta", NetWorthAsset.AssetCategory.VEHICLE, 10000.0, "Sold");
         car.setId(11L);
+        car.acquiredAt = twoYearsAgoSec * 1000L;
         car.createdAt = twoYearsAgoSec * 1000L;
         car.updatedAt = sixMonthsAgoSec * 1000L;
+        car.deletedAt = sixMonthsAgoSec * 1000L;
         car.archived = true;
 
         List<Account> accounts = List.of(pension, currentAcc, savingsAcc);
@@ -131,13 +134,15 @@ public class NetWorthHistoryCalculatorTest {
     }
 
     @Test
-    public void testAssetAddedTodayShowsAcrossHistoryUntilArchived() {
+    public void testAssetAcquisitionDateStepping() {
         ZoneId zone = ZoneId.of("Europe/London");
         LocalDate today = LocalDate.of(2026, 10, 28);
+        long oneYearAgoMs = today.minusYears(1).atStartOfDay(zone).toEpochSecond() * 1000L;
 
-        // User enters their house today
+        // User enters their house acquired 1 year ago
         NetWorthAsset house = new NetWorthAsset("u-1", "House", NetWorthAsset.AssetCategory.PROPERTY, 350000.0, "Family home");
         house.setId(12L);
+        house.acquiredAt = oneYearAgoMs;
         house.createdAt = System.currentTimeMillis();
         house.updatedAt = System.currentTimeMillis();
         house.archived = false;
@@ -146,9 +151,19 @@ public class NetWorthHistoryCalculatorTest {
                 NetWorthHistoryCalculator.calculate(java.util.Collections.emptyList(), null, List.of(house), today, zone);
 
         assertThat(points).isNotEmpty();
-        for (NetWorthHistoryCalculator.HistoryPoint p : points) {
-            assertThat(p.getFixedAssets()).isEqualTo(350000.0);
-            assertThat(p.getTotal()).isEqualTo(350000.0);
-        }
+
+        // 2 years ago (prior to acquisition): house is 0.0
+        long twoYearsAgoSec = today.minusYears(2).atStartOfDay(zone).toEpochSecond();
+        NetWorthHistoryCalculator.HistoryPoint atTwoYears = points.stream()
+                .filter(p -> p.getTimestamp() <= twoYearsAgoSec)
+                .findFirst()
+                .orElseThrow();
+        assertThat(atTwoYears.getFixedAssets()).isEqualTo(0.0);
+        assertThat(atTwoYears.getTotal()).isEqualTo(0.0);
+
+        // Today (after acquisition): house is 350,000.0
+        NetWorthHistoryCalculator.HistoryPoint latestPoint = points.get(points.size() - 1);
+        assertThat(latestPoint.getFixedAssets()).isEqualTo(350000.0);
+        assertThat(latestPoint.getTotal()).isEqualTo(350000.0);
     }
 }

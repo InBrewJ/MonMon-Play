@@ -20,5 +20,7 @@ public interface NetWorthAssetRepository {
 
     CompletionStage<NetWorthAsset> update(Long id, String name, NetWorthAsset.AssetCategory category, Double value, String notes);
 
+    CompletionStage<NetWorthAsset> update(Long id, String name, NetWorthAsset.AssetCategory category, Double value, String notes, Long acquiredAt);
+
     CompletionStage<Boolean> archive(Long id);
 }

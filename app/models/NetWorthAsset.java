@@ -36,6 +36,9 @@ public class NetWorthAsset {
 
     public boolean archived = false;
 
+    @Column(name = "acquired_at")
+    public Long acquiredAt;
+
     @Column(name = "created_at")
     public Long createdAt;
 
@@ -46,8 +49,10 @@ public class NetWorthAsset {
     public Long deletedAt;
 
     public NetWorthAsset() {
-        this.createdAt = System.currentTimeMillis();
-        this.updatedAt = System.currentTimeMillis();
+        long now = System.currentTimeMillis();
+        this.acquiredAt = now;
+        this.createdAt = now;
+        this.updatedAt = now;
     }
 
     public NetWorthAsset(String userId, String name, AssetCategory category, Double value, String notes) {
@@ -57,6 +62,13 @@ public class NetWorthAsset {
         this.category = category != null ? category : AssetCategory.OTHER;
         this.value = value != null ? value : 0.0;
         this.notes = notes;
+    }
+
+    public NetWorthAsset(String userId, String name, AssetCategory category, Double value, String notes, Long acquiredAt) {
+        this(userId, name, category, value, notes);
+        if (acquiredAt != null && acquiredAt > 0) {
+            this.acquiredAt = acquiredAt;
+        }
     }
 
     public Long getId() {
@@ -137,6 +149,35 @@ public class NetWorthAsset {
 
     public void setDeletedAt(Long deletedAt) {
         this.deletedAt = deletedAt;
+    }
+
+    public Long getAcquiredAt() {
+        return acquiredAt;
+    }
+
+    public void setAcquiredAt(Long acquiredAt) {
+        this.acquiredAt = acquiredAt;
+    }
+
+    public Long getEffectiveStartDate() {
+        if (acquiredAt != null && acquiredAt > 0) return acquiredAt;
+        if (createdAt != null && createdAt > 0) return createdAt;
+        return System.currentTimeMillis();
+    }
+
+    public String getAcquiredDateHtmlValue() {
+        long ms = getEffectiveStartDate();
+        return java.time.Instant.ofEpochMilli(ms)
+                .atZone(java.time.ZoneId.of("Europe/London"))
+                .toLocalDate().toString();
+    }
+
+    public String getAcquiredDateHumanReadable() {
+        long ms = getEffectiveStartDate();
+        java.time.LocalDate d = java.time.Instant.ofEpochMilli(ms)
+                .atZone(java.time.ZoneId.of("Europe/London"))
+                .toLocalDate();
+        return d.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.UK));
     }
 
     public String getCategoryHumanReadable() {

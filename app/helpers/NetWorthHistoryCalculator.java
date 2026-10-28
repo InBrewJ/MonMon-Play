@@ -141,18 +141,28 @@ public class NetWorthHistoryCalculator {
             }
         }
 
-        // Fixed asset event timestamps (creation and archiving)
+        // Fixed asset event timestamps (acquisition and archiving)
         for (NetWorthAsset asset : safeAssets) {
-            if (asset.getCreatedAt() != null) {
-                long cSec = asset.getCreatedAt() / 1000L;
-                if (cSec >= tenYearsAgoSec && cSec <= nowSec) {
-                    timestampSet.add(cSec);
+            Long startMs = asset.getEffectiveStartDate();
+            if (startMs != null) {
+                long aSec = startMs / 1000L;
+                if (aSec >= tenYearsAgoSec && aSec <= nowSec) {
+                    if (aSec - 86400 >= tenYearsAgoSec) {
+                        timestampSet.add(aSec - 86400);
+                    }
+                    timestampSet.add(aSec);
                 }
             }
-            if (asset.isArchived() && asset.getUpdatedAt() != null) {
-                long uSec = asset.getUpdatedAt() / 1000L;
-                if (uSec >= tenYearsAgoSec && uSec <= nowSec) {
-                    timestampSet.add(uSec);
+            if (asset.isArchived()) {
+                Long delMs = asset.getDeletedAt() != null && asset.getDeletedAt() > 0 ? asset.getDeletedAt() : asset.getUpdatedAt();
+                if (delMs != null) {
+                    long uSec = delMs / 1000L;
+                    if (uSec >= tenYearsAgoSec && uSec <= nowSec) {
+                        if (uSec - 86400 >= tenYearsAgoSec) {
+                            timestampSet.add(uSec - 86400);
+                        }
+                        timestampSet.add(uSec);
+                    }
                 }
             }
         }
@@ -220,11 +230,21 @@ public class NetWorthHistoryCalculator {
         double sum = 0.0;
         for (NetWorthAsset asset : assets) {
             if (asset == null) continue;
+            Long startMs = asset.getEffectiveStartDate();
+            if (startMs != null) {
+                long startSec = startMs / 1000L;
+                if (timestampSec < startSec) {
+                    continue; // Asset was not yet acquired at this timestamp
+                }
+            }
             // If asset was archived / deleted, it dropped to 0 from its deletion timestamp onwards
-            if (asset.isArchived() && asset.getUpdatedAt() != null) {
-                long deleteSec = asset.getUpdatedAt() / 1000L;
-                if (timestampSec >= deleteSec) {
-                    continue;
+            if (asset.isArchived()) {
+                Long delMs = asset.getDeletedAt() != null && asset.getDeletedAt() > 0 ? asset.getDeletedAt() : asset.getUpdatedAt();
+                if (delMs != null) {
+                    long deleteSec = delMs / 1000L;
+                    if (timestampSec >= deleteSec) {
+                        continue;
+                    }
                 }
             }
             double val = asset.getValue() != null ? asset.getValue() : 0.0;

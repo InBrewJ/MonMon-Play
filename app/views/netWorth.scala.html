@@ -196,6 +196,7 @@
                         <td style="padding: 8px 6px;">
                             <i class="fas @asset.getCategoryIcon()" style="color: var(--primary); margin-right: 6px;"></i>
                             <b>@asset.getName()</b>
+                            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Acquired @asset.getAcquiredDateHumanReadable()</div>
                         </td>
                         <td style="padding: 8px 6px;">
                             <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-size: 0.75rem;">
@@ -209,7 +210,7 @@
                             £@asset.getValue()
                         </td>
                         <td style="padding: 8px 6px; text-align: right;">
-                            <button onclick="openEditModal(@asset.getId(), '@asset.getName()', '@asset.getCategory()', @asset.getValue(), '@(if(asset.getNotes() != null) asset.getNotes() else "")')" class="w3-button w3-round w3-tiny w3-border" title="Edit asset"><i class="fas fa-pencil-alt"></i></button>
+                            <button onclick="openEditModal(@asset.getId(), '@asset.getName()', '@asset.getCategory()', @asset.getValue(), '@(if(asset.getNotes() != null) asset.getNotes() else "")', '@asset.getAcquiredDateHtmlValue()')" class="w3-button w3-round w3-tiny w3-border" title="Edit asset"><i class="fas fa-pencil-alt"></i></button>
                             <a href="/netWorth/binAsset/@asset.getId()" onclick="return confirm('Remove this asset from your net worth?');" class="w3-button w3-round w3-tiny w3-border" style="color: var(--danger);" title="Delete asset"><i class="fas fa-trash"></i></a>
                         </td>
                     </tr>
@@ -391,6 +392,11 @@
                 </select>
             </div>
             <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Date Acquired</label>
+                <input class="w3-input w3-border w3-round" type="date" name="acquiredDate" value="@java.time.LocalDate.now()" style="margin-top: 4px;">
+                <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Asset will only count towards net worth from this date onwards (defaults to today).</div>
+            </div>
+            <div style="margin-bottom: 1rem;">
                 <label style="font-weight: 700; font-size: 0.85rem;">Current Estimated Value (£) *</label>
                 <input class="w3-input w3-border w3-round" type="number" step="0.01" name="value" placeholder="e.g. 250000" required style="margin-top: 4px;">
             </div>
@@ -428,6 +434,11 @@
                     <option value="INVESTMENT">Investment (Crypto, Metals, Private)</option>
                     <option value="OTHER">Other Asset</option>
                 </select>
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Date Acquired</label>
+                <input class="w3-input w3-border w3-round" type="date" id="edit-acquired-date" name="acquiredDate" style="margin-top: 4px;">
+                <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Asset will only count towards net worth from this date onwards.</div>
             </div>
             <div style="margin-bottom: 1rem;">
                 <label style="font-weight: 700; font-size: 0.85rem;">Current Estimated Value (£) *</label>
@@ -504,12 +515,15 @@
 <script src="@routes.Assets.versioned("javascripts/networth-chart.js")" type="text/javascript"></script>
 <script src="@routes.Assets.versioned("javascripts/edNetWorth.js")" type="text/javascript"></script>
 <script>
-    function openEditModal(id, name, category, value, notes) {
+    function openEditModal(id, name, category, value, notes, acquiredDate) {
         document.getElementById('edit-asset-form').action = '/netWorth/updateAsset/' + id;
         document.getElementById('edit-name').value = name;
         document.getElementById('edit-category').value = category;
         document.getElementById('edit-value').value = value;
         document.getElementById('edit-notes').value = notes;
+        if (acquiredDate) {
+            document.getElementById('edit-acquired-date').value = acquiredDate;
+        }
         document.getElementById('edit-asset-modal').style.display = 'block';
     }
 

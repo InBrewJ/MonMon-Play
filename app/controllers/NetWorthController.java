@@ -18,6 +18,7 @@ import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -142,7 +143,16 @@ public class NetWorthController extends Controller {
             }
         } catch (Exception ignored) {}
 
-        NetWorthAsset asset = new NetWorthAsset(sup.getUserId(), name.trim(), category, value, notes);
+        String acquiredDateStr = form.get("acquiredDate");
+        Long acquiredAt = null;
+        if (acquiredDateStr != null && !acquiredDateStr.trim().isEmpty()) {
+            try {
+                LocalDate d = LocalDate.parse(acquiredDateStr.trim());
+                acquiredAt = d.atStartOfDay(ZoneId.of("Europe/London")).toInstant().toEpochMilli();
+            } catch (Exception ignored) {}
+        }
+
+        NetWorthAsset asset = new NetWorthAsset(sup.getUserId(), name.trim(), category, value, notes, acquiredAt);
         return assetRepository.add(asset).thenApply(saved ->
                 redirect(routes.NetWorthController.index()).flashing("success", "Added asset: " + saved.getName())
         );
@@ -171,7 +181,16 @@ public class NetWorthController extends Controller {
             }
         } catch (Exception ignored) {}
 
-        return assetRepository.update(id, name, category, value, notes).thenApply(updated ->
+        String acquiredDateStr = form.get("acquiredDate");
+        Long acquiredAt = null;
+        if (acquiredDateStr != null && !acquiredDateStr.trim().isEmpty()) {
+            try {
+                LocalDate d = LocalDate.parse(acquiredDateStr.trim());
+                acquiredAt = d.atStartOfDay(ZoneId.of("Europe/London")).toInstant().toEpochMilli();
+            } catch (Exception ignored) {}
+        }
+
+        return assetRepository.update(id, name, category, value, notes, acquiredAt).thenApply(updated ->
                 redirect(routes.NetWorthController.index()).flashing("success", "Updated asset.")
         );
     }

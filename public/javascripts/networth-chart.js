@@ -114,10 +114,10 @@
             visible.unshift({
                 timestamp: minSec,
                 dateStr: visible[0].dateStr,
-                pensions: visible[0].pensions,
-                cashSavings: visible[0].cashSavings,
-                fixedAssets: visible[0].fixedAssets,
-                total: visible[0].total
+                pensions: 0,
+                cashSavings: 0,
+                fixedAssets: 0,
+                total: 0
             });
         }
 

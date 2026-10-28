@@ -82,6 +82,11 @@ public class JPANetWorthAssetRepository implements NetWorthAssetRepository {
 
     @Override
     public CompletionStage<NetWorthAsset> update(Long id, String name, NetWorthAsset.AssetCategory category, Double value, String notes) {
+        return update(id, name, category, value, notes, null);
+    }
+
+    @Override
+    public CompletionStage<NetWorthAsset> update(Long id, String name, NetWorthAsset.AssetCategory category, Double value, String notes, Long acquiredAt) {
         return supplyAsync(() -> wrap(em -> {
             NetWorthAsset a = em.find(NetWorthAsset.class, id);
             if (a != null) {
@@ -89,6 +94,7 @@ public class JPANetWorthAssetRepository implements NetWorthAssetRepository {
                 if (category != null) a.setCategory(category);
                 if (value != null) a.setValue(value);
                 if (notes != null) a.setNotes(notes);
+                if (acquiredAt != null && acquiredAt > 0) a.setAcquiredAt(acquiredAt);
                 a.setUpdatedAt(System.currentTimeMillis());
                 em.merge(a);
             }
