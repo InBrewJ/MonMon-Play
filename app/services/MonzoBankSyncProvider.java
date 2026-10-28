@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
 import models.Account;
+import models.Balance;
+import models.BalanceRepository;
 import models.BankTransaction;
 import models.BankTransactionRepository;
 import models.MonzoConnection;
@@ -14,9 +16,11 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -37,6 +41,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
     private final BankTransactionRepository bankTransactionRepository;
     private final MonzoConnectionRepository monzoConnectionRepository;
     private final StatementParserService statementParserService;
+    private final BalanceRepository balanceRepository;
     private final HttpClient httpClient;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -75,8 +80,17 @@ public class MonzoBankSyncProvider implements BankSyncService {
     public MonzoBankSyncProvider(Config config,
                                  BankTransactionRepository bankTransactionRepository,
                                  MonzoConnectionRepository monzoConnectionRepository,
+                                 StatementParserService statementParserService,
+                                 BalanceRepository balanceRepository) {
+        this(config, bankTransactionRepository, monzoConnectionRepository, statementParserService, balanceRepository,
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
+    }
+
+    public MonzoBankSyncProvider(Config config,
+                                 BankTransactionRepository bankTransactionRepository,
+                                 MonzoConnectionRepository monzoConnectionRepository,
                                  StatementParserService statementParserService) {
-        this(config, bankTransactionRepository, monzoConnectionRepository, statementParserService,
+        this(config, bankTransactionRepository, monzoConnectionRepository, statementParserService, null,
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
     }
 
@@ -84,11 +98,13 @@ public class MonzoBankSyncProvider implements BankSyncService {
                                  BankTransactionRepository bankTransactionRepository,
                                  MonzoConnectionRepository monzoConnectionRepository,
                                  StatementParserService statementParserService,
+                                 BalanceRepository balanceRepository,
                                  HttpClient httpClient) {
         this.config = config;
         this.bankTransactionRepository = bankTransactionRepository;
         this.monzoConnectionRepository = monzoConnectionRepository;
         this.statementParserService = statementParserService;
+        this.balanceRepository = balanceRepository;
         this.httpClient = httpClient;
     }
 
@@ -156,12 +172,49 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 });
     }
 
+    public CompletionStage<Float> fetchBalance(String accessToken, String monzoAccountId) {
+        String url = MONZO_API_BASE + "/balance?account_id=" + monzoAccountId;
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Authorization", "Bearer " + accessToken)
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        return null;
+                    }
+                    try {
+                        JsonNode json = mapper.readTree(response.body());
+                        long balancePence = json.path("balance").asLong(0L);
+                        return balancePence / 100.0f;
+                    } catch (Exception e) {
+                        return null;
+                    }
+                });
+    }
+
     public CompletionStage<List<BankTransaction>> fetchTransactions(String userId, Long accountId, String accessToken, String monzoAccountId, int daysBack) {
-        int effectiveDays = daysBack > 0 ? daysBack : 30;
+        int effectiveDays = daysBack > 0 ? daysBack : 90;
         Instant sinceInstant = Instant.now().minus(Duration.ofDays(effectiveDays));
         String sinceIso = DateTimeFormatter.ISO_INSTANT.format(sinceInstant);
 
-        String url = MONZO_API_BASE + "/transactions?account_id=" + monzoAccountId + "&expand[]=merchant&since=" + sinceIso;
+        List<BankTransaction> accumulated = new ArrayList<>();
+        return fetchTransactionsPage(userId, accountId, accessToken, monzoAccountId, sinceIso, accumulated, 0);
+    }
+
+    private CompletionStage<List<BankTransaction>> fetchTransactionsPage(
+            String userId, Long accountId, String accessToken, String monzoAccountId, String since,
+            List<BankTransaction> accumulated, int pageDepth) {
+
+        if (pageDepth >= 10) { // Safety cap: max 10 pages * 100 = 1000 transactions
+            return CompletableFuture.completedFuture(accumulated);
+        }
+
+        String encodedSince = URLEncoder.encode(since, StandardCharsets.UTF_8);
+        String url = MONZO_API_BASE + "/transactions?account_id=" + monzoAccountId + "&expand[]=merchant&limit=100&since=" + encodedSince;
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -171,75 +224,92 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 .build();
 
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(response -> {
+                .thenCompose(response -> {
                     if (response.statusCode() != 200) {
                         throw new RuntimeException("Monzo transactions error (" + response.statusCode() + "): " + response.body());
                     }
                     try {
                         JsonNode json = mapper.readTree(response.body());
                         JsonNode txArray = json.get("transactions");
-                        List<BankTransaction> list = new ArrayList<>();
-                        if (txArray != null && txArray.isArray()) {
-                            for (JsonNode tx : txArray) {
-                                String extId = tx.path("id").asText();
-                                long amountPence = tx.path("amount").asLong(0L);
-                                // In Monzo: negative amounts are debits/outflows (spend), positive are deposits
-                                // In MonMon: spend is positive float
-                                float amountPounds = Math.abs(amountPence) / 100.0f;
-                                if (amountPence > 0) {
-                                    amountPounds = -amountPounds; // refund / salary / deposit
-                                }
+                        if (txArray == null || !txArray.isArray() || txArray.size() == 0) {
+                            return CompletableFuture.completedFuture(accumulated);
+                        }
 
-                                String createdStr = tx.path("created").asText();
-                                long epochSec = System.currentTimeMillis() / 1000L;
-                                String dateStr = LocalDate.now().toString();
-                                try {
-                                    Instant inst = Instant.parse(createdStr);
-                                    epochSec = inst.getEpochSecond();
-                                    dateStr = inst.atZone(ZoneOffset.UTC).toLocalDate().toString();
-                                } catch (Exception ignored) {
-                                }
+                        List<BankTransaction> page = parseTransactionsJson(userId, accountId, txArray);
+                        accumulated.addAll(page);
 
-                                String description = tx.path("description").asText("Transaction");
-                                String merchantName = null;
-                                String category = tx.path("category").asText("General");
-
-                                JsonNode merchantNode = tx.get("merchant");
-                                if (merchantNode != null && !merchantNode.isNull()) {
-                                    merchantName = merchantNode.path("name").asText(null);
-                                    if (merchantName != null && !merchantName.trim().isEmpty()) {
-                                        description = merchantName;
-                                    }
-                                    if (merchantNode.has("category") && !merchantNode.path("category").asText().isEmpty()) {
-                                        category = merchantNode.path("category").asText();
-                                    }
-                                }
-
-                                boolean declined = tx.path("decline_reason").isTextual();
-                                if (declined) {
-                                    continue; // Skip declined transactions
-                                }
-
-                                list.add(new BankTransaction(
-                                        userId,
-                                        accountId,
-                                        extId,
-                                        epochSec,
-                                        dateStr,
-                                        amountPounds,
-                                        description,
-                                        merchantName,
-                                        category,
-                                        "MONZO",
-                                        false
-                                ));
+                        // If page reached max 100, paginate forward using the last transaction ID
+                        if (txArray.size() >= 100) {
+                            String lastTxId = txArray.get(txArray.size() - 1).path("id").asText();
+                            if (lastTxId != null && !lastTxId.trim().isEmpty()) {
+                                return fetchTransactionsPage(userId, accountId, accessToken, monzoAccountId, lastTxId, accumulated, pageDepth + 1);
                             }
                         }
-                        return list;
+
+                        return CompletableFuture.completedFuture(accumulated);
                     } catch (Exception e) {
-                        throw new RuntimeException("Failed to parse Monzo transactions: " + e.getMessage());
+                        throw new RuntimeException("Failed to parse Monzo transactions: " + e.getMessage(), e);
                     }
                 });
+    }
+
+    private List<BankTransaction> parseTransactionsJson(String userId, Long accountId, JsonNode txArray) {
+        List<BankTransaction> list = new ArrayList<>();
+        for (JsonNode tx : txArray) {
+            String extId = tx.path("id").asText();
+            long amountPence = tx.path("amount").asLong(0L);
+            // In Monzo: negative amounts are debits/outflows (spend), positive are deposits
+            // In MonMon: spend is positive float
+            float amountPounds = Math.abs(amountPence) / 100.0f;
+            if (amountPence > 0) {
+                amountPounds = -amountPounds; // refund / salary / deposit
+            }
+
+            String createdStr = tx.path("created").asText();
+            long epochSec = System.currentTimeMillis() / 1000L;
+            String dateStr = LocalDate.now().toString();
+            try {
+                Instant inst = Instant.parse(createdStr);
+                epochSec = inst.getEpochSecond();
+                dateStr = inst.atZone(ZoneOffset.UTC).toLocalDate().toString();
+            } catch (Exception ignored) {
+            }
+
+            String description = tx.path("description").asText("Transaction");
+            String merchantName = null;
+            String category = tx.path("category").asText("General");
+
+            JsonNode merchantNode = tx.get("merchant");
+            if (merchantNode != null && !merchantNode.isNull()) {
+                merchantName = merchantNode.path("name").asText(null);
+                if (merchantName != null && !merchantName.trim().isEmpty()) {
+                    description = merchantName;
+                }
+                if (merchantNode.has("category") && !merchantNode.path("category").asText().isEmpty()) {
+                    category = merchantNode.path("category").asText();
+                }
+            }
+
+            boolean declined = tx.path("decline_reason").isTextual();
+            if (declined) {
+                continue; // Skip declined transactions
+            }
+
+            list.add(new BankTransaction(
+                    userId,
+                    accountId,
+                    extId,
+                    epochSec,
+                    dateStr,
+                    amountPounds,
+                    description,
+                    merchantName,
+                    category,
+                    "MONZO",
+                    false
+            ));
+        }
+        return list;
     }
 
     @Override
@@ -270,6 +340,19 @@ public class MonzoBankSyncProvider implements BankSyncService {
                     targetCandidate = monzoAccounts.stream().filter(MonzoAccountInfo::isDebit).findFirst().orElse(monzoAccounts.get(0));
                 }
                 final MonzoAccountInfo target = targetCandidate;
+
+                if (balanceRepository != null) {
+                    fetchBalance(conn.getAccessToken(), target.id).thenAccept(balVal -> {
+                        if (balVal != null) {
+                            Balance bal = new Balance();
+                            bal.setUserId(account.getUserId());
+                            bal.setValue(balVal);
+                            bal.setAccount(account);
+                            bal.setTimestamp(Instant.now().getEpochSecond());
+                            balanceRepository.add(bal);
+                        }
+                    });
+                }
 
                 return fetchTransactions(account.getUserId(), account.getId(), conn.getAccessToken(), target.id, daysBack)
                         .thenCompose(bankTransactionRepository::saveAll)
@@ -323,6 +406,23 @@ public class MonzoBankSyncProvider implements BankSyncService {
                                             .map(Account::getId)
                                             .findFirst()
                                             .orElse(null));
+                        }
+                    }
+
+                    if (balanceRepository != null && monmonAccId != null && accounts != null) {
+                        final Long targetAccId = monmonAccId;
+                        Account accRef = accounts.stream().filter(a -> a.getId().equals(targetAccId)).findFirst().orElse(null);
+                        if (accRef != null) {
+                            fetchBalance(conn.getAccessToken(), mAcc.id).thenAccept(balVal -> {
+                                if (balVal != null) {
+                                    Balance bal = new Balance();
+                                    bal.setUserId(userId);
+                                    bal.setValue(balVal);
+                                    bal.setAccount(accRef);
+                                    bal.setTimestamp(Instant.now().getEpochSecond());
+                                    balanceRepository.add(bal);
+                                }
+                            });
                         }
                     }
 

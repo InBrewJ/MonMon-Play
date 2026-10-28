@@ -14,6 +14,7 @@ import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -341,5 +342,48 @@ public class BankSyncAndStatementTest {
         Boolean deleted = repo.deleteByUserId("user_abc").toCompletableFuture().join();
         assertThat(deleted).isTrue();
         assertThat(repo.findByUserId("user_abc").toCompletableFuture().join()).isEmpty();
+    }
+
+    @Test
+    public void testMonzoSyncProviderWithBalanceRepositoryForABLMode() {
+        com.typesafe.config.Config config = com.typesafe.config.ConfigFactory.empty();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+        InMemoryMonzoConnectionRepository connRepo = new InMemoryMonzoConnectionRepository();
+        InMemoryBalanceRepository balanceRepo = new InMemoryBalanceRepository();
+        StatementParserService parser = new StatementParserService(txRepo);
+
+        MonzoBankSyncProvider provider = new MonzoBankSyncProvider(config, txRepo, connRepo, parser, balanceRepo);
+        assertThat(provider.getProviderName()).isEqualTo("MONZO");
+
+        // Verify balance repository works
+        models.Balance b = new models.Balance();
+        b.setUserId("user_xyz");
+        b.setValue(1250.75f);
+        b.setTimestamp(1700000000L);
+        balanceRepo.add(b).toCompletableFuture().join();
+
+        List<models.Balance> savedBalances = balanceRepo.list("user_xyz").toCompletableFuture().join().collect(Collectors.toList());
+        assertThat(savedBalances).hasSize(1);
+        assertThat(savedBalances.get(0).getValue()).isEqualTo(1250.75f);
+    }
+
+    static class InMemoryBalanceRepository implements models.BalanceRepository {
+        final List<models.Balance> balances = new ArrayList<>();
+
+        @Override
+        public CompletionStage<models.Balance> add(models.Balance balance) {
+            balances.add(balance);
+            return CompletableFuture.completedFuture(balance);
+        }
+
+        @Override
+        public CompletionStage<Stream<models.Balance>> list(String userId) {
+            return CompletableFuture.completedFuture(balances.stream().filter(b -> userId.equals(b.getUserId())));
+        }
+
+        @Override
+        public CompletionStage<Stream<models.Balance>> listSince(String userId, Long sinceTimestamp) {
+            return CompletableFuture.completedFuture(balances.stream().filter(b -> userId.equals(b.getUserId()) && b.getTimestamp() >= sinceTimestamp));
+        }
     }
 }
