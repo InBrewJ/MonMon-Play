@@ -435,4 +435,59 @@ public class SavingsPlanTest {
         assertThat(plan.getTotalAllocated()).isEqualTo(target);
         assertThat(plan.getUnallocatedAmount(incomingTotal)).isEqualTo(0.0f);
     }
+
+    @Test
+    public void testMoveItemUpAndDownShuntsQueueOrderAndRebalancesPriorities() {
+        SavingsPlan plan = new SavingsPlan("user123", "Shunt Test Plan", 20);
+
+        SavingsPlanItem item1 = new SavingsPlanItem("Goal A", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, null, 100.0f, 1);
+        item1.setId(101L);
+        SavingsPlanItem item2 = new SavingsPlanItem("Goal B", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, null, 100.0f, 2);
+        item2.setId(102L);
+        SavingsPlanItem item3 = new SavingsPlanItem("Goal C", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, null, 100.0f, 3);
+        item3.setId(103L);
+
+        plan.addItem(item1);
+        plan.addItem(item2);
+        plan.addItem(item3);
+
+        // Initial queue order: Goal A (P1), Goal B (P2), Goal C (P3)
+        List<SavingsPlanItem> items = plan.getItems();
+        assertThat(items.get(0).getName()).isEqualTo("Goal A");
+        assertThat(items.get(0).getPriority()).isEqualTo(1);
+        assertThat(items.get(1).getName()).isEqualTo("Goal B");
+        assertThat(items.get(1).getPriority()).isEqualTo(2);
+        assertThat(items.get(2).getName()).isEqualTo("Goal C");
+        assertThat(items.get(2).getPriority()).isEqualTo(3);
+
+        // Shunt Goal B up -> should become P1, Goal A becomes P2
+        boolean movedUp = plan.moveItemUp(102L);
+        assertThat(movedUp).isTrue();
+
+        List<SavingsPlanItem> afterUp = plan.getItems();
+        assertThat(afterUp.get(0).getName()).isEqualTo("Goal B");
+        assertThat(afterUp.get(0).getPriority()).isEqualTo(1);
+        assertThat(afterUp.get(1).getName()).isEqualTo("Goal A");
+        assertThat(afterUp.get(1).getPriority()).isEqualTo(2);
+        assertThat(afterUp.get(2).getName()).isEqualTo("Goal C");
+        assertThat(afterUp.get(2).getPriority()).isEqualTo(3);
+
+        // Shunt Goal B down -> should become P2 again
+        boolean movedDown = plan.moveItemDown(102L);
+        assertThat(movedDown).isTrue();
+
+        List<SavingsPlanItem> afterDown = plan.getItems();
+        assertThat(afterDown.get(0).getName()).isEqualTo("Goal A");
+        assertThat(afterDown.get(0).getPriority()).isEqualTo(1);
+        assertThat(afterDown.get(1).getName()).isEqualTo("Goal B");
+        assertThat(afterDown.get(1).getPriority()).isEqualTo(2);
+        assertThat(afterDown.get(2).getName()).isEqualTo("Goal C");
+        assertThat(afterDown.get(2).getPriority()).isEqualTo(3);
+
+        // Shunting P1 up should return false (already at top)
+        assertThat(plan.moveItemUp(101L)).isFalse();
+
+        // Shunting P3 down should return false (already at bottom)
+        assertThat(plan.moveItemDown(103L)).isFalse();
+    }
 }

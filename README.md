@@ -144,6 +144,28 @@ Please see the Play documentation for more details:
 - I genuinely think this happened!
 - https://dba.stackexchange.com/questions/207589/excessive-postgres-docker-cpu-consumption
 - https://ubuntu.com/blog/postgresql-security-the-pgminer-botnet-attacks-explained
-```
 
-```
+---
+
+## Savings Plan: Priority Queue & Interlocked Sliders
+
+### Priority Queue Mechanics (P1 .. PN)
+- **Queue Rank:** Priorities are strict sequential ranks (`P1`, `P2`, `P3`, etc.). `P1` represents the highest priority debt payoff or savings target.
+- **Shunting with Arrows:** Each item row includes up (`▲`) and down (`▼`) shunt buttons. Clicking an arrow swaps the item with its neighbor and automatically rebalances the entire plan to clean `1..N` integers in the database.
+- **Priority Rollover:** When a debt payoff target is completed or an item is deleted (`removeItemAndRebalanceQueue`), 100% of its freed monthly budget automatically cascades into the top-priority remaining item (`P1`). This implements the classic debt avalanche/snowball principle.
+- **Interlocked Sliders:**
+  - The monthly savings target forms a fixed total pot (derived from income savings percentage).
+  - Individual item sliders are interlocked: adjusting any unlocked item dynamically scales remaining unlocked items proportionally so that the sum of slices strictly reconciles to the target pot.
+  - Locked items (`Fixed`) remain immune to automatic scaling.
+  - Penny rounding errors are automatically reconciled on the final unlocked item.
+
+---
+
+## Outgoings: Monthly vs Yearly Bills
+
+- **Monthly Outgoings:** Recur every calendar month on their designated day of the month (1–31) with smart month-length clamping.
+- **Yearly Bills:** Run once a year. They record both a day (1–31) and a due month (1–12, Jan–Dec).
+- **Rollover to General Outgoings:**
+  - When the due month rolls around (e.g., an October bill in October), the yearly bill appears in the active monthly outgoings list and is included in this month's spending total and SPOG metrics.
+  - In non-due months, yearly bills remain cataloged under the "Yearly Bills" tab without artificially reducing current monthly disposable income.
+

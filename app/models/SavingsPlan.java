@@ -143,6 +143,62 @@ public class SavingsPlan {
     }
 
     /**
+     * Moves an item up one position in queue priority (swapping with predecessor).
+     * Re-indexes all active items to clean 1..N order.
+     */
+    public boolean moveItemUp(Long itemId) {
+        if (itemId == null) return false;
+        List<SavingsPlanItem> active = getItems();
+        int idx = -1;
+        for (int i = 0; i < active.size(); i++) {
+            if (active.get(i) != null && itemId.equals(active.get(i).getId())) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx > 0) {
+            SavingsPlanItem current = active.get(idx);
+            SavingsPlanItem prev = active.get(idx - 1);
+            active.set(idx - 1, current);
+            active.set(idx, prev);
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).setPriority(i + 1);
+            }
+            this.lastUpdated = System.currentTimeMillis();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Moves an item down one position in queue priority (swapping with successor).
+     * Re-indexes all active items to clean 1..N order.
+     */
+    public boolean moveItemDown(Long itemId) {
+        if (itemId == null) return false;
+        List<SavingsPlanItem> active = getItems();
+        int idx = -1;
+        for (int i = 0; i < active.size(); i++) {
+            if (active.get(i) != null && itemId.equals(active.get(i).getId())) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx >= 0 && idx < active.size() - 1) {
+            SavingsPlanItem current = active.get(idx);
+            SavingsPlanItem next = active.get(idx + 1);
+            active.set(idx + 1, current);
+            active.set(idx, next);
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).setPriority(i + 1);
+            }
+            this.lastUpdated = System.currentTimeMillis();
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Removes an item from the savings plan and rolls its monthly allocation into the
      * top priority item (or remaining queue head), preserving the overall savings pot.
      * Re-indexes remaining items sequentially (1, 2, 3...) so next items move up in the queue.

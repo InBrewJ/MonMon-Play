@@ -27,18 +27,33 @@
           <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
             <i class="fas fa-credit-card" style="color: var(--primary); margin-right: 6px;"></i> Your Outgoings
           </span>
-          <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.88rem; font-weight: 700;">
-            Total: £@outgoingTotal
+          <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.88rem; font-weight: 700;" title="Total monthly outgoings active/due this month">
+            This Month: £@outgoingTotal
           </span>
         </div>
 
+        <!-- Filter Tabs: Monthly & Due vs Yearly vs All -->
+        <div class="outgoings-tabs-bar" style="display: flex; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">
+          <button type="button" class="outgoings-tab-btn active" data-tab="active" style="background: none; border: none; border-bottom: 2px solid var(--primary); padding: 6px 12px; font-weight: 700; color: var(--primary); cursor: pointer; font-size: 0.85rem;">
+            <i class="fas fa-calendar-check" style="margin-right: 4px;"></i> Monthly & Due Now
+          </button>
+          <button type="button" class="outgoings-tab-btn" data-tab="yearly" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
+            <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i> Yearly Bills
+          </button>
+          <button type="button" class="outgoings-tab-btn" data-tab="all" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
+            <i class="fas fa-list" style="margin-right: 4px;"></i> All Outgoings
+          </button>
+        </div>
+
+        <div id="outgoings-empty-tab-msg" style="display: none; text-align: center; color: var(--text-muted); padding: 1.5rem 0;"></div>
+
         <!-- Desktop Table View -->
         <div class="desktop-view" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-          <table class="w3-table w3-striped">
+          <table class="w3-table w3-striped" id="outgoings-table">
             <thead>
               <tr>
-                <th class="col-day">Day</th>
-                <th class="col-name">Name</th>
+                <th class="col-day">Due Date</th>
+                <th class="col-name">Name & Frequency</th>
                 <th class="col-cost">Cost</th>
                 <th class="col-account">From Account</th>
                 <th class="col-action"></th>
@@ -50,18 +65,36 @@
                 <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No outgoings recorded. Add one on the right.</td></tr>
               } else {
                 @for(o <- outgoings) {
-                  <tr>
+                  <tr class="outgoing-row"
+                      data-is-yearly="@o.isYearly()"
+                      data-due-now="@o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))"
+                      data-month="@o.getOutgoingMonth()">
                     <td class="col-day">
-                      @if(o.isAdjustedForMonth()) {
-                        <span title="Adjusted from @o.outgoingDay for this month">
-                          <b>@o.getEffectiveOutgoingDay()</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                      @if(o.isYearly()) {
+                        <span style="font-weight: 700; color: var(--primary);">
+                          @o.outgoingDay @o.getMonthName()
                         </span>
                       } else {
-                        @o.outgoingDay
+                        @if(o.isAdjustedForMonth()) {
+                          <span title="Adjusted from @o.outgoingDay for this month">
+                            <b>@o.getEffectiveOutgoingDay()</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                          </span>
+                        } else {
+                          @o.outgoingDay
+                        }
                       }
                     </td>
                     <td class="col-name">
                       <b>@o.name</b>
+                      @if(o.isYearly()) {
+                        @if(o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))) {
+                          <span class="badge-pill badge-warning" style="font-size: 0.72rem; margin-left: 4px;"><i class="fas fa-bell"></i> Yearly (Due Now)</span>
+                        } else {
+                          <span class="badge-pill" style="font-size: 0.72rem; background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); margin-left: 4px;"><i class="fas fa-calendar"></i> Yearly (@o.getMonthName())</span>
+                        }
+                      } else {
+                        <span class="badge-pill" style="font-size: 0.7rem; background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); margin-left: 4px;">Monthly</span>
+                      }
                       @if(o.isBill()) { <span class="badge-pill badge-warning" style="font-size: 0.72rem; margin-left: 4px;">Bill</span> }
                       @if(o.isRent()) { <span class="badge-pill badge-primary" style="font-size: 0.72rem; margin-left: 4px;">Rent</span> }
                       @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="font-size: 0.72rem; background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); margin-left: 4px;">Savings Plan</span> }
@@ -96,12 +129,20 @@
             <div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0;">No outgoings recorded. Add one below.</div>
           } else {
             @for(o <- outgoings) {
-              <div class="item-card">
+              <div class="item-card outgoing-card"
+                   data-is-yearly="@o.isYearly()"
+                   data-due-now="@o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))"
+                   data-month="@o.getOutgoingMonth()">
                 <div class="item-card-header">
                   <div class="item-card-title-group">
                     <div class="day-badge @if(o.isAdjustedForMonth()) {day-badge-adj}">
-                      <span>@if(o.isAdjustedForMonth()) {@o.getEffectiveOutgoingDay()} else {@o.outgoingDay}</span>
-                      <span style="font-size: 0.6rem; font-weight: 500; text-transform: uppercase;">Day</span>
+                      @if(o.isYearly()) {
+                        <span style="font-size: 0.82rem; font-weight: 700;">@o.outgoingDay</span>
+                        <span style="font-size: 0.55rem; font-weight: 600; text-transform: uppercase;">@o.getMonthName().take(3)</span>
+                      } else {
+                        <span>@if(o.isAdjustedForMonth()) {@o.getEffectiveOutgoingDay()} else {@o.outgoingDay}</span>
+                        <span style="font-size: 0.6rem; font-weight: 500; text-transform: uppercase;">Day</span>
+                      }
                     </div>
                     <div>
                       <div class="item-card-title">@o.name</div>
@@ -115,10 +156,19 @@
                     <i class="fas fa-university" style="color: var(--primary); font-size: 0.75rem;"></i>
                     @o.account.name
                   </span>
+                  @if(o.isYearly()) {
+                    @if(o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))) {
+                      <span class="badge-pill badge-warning"><i class="fas fa-bell"></i> Yearly (Due Now)</span>
+                    } else {
+                      <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);"><i class="fas fa-calendar"></i> Yearly (@o.getMonthName())</span>
+                    }
+                  } else {
+                    <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">Monthly</span>
+                  }
                   @if(o.isBill()) { <span class="badge-pill badge-warning">Shared Bill</span> }
                   @if(o.isRent()) { <span class="badge-pill badge-primary">Rent</span> }
                   @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">Savings Plan</span> }
-                  @if(o.isAdjustedForMonth()) {
+                  @if(!o.isYearly() && o.isAdjustedForMonth()) {
                     <span class="badge-pill badge-danger" title="Adjusted from @o.outgoingDay for short month or weekend">
                       <i class="fas fa-calendar-alt"></i> Clamped from @o.outgoingDay
                     </span>
@@ -151,10 +201,11 @@
           @helper.CSRF.formField
           <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Outgoing Name</label><br/>
           <input
-                  placeholder="e.g. Rent, Netflix, Council Tax"
+                  placeholder="e.g. Rent, Netflix, Car Insurance"
                   type="text"
                   name="name"
                   value='@outgoingForm.field("name").value()'
+                  required
           />
           <br />
           <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Cost (£)</label><br/>
@@ -166,16 +217,48 @@
                   pattern="[-+]?[0-9]*[.,]?[0-9]*"
                   name="cost"
                   value='@outgoingForm.field("cost").value()'
+                  required
           />
           <br />
+
+          <!-- Form Switch: Monthly vs Yearly frequency -->
+          <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Bill Frequency</label><br/>
+          <select id="outgoing-frequency" name="frequency" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg); color: var(--text-main); margin-bottom: 8px;">
+            <option value="monthly" @if(outgoingForm.field("outgoingMonth").value().isEmpty || outgoingForm.field("outgoingMonth").value().get == "" || outgoingForm.field("outgoingMonth").value().get == "0"){selected}>Monthly (Occurs every month)</option>
+            <option value="yearly" @if(outgoingForm.field("outgoingMonth").value().isDefined && outgoingForm.field("outgoingMonth").value().get != "" && outgoingForm.field("outgoingMonth").value().get != "0"){selected}>Yearly (Occurs once a year)</option>
+          </select>
+
+          <!-- Month of Year selector for Yearly bills -->
+          <div id="yearly-month-group" style="display: @if(outgoingForm.field("outgoingMonth").value().isDefined && outgoingForm.field("outgoingMonth").value().get != "" && outgoingForm.field("outgoingMonth").value().get != "0"){block}else{none}; margin-bottom: 8px;">
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Month of Year</label><br/>
+            <select id="outgoingMonth" name="outgoingMonth" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg); color: var(--text-main);">
+              <option value="" disabled @if(outgoingForm.field("outgoingMonth").value().isEmpty || outgoingForm.field("outgoingMonth").value().get == ""){selected}>Select Due Month</option>
+              <option value="1" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "1"){selected}>January</option>
+              <option value="2" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "2"){selected}>February</option>
+              <option value="3" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "3"){selected}>March</option>
+              <option value="4" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "4"){selected}>April</option>
+              <option value="5" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "5"){selected}>May</option>
+              <option value="6" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "6"){selected}>June</option>
+              <option value="7" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "7"){selected}>July</option>
+              <option value="8" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "8"){selected}>August</option>
+              <option value="9" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "9"){selected}>September</option>
+              <option value="10" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "10"){selected}>October</option>
+              <option value="11" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "11"){selected}>November</option>
+              <option value="12" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "12"){selected}>December</option>
+            </select>
+          </div>
+
           <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month (1-31)</label><br/>
           <input
                   placeholder="Day of month"
                   type="number"
+                  min="1"
+                  max="31"
                   inputmode="numeric"
                   pattern="[0-9]*"
                   name="outgoingDay"
                   value='@outgoingForm.field("outgoingDay").value()'
+                  required
           />
           <br />
           <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);" for="fromAccount">Paid From Account</label><br/>
@@ -202,5 +285,7 @@
     </div>
   </div>
 </div>
+
+<script src="@routes.Assets.versioned("javascripts/outgoings.js")"></script>
 
 }

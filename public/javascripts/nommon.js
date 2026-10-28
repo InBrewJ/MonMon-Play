@@ -40,20 +40,47 @@
     }
 
     // Update Store Locator Links
+    // Sainsbury's store finder SPA routes via exact coordinates: stores.sainsburys.co.uk/list/place/@lat,lon/1/all
+    // We resolve lat/lon via free UK postcodes.io API with instant fallback to Google Maps search.
     function updateStoreLinks(postcode) {
         var finderLink = document.getElementById('link-sainsburys-finder');
         var mapsLink = document.getElementById('link-google-maps');
         var cleanCode = (postcode || '').trim();
 
-        if (finderLink) {
-            finderLink.href = cleanCode
-                ? 'https://stores.sainsburys.co.uk/search?q=' + encodeURIComponent(cleanCode)
-                : 'https://stores.sainsburys.co.uk/';
-        }
         if (mapsLink) {
             mapsLink.href = cleanCode
                 ? 'https://www.google.com/maps/search/Sainsbury\'s+near+' + encodeURIComponent(cleanCode)
                 : 'https://www.google.com/maps/search/Sainsbury\'s';
+        }
+
+        if (finderLink) {
+            if (!cleanCode) {
+                finderLink.href = 'https://stores.sainsburys.co.uk/';
+                return;
+            }
+
+            // Sensible immediate fallback: Google Maps search until coordinates resolve
+            var fallbackMapsUrl = 'https://www.google.com/maps/search/Sainsbury\'s+near+' + encodeURIComponent(cleanCode);
+            finderLink.href = fallbackMapsUrl;
+
+            // Fetch coordinates from free, fast UK postcodes.io API (CORS-enabled, no key needed)
+            var cleanForApi = cleanCode.replace(/[^a-zA-Z0-9]/g, '');
+            fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(cleanForApi))
+                .then(function (res) {
+                    if (res.ok) return res.json();
+                    throw new Error('Postcode lookup status ' + res.status);
+                })
+                .then(function (data) {
+                    if (data && data.result && typeof data.result.latitude === 'number' && typeof data.result.longitude === 'number') {
+                        var lat = data.result.latitude.toFixed(5);
+                        var lon = data.result.longitude.toFixed(5);
+                        finderLink.href = 'https://stores.sainsburys.co.uk/list/place/@' + lat + ',' + lon + '/1/all';
+                    }
+                })
+                .catch(function () {
+                    // Keep fallback Google Maps link
+                    finderLink.href = fallbackMapsUrl;
+                });
         }
     }
 

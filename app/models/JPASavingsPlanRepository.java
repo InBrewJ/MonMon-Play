@@ -124,6 +124,16 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     }
 
     @Override
+    public CompletionStage<Boolean> moveItemUp(Long itemId) {
+        return supplyAsync(() -> wrap(em -> moveItem(em, itemId, true)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<Boolean> moveItemDown(Long itemId) {
+        return supplyAsync(() -> wrap(em -> moveItem(em, itemId, false)), executionContext);
+    }
+
+    @Override
     public CompletionStage<SavingsPlan> updatePercentage(Long planId, int percent) {
         return supplyAsync(() -> wrap(em -> updatePercentage(em, planId, percent)), executionContext);
     }
@@ -192,7 +202,27 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
                     .setParameter("userId", userId)
                     .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
                     .getResultList();
-            return active.isEmpty() ? null : active.get(0);
+            if (active.isEmpty()) {
+                return null;
+            }
+            SavingsPlan plan = active.get(0);
+            // Self-heal: ensure contiguous priorities 1..N across all active items
+            List<SavingsPlanItem> items = plan.getItems();
+            boolean needsRebalance = false;
+            for (int i = 0; i < items.size(); i++) {
+                if (items.get(i).getPriority() == null || items.get(i).getPriority() != (i + 1)) {
+                    needsRebalance = true;
+                    break;
+                }
+            }
+            if (needsRebalance) {
+                plan.rebalancePriorities();
+                for (SavingsPlanItem itm : items) {
+                    em.merge(itm);
+                }
+                em.merge(plan);
+            }
+            return plan;
         } catch (Exception e) {
             System.err.println("Error fetching active savings plan: " + e.getMessage());
             return null;
@@ -217,8 +247,12 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         item.setSavingsPlan(plan);
         item.setArchived(false);
         plan.addItem(item);
-        plan.setLastUpdated(System.currentTimeMillis());
+        plan.rebalancePriorities();
         em.persist(item);
+        for (SavingsPlanItem itm : plan.getItems()) {
+            em.merge(itm);
+        }
+        plan.setLastUpdated(System.currentTimeMillis());
         em.merge(plan);
         return item;
     }
@@ -279,16 +313,24 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         }
         item.setTargetAmount(targetAmount != null ? targetAmount : 0.0f);
         item.setMonthlyAmount(monthlyAmount != null ? monthlyAmount : 0.0f);
-        if (priority != null && priority > 0) {
-            item.setPriority(priority);
-        }
         SavingsPlan plan = item.getSavingsPlan();
         if (plan != null) {
-            plan.rebalancePriorities();
+            List<SavingsPlanItem> active = plan.getItems();
+            active.removeIf(i -> i.getId().equals(itemId));
+            int targetIdx = (priority != null && priority > 0) ? Math.min(priority - 1, active.size()) : active.size();
+            active.add(targetIdx, item);
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).setPriority(i + 1);
+                em.merge(active.get(i));
+            }
             plan.setLastUpdated(System.currentTimeMillis());
             em.merge(plan);
+        } else {
+            if (priority != null && priority > 0) {
+                item.setPriority(priority);
+            }
+            em.merge(item);
         }
-        em.merge(item);
         return item;
     }
 
@@ -298,6 +340,9 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
             SavingsPlan plan = item.getSavingsPlan();
             if (plan != null) {
                 plan.removeItemAndRebalanceQueue(item);
+                for (SavingsPlanItem itm : plan.getItems()) {
+                    em.merge(itm);
+                }
                 em.merge(plan);
             } else {
                 item.setArchived(true);
@@ -307,6 +352,23 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
             return true;
         }
         return false;
+    }
+
+    private Boolean moveItem(EntityManager em, Long itemId, boolean up) {
+        SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
+        if (item == null || item.getSavingsPlan() == null) {
+            return false;
+        }
+        SavingsPlan plan = item.getSavingsPlan();
+        boolean moved = up ? plan.moveItemUp(itemId) : plan.moveItemDown(itemId);
+        if (moved) {
+            for (SavingsPlanItem itm : plan.getItems()) {
+                em.merge(itm);
+            }
+            plan.setLastUpdated(System.currentTimeMillis());
+            em.merge(plan);
+        }
+        return moved;
     }
 
     private SavingsPlan updatePercentage(EntityManager em, Long planId, int percent) {

@@ -32,6 +32,10 @@ public interface SavingsPlanRepository {
 
     CompletionStage<Boolean> archiveItem(Long itemId);
 
+    CompletionStage<Boolean> moveItemUp(Long itemId);
+
+    CompletionStage<Boolean> moveItemDown(Long itemId);
+
     CompletionStage<SavingsPlan> updatePercentage(Long planId, int percent);
 
     CompletionStage<SavingsPlan> updatePercentageAndScaleItems(Long planId, int percent, Float incomingTotal);

@@ -231,11 +231,23 @@
                     </div>
                 </div>
 
+                <!-- Priority & Interlocked Sliders Floating Info Guide -->
+                <div class="priority-info-box" style="margin-bottom: 1rem; padding: 10px 14px; background: rgba(59, 130, 246, 0.08); border-left: 4px solid var(--primary); border-radius: 6px; font-size: 0.82rem; color: var(--text-main);">
+                    <div style="font-weight: 700; margin-bottom: 2px;">
+                        <i class="fas fa-info-circle" style="color: var(--primary); margin-right: 5px;"></i> Priority Queue & Interlocked Sliders Guide
+                    </div>
+                    <ul style="margin: 4px 0 0 1.2rem; padding: 0; line-height: 1.45;">
+                        <li><b>Queue Priority (P1, P2...):</b> Items are ranked in payoff order. <b>P1</b> is the top-priority target. Use the <b>▲</b> and <b>▼</b> arrows in each row to shunt items up or down.</li>
+                        <li><b>Interlocked Sliders:</b> Adjusting any unlocked slider dynamically reallocates savings budget across other unlocked items so the total strictly matches your target pot.</li>
+                        <li><b>Queue Rollover:</b> When an item is paid off or deleted, 100% of its freed monthly budget automatically cascades into the highest-priority remaining item (<b>P1</b>).</li>
+                    </ul>
+                </div>
+
                 <div style="overflow-x: auto;">
                     <table class="w3-table w3-striped savings-plan-table" style="width: 100%; font-size: 0.9rem;">
                         <thead>
                             <tr style="border-bottom: 2px solid var(--border-color); text-align: left;">
-                                <th style="padding: 10px 8px; width: 60px;">Queue</th>
+                                <th style="padding: 10px 8px; width: 90px;">Queue <i class="fas fa-question-circle" style="color: var(--primary); font-size: 0.75rem;" title="1 = Top priority. Arrows shunt position in queue."></i></th>
                                 <th style="padding: 10px 8px;">Item Name</th>
                                 <th style="padding: 10px 8px;">Type</th>
                                 <th style="padding: 10px 8px;">Account</th>
@@ -259,9 +271,25 @@
                                     data-base-monthly="@item.getMonthlyAmount()"
                                     style="border-bottom: 1px solid var(--border-color);">
                                     <td style="padding: 10px 8px;">
-                                        <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-weight: 700; color: var(--primary); font-size: 0.78rem;">
-                                            P@item.getPriority()
-                                        </span>
+                                        <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-weight: 700; color: var(--primary); font-size: 0.78rem;">
+                                                P@item.getPriority()
+                                            </span>
+                                            <div style="display: inline-flex; flex-direction: column; gap: 1px;">
+                                                <form method="POST" action="/savingsPlan/moveUp/@item.getId()" style="margin: 0; padding: 0; display: inline;">
+                                                    @helper.CSRF.formField
+                                                    <button type="submit" title="Shunt item up in priority queue" @if(item.getPriority() <= 1){disabled} style="border: none; background: transparent; cursor: @if(item.getPriority() <= 1){default}else{pointer}; padding: 1px 3px; font-size: 0.75rem; color: @if(item.getPriority() <= 1){var(--border-color)}else{var(--primary)}; line-height: 1;">
+                                                        <i class="fas fa-chevron-up"></i>
+                                                    </button>
+                                                </form>
+                                                <form method="POST" action="/savingsPlan/moveDown/@item.getId()" style="margin: 0; padding: 0; display: inline;">
+                                                    @helper.CSRF.formField
+                                                    <button type="submit" title="Shunt item down in priority queue" @if(item.getPriority() >= activePlan.getItems().size()){disabled} style="border: none; background: transparent; cursor: @if(item.getPriority() >= activePlan.getItems().size()){default}else{pointer}; padding: 1px 3px; font-size: 0.75rem; color: @if(item.getPriority() >= activePlan.getItems().size()){var(--border-color)}else{var(--primary)}; line-height: 1;">
+                                                        <i class="fas fa-chevron-down"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
                                     </td>
                                     <td style="padding: 10px 8px; font-weight: 600;">
                                         @item.getName()
@@ -529,6 +557,7 @@
                                inputmode="numeric" pattern="[0-9]*"
                                value='@{if(editing && editingItem != null) String.valueOf(editingItem.getPriority()) else String.valueOf(activePlan.getItems().size() + 1)}'
                                style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);" />
+                        <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 2px;">Target queue rank (1 = Top priority). Entering a rank cleanly shifts other items.</small>
                     </div>
                 </div>
 

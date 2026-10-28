@@ -117,6 +117,7 @@ public class JPAOutgoingRepository implements OutgoingRepository {
         toUpdate.setBill(outgoing.isBill());
         toUpdate.setRent(outgoing.isRent());
         toUpdate.setOutgoingDay(outgoing.getOutgoingDay());
+        toUpdate.setOutgoingMonth(outgoing.getOutgoingMonth());
         toUpdate.setAccount(outgoing.getAccount());
         em.persist(toUpdate);
         return toUpdate;

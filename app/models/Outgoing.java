@@ -22,6 +22,9 @@ public class Outgoing {
     @Column(name = "OUTGOINGDAY")
     public int outgoingDay;
 
+    @Column(name = "OUTGOINGMONTH")
+    public Integer outgoingMonth; // null or 0 for monthly (every month); 1-12 for Jan-Dec
+
     public boolean bill = false;
     public boolean rent = false;
     public boolean archived = false;
@@ -96,6 +99,51 @@ public class Outgoing {
         this.outgoingDay = outgoingDay;
     }
 
+    public Integer getOutgoingMonth() {
+        return outgoingMonth;
+    }
+
+    public void setOutgoingMonth(Integer outgoingMonth) {
+        this.outgoingMonth = (outgoingMonth != null && outgoingMonth > 0 && outgoingMonth <= 12) ? outgoingMonth : null;
+    }
+
+    public boolean isYearly() {
+        return outgoingMonth != null && outgoingMonth > 0;
+    }
+
+    public boolean isDueInMonth(int month) {
+        return !isYearly() || (this.outgoingMonth != null && this.outgoingMonth == month);
+    }
+
+    public boolean isDueInMonth(java.time.LocalDate asOf) {
+        if (asOf == null) {
+            return isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK").getMonthValue());
+        }
+        return isDueInMonth(asOf.getMonthValue());
+    }
+
+    public String getFrequencyLabel() {
+        if (!isYearly()) {
+            return "Monthly";
+        }
+        try {
+            return java.time.Month.of(this.outgoingMonth).getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.UK);
+        } catch (Exception e) {
+            return "Yearly (" + this.outgoingMonth + ")";
+        }
+    }
+
+    public String getMonthName() {
+        if (!isYearly()) {
+            return "Monthly";
+        }
+        try {
+            return java.time.Month.of(this.outgoingMonth).getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.UK);
+        } catch (Exception e) {
+            return "Month " + this.outgoingMonth;
+        }
+    }
+
     public boolean isArchived() {
         return archived;
     }
@@ -109,17 +157,25 @@ public class Outgoing {
     // and filter before reducing here...
     // we could also have other static methods here
     // that take things like bill share/rent share into account.
-    // God, this needs tests
     public static Float getTotalOutgoings(List<Outgoing> outgoings) {
+        return getTotalOutgoings(outgoings, helpers.BankHolidayHelper.nowInRegion("UK"));
+    }
+
+    public static Float getTotalOutgoings(List<Outgoing> outgoings, java.time.LocalDate asOf) {
         return outgoings
                 .stream()
+                .filter(o -> o != null && o.isDueInMonth(asOf))
                 .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 
     public static Float getTotalOutgoingsWithoutHidden(List<Outgoing> outgoings) {
+        return getTotalOutgoingsWithoutHidden(outgoings, helpers.BankHolidayHelper.nowInRegion("UK"));
+    }
+
+    public static Float getTotalOutgoingsWithoutHidden(List<Outgoing> outgoings, java.time.LocalDate asOf) {
         return outgoings
                 .stream()
-                .filter(o -> !o.isHiddenFromTotal())
+                .filter(o -> o != null && !o.isHiddenFromTotal() && o.isDueInMonth(asOf))
                 .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 

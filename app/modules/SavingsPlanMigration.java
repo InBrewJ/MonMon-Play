@@ -89,6 +89,16 @@ public class SavingsPlanMigration {
                 System.out.println("SavingsPlanMigration :: error adding column " + colDef + ": " + e.getMessage());
             }
         }
-        System.out.println("SavingsPlanMigration :: completed schema verification for savings_plan and savings_plan_item");
+
+        // 5. Ensure outgoing table has outgoingmonth column
+        try {
+            jpaApi.withTransaction((java.util.function.Consumer<javax.persistence.EntityManager>) em -> {
+                em.createNativeQuery("ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS outgoingmonth INTEGER").executeUpdate();
+            });
+        } catch (Exception e) {
+            System.out.println("SavingsPlanMigration :: outgoingmonth column check: " + e.getMessage());
+        }
+
+        System.out.println("SavingsPlanMigration :: completed schema verification for savings_plan, savings_plan_item, and outgoing");
     }
 }

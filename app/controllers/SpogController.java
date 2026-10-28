@@ -180,7 +180,10 @@ public class SpogController extends Controller {
             }
         }
 
-        Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings));
+        String region = request.session().get("region").orElse("UK");
+        LocalDate today = helpers.BankHolidayHelper.nowInRegion(region);
+
+        Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings, today));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list(sup.getUserId())));
         List<Outgoing> rents = repoListToList(outgoingRepository.rents(sup.getUserId()));
         // TODO: this only deals with one single rent payment
@@ -209,9 +212,6 @@ public class SpogController extends Controller {
         System.out.println("Savings plan cost :: " + savingsPlanCost);
         surplus -= savingsPlanCost;
         int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
-
-        String region = request.session().get("region").orElse("UK");
-        LocalDate today = helpers.BankHolidayHelper.nowInRegion(region);
 
         // Scratch
         List<Outgoing> completedOutgoings = repoListToList(outgoingRepository.alreadyPaid(today, nextPayDay, sup.getUserId()));

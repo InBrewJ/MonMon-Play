@@ -71,8 +71,28 @@ public class ModelHelpers {
 
     public static List<Outgoing> findYetToPay(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
         List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
-        List<Outgoing> remaining = new ArrayList<>(outgoings);
-        remaining.removeAll(paid);
+        List<Outgoing> remaining = new ArrayList<>();
+        LocalDate nextPayday = findNextPaydayDate(asOf, paydayDay);
+        for (Outgoing o : outgoings) {
+            if (paid.contains(o)) {
+                continue;
+            }
+            if (o.isYearly()) {
+                boolean isDueInWindow = false;
+                LocalDate d = asOf;
+                while (d.isBefore(nextPayday)) {
+                    if (o.getOutgoingMonth() != null && o.getOutgoingMonth() == d.getMonthValue()) {
+                        isDueInWindow = true;
+                        break;
+                    }
+                    d = d.plusDays(1);
+                }
+                if (!isDueInWindow) {
+                    continue;
+                }
+            }
+            remaining.add(o);
+        }
         return remaining;
     }
 
@@ -81,6 +101,9 @@ public class ModelHelpers {
         LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);
         while (!searchDate.isAfter(asOf)) {
             for (Outgoing o : outgoings) {
+                if (o.isYearly() && (o.getOutgoingMonth() == null || o.getOutgoingMonth() != searchDate.getMonthValue())) {
+                    continue;
+                }
                 int effectiveDay = getEffectiveOutgoingDay(o.getOutgoingDay(), searchDate);
                 if (effectiveDay == searchDate.getDayOfMonth() && !found.contains(o)) {
                     found.add(o);
@@ -132,6 +155,7 @@ public class ModelHelpers {
                 copy.setRent(o.isRent());
                 copy.setHiddenFromTotal(o.isHiddenFromTotal());
                 copy.setOutgoingDay(o.getOutgoingDay());
+                copy.setOutgoingMonth(o.getOutgoingMonth());
                 float cost = o.getCost();
                 if (firstBillShare != null && o.isBill()) {
                     cost = cost * firstBillShare.getSplit();

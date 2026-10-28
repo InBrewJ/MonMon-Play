@@ -249,4 +249,62 @@ public class ModelHelpersTest {
         // Outgoings = 200 * 0.20 = 40. Allowance = 2000 - 40 = 1960.
         assertThat(allowance).isEqualTo(1960.0f);
     }
+
+    @Test
+    public void testYearlyOutgoingsOnlyRollAroundInDueMonth() {
+        Outgoing monthlyGym = new Outgoing();
+        monthlyGym.setName("Gym");
+        monthlyGym.setCost(40f);
+        monthlyGym.setOutgoingDay(5);
+        monthlyGym.setOutgoingMonth(null); // Monthly
+
+        Outgoing yearlyCarInsurance = new Outgoing();
+        yearlyCarInsurance.setName("Car Insurance");
+        yearlyCarInsurance.setCost(600f);
+        yearlyCarInsurance.setOutgoingDay(15);
+        yearlyCarInsurance.setOutgoingMonth(10); // Due in October
+
+        Outgoing yearlyPrime = new Outgoing();
+        yearlyPrime.setName("Amazon Prime");
+        yearlyPrime.setCost(95f);
+        yearlyPrime.setOutgoingDay(20);
+        yearlyPrime.setOutgoingMonth(11); // Due in November
+
+        assertThat(monthlyGym.isYearly()).isFalse();
+        assertThat(yearlyCarInsurance.isYearly()).isTrue();
+        assertThat(yearlyCarInsurance.getMonthName()).isEqualTo("October");
+
+        // When asOf is in October 2026:
+        LocalDate octoberDate = LocalDate.of(2026, 10, 10);
+        assertThat(monthlyGym.isDueInMonth(octoberDate)).isTrue();
+        assertThat(yearlyCarInsurance.isDueInMonth(octoberDate)).isTrue();
+        assertThat(yearlyPrime.isDueInMonth(octoberDate)).isFalse();
+
+        List<Outgoing> all = List.of(monthlyGym, yearlyCarInsurance, yearlyPrime);
+
+        // Total outgoings in October should include Gym (£40) + Car Insurance (£600) = £640
+        // Amazon Prime (£95) is excluded because it's due in November
+        Float octTotal = Outgoing.getTotalOutgoings(all, octoberDate);
+        assertThat(octTotal).isEqualTo(640.0f);
+
+        // In November: Gym (£40) + Amazon Prime (£95) = £135
+        LocalDate novDate = LocalDate.of(2026, 11, 10);
+        Float novTotal = Outgoing.getTotalOutgoings(all, novDate);
+        assertThat(novTotal).isEqualTo(135.0f);
+
+        // In December: Only Gym (£40)
+        LocalDate decDate = LocalDate.of(2026, 12, 10);
+        Float decTotal = Outgoing.getTotalOutgoings(all, decDate);
+        assertThat(decTotal).isEqualTo(40.0f);
+
+        // Test findAlreadyPaid / findYetToPay
+        // Nominal payday 1st of month. On Oct 16 (after Car Insurance on 15th):
+        LocalDate oct16 = LocalDate.of(2026, 10, 16);
+        List<Outgoing> paidOct16 = ModelHelpers.findAlreadyPaid(all, oct16, 1);
+        assertThat(paidOct16).extracting(Outgoing::getName).containsExactlyInAnyOrder("Gym", "Car Insurance");
+
+        List<Outgoing> yetToPayOct16 = ModelHelpers.findYetToPay(all, oct16, 1);
+        // Amazon Prime is November, so nothing left yet to pay in October cycle
+        assertThat(yetToPayOct16).isEmpty();
+    }
 }

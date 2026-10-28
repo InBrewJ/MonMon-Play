@@ -385,6 +385,18 @@ public class SavingsPlanController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> moveItemUp(Long id, final Http.Request request) {
+        return savingsPlanRepository.moveItemUp(id)
+                .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> moveItemDown(Long id, final Http.Request request) {
+        return savingsPlanRepository.moveItemDown(id)
+                .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> toggleLock(Long id, final Http.Request request) {
         return savingsPlanRepository.toggleLock(id)
                 .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
