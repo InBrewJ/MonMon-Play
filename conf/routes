@@ -107,6 +107,7 @@ POST    /bank/sync/account/:id                      controllers.BankSyncControll
 POST    /bank/statement/upload                      controllers.BankSyncController.uploadStatement(req: Request)
 GET     /bank/transactions                          controllers.BankSyncController.transactions(req: Request)
 POST    /bank/transactions/clear/:id                controllers.BankSyncController.clearAccountTransactions(id: Long, req: Request)
+POST    /bank/account/:id/toggle-mode               controllers.BankSyncController.toggleAccountLedgerMode(id: Long, req: Request)
 POST    /bank/plaid/link-token                      controllers.BankSyncController.createPlaidLinkToken(req: Request)
 POST    /bank/plaid/exchange-token                  controllers.BankSyncController.exchangePlaidPublicToken(req: Request)
 POST    /bank/plaid/item/delete/:id                 controllers.BankSyncController.deletePlaidItem(id: Long, req: Request)

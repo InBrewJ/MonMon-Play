@@ -192,7 +192,11 @@ public class HistoricSpentCalculator {
                 double startBal = getAccountStartBalance(acc, cycleStartSec, cycleEndSec, accInflow);
                 double endBal = getAccountEndBalance(acc, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
                 double accSpent;
-                if (isCurrent && tblSpentByAccount != null && tblSpentByAccount.containsKey(acc.getId())) {
+                boolean isTblActive = acc.getLedgerMode() == Account.LedgerMode.TBL
+                        && acc.getType() != Account.AccountType.PENSION
+                        && acc.getType() != Account.AccountType.LOAN;
+
+                if (isCurrent && isTblActive && tblSpentByAccount != null && tblSpentByAccount.containsKey(acc.getId())) {
                     accSpent = round2(tblSpentByAccount.get(acc.getId()));
                 } else {
                     accSpent = calculateAccountNetSpent(acc, cycleStartSec, effectiveEndSec, startBal, endBal);

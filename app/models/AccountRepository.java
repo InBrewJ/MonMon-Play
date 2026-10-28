@@ -22,4 +22,6 @@ public interface AccountRepository {
     CompletionStage<Account> findById(int accountId);
 
     CompletionStage<Account> update(int accountId, Account account);
+
+    CompletionStage<Account> toggleLedgerMode(Long accountId);
 }

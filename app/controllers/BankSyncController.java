@@ -234,6 +234,19 @@ public class BankSyncController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> toggleAccountLedgerMode(Long id, final Http.Request request) {
+        return accountRepository.toggleLedgerMode(id).thenApplyAsync(acc -> {
+            if (acc == null) {
+                return redirect(routes.BankSyncController.index()).flashing("error", "Account not found");
+            }
+            String modeName = acc.getLedgerMode() == Account.LedgerMode.TBL ? "Transaction-Based Ledger (TBL / Accurate Mode)" : "Available-Based Ledger (ABL / Balance Delta)";
+            return redirect(routes.BankSyncController.index()).flashing(
+                    "info",
+                    "Switched " + acc.getName() + " to " + modeName + ". All historical balances and transactions remain 100% preserved.");
+        }, ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> transactions(final Http.Request request) {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
         return bankTransactionRepository.listRecent(sup.getUserId(), 100)

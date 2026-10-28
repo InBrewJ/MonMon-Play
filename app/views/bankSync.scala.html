@@ -209,6 +209,8 @@
                             <td>
                                 @if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
                                     <span style="color: #64748b; font-size: 0.85rem;"><i class="fas fa-hand-paper"></i> ABL (Manual Delta)</span>
+                                } else if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
+                                    <span style="color: #d97706; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-coins"></i> ABL (Balance Delta)</span>
                                 } else {
                                     <span style="color: #16a34a; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-check"></i> TBL (Accurate Mode)</span>
                                 }
@@ -216,13 +218,26 @@
                             <td>
                                 @if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
                                     Manual Entry
+                                } else if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
+                                    Balance Snapshots
                                 } else {
                                     @providerName / Statement
                                 }
                             </td>
                             <td style="text-align: right;">
                                 @if(acc.getType() != models.Account.AccountType.PENSION && acc.getType() != models.Account.AccountType.LOAN) {
-                                    <div style="display: inline-flex; gap: 6px;">
+                                    <div style="display: inline-flex; gap: 6px; align-items: center;">
+                                        <form action="/bank/account/@acc.getId()/toggle-mode" method="POST" style="margin: 0;">
+                                            @if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
+                                                <button type="submit" class="w3-button w3-tiny w3-round w3-pale-green w3-hover-green" title="Switch to TBL Accurate Mode (retains all balance history)">
+                                                    <i class="fas fa-exchange-alt"></i> Use TBL
+                                                </button>
+                                            } else {
+                                                <button type="submit" class="w3-button w3-tiny w3-round w3-pale-yellow w3-hover-amber" title="Switch to ABL Balance Mode (retains all transaction history)">
+                                                    <i class="fas fa-exchange-alt"></i> Use ABL
+                                                </button>
+                                            }
+                                        </form>
                                         <form action="/bank/sync/account/@acc.getId()" method="POST" style="margin: 0;">
                                             <input type="hidden" name="provider" value="@providerName" />
                                             <button type="submit" class="w3-button w3-tiny w3-indigo w3-round" title="Sync this account">

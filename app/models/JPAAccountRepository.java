@@ -21,11 +21,46 @@ public class JPAAccountRepository implements AccountRepository {
 
     private final JPAApi jpaApi;
     private final DatabaseExecutionContext executionContext;
+    private static volatile boolean schemaEnsured = false;
 
     @Inject
     public JPAAccountRepository(JPAApi jpaApi, DatabaseExecutionContext executionContext) {
         this.jpaApi = jpaApi;
         this.executionContext = executionContext;
+        ensureSchema(jpaApi);
+    }
+
+    private static void ensureSchema(JPAApi jpaApi) {
+        if (!schemaEnsured) {
+            synchronized (JPAAccountRepository.class) {
+                if (!schemaEnsured) {
+                    try {
+                        jpaApi.withTransaction(em -> {
+                            try {
+                                em.createNativeQuery("ALTER TABLE account ADD COLUMN IF NOT EXISTS ledger_mode VARCHAR(32)").executeUpdate();
+                            } catch (Exception ignored) {
+                            }
+                        });
+                        schemaEnsured = true;
+                    } catch (Exception e) {
+                        schemaEnsured = true;
+                    }
+                }
+            }
+        }
+    }
+
+    @Override
+    public CompletionStage<Account> toggleLedgerMode(Long accountId) {
+        return supplyAsync(() -> wrap(em -> {
+            Account acc = em.find(Account.class, accountId);
+            if (acc != null) {
+                Account.LedgerMode current = acc.getLedgerMode();
+                acc.setLedgerMode(current == Account.LedgerMode.ABL ? Account.LedgerMode.TBL : Account.LedgerMode.ABL);
+                em.merge(acc);
+            }
+            return acc;
+        }), executionContext);
     }
 
     @Override

@@ -20,6 +20,11 @@ public class Account {
         LOAN
     }
 
+    public enum LedgerMode {
+        ABL, // Available-Based Ledger (balance delta snapshot)
+        TBL  // Transaction-Based Ledger (line-item debits)
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     public Long id;
@@ -54,6 +59,18 @@ public class Account {
     public Float interestRate = 0f;
 
     public boolean archived = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ledger_mode")
+    public LedgerMode ledgerMode = LedgerMode.TBL;
+
+    public LedgerMode getLedgerMode() {
+        return ledgerMode != null ? ledgerMode : LedgerMode.TBL;
+    }
+
+    public void setLedgerMode(LedgerMode ledgerMode) {
+        this.ledgerMode = ledgerMode;
+    }
 
     public List<Balance> getBalances() {
         return balances;

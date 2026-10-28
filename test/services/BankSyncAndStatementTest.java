@@ -235,6 +235,23 @@ public class BankSyncAndStatementTest {
         );
         HistoricCycleSpent currentCycleTbl = tblVm.getCycles().get(0);
         assertThat(currentCycleTbl.getTotalSpent()).isEqualTo(342.50);
+
+        // 3. User switches account explicitly to ABL mode:
+        // Even though transactions still exist in tblSpent, the engine uses ABL (300.0)
+        // and all existing balance data remains completely intact and untouched!
+        acc.setLedgerMode(Account.LedgerMode.ABL);
+        HistoricSpentViewModel revertedAblVm = HistoricSpentCalculator.calculate(
+                Collections.singletonList(monthlyPot),
+                Collections.singletonList(acc),
+                Collections.emptyList(),
+                1,
+                today,
+                zone,
+                500f,
+                tblSpent
+        );
+        assertThat(revertedAblVm.getCycles().get(0).getTotalSpent()).isEqualTo(300.0);
+        assertThat(acc.getBalances()).hasSize(2); // Balance data 100% preserved!
     }
 
     private static class InMemoryPlaidItemRepository implements models.PlaidItemRepository {
