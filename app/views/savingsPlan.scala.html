@@ -431,30 +431,45 @@
 
         <!-- Add / Amend Item Form Card -->
         <div class="w3-card w3-padding w3-margin-bottom @if(editing){editing-mode}" id="edit-form" style="border-radius: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
                 <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">
                     <i class="fas fa-@{if(editing) "pen" else "plus-circle"}" style="color: var(--primary); margin-right: 6px;"></i>
                     @{if(editing) "Amend Sliced Item" else "Slice up Target: Add Item"}
                 </h3>
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-size: 0.85rem; padding: 4px 10px;">
-                        Unallocated: <strong id="form-unallocated-val" style="color: var(--primary);">£@activePlan.getUnallocatedAmount(incomingTotal)</strong>
-                    </span>
-                    @if(!editing) {
-                        <form method="POST" action="/savingsPlan/addAllCreditCards" style="margin: 0; display: inline;">
-                            @helper.CSRF.formField
-                            <button type="submit" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; cursor: pointer;" title="Add all credit cards with a balance into your priority queue">
-                                <i class="fas fa-credit-card" style="color: var(--primary); margin-right: 4px;"></i>Add All Credit Cards
-                            </button>
-                        </form>
-                        <form method="POST" action="/savingsPlan/addAllOverdrafts" style="margin: 0; display: inline;">
-                            @helper.CSRF.formField
-                            <button type="submit" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; cursor: pointer;" title="Add all active overdrafts directly into your savings plan">
-                                <i class="fas fa-layer-group" style="color: var(--primary); margin-right: 4px;"></i>Add All Overdrafts
-                            </button>
-                        </form>
-                    }
-                </div>
+                <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-size: 0.85rem; padding: 4px 10px;">
+                    Unallocated: <strong id="form-unallocated-val" style="color: var(--primary);">£@activePlan.getUnallocatedAmount(incomingTotal)</strong>
+                </span>
+            </div>
+
+            <!-- Single unified row of action buttons under heading, stacking on mobile -->
+            <div class="savings-plan-actions-row">
+                @if(!activePlan.getItems().isEmpty()) {
+                    <form method="POST" action="/savingsPlan/balanceEvenly/@activePlan.getId()" class="plan-action-form">
+                        @helper.CSRF.formField
+                        <button type="submit" class="w3-button w3-round w3-small plan-action-btn" title="Distribute target pot evenly across all unlocked items">
+                            <i class="fas fa-equals" style="margin-right: 4px; color: var(--primary);"></i> Balance evenly
+                        </button>
+                    </form>
+                }
+                @if(!editing) {
+                    <form method="POST" action="/savingsPlan/addAllOverdrafts" class="plan-action-form">
+                        @helper.CSRF.formField
+                        <button type="submit" class="w3-button w3-round w3-small plan-action-btn" title="Add all active overdrafts directly into your savings plan">
+                            <i class="fas fa-layer-group" style="margin-right: 4px; color: var(--primary);"></i> Add all overdrafts
+                        </button>
+                    </form>
+                    <form method="POST" action="/savingsPlan/addAllCreditCards" class="plan-action-form">
+                        @helper.CSRF.formField
+                        <button type="submit" class="w3-button w3-round w3-small plan-action-btn" title="Add all credit cards with a balance into your priority queue">
+                            <i class="fas fa-credit-card" style="margin-right: 4px; color: var(--primary);"></i> Add all credit cards
+                        </button>
+                    </form>
+                }
+                <button type="button" id="btn-allocate-max" class="w3-button w3-round w3-small plan-action-btn"
+                        title="Allocate the entire remaining unallocated amount to this item"
+                        data-unallocated="@activePlan.getUnallocatedAmount(incomingTotal)">
+                    <i class="fas fa-arrow-down" style="margin-right: 4px; color: var(--primary);"></i> Allocate max (<span id="btn-allocate-max-label">£@activePlan.getUnallocatedAmount(incomingTotal)</span>)
+                </button>
             </div>
 
             <form method="POST"
@@ -542,14 +557,7 @@
                     </div>
 
                     <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-                            <label for="item-monthly-amount" style="font-weight: 600;">Monthly Sliced Amount (£)</label>
-                            <button type="button" id="btn-allocate-max" class="w3-button w3-tiny w3-round"
-                                    style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--primary); font-weight: 600; cursor: pointer; padding: 2px 6px;"
-                                    data-unallocated="@activePlan.getUnallocatedAmount(incomingTotal)">
-                                <i class="fas fa-arrow-down" style="margin-right: 3px;"></i>Allocate Max (<span id="btn-allocate-max-label">£@activePlan.getUnallocatedAmount(incomingTotal)</span>)
-                            </button>
-                        </div>
+                        <label for="item-monthly-amount" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Monthly Sliced Amount (£)</label>
                         <input type="number" step="0.01" min="0.01" id="item-monthly-amount" name="monthlyAmount" required
                                inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*"
                                value='@{if(editing && editingItem != null) String.valueOf(editingItem.getMonthlyAmount()) else ""}'

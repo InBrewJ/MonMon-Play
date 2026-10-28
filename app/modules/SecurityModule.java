@@ -53,7 +53,7 @@ public class SecurityModule extends AbstractModule {
 
         // callback
         final CallbackController callbackController = new CallbackController();
-        callbackController.setDefaultUrl("/");
+        callbackController.setDefaultUrl("/spog");
         callbackController.setRenewSession(true);
         bind(CallbackController.class).toInstance(callbackController);
 

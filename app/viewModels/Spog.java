@@ -249,6 +249,10 @@ public class Spog {
         return getBaselineDiffTotal() < 0;
     }
 
+    public boolean isFreshAccount() {
+        return this.allAccounts == null || this.allAccounts.isEmpty();
+    }
+
     public Double getAbsoluteBaselineDiffTotal() {
         return round2(Math.abs(getBaselineDiffTotal()));
     }

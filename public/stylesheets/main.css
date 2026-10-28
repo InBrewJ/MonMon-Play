@@ -891,13 +891,13 @@ hr {
   transform: translateY(0) scale(0.98);
 }
 
-/* Floating Action Button for Ed (Mobile) */
+/* Floating Action Button for Ed (Desktop & Mobile) */
 .fab-ed {
   position: fixed;
   bottom: 24px;
   left: 24px;
   z-index: 990;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 54px;
@@ -1421,4 +1421,54 @@ hr {
   border-radius: 8px;
   padding: 12px;
 }
+
+/* Savings Plan Actions Toolbar (Row on desktop, Stack on mobile) */
+.savings-plan-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0.5rem 0 1.25rem 0;
+}
+
+.savings-plan-actions-row .plan-action-form {
+  margin: 0;
+  display: inline-block;
+}
+
+.savings-plan-actions-row .plan-action-btn {
+  background: var(--card-bg-subtle);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.savings-plan-actions-row .plan-action-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--card-bg);
+}
+
+@media (max-width: 600px) {
+  .savings-plan-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .savings-plan-actions-row .plan-action-form,
+  .savings-plan-actions-row .plan-action-form form,
+  .savings-plan-actions-row .plan-action-btn {
+    width: 100%;
+    display: block;
+    text-align: center;
+    box-sizing: border-box;
+  }
+}
+
 

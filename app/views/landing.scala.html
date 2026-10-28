@@ -1,0 +1,598 @@
+@import play.mvc.Http.Request
+@(request: Http.Request)
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    
+    <!-- SEO & Metadata -->
+    <title>MonMon — Intelligent Single-Pane-of-Glass Personal Finance & NomMon Meal Planning</title>
+    <meta name="description" content="MonMon is your personal finance command center. Track your real-time daily spending allowance, automate debt payoff, and budget grocery shopping with NomMon." />
+    <meta name="keywords" content="personal finance, daily budget, cashflow runway, single pane of glass, spog, debt payoff, savings plan, grocery budget, NomMon, meal planning, Mistral AI" />
+    <meta name="author" content="MonMon" />
+    <meta name="robots" content="index, follow" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="MonMon — Intelligent Single Pane of Glass Personal Finance" />
+    <meta property="og:description" content="Master your day-to-day cashflow. Know exactly how much you can spend per day between paydays, slice up savings goals, and plan meals with NomMon." />
+    <meta property="og:image" content="@routes.Assets.versioned("images/monmon-monster.svg")" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MonMon — Intelligent Personal Cashflow & NomMon" />
+    <meta name="twitter:description" content="Real-time daily budget pacing, debt payoff queues, and AI meal planning." />
+    <meta name="twitter:image" content="@routes.Assets.versioned("images/monmon-monster.svg")" />
+
+    <!-- Structured Data (JSON-LD) for Search Engines -->
+    <script type="application/ld+json">
+    {
+      "@@context": "https://schema.org",
+      "@@type": "WebApplication",
+      "name": "MonMon",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "All",
+      "description": "Single-Pane-of-Glass personal cashflow, daily spend pacing, debt payoff slicing, and NomMon grocery meal planner.",
+      "offers": {
+        "@@type": "Offer",
+        "price": "0",
+        "priceCurrency": "GBP"
+      }
+    }
+    </script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="@routes.Assets.versioned("images/favicon.svg")">
+    <link rel="shortcut icon" type="image/png" href="@routes.Assets.versioned("images/favicon.png")">
+
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" integrity="sha512-HK5fgLBL+xu6dm/Ii3z4xhlSUyZgTT9tuc/hSrtw6uzJOvgRr2a9jyxxT1ely+B+xFAmJKVSTbpM/CuL7qxO8w==" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css" />
+    <link href="@routes.Assets.versioned("stylesheets/main.css")" rel="stylesheet" type="text/css" />
+
+    <!-- Theme Initialization -->
+    <script>
+        (function() {
+            try {
+                var savedTheme = localStorage.getItem('monmon-theme');
+                var theme = savedTheme ? savedTheme : 'dark';
+                document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+
+    <style>
+        .landing-header {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: var(--nav-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.85rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .landing-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text-main);
+            font-weight: 800;
+            font-size: 1.35rem;
+            letter-spacing: -0.02em;
+        }
+        .landing-brand img {
+            width: 36px;
+            height: 36px;
+        }
+        .landing-nav-links {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .landing-nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+        .landing-nav-links a:hover {
+            color: var(--primary);
+        }
+        .btn-landing-login {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--primary);
+            color: #ffffff !important;
+            font-weight: 700;
+            font-size: 0.95rem;
+            padding: 8px 18px;
+            border-radius: 8px;
+            text-decoration: none;
+            box-shadow: 0 3px 10px rgba(79, 70, 229, 0.35);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .btn-landing-login:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 16px rgba(79, 70, 229, 0.5);
+            color: #ffffff;
+        }
+        .hero-section {
+            padding: 5rem 1.5rem 4rem 1.5rem;
+            text-align: center;
+            max-width: 950px;
+            margin: 0 auto;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 14px;
+            border-radius: 9999px;
+            background: var(--primary-light);
+            border: 1px solid rgba(79, 70, 229, 0.3);
+            color: var(--primary);
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+        .hero-title {
+            font-size: 3rem;
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -0.03em;
+            color: var(--text-main);
+            margin: 0 0 1.25rem 0;
+        }
+        .hero-highlight {
+            background: linear-gradient(135deg, var(--primary) 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero-subtext {
+            font-size: 1.2rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+            margin: 0 auto 2.25rem auto;
+            max-width: 760px;
+        }
+        .hero-cta-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .btn-hero-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--primary);
+            color: #ffffff;
+            font-size: 1.05rem;
+            font-weight: 700;
+            padding: 12px 28px;
+            border-radius: 8px;
+            text-decoration: none;
+            box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
+            transition: all 0.2s ease;
+        }
+        .btn-hero-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.55);
+            color: #ffffff;
+        }
+        .btn-hero-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--card-bg-subtle);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            font-size: 1.05rem;
+            font-weight: 600;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .btn-hero-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 3rem 0;
+        }
+        .feature-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.75rem;
+            text-align: left;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--card-shadow);
+            border-color: var(--primary);
+        }
+        .feature-icon-wrapper {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: var(--primary-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+            font-size: 1.25rem;
+            margin-bottom: 1.25rem;
+        }
+        .showcase-container {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 1.5rem;
+        }
+        .showcase-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            margin-bottom: 3rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2.5rem;
+            align-items: center;
+        }
+        .showcase-tag {
+            font-size: 0.8rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+        .showcase-title {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin: 0 0 1rem 0;
+            line-height: 1.2;
+        }
+        .showcase-desc {
+            font-size: 1.05rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+        .landing-footer {
+            border-top: 1px solid var(--border-color);
+            background: var(--nav-bg);
+            padding: 2.5rem 1.5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        @@media (max-width: 768px) {
+            .landing-nav-links {
+                display: none;
+            }
+            .hero-title {
+                font-size: 2.2rem;
+            }
+            .showcase-card {
+                grid-template-columns: 1fr;
+                padding: 1.5rem;
+                gap: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Landing Navigation -->
+    <header class="landing-header">
+        <a href="/" class="landing-brand">
+            <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="MonMon Monster" />
+            <span>MonMon</span>
+        </a>
+
+        <ul class="landing-nav-links">
+            <li><a href="#what-is-monmon">MonMon SPOG</a></li>
+            <li><a href="#what-is-nommon">NomMon Food Planner</a></li>
+            <li><a href="#ed-says">Ed Says AI</a></li>
+            <li><a href="#features">Features</a></li>
+        </ul>
+
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <button id="landing-theme-toggle" type="button" aria-label="Toggle dark/light theme"
+                    style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); width: 38px; height: 38px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-moon" id="landing-theme-icon"></i>
+            </button>
+            <a href="/spog" class="btn-landing-login">
+                <i class="fas fa-sign-in-alt"></i>
+                <span>Log In / Open SPOG</span>
+            </a>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <div class="hero-badge">
+                <i class="fas fa-sparkles"></i>
+                <span>Smart Cashflow & Grocery Intelligence</span>
+            </div>
+
+            <h1 class="hero-title">
+                Master your cashflow with a <br/>
+                <span class="hero-highlight">Single Pane of Glass</span>.
+            </h1>
+
+            <p class="hero-subtext">
+                Traditional banking apps tell you what you spent last month. <strong>MonMon</strong> tells you exactly how much you can spend <em>today</em> between paydays, optimizes your debt payoff queue, and pairs with <strong>NomMon</strong> to feed your household within budget.
+            </p>
+
+            <div class="hero-cta-group">
+                <a href="/spog" class="btn-hero-primary">
+                    <i class="fas fa-rocket"></i>
+                    <span>Log In to Your Dashboard</span>
+                </a>
+                <a href="#what-is-nommon" class="btn-hero-secondary">
+                    <i class="fas fa-utensils"></i>
+                    <span>Discover NomMon</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- Showcase: What is MonMon? -->
+        <div class="showcase-container" id="what-is-monmon">
+            <article class="showcase-card">
+                <div>
+                    <div class="showcase-tag"><i class="fas fa-chart-pie" style="margin-right: 4px;"></i> The SPOG Concept</div>
+                    <h2 class="showcase-title">What is MonMon?</h2>
+                    <p class="showcase-desc">
+                        <strong>MonMon</strong> is your financial cockpit built around the <strong>SPOG (Single Pane of Glass)</strong> methodology. It consolidates all checking accounts, credit lines, overdraft limits, recurring bills, and savings targets into one unified runway.
+                    </p>
+                    <ul style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.7; padding-left: 1.25rem; margin-bottom: 1.5rem;">
+                        <li><strong>Left Per Day:</strong> Dynamic daily spending allowance calculated down to the penny based on your exact days remaining until payday.</li>
+                        <li><strong>Spending Pace & Baseline:</strong> Instant visual indicators showing if your current rate of spending is ahead of or behind your baseline pot.</li>
+                        <li><strong>Payday-to-Payday Cycle:</strong> Automatic bank holiday and working-day payday alignment.</li>
+                        <li><strong>Dynamic Savings Slider:</strong> Slide between 0% and 100% of income to live-slice funds between debt repayment and high-yield savings.</li>
+                    </ul>
+                    <a href="/spog" class="btn-hero-primary" style="font-size: 0.95rem; padding: 10px 20px;">
+                        <span>Explore Your SPOG</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+                <div>
+                    <!-- Visual Mockup Card -->
+                    <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 16px rgba(0,0,0,0.15);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <span style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">SPOG Glance</span>
+                            <span class="badge-pill badge-success"><i class="fas fa-check-circle"></i> Baseline Healthy</span>
+                        </div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: var(--primary); margin-bottom: 0.25rem;">£28.45 <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-muted);">/ day left</span></div>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">14 days remaining until next payday</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.85rem;">
+                            <div style="background: var(--card-bg); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                                <div style="color: var(--text-muted); font-size: 0.75rem;">Debit Available</div>
+                                <div style="font-weight: 700; color: var(--success); font-size: 1.05rem;">£1,240.00</div>
+                            </div>
+                            <div style="background: var(--card-bg); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                                <div style="color: var(--text-muted); font-size: 0.75rem;">Credit Usage</div>
+                                <div style="font-weight: 700; color: var(--primary); font-size: 1.05rem;">18% (Low)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <!-- Showcase: What is NomMon? -->
+            <article class="showcase-card" id="what-is-nommon" style="border-left: 4px solid #10b981;">
+                <div>
+                    <!-- Visual Mockup Card -->
+                    <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 16px rgba(0,0,0,0.15);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <span style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: #10b981;">Sainsbury's Meal Plan</span>
+                            <span class="badge-pill badge-success">Target: £50.00/wk</span>
+                        </div>
+                        <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-main); margin-bottom: 0.5rem;">7-Day Smart Food Basket</div>
+                        <ul style="list-style: none; padding: 0; margin: 0 0 1rem 0; font-size: 0.85rem; color: var(--text-muted);">
+                            <li style="padding: 4px 0; border-bottom: 1px dashed var(--border-color); display: flex; justify-content: space-between;">
+                                <span>Stamford St Oats 1kg</span>
+                                <strong>£0.90</strong>
+                            </li>
+                            <li style="padding: 4px 0; border-bottom: 1px dashed var(--border-color); display: flex; justify-content: space-between;">
+                                <span>Free Range Eggs 12pk</span>
+                                <strong>£2.60</strong>
+                            </li>
+                            <li style="padding: 4px 0; border-bottom: 1px dashed var(--border-color); display: flex; justify-content: space-between;">
+                                <span>Chicken Breast Fillets 1kg</span>
+                                <strong>£6.49</strong>
+                            </li>
+                        </ul>
+                        <div style="font-size: 0.85rem; color: var(--success); font-weight: 700;">
+                            <i class="fas fa-piggy-bank" style="margin-right: 4px;"></i> Savings Buffer: £3.40 under budget
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="showcase-tag" style="color: #10b981;"><i class="fas fa-shopping-basket" style="margin-right: 4px;"></i> Grocery & Nutrition Intelligence</div>
+                    <h2 class="showcase-title">What is NomMon?</h2>
+                    <p class="showcase-desc">
+                        <strong>NomMon</strong> is MonMon's integrated meal and grocery planning assistant. It bridges the gap between your calculated weekly food pot and the supermarket aisle, transforming your budget into real, practical food you love.
+                    </p>
+                    <ul style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.7; padding-left: 1.25rem; margin-bottom: 1.5rem;">
+                        <li><strong>Budget-Adaptive Intelligence:</strong> Automatically tunes recipes and grocery brands to match your exact budget tier—from frugal staples (Stamford Street Co., lentils, oats) to generous family dinners and luxury gourmet (Taste the Difference steaks, fresh salmon).</li>
+                        <li><strong>Sainsbury's Categorized Basket:</strong> Generates itemized shopping lists grouped by supermarket aisle with live price estimates.</li>
+                        <li><strong>Household Scaling:</strong> Scales seamlessly from solo budgets to feeding families of 2, 4, or more with accurate portion sizes.</li>
+                        <li><strong>Zero Guesswork:</strong> Eliminates food waste and prevents grocery overspending from blowing your monthly SPOG pot.</li>
+                    </ul>
+                    <a href="/nommon" class="btn-hero-primary" style="background: #10b981; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4); font-size: 0.95rem; padding: 10px 20px;">
+                        <span>Launch NomMon Planner</span>
+                        <i class="fas fa-utensils"></i>
+                    </a>
+                </div>
+            </article>
+
+            <!-- Showcase: Ed Says AI -->
+            <article class="showcase-card" id="ed-says">
+                <div>
+                    <div class="showcase-tag"><i class="fas fa-robot" style="margin-right: 4px;"></i> AI Copilot</div>
+                    <h2 class="showcase-title">Meet Ed — Your Financial Copilot</h2>
+                    <p class="showcase-desc">
+                        Powered by <strong>Mistral AI</strong>, Ed analyzes your complete financial picture: your current account balances, scheduled rent, pending utility bills, and credit usage.
+                    </p>
+                    <p class="showcase-desc">
+                        Ed delivers clear, constructive commentary on whether you are on track, highlights upcoming danger days before payday, and suggests adjustments to keep you in the green. Accessible anytime via the floating icon on your SPOG dashboard.
+                    </p>
+                    <a href="/spog" class="btn-hero-primary" style="font-size: 0.95rem; padding: 10px 20px;">
+                        <span>Ask Ed on SPOG</span>
+                        <i class="fas fa-comment-dots"></i>
+                    </a>
+                </div>
+                <div style="text-align: center;">
+                    <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed Monster" style="width: 140px; height: 140px; margin-bottom: 1rem; filter: drop-shadow(0 8px 16px rgba(79, 70, 229, 0.3));" />
+                    <div style="background: var(--card-bg-subtle); border-left: 3px solid var(--primary); border-radius: 8px; padding: 1rem 1.25rem; text-align: left; font-size: 0.88rem; color: var(--text-main);">
+                        <em>"Looking solid! With 14 days until payday and £28.45/day left, you are pacing £4.50 ahead of your baseline. Watch out for weekend dining out and you'll clear your savings target."</em>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Features Grid -->
+        <section class="showcase-container" id="features" style="margin-top: 1rem;">
+            <div style="text-align: center; margin-bottom: 2.5rem;">
+                <div class="showcase-tag">Features at a Glance</div>
+                <h2 style="font-size: 2.2rem; font-weight: 800; color: var(--text-main); margin: 0;">Everything you need to stay in control</h2>
+            </div>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon-wrapper"><i class="fas fa-tachometer-alt"></i></div>
+                    <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-main); margin: 0 0 0.5rem 0;">Daily Allowance Tracker</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin: 0;">
+                        Know your exact remaining daily allowance based on actual days between your specific pay dates.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon-wrapper"><i class="fas fa-sliders-h"></i></div>
+                    <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-main); margin: 0 0 0.5rem 0;">Savings & Debt Slicing</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin: 0;">
+                        Allocate and lock pots across credit cards, overdraft payoff queues, emergency funds, and long-term targets.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon-wrapper"><i class="fas fa-calculator"></i></div>
+                    <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-main); margin: 0 0 0.5rem 0;">Can I Afford This?</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin: 0;">
+                        A scratchpad modal that simulates instant purchase impacts against your daily allowance and payday runway.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon-wrapper"><i class="fas fa-apple-alt"></i></div>
+                    <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-main); margin: 0 0 0.5rem 0;">NomMon Meal Recipes</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin: 0;">
+                        Curated 7-day recipes with portion counts and grocery shopping lists adapted to your precise food allocation.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon-wrapper"><i class="fas fa-shield-alt"></i></div>
+                    <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-main); margin: 0 0 0.5rem 0;">Secure & Private</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin: 0;">
+                        Industry-standard OpenID Connect (OIDC) authentication keeps your financial runway strictly confidential.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon-wrapper"><i class="fas fa-history"></i></div>
+                    <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-main); margin: 0 0 0.5rem 0;">Historical Cycles</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin: 0;">
+                        Review past monthly cycles to compare spending trends, highest spend periods, and average monthly burn.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Bottom CTA -->
+        <section style="background: var(--card-bg); border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4rem 1.5rem; text-align: center;">
+            <div style="max-width: 700px; margin: 0 auto;">
+                <h2 style="font-size: 2.2rem; font-weight: 800; color: var(--text-main); margin-bottom: 1rem;">Ready for financial clarity?</h2>
+                <p style="color: var(--text-muted); font-size: 1.1rem; line-height: 1.6; margin-bottom: 2rem;">
+                    Sign in to your MonMon account to view your live Single Pane of Glass and generate this week's NomMon food plan.
+                </p>
+                <a href="/spog" class="btn-hero-primary" style="font-size: 1.1rem; padding: 14px 32px;">
+                    <i class="fas fa-sign-in-alt"></i>
+                    <span>Log In to MonMon SPOG</span>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+        <p style="margin: 0 0 0.5rem 0;">
+            <strong>MonMon</strong> & <strong>NomMon</strong> &copy; @java.time.Year.now().getValue() — Single Pane of Glass Financial Intelligence.
+        </p>
+        <p style="margin: 0; font-size: 0.8rem;">
+            Search-engine indexable landing page. To access your private dashboard, <a href="/spog" style="color: var(--primary);">log in here</a>.
+        </p>
+    </footer>
+
+    <!-- Theme Toggle Script -->
+    <script>
+        (function() {
+            var toggleBtn = document.getElementById('landing-theme-toggle');
+            var icon = document.getElementById('landing-theme-icon');
+            
+            function updateIcon() {
+                var current = document.documentElement.getAttribute('data-theme') || 'dark';
+                if (icon) {
+                    if (current === 'light') {
+                        icon.className = 'fas fa-sun';
+                    } else {
+                        icon.className = 'fas fa-moon';
+                    }
+                }
+            }
+            updateIcon();
+
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', function() {
+                    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+                    var next = current === 'dark' ? 'light' : 'dark';
+                    document.documentElement.setAttribute('data-theme', next);
+                    try {
+                        localStorage.setItem('monmon-theme', next);
+                    } catch (e) {}
+                    updateIcon();
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

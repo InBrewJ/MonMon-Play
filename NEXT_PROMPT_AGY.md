@@ -11,3 +11,5 @@
 ---
 
 1. on /savingsPlan, it would also be great to add an 'Add all credit cards' button, where all credit cards with a balance are added to the priority list, with a priority lower than anything already in the list
+
+2. We also need a Nary yearly payment thing - some payments only come out every 2 or 3 years. Incorporate this into the existing monthly / yearly system so that the outgoings appear in the active list at the right time. There should be a 'starting year' box say if, the payment comes out every 2 years but I started last year

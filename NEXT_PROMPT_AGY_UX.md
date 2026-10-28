@@ -13,4 +13,6 @@ next up:
 
 5. Where any 'add new' or 'edit' forms appear on the app, perhaps they can be triggered via a button at the top of the relevant entity list instead of a static form under each entity list. The form could appear in a modal
 
+5.5. the 'Balance evenly', 'Add all overdrafts', 'Allocate max' and  'add all credit card buttons' look squashed on /savingsPlan. Make them all appear in one row under the 'Slice up Target: Add Item' heading. Perhaps stack them in a column on mobile
+
 6. Generally, spog seems busy, how can we improve this?

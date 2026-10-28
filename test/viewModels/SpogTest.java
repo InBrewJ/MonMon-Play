@@ -297,4 +297,22 @@ public class SpogTest {
         assertThat(grouped.get("Short-Term Savings Accounts").get(0).getKey().getName()).isEqualTo("Emergency Fund");
         assertThat(grouped.get("Long-Term Savings Accounts").get(0).getKey().getName()).isEqualTo("Stocks ISA");
     }
+
+    @Test
+    public void testIsFreshAccountWhenNoAccounts() {
+        Spog emptySpog = new Spog(
+                0f, 30, 0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                Collections.emptyList(), Collections.emptyList()
+        );
+        assertThat(emptySpog.isFreshAccount()).isTrue();
+
+        Account acc = new Account();
+        acc.setName("Current");
+        acc.setType(Account.AccountType.DEBIT);
+        Spog populatedSpog = new Spog(
+                100f, 30, 0, 1000f, 500f, 0f, 0f, 0f, 0f, 0f, 0f,
+                List.of(acc), List.of(acc)
+        );
+        assertThat(populatedSpog.isFreshAccount()).isFalse();
+    }
 }

@@ -116,30 +116,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Ed Says AI Panel (Desktop) -->
-            <div class="w3-card w3-padding w3-margin-bottom" id="ed-says-desktop-panel" style="border-left: 4px solid var(--primary); background: var(--card-bg);">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; border-bottom: 1px dashed var(--border-color); padding-bottom: 0.4rem;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 32px; height: 32px; vertical-align: middle;" />
-                        <div>
-                            <div style="font-weight: 800; font-size: 1.05rem; color: var(--text-main); line-height: 1.2;">Ed says</div>
-                        </div>
-                    </div>
-                    <button type="button" class="ed-refresh-btn w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; cursor: pointer;" title="Ask Ed for fresh advice">
-                        <i class="fas fa-sync-alt ed-refresh-icon"></i> Ask Ed
-                    </button>
-                </div>
-                <div class="ed-says-content" style="font-size: 0.88rem; line-height: 1.55; color: var(--text-main);">
-                    <div style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); padding: 0.6rem 0;">
-                        <i class="fas fa-spinner fa-spin" style="color: var(--primary);"></i>
-                        <span>Summoning Ed's thoughts on your finances...</span>
-                    </div>
-                </div>
-                <div class="ed-says-footer" style="display: none; margin-top: 0.6rem; padding-top: 0.4rem; border-top: 1px dashed var(--border-color); font-size: 0.74rem; color: var(--text-muted); text-align: right;">
-                    <i class="far fa-clock" style="margin-right: 4px;"></i><span class="ed-last-spoke-text"></span>
-                </div>
-            </div>
         </div>
 
         <!-- Right Column -->
@@ -582,6 +558,98 @@
         </div>
     </div>
 </div>
+
+@if(spogVm.isFreshAccount()) {
+<!-- Fresh Account Onboarding Modal -->
+<div id="fresh-account-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-content-card" style="max-width: 560px;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 1.4rem; border-bottom: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 1.2rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.4rem;">👋</span>
+                <span>Welcome to MonMon!</span>
+            </div>
+            <button type="button" id="fresh-modal-close-btn" style="background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 1.4rem;">
+            <p style="margin-top: 0; color: var(--text-main); font-size: 0.95rem; line-height: 1.5;">
+                MonMon gives you a live <strong>Single Pane of Glass (SPOG)</strong> over your daily spending pot, debt payoff roadmap, and weekly food budget.
+            </p>
+            <p style="font-weight: 700; color: var(--text-main); font-size: 0.9rem; margin-bottom: 0.75rem;">
+                Here is what to set up first:
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <a href="/myAccounts" class="onboarding-step-card" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg-subtle); transition: border-color 0.15s ease;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">1</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.92rem;">Add Bank Accounts</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Current debit accounts, credit cards, overdraft limits & savings</div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: var(--primary); font-size: 0.85rem;"></i>
+                </a>
+                <a href="/myIncomings" class="onboarding-step-card" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg-subtle); transition: border-color 0.15s ease;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">2</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.92rem;">Add Income & Payday</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Monthly takehome wage and the day of month you get paid</div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: var(--primary); font-size: 0.85rem;"></i>
+                </a>
+                <a href="/myOutgoings" class="onboarding-step-card" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg-subtle); transition: border-color 0.15s ease;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">3</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.92rem;">Add Regular Outgoings</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Rent, council tax, energy bills, and subscriptions</div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: var(--primary); font-size: 0.85rem;"></i>
+                </a>
+                <a href="/myMonthlyPot" class="onboarding-step-card" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg-subtle); transition: border-color 0.15s ease;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">4</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.92rem;">Assign Daily Pot & Savings Plan</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Select your day-to-day spending account and savings slider target</div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: var(--primary); font-size: 0.85rem;"></i>
+                </a>
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="fresh-modal-dismiss-btn" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.88rem; font-weight: 600;">
+                    Dismiss
+                </button>
+                <a href="/myAccounts" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; font-size: 0.88rem; box-shadow: 0 3px 10px rgba(79, 70, 229, 0.4);">
+                    <i class="fas fa-arrow-right" style="margin-right: 4px;"></i> Start with Accounts
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    (function() {
+        try {
+            var dismissed = localStorage.getItem('monmon-fresh-dismissed');
+            var modal = document.getElementById('fresh-account-modal');
+            if (modal && !dismissed) {
+                modal.style.display = 'flex';
+            }
+            function dismissModal() {
+                if (modal) modal.style.display = 'none';
+                try { localStorage.setItem('monmon-fresh-dismissed', 'true'); } catch (e) {}
+            }
+            var closeBtn = document.getElementById('fresh-modal-close-btn');
+            var dismissBtn = document.getElementById('fresh-modal-dismiss-btn');
+            if (closeBtn) closeBtn.addEventListener('click', dismissModal);
+            if (dismissBtn) dismissBtn.addEventListener('click', dismissModal);
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) dismissModal();
+                });
+            }
+        } catch (e) {}
+    })();
+</script>
+}
 
 <script>
 $(function() {
