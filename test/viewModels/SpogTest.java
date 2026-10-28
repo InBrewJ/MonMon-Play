@@ -315,4 +315,104 @@ public class SpogTest {
         );
         assertThat(populatedSpog.isFreshAccount()).isFalse();
     }
+
+    @Test
+    public void testAccountFreshnessIndicatorFreshAndStale() {
+        java.time.LocalDate testToday = java.time.LocalDate.of(2025, 5, 10);
+        java.time.ZoneId zone = java.time.ZoneId.of("Europe/London");
+
+        // Outgoing on day 5 (already due on 5 May in 1-31 cycle)
+        models.Outgoing out1 = new models.Outgoing();
+        out1.setName("Gym Membership");
+        out1.setCost(30.0f);
+        out1.setOutgoingDay(5);
+
+        // Account with balance recorded on 6 May (AFTER the 5 May payment -> FRESH)
+        Account accFresh = new Account();
+        accFresh.setName("Barclays Fresh");
+        accFresh.setType(Account.AccountType.DEBIT);
+        accFresh.outgoings = List.of(out1);
+        Balance balFresh = new Balance();
+        balFresh.setValue(500.0f);
+        balFresh.setTimestamp(java.time.LocalDate.of(2025, 5, 6).atStartOfDay(zone).toEpochSecond());
+        balFresh.setAccount(accFresh);
+        accFresh.balances = List.of(balFresh);
+
+        // Account with balance recorded on 2 May (BEFORE the 5 May payment -> STALE)
+        Account accStale = new Account();
+        accStale.setName("Monzo Stale");
+        accStale.setType(Account.AccountType.DEBIT);
+        accStale.outgoings = List.of(out1);
+        Balance balStale = new Balance();
+        balStale.setValue(400.0f);
+        balStale.setTimestamp(java.time.LocalDate.of(2025, 5, 2).atStartOfDay(zone).toEpochSecond());
+        balStale.setAccount(accStale);
+        accStale.balances = List.of(balStale);
+
+        // Account with no payments due yet this cycle (Outgoing on day 20, testToday is day 10)
+        models.Outgoing outFuture = new models.Outgoing();
+        outFuture.setName("Internet");
+        outFuture.setCost(40.0f);
+        outFuture.setOutgoingDay(20);
+
+        Account accNoDue = new Account();
+        accNoDue.setName("Santander No Due");
+        accNoDue.setType(Account.AccountType.DEBIT);
+        accNoDue.outgoings = List.of(outFuture);
+        Balance balNoDue = new Balance();
+        balNoDue.setValue(600.0f);
+        balNoDue.setTimestamp(java.time.LocalDate.of(2025, 5, 3).atStartOfDay(zone).toEpochSecond());
+        balNoDue.setAccount(accNoDue);
+        accNoDue.balances = List.of(balNoDue);
+
+        // Account with no balance recorded
+        Account accNoBal = new Account();
+        accNoBal.setName("Virgin No Bal");
+        accNoBal.setType(Account.AccountType.DEBIT);
+        accNoBal.outgoings = List.of(out1);
+        accNoBal.balances = Collections.emptyList();
+
+        List<Account> allAccounts = List.of(accFresh, accStale, accNoDue, accNoBal);
+
+        Spog spog = new Spog(
+                500f, 1, 0, 2500f, 1000f, 0f, 0f, 0f, 0f, 0f, 0f,
+                allAccounts, allAccounts, testToday, null, null
+        );
+
+        java.util.Map<Account, AccountStatus> statusMap = spog.getAccountStatusMap();
+
+        AccountStatus freshStatus = statusMap.get(accFresh);
+        assertThat(freshStatus.getFreshnessStatus()).isEqualTo(AccountStatus.FreshnessStatus.FRESH);
+        assertThat(freshStatus.isFresh()).isTrue();
+        assertThat(freshStatus.isStale()).isFalse();
+        assertThat(freshStatus.getFreshnessMessage()).contains("Up to date");
+
+        AccountStatus staleStatus = statusMap.get(accStale);
+        assertThat(staleStatus.getFreshnessStatus()).isEqualTo(AccountStatus.FreshnessStatus.STALE);
+        assertThat(staleStatus.isStale()).isTrue();
+        assertThat(staleStatus.isFresh()).isFalse();
+        assertThat(staleStatus.getFreshnessMessage()).contains("Update needed");
+
+        AccountStatus noDueStatus = statusMap.get(accNoDue);
+        assertThat(noDueStatus.getFreshnessStatus()).isEqualTo(AccountStatus.FreshnessStatus.NO_PAYMENT_DUE);
+        assertThat(noDueStatus.isFresh()).isFalse();
+        assertThat(noDueStatus.isStale()).isFalse();
+
+        AccountStatus noBalStatus = statusMap.get(accNoBal);
+        assertThat(noBalStatus.getFreshnessStatus()).isEqualTo(AccountStatus.FreshnessStatus.NO_BALANCE);
+        assertThat(noBalStatus.isFresh()).isFalse();
+        assertThat(noBalStatus.isStale()).isFalse();
+    }
+
+    @Test
+    public void testLastMonthSpentField() {
+        Spog spog = new Spog(
+                500f, 1, 0, 2000f, 1000f, 0f, 0f, 0f, 0f, 0f, 0f,
+                Collections.emptyList(), Collections.emptyList()
+        );
+        assertThat(spog.getLastMonthSpent()).isNull();
+
+        spog.setLastMonthSpent(432.50);
+        assertThat(spog.getLastMonthSpent()).isEqualTo(432.50);
+    }
 }

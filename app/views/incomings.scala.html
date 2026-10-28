@@ -18,121 +18,169 @@
 @partials.navbar()
 
 <div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
-    <div class="w3-row-padding">
-        <div class="w3-half">
+    <div class="w3-row">
+        <div class="w3-col l12 m12 s12">
             <div class="w3-card w3-padding w3-margin-bottom">
-                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
-                    <i class="fas fa-money-bill-wave" style="color: var(--primary); margin-right: 6px;"></i> Your Incomings
-                </div>
-
-                <table class="w3-table w3-striped">
-                    <thead>
-                        <tr>
-                            <th>Day</th>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Amount</th>
-                            <th>Payday?</th>
-                            <th></th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @for(i <- incomings) {
-                        <tr>
-                            <td class="w3-center">
-                                @if(i.isAdjustedForMonth()) {
-                                    <span title="Adjusted from @i.incomingMonthDay for this month @if(i.isPayDay()){(last working day)}">
-                                        <b>@i.getEffectiveIncomingMonthDay()</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
-                                    </span>
-                                } else {
-                                    @i.incomingMonthDay
-                                }
-                            </td>
-                            <td><b>@i.name</b></td>
-                            <td><span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">@{i.`type`}</span></td>
-                            <td style="color: var(--success); font-weight: 600;">£@i.netValue</td>
-                            <td>
-                                @if(i.isPayDay()) {
-                                    <span class="badge-pill badge-success"><i class="fas fa-check"></i> Yes</span>
-                                } else {
-                                    <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">No</span>
-                                }
-                            </td>
-                            <td class="w3-center">
-                                <a href="/editIncoming/@i.id#edit-form" title="Edit">
-                                    <i class="fas fa-pen"></i>
-                                </a>
-                            </td>
-                            <td class="w3-center">
-                                <a href="/binIncoming/@i.id" title="Delete" onclick="return confirm('Are you sure you want to delete this incoming?');">
-                                    <i class="fas fa-trash-alt"></i>
-                                </a>
-                            </td>
-                        </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="w3-half">
-            <div class="w3-card w3-padding w3-margin-bottom @if(editing){editing-mode}" id="edit-form">
-                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
-                    <i class="fas fa-plus-circle" style="color: var(--primary); margin-right: 6px;"></i> @{ if (editing) "Amend" else "Add New"} Incoming
-                </div>
-
-                <form method="POST" action='@{
-                    if (editing)
-                        routes.IncomingController.updateIncoming(request.path().split("/")(2).toInt)
-                    else
-                        routes.IncomingController.addIncoming()
-                }'>
-                    @helper.CSRF.formField
-                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Incoming Name</label><br/>
-                    <input
-                            placeholder="e.g. Salary, Side gig"
-                            type="text"
-                            name="name"
-                            value='@incomingForm.field("name").value()' />
-                    <br />
-                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Type</label><br/>
-                    <input
-                            placeholder="e.g. PAYCHECK, ONEOFF"
-                            type="text"
-                            name="type"
-                            value='@incomingForm.field("type").value()'/>
-                    <br />
-                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Net Amount (£)</label><br/>
-                    <input
-                            placeholder="0.00"
-                            type="number"
-                            step="0.01"
-                            inputmode="decimal"
-                            pattern="[-+]?[0-9]*[.,]?[0-9]*"
-                            name="netValue"
-                            value='@incomingForm.field("netValue").value()'/>
-                    <br />
-                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month (1-31)</label><br/>
-                    <input
-                            placeholder="Day of month"
-                            step="1"
-                            min="1"
-                            max="31"
-                            type="number"
-                            inputmode="numeric"
-                            pattern="[0-9]*"
-                            name="incomingMonthDay"
-                            value='@incomingForm.field("incomingMonthDay").value()'/>
-                    <br />
-                    <div style="margin: 0.5rem 0;">
-                        @checkbox(incomingForm("payDay"), Symbol("_label") -> "Is this Payday?")
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 8px;">
+                    <div style="font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
+                        <i class="fas fa-money-bill-wave" style="color: var(--primary); margin-right: 6px;"></i> Your Incomings (@incomings.size)
                     </div>
-                    <button class="w3-button w3-round">@{ if (editing) "Amend" else "Add"} Incoming</button>
-                </form>
+                    <button type="button" class="btn-action" onclick="openIncomingModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: var(--primary); color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
+                        <i class="fas fa-plus"></i> Add Incoming
+                    </button>
+                </div>
+
+                <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                    <table class="w3-table w3-striped">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Payday?</th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if(incomings.isEmpty) {
+                                <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No incomings found. Click <b>+ Add Incoming</b> above to add one.</td></tr>
+                            } else {
+                                @for(i <- incomings) {
+                                <tr>
+                                    <td class="w3-center">
+                                        @if(i.isAdjustedForMonth()) {
+                                            <span title="Adjusted from @i.incomingMonthDay for this month @if(i.isPayDay()){(last working day)}">
+                                                <b>@i.getEffectiveIncomingMonthDay()</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                            </span>
+                                        } else {
+                                            @i.incomingMonthDay
+                                        }
+                                    </td>
+                                    <td><b>@i.name</b></td>
+                                    <td><span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">@{i.`type`}</span></td>
+                                    <td style="color: var(--success); font-weight: 600;">£@i.netValue</td>
+                                    <td>
+                                        @if(i.isPayDay()) {
+                                            <span class="badge-pill badge-success"><i class="fas fa-check"></i> Yes</span>
+                                        } else {
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">No</span>
+                                        }
+                                    </td>
+                                    <td class="w3-center">
+                                        <a href="/editIncoming/@i.id#edit-form" title="Edit">
+                                            <i class="fas fa-pen"></i>
+                                        </a>
+                                    </td>
+                                    <td class="w3-center">
+                                        <a href="/binIncoming/@i.id" title="Delete" onclick="return confirm('Are you sure you want to delete this incoming?');">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Modal Dialog for Add / Edit Incoming (User Request Item 5) -->
+<div id="incoming-modal" class="modal-backdrop" style="display: @if(editing){flex}else{none};">
+    <div class="modal-content-card" style="padding: 1.5rem; position: relative; max-width: 520px;">
+        <button type="button" onclick="closeIncomingModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; line-height: 1; color: var(--text-muted); cursor: pointer;" aria-label="Close">&times;</button>
+        <div style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin-bottom: 1.25rem; display: flex; align-items: center; gap: 8px;">
+            <i class="fas @if(editing){fa-edit}else{fa-plus-circle}" style="color: var(--primary);"></i>
+            @{ if (editing) "Amend Incoming" else "Add New Incoming"}
+        </div>
+
+        <form id="incoming-modal-form" method="POST" action='@{
+            if (editing)
+                routes.IncomingController.updateIncoming(request.path().split("/")(2).toInt)
+            else
+                routes.IncomingController.addIncoming()
+        }'>
+            @helper.CSRF.formField
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Incoming Name</label><br/>
+            <input
+                    id="incoming-name"
+                    placeholder="e.g. Salary, Side gig"
+                    type="text"
+                    name="name"
+                    value='@incomingForm.field("name").value()'
+                    required />
+            <br />
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Type</label><br/>
+            <input
+                    placeholder="e.g. PAYCHECK, ONEOFF"
+                    type="text"
+                    name="type"
+                    value='@incomingForm.field("type").value()'/>
+            <br />
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Net Amount (£)</label><br/>
+            <input
+                    placeholder="0.00"
+                    type="number"
+                    step="0.01"
+                    inputmode="decimal"
+                    pattern="[-+]?[0-9]*[.,]?[0-9]*"
+                    name="netValue"
+                    value='@incomingForm.field("netValue").value()'
+                    required />
+            <br />
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month (1-31)</label><br/>
+            <input
+                    placeholder="Day of month"
+                    step="1"
+                    min="1"
+                    max="31"
+                    type="number"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    name="incomingMonthDay"
+                    value='@incomingForm.field("incomingMonthDay").value()'
+                    required />
+            <br />
+            <div style="margin: 0.5rem 0;">
+                @checkbox(incomingForm("payDay"), Symbol("_label") -> "Is this Payday?")
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 1rem;">
+                <button type="button" onclick="closeIncomingModal()" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">Cancel</button>
+                <button type="submit" class="w3-button w3-round">@{ if (editing) "Amend" else "Add"} Incoming</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openIncomingModal() {
+    var modal = document.getElementById('incoming-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        var input = document.getElementById('incoming-name');
+        if (input) input.focus();
+    }
+}
+function closeIncomingModal() {
+    @if(editing) {
+        window.location.href = '/myIncomings';
+    } else {
+        var modal = document.getElementById('incoming-modal');
+        if (modal) modal.style.display = 'none';
+    }
+}
+document.addEventListener('DOMContentLoaded', function() {
+    var modal = document.getElementById('incoming-modal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) closeIncomingModal();
+        });
+    }
+});
+</script>
 
 }
