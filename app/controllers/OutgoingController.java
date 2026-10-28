@@ -1,8 +1,10 @@
 package controllers;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import models.*;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
+import play.data.DynamicForm;
 import play.data.Form;
 import play.data.FormFactory;
 import play.i18n.MessagesApi;
@@ -10,9 +12,11 @@ import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
+import services.MistralService;
 import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -37,6 +41,9 @@ public class OutgoingController extends Controller {
     private final FormFactory formFactory;
     private final OutgoingRepository outgoingRepository;
     private final AccountRepository accountRepository;
+    private final IncomingRepository incomingRepository;
+    private final PlanRepository planRepository;
+    private final MistralService mistralService;
     private final HttpExecutionContext ec;
     private List<Account> accounts;
     private List<Outgoing> outgoings;
@@ -49,14 +56,36 @@ public class OutgoingController extends Controller {
     private SessionStore playSessionStore;
 
     @Inject
-    public OutgoingController(FormFactory formFactory, MessagesApi messagesApi, OutgoingRepository outgoingRepository, AccountRepository accountRepository, HttpExecutionContext ec) throws ExecutionException, InterruptedException {
+    public OutgoingController(
+            FormFactory formFactory,
+            MessagesApi messagesApi,
+            OutgoingRepository outgoingRepository,
+            AccountRepository accountRepository,
+            IncomingRepository incomingRepository,
+            PlanRepository planRepository,
+            MistralService mistralService,
+            HttpExecutionContext ec
+    ) throws ExecutionException, InterruptedException {
         this.formFactory = formFactory;
         this.outgoingRepository = outgoingRepository;
         this.accountRepository = accountRepository;
+        this.incomingRepository = incomingRepository;
+        this.planRepository = planRepository;
+        this.mistralService = mistralService;
         this.outgoingForm = formFactory.form(Outgoing.class);
         this.accountForm = formFactory.form(Account.class);
         this.messagesApi = messagesApi;
         this.ec = ec;
+    }
+
+    public OutgoingController(
+            FormFactory formFactory,
+            MessagesApi messagesApi,
+            OutgoingRepository outgoingRepository,
+            AccountRepository accountRepository,
+            HttpExecutionContext ec
+    ) throws ExecutionException, InterruptedException {
+        this(formFactory, messagesApi, outgoingRepository, accountRepository, null, null, null, ec);
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -133,6 +162,48 @@ public class OutgoingController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> pauseOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        DynamicForm form = formFactory.form().bindFromRequest(request);
+        String reason = form.get("reason");
+        return outgoingRepository.findById(id).thenComposeAsync(found -> {
+            if (found == null || !found.getUserId().equals(sup.getUserId())) {
+                return CompletableFuture.completedFuture(forbidden("Forbidden"));
+            }
+            return outgoingRepository.pause(id, reason).thenApplyAsync(paused ->
+                    redirect(routes.OutgoingController.index()).flashing("success", "Paused outgoing: " + paused.getName() + (reason != null && !reason.trim().isEmpty() ? " (" + reason.trim() + ")" : "")),
+                    ec.current()
+            );
+        }, ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> unpauseOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        return outgoingRepository.findById(id).thenComposeAsync(found -> {
+            if (found == null || !found.getUserId().equals(sup.getUserId())) {
+                return CompletableFuture.completedFuture(forbidden("Forbidden"));
+            }
+            return outgoingRepository.unpause(id).thenApplyAsync(unpaused ->
+                    redirect(routes.OutgoingController.index()).flashing("success", "Unpaused outgoing: " + unpaused.getName() + ". Restored cost: £" + unpaused.getCost()),
+                    ec.current()
+            );
+        }, ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result listOutgoingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
@@ -189,6 +260,65 @@ public class OutgoingController extends Controller {
         return outgoingRepository
                 .listComplete(sup.getUserId())
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> edSaysOutgoings(final Http.Request request) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
+        boolean force = request.queryString("force").map(v -> "true".equalsIgnoreCase(v) || "1".equals(v)).orElse(false);
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String userId = sup.getUserId();
+                List<Incoming> incomings = incomingRepository != null ? repoListToList(incomingRepository.list(userId)) : Collections.emptyList();
+                List<Outgoing> outgoingsList = repoListToList(outgoingRepository.list(userId));
+                List<Account> accountsList = repoListToList(accountRepository.list(userId));
+                List<Plan> plansList = planRepository != null ? repoListToList(planRepository.list(userId)) : Collections.emptyList();
+
+                String region = request.session().get("region").orElse("UK");
+                java.time.LocalDate today = helpers.BankHolidayHelper.nowInRegion(region);
+
+                Float incomingTotal = Incoming.getTotalIncomings(incomings);
+                Float outgoingTotal = round2(Outgoing.getTotalOutgoingsWithoutHidden(outgoingsList, today));
+                Float monthlySurplus = helpers.ModelHelpers.calculateMonthlyAllowance(incomings, outgoingsList, plansList, today);
+
+                return MistralService.buildOutgoingsContextPrompt(incomingTotal, outgoingTotal, monthlySurplus, outgoingsList, accountsList);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }, ec.current()).thenCompose(prompt -> {
+            if (mistralService == null) {
+                ObjectNode res = play.libs.Json.newObject();
+                res.put("edSays", "Mistral service is not configured.");
+                res.put("configured", false);
+                return CompletableFuture.completedFuture(ok(res));
+            }
+            return mistralService.askEdOutgoings(sup.getUserId(), prompt, force)
+                    .thenApply(advice -> {
+                        ObjectNode res = play.libs.Json.newObject();
+                        res.put("edSays", advice);
+                        res.put("configured", mistralService.isConfigured());
+                        Long lastSpoke = mistralService.getLastOutgoingsSpokeTimestamp(sup.getUserId());
+                        if (lastSpoke != null) {
+                            res.put("lastSpoke", lastSpoke);
+                        }
+                        return ok(res);
+                    });
+        }).exceptionally(ex -> {
+            ObjectNode err = play.libs.Json.newObject();
+            err.put("edSays", "Ed reviewed your outgoings but had trouble putting thoughts to paper: " + ex.getMessage());
+            err.put("configured", mistralService != null && mistralService.isConfigured());
+            return ok(err);
+        });
     }
 
     // weird, roundabout stuff for now...

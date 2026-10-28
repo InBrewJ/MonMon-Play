@@ -528,7 +528,7 @@ public class Spog {
 
                 if (a.outgoings != null) {
                     for (Outgoing o : a.outgoings) {
-                        if (o.isArchived()) continue;
+                        if (o.isArchived() || o.isPaused()) continue;
                         LocalDate searchDate = cycleStart;
                         while (!searchDate.isAfter(asOfDate)) {
                             if (!o.isYearly() || o.isDueInMonth(searchDate)) {

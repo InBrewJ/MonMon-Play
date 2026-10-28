@@ -78,7 +78,7 @@ public class ModelHelpers {
         LocalDate searchDate = asOf.plusDays(1);
         while (searchDate.isBefore(nextPayday)) {
             for (Outgoing o : outgoings) {
-                if (o == null || o.isArchived()) {
+                if (o == null || o.isArchived() || o.isPaused()) {
                     continue;
                 }
                 if (o.isYearly() && !o.isDueInMonth(searchDate)) {
@@ -102,7 +102,7 @@ public class ModelHelpers {
         LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);
         while (!searchDate.isAfter(asOf)) {
             for (Outgoing o : outgoings) {
-                if (o == null || o.isArchived()) {
+                if (o == null || o.isArchived() || o.isPaused()) {
                     continue;
                 }
                 if (o.isYearly() && !o.isDueInMonth(searchDate)) {
@@ -158,6 +158,9 @@ public class ModelHelpers {
         List<Outgoing> adjustedOutgoings = new ArrayList<>();
         for (Outgoing o : outgoings) {
             if (o != null) {
+                if (o.isArchived() || o.isPaused()) {
+                    continue;
+                }
                 Outgoing copy = new Outgoing();
                 copy.setId(o.getId());
                 copy.setName(o.getName());

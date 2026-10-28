@@ -90,11 +90,16 @@ public class SavingsPlanMigration {
             }
         }
 
-        // 5. Ensure outgoing table has outgoingmonth, yearinterval, and startingyear columns
+        // 5. Ensure outgoing table has outgoingmonth, yearinterval, startingyear, paused, pause_reason, and paused_at columns
         String[] outgoingCols = new String[]{
                 "outgoingmonth INTEGER",
                 "yearinterval INTEGER DEFAULT 1",
-                "startingyear INTEGER"
+                "startingyear INTEGER",
+                "paused BOOLEAN DEFAULT FALSE",
+                "pause_reason VARCHAR(255)",
+                "paused_at BIGINT",
+                "pausereason VARCHAR(255)",
+                "pausedat BIGINT"
         };
         for (String colDef : outgoingCols) {
             try {

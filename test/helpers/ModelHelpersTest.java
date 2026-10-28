@@ -403,4 +403,72 @@ public class ModelHelpersTest {
         List<Outgoing> yetToPayOct2027 = ModelHelpers.findYetToPay(list, oct2027, 1);
         assertThat(yetToPayOct2027).extracting(Outgoing::getName).containsExactly("2-Year Hosting Plan");
     }
+
+    @Test
+    public void testPausedOutgoingsRetainMonetaryValueHaveZeroEffectiveCostAndDoNotCountInTotals() {
+        LocalDate today = LocalDate.of(2026, 10, 15);
+
+        Outgoing rent = new Outgoing();
+        rent.setId(1L);
+        rent.setName("Rent");
+        rent.setCost(800.0f);
+        rent.setOutgoingDay(1);
+
+        Outgoing gym = new Outgoing();
+        gym.setId(2L);
+        gym.setName("Gym");
+        gym.setCost(45.0f);
+        gym.setOutgoingDay(10);
+        gym.setPaused(true);
+        gym.setPauseReason("Winter pause");
+        gym.setPausedAt(System.currentTimeMillis());
+
+        Outgoing netflix = new Outgoing();
+        netflix.setId(3L);
+        netflix.setName("Netflix");
+        netflix.setCost(15.0f);
+        netflix.setOutgoingDay(20);
+
+        List<Outgoing> all = List.of(rent, gym, netflix);
+
+        // 1. Monetary cost is preserved, but effective cost of gym is 0.00
+        assertThat(gym.getCost()).isEqualTo(45.0f);
+        assertThat(gym.getEffectiveCost()).isEqualTo(0.0f);
+        assertThat(gym.isPaused()).isTrue();
+        assertThat(gym.getPauseReason()).isEqualTo("Winter pause");
+
+        // 2. Total outgoings ignores gym (800 + 15 = 815, gym's 45 is excluded)
+        Float total = Outgoing.getTotalOutgoings(all, today);
+        assertThat(total).isEqualTo(815.0f);
+
+        Float totalWithoutHidden = Outgoing.getTotalOutgoingsWithoutHidden(all, today);
+        assertThat(totalWithoutHidden).isEqualTo(815.0f);
+
+        // 3. Cycles: findAlreadyPaid (payday 1st of month, today 15th)
+        // Rent was on 1st. Gym was on 10th, but gym is PAUSED so it must NOT appear in already paid!
+        List<Outgoing> alreadyPaid = ModelHelpers.findAlreadyPaid(all, today, 1);
+        assertThat(alreadyPaid).extracting(Outgoing::getName).containsExactly("Rent");
+
+        // 4. Cycles: findYetToPay (today 15th, payday 1st of next month)
+        // Netflix is on 20th. Gym is not pending because it was on 10th and is paused.
+        List<Outgoing> yetToPay = ModelHelpers.findYetToPay(all, today, 1);
+        assertThat(yetToPay).extracting(Outgoing::getName).containsExactly("Netflix");
+
+        // 5. Monthly allowance: income 2000 - outgoings (800 rent + 15 netflix, gym 45 ignored) = 1185
+        Incoming salary = new Incoming();
+        salary.setName("Salary");
+        salary.setNetValue(2000.0f);
+        salary.incomingMonthDay = 1;
+
+        Float allowance = ModelHelpers.calculateMonthlyAllowance(List.of(salary), all, java.util.Collections.emptyList(), today);
+        assertThat(allowance).isEqualTo(1185.0f);
+
+        // 6. When unpaused: effective cost is restored and included in totals
+        gym.setPaused(false);
+        gym.setPauseReason(null);
+        assertThat(gym.getEffectiveCost()).isEqualTo(45.0f);
+        assertThat(Outgoing.getTotalOutgoings(all, today)).isEqualTo(860.0f);
+        assertThat(ModelHelpers.findAlreadyPaid(all, today, 1)).extracting(Outgoing::getName).containsExactlyInAnyOrder("Rent", "Gym");
+        assertThat(ModelHelpers.calculateMonthlyAllowance(List.of(salary), all, java.util.Collections.emptyList(), today)).isEqualTo(1140.0f);
+    }
 }

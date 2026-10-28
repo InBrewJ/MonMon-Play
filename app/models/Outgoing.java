@@ -36,6 +36,15 @@ public class Outgoing {
     public boolean archived = false;
     public boolean hiddenFromTotal = false;
 
+    @Column(name = "paused")
+    public boolean paused = false;
+
+    @Column(name = "pause_reason")
+    public String pauseReason;
+
+    @Column(name = "paused_at")
+    public Long pausedAt;
+
     @ManyToOne
     @JoinColumn(name="account_id")
     @JsonIgnore
@@ -210,6 +219,37 @@ public class Outgoing {
         this.archived = archived;
     }
 
+    public boolean isPaused() {
+        return paused;
+    }
+
+    public void setPaused(boolean paused) {
+        this.paused = paused;
+    }
+
+    public String getPauseReason() {
+        return pauseReason;
+    }
+
+    public void setPauseReason(String pauseReason) {
+        this.pauseReason = pauseReason;
+    }
+
+    public Long getPausedAt() {
+        return pausedAt;
+    }
+
+    public void setPausedAt(Long pausedAt) {
+        this.pausedAt = pausedAt;
+    }
+
+    public Float getEffectiveCost() {
+        if (paused) {
+            return 0.0f;
+        }
+        return cost != null ? cost : 0.0f;
+    }
+
     // MWM-29
     // Add 'hidden outgoing' flag to Outgoing
     // and filter before reducing here...
@@ -222,7 +262,7 @@ public class Outgoing {
     public static Float getTotalOutgoings(List<Outgoing> outgoings, java.time.LocalDate asOf) {
         return outgoings
                 .stream()
-                .filter(o -> o != null && o.isDueInMonth(asOf))
+                .filter(o -> o != null && !o.isPaused() && o.isDueInMonth(asOf))
                 .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 
@@ -233,7 +273,7 @@ public class Outgoing {
     public static Float getTotalOutgoingsWithoutHidden(List<Outgoing> outgoings, java.time.LocalDate asOf) {
         return outgoings
                 .stream()
-                .filter(o -> o != null && !o.isHiddenFromTotal() && o.isDueInMonth(asOf))
+                .filter(o -> o != null && !o.isPaused() && !o.isHiddenFromTotal() && o.isDueInMonth(asOf))
                 .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
     }
 

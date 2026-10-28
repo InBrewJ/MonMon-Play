@@ -17,10 +17,13 @@
             function filterElement(el) {
                 var isYearly = el.getAttribute('data-is-yearly') === 'true';
                 var isDueNow = el.getAttribute('data-due-now') === 'true';
+                var isPaused = el.getAttribute('data-is-paused') === 'true';
                 var show = false;
 
                 if (tabName === 'all') {
                     show = true;
+                } else if (tabName === 'paused') {
+                    show = isPaused;
                 } else if (tabName === 'yearly') {
                     show = isYearly;
                 } else {
@@ -48,6 +51,8 @@
                     emptyMsg.style.display = 'block';
                     if (tabName === 'yearly') {
                         emptyMsg.textContent = 'No yearly bills recorded. Switch Frequency to "Yearly" in the form to add one.';
+                    } else if (tabName === 'paused') {
+                        emptyMsg.textContent = 'No paused outgoings recorded. You can pause any outgoing using the pause button in its row.';
                     } else if (tabName === 'active') {
                         emptyMsg.textContent = 'No monthly or currently due outgoings found.';
                     } else {

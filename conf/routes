@@ -13,6 +13,10 @@ GET     /outgoings                   controllers.OutgoingController.getOutgoings
 GET     /editOutgoing/:id            controllers.OutgoingController.listOutgoingsWithPrefill(id: Int, req: Request)
 GET     /binOutgoing/:id             controllers.OutgoingController.archiveOutgoing(id: Int, req: Request)
 POST    /updateOutgoing              controllers.OutgoingController.updateOutgoing(id: Int, req: Request)
+POST    /pauseOutgoing/:id           controllers.OutgoingController.pauseOutgoing(id: Int, req: Request)
+GET     /unpauseOutgoing/:id         controllers.OutgoingController.unpauseOutgoing(id: Int, req: Request)
+POST    /unpauseOutgoing/:id         controllers.OutgoingController.unpauseOutgoing(id: Int, req: Request)
+GET     /api/ed-says-outgoings       controllers.OutgoingController.edSaysOutgoings(req: Request)
 
 # Accounts
 GET     /myAccounts                  controllers.AccountController.listAccounts(req: Request)

@@ -186,4 +186,143 @@ public class NetWorthControllerTest {
         assertThat(json.path("edSays").asText()).isEqualTo("You have enough bread to survive the winter.");
         assertThat(json.path("configured").asBoolean()).isTrue();
     }
+
+    private void injectSessionStore(OutgoingController controller, SessionStore sessionStore) throws Exception {
+        Field f = OutgoingController.class.getDeclaredField("playSessionStore");
+        f.setAccessible(true);
+        f.set(controller, sessionStore);
+    }
+
+    @Test
+    public void testPauseOutgoingSavesReasonAndRedirects() throws Exception {
+        FormFactory formFactory = mock(FormFactory.class);
+        play.i18n.MessagesApi messagesApi = mock(play.i18n.MessagesApi.class);
+        OutgoingRepository outgoingRepo = mock(OutgoingRepository.class);
+        AccountRepository accountRepo = mock(AccountRepository.class);
+        HttpExecutionContext ec = new HttpExecutionContext(ForkJoinPool.commonPool());
+        SessionStore sessionStore = mock(SessionStore.class);
+
+        mockUserProfile(sessionStore, "u-123");
+
+        Outgoing outgoing = new Outgoing();
+        outgoing.setId(10L);
+        outgoing.setUserId("u-123");
+        outgoing.setName("Gym Membership");
+        outgoing.setCost(40.0f);
+
+        when(outgoingRepo.findById(10)).thenReturn(CompletableFuture.completedFuture(outgoing));
+
+        Outgoing pausedOutgoing = new Outgoing();
+        pausedOutgoing.setId(10L);
+        pausedOutgoing.setUserId("u-123");
+        pausedOutgoing.setName("Gym Membership");
+        pausedOutgoing.setCost(40.0f);
+        pausedOutgoing.setPaused(true);
+        pausedOutgoing.setPauseReason("Winter pause");
+        when(outgoingRepo.pause(10, "Winter pause")).thenReturn(CompletableFuture.completedFuture(pausedOutgoing));
+
+        DynamicForm mockForm = mock(DynamicForm.class);
+        when(mockForm.get("reason")).thenReturn("Winter pause");
+        when(formFactory.form()).thenReturn(mockForm);
+        when(mockForm.bindFromRequest(any(Http.Request.class))).thenReturn(mockForm);
+
+        when(sessionStore.get(any(), eq("user_access_status"))).thenReturn(Optional.of(models.UserAccess.AccessStatus.APPROVED));
+
+        OutgoingController controller = new OutgoingController(formFactory, messagesApi, outgoingRepo, accountRepo, ec);
+        injectSessionStore(controller, sessionStore);
+
+        Http.Request request = Helpers.fakeRequest("POST", "/pauseOutgoing/10").build();
+        Result result = controller.pauseOutgoing(10, request).toCompletableFuture().get();
+
+        assertThat(result.status()).isEqualTo(303);
+        assertThat(result.redirectLocation()).hasValue("/myOutgoings");
+        verify(outgoingRepo, times(1)).pause(10, "Winter pause");
+    }
+
+    @Test
+    public void testUnpauseOutgoingRestoresAndRedirects() throws Exception {
+        FormFactory formFactory = mock(FormFactory.class);
+        play.i18n.MessagesApi messagesApi = mock(play.i18n.MessagesApi.class);
+        OutgoingRepository outgoingRepo = mock(OutgoingRepository.class);
+        AccountRepository accountRepo = mock(AccountRepository.class);
+        HttpExecutionContext ec = new HttpExecutionContext(ForkJoinPool.commonPool());
+        SessionStore sessionStore = mock(SessionStore.class);
+
+        mockUserProfile(sessionStore, "u-123");
+
+        Outgoing outgoing = new Outgoing();
+        outgoing.setId(10L);
+        outgoing.setUserId("u-123");
+        outgoing.setName("Gym Membership");
+        outgoing.setCost(40.0f);
+        outgoing.setPaused(true);
+        outgoing.setPauseReason("Winter pause");
+
+        when(outgoingRepo.findById(10)).thenReturn(CompletableFuture.completedFuture(outgoing));
+
+        Outgoing unpausedOutgoing = new Outgoing();
+        unpausedOutgoing.setId(10L);
+        unpausedOutgoing.setUserId("u-123");
+        unpausedOutgoing.setName("Gym Membership");
+        unpausedOutgoing.setCost(40.0f);
+        unpausedOutgoing.setPaused(false);
+        when(outgoingRepo.unpause(10)).thenReturn(CompletableFuture.completedFuture(unpausedOutgoing));
+
+        when(sessionStore.get(any(), eq("user_access_status"))).thenReturn(Optional.of(models.UserAccess.AccessStatus.APPROVED));
+
+        OutgoingController controller = new OutgoingController(formFactory, messagesApi, outgoingRepo, accountRepo, ec);
+        injectSessionStore(controller, sessionStore);
+
+        Http.Request request = Helpers.fakeRequest("POST", "/unpauseOutgoing/10").build();
+        Result result = controller.unpauseOutgoing(10, request).toCompletableFuture().get();
+
+        assertThat(result.status()).isEqualTo(303);
+        assertThat(result.redirectLocation()).hasValue("/myOutgoings");
+        verify(outgoingRepo, times(1)).unpause(10);
+    }
+
+    @Test
+    public void testEdSaysOutgoingsReturnsPersuasiveAdvice() throws Exception {
+        FormFactory formFactory = mock(FormFactory.class);
+        play.i18n.MessagesApi messagesApi = mock(play.i18n.MessagesApi.class);
+        OutgoingRepository outgoingRepo = mock(OutgoingRepository.class);
+        AccountRepository accountRepo = mock(AccountRepository.class);
+        models.IncomingRepository incomingRepo = mock(models.IncomingRepository.class);
+        models.PlanRepository planRepo = mock(models.PlanRepository.class);
+        services.MistralService mistralService = mock(services.MistralService.class);
+        HttpExecutionContext ec = new HttpExecutionContext(ForkJoinPool.commonPool());
+        SessionStore sessionStore = mock(SessionStore.class);
+
+        mockUserProfile(sessionStore, "u-123");
+        when(sessionStore.get(any(), eq("user_access_status"))).thenReturn(Optional.of(models.UserAccess.AccessStatus.APPROVED));
+
+        Outgoing netflix = new Outgoing();
+        netflix.setId(1L);
+        netflix.setUserId("u-123");
+        netflix.setName("Netflix 4K");
+        netflix.setCost(17.99f);
+        netflix.setOutgoingDay(15);
+
+        when(incomingRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(java.util.stream.Stream.empty()));
+        when(outgoingRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(java.util.stream.Stream.of(netflix)));
+        when(accountRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(java.util.stream.Stream.empty()));
+        when(planRepo.list("u-123")).thenReturn(CompletableFuture.completedFuture(java.util.stream.Stream.empty()));
+
+        when(mistralService.isConfigured()).thenReturn(true);
+        when(mistralService.askEdOutgoings(eq("u-123"), any(), eq(false)))
+                .thenReturn(CompletableFuture.completedFuture("Pause Netflix 4K immediately. You are leaking £17.99 into the sand."));
+
+        OutgoingController controller = new OutgoingController(
+                formFactory, messagesApi, outgoingRepo, accountRepo, incomingRepo, planRepo, mistralService, ec
+        );
+        injectSessionStore(controller, sessionStore);
+
+        Http.Request request = Helpers.fakeRequest("GET", "/api/ed-says-outgoings").build();
+        Result result = controller.edSaysOutgoings(request).toCompletableFuture().get();
+
+        assertThat(result.status()).isEqualTo(200);
+        String body = Helpers.contentAsString(result);
+        assertThat(body).contains("Pause Netflix 4K immediately");
+        assertThat(body).contains("\"configured\":true");
+    }
 }

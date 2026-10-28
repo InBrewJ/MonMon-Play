@@ -22,6 +22,8 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,6 +48,7 @@ public class MistralService {
 
     private final Map<String, CacheEntry> userAdviceCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry> userNetWorthAdviceCache = new ConcurrentHashMap<>();
+    private final Map<String, CacheEntry> userOutgoingsAdviceCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry> nomMonCache = new ConcurrentHashMap<>();
     private final Map<String, Long> userLastNomMonTimestamp = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 31L * 24L * 60L * 60L * 1000L; // 31 days TTL
@@ -124,9 +127,13 @@ public class MistralService {
     public void clearCache(String userId) {
         if (userId != null) {
             userAdviceCache.remove(userId);
+            userNetWorthAdviceCache.remove(userId);
+            userOutgoingsAdviceCache.remove(userId);
             log("INFO", "Cleared advice cache for user=" + userId);
         } else {
             userAdviceCache.clear();
+            userNetWorthAdviceCache.clear();
+            userOutgoingsAdviceCache.clear();
             log("INFO", "Cleared entire advice cache");
         }
     }
@@ -140,6 +147,12 @@ public class MistralService {
     public Long getLastNetWorthSpokeTimestamp(String userId) {
         if (userId == null) return null;
         CacheEntry cached = userNetWorthAdviceCache.get(userId);
+        return cached != null ? cached.timestamp : null;
+    }
+
+    public Long getLastOutgoingsSpokeTimestamp(String userId) {
+        if (userId == null) return null;
+        CacheEntry cached = userOutgoingsAdviceCache.get(userId);
         return cached != null ? cached.timestamp : null;
     }
 
@@ -312,6 +325,77 @@ public class MistralService {
         sb.append("- Current Portfolio Food Coverage: ").append(vm.getFoodCoveredPercent()).append("% of monthly food covered by 4% safe withdrawal\n\n");
 
         sb.append("Please evaluate this portfolio as Ed in the Hemingway style. Make a rough judgement on when the user can retire OR how the future value / annual yield of their portfolio can pay for essential living costs like food.");
+        return sb.toString();
+    }
+
+    public static String buildOutgoingsContextPrompt(
+            Float incomingTotal,
+            Float outgoingTotal,
+            Float monthlySurplus,
+            List<models.Outgoing> outgoings,
+            List<models.Account> accounts
+    ) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Wider Financial Position:\n");
+        sb.append("- Total Monthly Incomings: £").append(incomingTotal != null ? incomingTotal : 0.0f).append("\n");
+        sb.append("- Active Monthly Outgoings: £").append(outgoingTotal != null ? outgoingTotal : 0.0f).append("\n");
+        sb.append("- Projected Monthly Surplus / Breathing Room: £").append(monthlySurplus != null ? monthlySurplus : 0.0f).append("\n\n");
+
+        if (accounts != null && !accounts.isEmpty()) {
+            sb.append("Account Balances & Available Liquidity:\n");
+            for (models.Account a : accounts) {
+                if (a != null && !a.isArchived()) {
+                    sb.append("  • ").append(a.getName() != null ? a.getName() : "Account")
+                            .append(" (").append(a.getType() != null ? a.getType() : "DEBIT").append("): £")
+                            .append(a.getLatestBalanceValue()).append("\n");
+                }
+            }
+            sb.append("\n");
+        }
+
+        List<models.Outgoing> active = new ArrayList<>();
+        List<models.Outgoing> paused = new ArrayList<>();
+        if (outgoings != null) {
+            for (models.Outgoing o : outgoings) {
+                if (o == null || o.isArchived()) continue;
+                if (o.isPaused()) {
+                    paused.add(o);
+                } else {
+                    active.add(o);
+                }
+            }
+        }
+
+        sb.append("Active Outgoings (Candidates to Consider Pausing):\n");
+        if (active.isEmpty()) {
+            sb.append("  (No active outgoings recorded)\n");
+        } else {
+            for (models.Outgoing o : active) {
+                sb.append("  • ").append(o.getName()).append(": £").append(o.getCost())
+                        .append(" [Day ").append(o.getOutgoingDay())
+                        .append(o.isYearly() ? (", " + o.getFrequencyLabel()) : ", Monthly");
+                if (o.isBill()) sb.append(", Shared Bill");
+                if (o.isRent()) sb.append(", Rent");
+                if (o.isHiddenFromTotal()) sb.append(", Savings Plan");
+                if (o.getAccount() != null) sb.append(", Paid from ").append(o.getAccount().getName());
+                sb.append("]\n");
+            }
+        }
+        sb.append("\n");
+
+        if (!paused.isEmpty()) {
+            sb.append("Already Paused Outgoings:\n");
+            for (models.Outgoing o : paused) {
+                sb.append("  • ").append(o.getName()).append(" (was £").append(o.getCost()).append(")");
+                if (o.getPauseReason() != null && !o.getPauseReason().isEmpty()) {
+                    sb.append(" - Reason: ").append(o.getPauseReason());
+                }
+                sb.append("\n");
+            }
+            sb.append("\n");
+        }
+
+        sb.append("Please analyze these outgoings as Ed in the Hemingway style. Look at the wider financial position and actively persuade the user to PAUSE specific non-essential outgoings that drain money without survival value. Explain exactly why pausing each candidate creates breathing room.");
         return sb.toString();
     }
 
@@ -553,6 +637,105 @@ public class MistralService {
                                     return text;
                                 }
                                 return "Ed looked at the horizon, but received an empty response.";
+                            } catch (Exception e) {
+                                return "Ed couldn't parse the response (" + e.getMessage() + ")";
+                            }
+                        } else {
+                            String errorDetail = extractErrorMessage(respBody);
+                            return "Ed could not reach Mistral (" + status + ")" + (errorDetail != null ? ": " + errorDetail : "");
+                        }
+                    })
+                    .exceptionally(ex -> "Ed encountered an error contacting Mistral: " + ex.getMessage());
+        } catch (Exception e) {
+            return CompletableFuture.completedFuture("Ed encountered an error preparing the advice: " + e.getMessage());
+        }
+    }
+
+    public CompletableFuture<String> askEdOutgoings(String userId, String contextPrompt, boolean forceRefresh) {
+        log("INFO", String.format("askEdOutgoings requested: user='%s', forceRefresh=%s, promptLength=%d",
+                userId, forceRefresh, contextPrompt != null ? contextPrompt.length() : 0));
+
+        if (!isConfigured()) {
+            log("WARN", String.format("askEdOutgoings rejected: Mistral API key is not configured for user='%s'", userId));
+            return CompletableFuture.completedFuture(
+                    "Ed needs a Mistral API key to review your outgoings! Please configure `mistral.apiKey` in `conf/application.conf` or set the `MISTRAL_API_KEY` environment variable."
+            );
+        }
+
+        long now = System.currentTimeMillis();
+        if (!forceRefresh && userId != null) {
+            CacheEntry cached = userOutgoingsAdviceCache.get(userId);
+            if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
+                long ageSec = (now - cached.timestamp) / 1000L;
+                log("INFO", String.format("askEdOutgoings cache HIT for user='%s' (cached %ds ago, TTL=%ds). Returning cached advice.",
+                        userId, ageSec, CACHE_TTL_MS / 1000L));
+                return CompletableFuture.completedFuture(cached.text);
+            }
+        }
+
+        long startTime = System.currentTimeMillis();
+        String model = getModel();
+        String apiKey = getApiKey();
+
+        log("INFO", String.format("askEdOutgoings sending API request: user='%s', model='%s', key=%s, endpoint='https://api.mistral.ai/v1/chat/completions'",
+                userId, model, maskKey(apiKey)));
+
+        try {
+            ObjectNode payload = mapper.createObjectNode();
+            payload.put("model", model);
+            payload.put("temperature", 0.7);
+            payload.put("max_tokens", 750);
+
+            ArrayNode messages = payload.putArray("messages");
+
+            ObjectNode systemMsg = messages.addObject();
+            systemMsg.put("role", "system");
+            systemMsg.put("content",
+                    "You are Ed, financial pragmatist and cold-eyed observer in MonMon. " +
+                            "Speak strictly in the style of Ernest Hemingway: lean, spare, direct, honest, and unadorned. " +
+                            "Short sentences. No melodrama, no emojis, no exclamation marks. " +
+                            "Your mission is to look at the user's outgoings against their wider financial position (income, cash buffer, monthly allowance, debt, and upcoming bills) and actively persuade them to PAUSE specific outgoings that are draining money without adding survival value.\n\n" +
+                            "Structure:\n" +
+                            "1. A blunt 2-sentence reality check on their fixed outflow vs incoming cash and breathing room.\n" +
+                            "2. Specific Outgoing(s) to Pause: Name each candidate outgoing, state its cost, and give the exact, hard-headed reason why they should click 'Pause' on it right now.\n" +
+                            "3. The Relief: State plainly how much monthly cash they recover by pausing these items and how it shields their position before payday.\n" +
+                            "If they already have items paused, acknowledge them as good discipline.\n" +
+                            "Use clean Markdown formatting with simple bold headings and bullet points."
+            );
+
+            ObjectNode userMsg = messages.addObject();
+            userMsg.put("role", "user");
+            userMsg.put("content", contextPrompt);
+
+            String requestBody = mapper.writeValueAsString(payload);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.mistral.ai/v1/chat/completions"))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .timeout(Duration.ofSeconds(25))
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(response -> {
+                        long durationMs = System.currentTimeMillis() - startTime;
+                        int status = response.statusCode();
+                        String respBody = response.body();
+
+                        if (status == 200) {
+                            try {
+                                JsonNode root = mapper.readTree(respBody);
+                                JsonNode choices = root.path("choices");
+                                if (choices.isArray() && choices.size() > 0) {
+                                    String text = choices.get(0).path("message").path("content").asText();
+                                    if (userId != null && text != null && !text.isBlank()) {
+                                        userOutgoingsAdviceCache.put(userId, new CacheEntry(text, System.currentTimeMillis()));
+                                    }
+                                    return text;
+                                }
+                                return "Ed looked through your bills, but received an empty response.";
                             } catch (Exception e) {
                                 return "Ed couldn't parse the response (" + e.getMessage() + ")";
                             }

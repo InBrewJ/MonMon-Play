@@ -20,6 +20,17 @@
 @partials.navbar()
 
 <div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
+  @if(request.flash().get("success").isPresent) {
+    <div class="w3-panel w3-round" style="background: rgba(16, 185, 129, 0.15); color: #047857; border: 1px solid rgba(16, 185, 129, 0.3); padding: 10px 14px; margin-bottom: 1rem; font-size: 0.9rem; font-weight: 600;">
+      <i class="fas fa-check-circle" style="margin-right: 6px;"></i> @request.flash().get("success").get()
+    </div>
+  }
+  @if(request.flash().get("error").isPresent) {
+    <div class="w3-panel w3-round" style="background: rgba(239, 68, 68, 0.15); color: #b91c1c; border: 1px solid rgba(239, 68, 68, 0.3); padding: 10px 14px; margin-bottom: 1rem; font-size: 0.9rem; font-weight: 600;">
+      <i class="fas fa-exclamation-triangle" style="margin-right: 6px;"></i> @request.flash().get("error").get()
+    </div>
+  }
+
   <div class="w3-row">
     <div class="w3-col l12 m12 s12">
       <div class="w3-card w3-padding w3-margin-bottom">
@@ -37,13 +48,16 @@
           </button>
         </div>
 
-        <!-- Filter Tabs: Monthly & Due vs Yearly vs All -->
-        <div class="outgoings-tabs-bar" style="display: flex; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">
+        <!-- Filter Tabs: Monthly & Due vs Yearly vs Paused vs All -->
+        <div class="outgoings-tabs-bar" style="display: flex; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; flex-wrap: wrap;">
           <button type="button" class="outgoings-tab-btn active" data-tab="active" style="background: none; border: none; border-bottom: 2px solid var(--primary); padding: 6px 12px; font-weight: 700; color: var(--primary); cursor: pointer; font-size: 0.85rem;">
             <i class="fas fa-calendar-check" style="margin-right: 4px;"></i> Monthly & Due Now
           </button>
           <button type="button" class="outgoings-tab-btn" data-tab="yearly" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
             <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i> Yearly Bills
+          </button>
+          <button type="button" class="outgoings-tab-btn" data-tab="paused" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
+            <i class="fas fa-pause-circle" style="margin-right: 4px; color: #f59e0b;"></i> Paused
           </button>
           <button type="button" class="outgoings-tab-btn" data-tab="all" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
             <i class="fas fa-list" style="margin-right: 4px;"></i> All Outgoings
@@ -61,19 +75,22 @@
                 <th class="col-name">Name & Frequency</th>
                 <th class="col-cost">Cost</th>
                 <th class="col-account">From Account</th>
-                <th class="col-action"></th>
-                <th class="col-action"></th>
+                <th class="col-action" title="Edit outgoing"></th>
+                <th class="col-action" title="Pause or Unpause outgoing"></th>
+                <th class="col-action" title="Delete outgoing"></th>
               </tr>
             </thead>
             <tbody>
               @if(outgoings.isEmpty) {
-                <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No outgoings recorded. Add one on the right.</td></tr>
+                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No outgoings recorded. Add one on the right.</td></tr>
               } else {
                 @for(o <- outgoings) {
-                  <tr class="outgoing-row"
+                  <tr class="outgoing-row @if(o.isPaused()){outgoing-row-paused}"
                       data-is-yearly="@o.isYearly()"
                       data-due-now="@o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))"
-                      data-month="@o.getOutgoingMonth()">
+                      data-month="@o.getOutgoingMonth()"
+                      data-is-paused="@o.isPaused()"
+                      style="@if(o.isPaused()){opacity: 0.75; background: rgba(245, 158, 11, 0.05);}">
                     <td class="col-day">
                       @if(o.isYearly()) {
                         <span style="font-weight: 700; color: var(--primary);">
@@ -96,6 +113,11 @@
                     </td>
                     <td class="col-name">
                       <b>@o.name</b>
+                      @if(o.isPaused()) {
+                        <span class="badge-pill badge-warning" style="font-size: 0.72rem; background: rgba(245, 158, 11, 0.18); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.35); margin-left: 6px; font-weight: 700;" title="@(if(o.getPauseReason() != null && !o.getPauseReason().isEmpty()) "Reason: " + o.getPauseReason() else "Paused")">
+                          <i class="fas fa-pause-circle"></i> Paused@(if(o.getPauseReason() != null && !o.getPauseReason().isEmpty()) ": " + o.getPauseReason() else "")
+                        </span>
+                      }
                       @if(o.isYearly()) {
                         @if(o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))) {
                           <span class="badge-pill badge-warning" style="font-size: 0.72rem; margin-left: 4px;"><i class="fas fa-bell"></i> @if(o.getYearInterval() > 1){Every @o.getYearInterval() yrs (Due Now)}else{Yearly (Due Now)}</span>
@@ -109,7 +131,14 @@
                       @if(o.isRent()) { <span class="badge-pill badge-primary" style="font-size: 0.72rem; margin-left: 4px;">Rent</span> }
                       @if(o.isHiddenFromTotal()) { <span class="badge-pill" style="font-size: 0.72rem; background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); margin-left: 4px;">Savings Plan</span> }
                     </td>
-                    <td class="col-cost" style="color: var(--danger); font-weight: 700;">£@o.cost</td>
+                    <td class="col-cost" style="@if(o.isPaused()){color: var(--text-muted);}else{color: var(--danger); font-weight: 700;}">
+                      @if(o.isPaused()) {
+                        <span style="text-decoration: line-through; opacity: 0.6; font-size: 0.85em;">£@o.cost</span>
+                        <span style="color: #10b981; font-weight: 700; margin-left: 4px;">£0.00</span>
+                      } else {
+                        £@o.cost
+                      }
+                    </td>
                     <td class="col-account">
                       <span class="account-tag">
                         <i class="fas fa-university" style="color: var(--primary); font-size: 0.75rem;"></i>
@@ -120,6 +149,17 @@
                       <a href="/editOutgoing/@o.id#edit-form" title="Edit">
                         <i class="fas fa-pen"></i>
                       </a>
+                    </td>
+                    <td class="col-action">
+                      @if(o.isPaused()) {
+                        <a href="/unpauseOutgoing/@o.id" title="Unpause outgoing (restore £@o.cost)" style="color: #10b981; font-weight: 700; font-size: 0.95rem;">
+                          <i class="fas fa-play"></i>
+                        </a>
+                      } else {
+                        <a href="javascript:void(0)" onclick="openPauseModal(@o.id, '@o.name', '@o.cost')" title="Pause outgoing" style="color: #f59e0b; font-size: 0.95rem;">
+                          <i class="fas fa-pause"></i>
+                        </a>
+                      }
                     </td>
                     <td class="col-action">
                       <a href="/binOutgoing/@o.id" title="Delete" onclick="return confirm('Are you sure you want to delete this outgoing?');">
@@ -139,10 +179,12 @@
             <div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0;">No outgoings recorded. Add one below.</div>
           } else {
             @for(o <- outgoings) {
-              <div class="item-card outgoing-card"
+              <div class="item-card outgoing-card @if(o.isPaused()){outgoing-card-paused}"
                    data-is-yearly="@o.isYearly()"
                    data-due-now="@o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))"
-                   data-month="@o.getOutgoingMonth()">
+                   data-month="@o.getOutgoingMonth()"
+                   data-is-paused="@o.isPaused()"
+                   style="@if(o.isPaused()){opacity: 0.8; border-left: 3px solid #f59e0b;}">
                 <div class="item-card-header">
                   <div class="item-card-title-group">
                     <div class="day-badge @if(o.isAdjustedForMonth()) {day-badge-adj}">
@@ -155,10 +197,24 @@
                       }
                     </div>
                     <div>
-                      <div class="item-card-title">@o.name</div>
+                      <div class="item-card-title">
+                        @o.name
+                        @if(o.isPaused()) {
+                          <span class="badge-pill" style="font-size: 0.7rem; background: rgba(245, 158, 11, 0.18); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.35); font-weight: 700; margin-left: 4px;">
+                            <i class="fas fa-pause-circle"></i> Paused
+                          </span>
+                        }
+                      </div>
                     </div>
                   </div>
-                  <div class="item-card-cost">£@o.cost</div>
+                  <div class="item-card-cost">
+                    @if(o.isPaused()) {
+                      <span style="text-decoration: line-through; opacity: 0.6; font-size: 0.8em; color: var(--text-muted);">£@o.cost</span>
+                      <span style="color: #10b981; font-weight: 700; margin-left: 4px;">£0.00</span>
+                    } else {
+                      £@o.cost
+                    }
+                  </div>
                 </div>
 
                 <div class="item-card-meta">
@@ -166,6 +222,11 @@
                     <i class="fas fa-university" style="color: var(--primary); font-size: 0.75rem;"></i>
                     @o.account.name
                   </span>
+                  @if(o.isPaused() && o.getPauseReason() != null && !o.getPauseReason().isEmpty()) {
+                    <span class="badge-pill" style="background: rgba(245, 158, 11, 0.12); color: #b45309; border: 1px solid rgba(245, 158, 11, 0.25); font-size: 0.72rem;">
+                      <i class="fas fa-comment-dots"></i> Reason: @o.getPauseReason()
+                    </span>
+                  }
                   @if(o.isYearly()) {
                     @if(o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))) {
                       <span class="badge-pill badge-warning"><i class="fas fa-bell"></i> @if(o.getYearInterval() > 1){Every @o.getYearInterval() yrs (Due Now)}else{Yearly (Due Now)}</span>
@@ -187,6 +248,11 @@
 
                 <div class="item-card-actions">
                   <a href="/editOutgoing/@o.id#edit-form" class="btn-action btn-edit"><i class="fas fa-pen"></i> Edit</a>
+                  @if(o.isPaused()) {
+                    <a href="/unpauseOutgoing/@o.id" class="btn-action" style="color: #10b981; font-weight: 700;"><i class="fas fa-play"></i> Unpause</a>
+                  } else {
+                    <button type="button" onclick="openPauseModal(@o.id, '@o.name', '@o.cost')" class="btn-action" style="background: none; border: none; cursor: pointer; color: #f59e0b; font-weight: 600;"><i class="fas fa-pause"></i> Pause</button>
+                  }
                   <a href="/binOutgoing/@o.id" class="btn-action btn-delete" onclick="return confirm('Are you sure you want to delete this outgoing?');"><i class="fas fa-trash-alt"></i> Delete</a>
                 </div>
               </div>
@@ -338,6 +404,40 @@
   </div>
 </div>
 
+<!-- Modal: Pause Outgoing with Reason -->
+<div id="pause-outgoing-modal" class="modal-backdrop" style="display: none;">
+  <div class="modal-content-card" style="padding: 1.5rem; position: relative; max-width: 480px; width: 92%;">
+    <button type="button" onclick="closePauseModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; line-height: 1; color: var(--text-muted); cursor: pointer;" aria-label="Close">&times;</button>
+    <div style="font-weight: 700; font-size: 1.1rem; color: var(--text-main); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 8px;">
+      <i class="fas fa-pause-circle" style="color: #f59e0b;"></i>
+      Pause Outgoing
+    </div>
+    <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 1.25rem;">
+      Pause <b id="pause-outgoing-name" style="color: var(--text-main);"></b>? Its monetary value (<b id="pause-outgoing-cost" style="color: var(--text-main);"></b>) will be preserved, but its effective cost will become <b style="color: #10b981;">£0.00</b> and it will not appear as an active outgoing until you unpause it.
+    </p>
+
+    <form id="pause-outgoing-form" method="POST" action="">
+      @helper.CSRF.formField
+      <label for="pause-reason-input" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 4px;">Reason for pausing *</label>
+      <input
+              id="pause-reason-input"
+              type="text"
+              name="reason"
+              placeholder="e.g. Winter gym freeze, paused subscription, temporary relief"
+              required
+              class="w3-input w3-border w3-round"
+              style="margin-bottom: 1.25rem; font-size: 0.9rem;"
+      />
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" onclick="closePauseModal()" class="w3-button w3-round w3-border" style="font-size: 0.88rem;">Cancel</button>
+        <button type="submit" class="w3-button w3-round" style="background: #f59e0b; color: #1e1e1e; font-weight: 700; font-size: 0.88rem;">
+          <i class="fas fa-pause"></i> Pause Outgoing
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 function openOutgoingModal() {
   var modal = document.getElementById('outgoing-modal');
@@ -355,6 +455,24 @@ function closeOutgoingModal() {
     if (modal) modal.style.display = 'none';
   }
 }
+
+function openPauseModal(id, name, cost) {
+  var form = document.getElementById('pause-outgoing-form');
+  form.action = '/pauseOutgoing/' + id;
+  document.getElementById('pause-outgoing-name').textContent = name;
+  document.getElementById('pause-outgoing-cost').textContent = '£' + cost;
+  var reasonInput = document.getElementById('pause-reason-input');
+  reasonInput.value = '';
+  var modal = document.getElementById('pause-outgoing-modal');
+  modal.style.display = 'flex';
+  setTimeout(function() { reasonInput.focus(); }, 80);
+}
+
+function closePauseModal() {
+  var modal = document.getElementById('pause-outgoing-modal');
+  if (modal) modal.style.display = 'none';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   var modal = document.getElementById('outgoing-modal');
   if (modal) {
@@ -362,10 +480,60 @@ document.addEventListener('DOMContentLoaded', function() {
       if (e.target === modal) closeOutgoingModal();
     });
   }
+  var pauseModal = document.getElementById('pause-outgoing-modal');
+  if (pauseModal) {
+    pauseModal.addEventListener('click', function(e) {
+      if (e.target === pauseModal) closePauseModal();
+    });
+  }
+});
+
+window.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closePauseModal();
+  }
 });
 </script>
 </div>
 
+<!-- Floating Action Button for Ed (Bottom Left, Mobile & Desktop) -->
+<button type="button" id="btn-ed-fab" class="fab-ed" title="Ed says">
+    <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" />
+</button>
+
+<!-- Ed Says Modal (Outgoings & Trimming) -->
+<div id="ed-modal" class="modal-backdrop">
+    <div class="modal-content-card" style="max-width: 580px;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 1.1rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 28px; height: 28px; vertical-align: middle;" />
+                <span>Ed Says — Trimming &amp; Pausing Outgoings</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="ed-refresh-btn w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; cursor: pointer;" title="Ask Ed for fresh advice">
+                    <i class="fas fa-sync-alt ed-refresh-icon"></i> Ask Ed
+                </button>
+                <button type="button" id="ed-close-btn" style="background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 1.25rem; max-height: calc(85vh - 70px); overflow-y: auto;">
+            <div class="ed-says-content" style="font-size: 0.9rem; line-height: 1.6; color: var(--text-main);">
+                <div style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); padding: 0.6rem 0;">
+                    <i class="fas fa-spinner fa-spin" style="color: var(--primary);"></i>
+                    <span>Summoning Ed's thoughts on trimming and pausing your outgoings...</span>
+                </div>
+            </div>
+            <div class="ed-says-footer" style="display: none; margin-top: 0.85rem; padding-top: 0.5rem; border-top: 1px dashed var(--border-color); font-size: 0.74rem; color: var(--text-muted); text-align: right;">
+                <i class="far fa-clock" style="margin-right: 4px;"></i><span class="ed-last-spoke-text"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="@routes.Assets.versioned("javascripts/outgoings.js")"></script>
+<script src="@routes.Assets.versioned("javascripts/edOutgoings.js")"></script>
 
 }

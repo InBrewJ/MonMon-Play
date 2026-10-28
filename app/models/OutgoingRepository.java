@@ -22,6 +22,10 @@ public interface OutgoingRepository {
 
     CompletionStage<Outgoing> archive(int outgoingId);
 
+    CompletionStage<Outgoing> pause(int outgoingId, String reason);
+
+    CompletionStage<Outgoing> unpause(int outgoingId);
+
     CompletionStage<Outgoing> findById(int outgoingId);
 
     CompletionStage<Stream<Outgoing>> rents(String userId);

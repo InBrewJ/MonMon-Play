@@ -70,6 +70,16 @@ public class JPAOutgoingRepository implements OutgoingRepository {
     }
 
     @Override
+    public CompletionStage<Outgoing> pause(int outgoingId, String reason) {
+        return supplyAsync(() -> wrap(em -> pause(em, outgoingId, reason)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<Outgoing> unpause(int outgoingId) {
+        return supplyAsync(() -> wrap(em -> unpause(em, outgoingId)), executionContext);
+    }
+
+    @Override
     public CompletionStage<Stream<Outgoing>> alreadyPaid(LocalDate asOf, int paydayDay, String userId) {
         return supplyAsync(() -> wrap(em -> alreadyPaid(em, asOf, paydayDay, userId)), executionContext);
     }
@@ -134,9 +144,31 @@ public class JPAOutgoingRepository implements OutgoingRepository {
         return toArchive;
     }
 
+    private Outgoing pause(EntityManager em, int outgoingId, String reason) {
+        Outgoing toPause = em.find(Outgoing.class, (long) outgoingId);
+        if (toPause != null) {
+            toPause.setPaused(true);
+            toPause.setPauseReason(reason != null ? reason.trim() : "");
+            toPause.setPausedAt(System.currentTimeMillis());
+            em.persist(toPause);
+        }
+        return toPause;
+    }
+
+    private Outgoing unpause(EntityManager em, int outgoingId) {
+        Outgoing toUnpause = em.find(Outgoing.class, (long) outgoingId);
+        if (toUnpause != null) {
+            toUnpause.setPaused(false);
+            toUnpause.setPauseReason(null);
+            toUnpause.setPausedAt(null);
+            em.persist(toUnpause);
+        }
+        return toUnpause;
+    }
+
     private Stream<Outgoing> rents(EntityManager em, String userId) {
         List<Outgoing> outgoings = em
-                .createQuery("select p from Outgoing p WHERE RENT = true and archived = false and userId = :userId", Outgoing.class)
+                .createQuery("select p from Outgoing p WHERE RENT = true and archived = false and (paused = false or paused is null) and userId = :userId", Outgoing.class)
                 .setParameter("userId", userId)
                 .getResultList();
         return outgoings.stream();
@@ -144,7 +176,7 @@ public class JPAOutgoingRepository implements OutgoingRepository {
 
     private Stream<Outgoing> bills(EntityManager em, String userId) {
         List<Outgoing> outgoings = em
-                .createQuery("select p from Outgoing p WHERE BILL = true and archived = false and userId = :userId", Outgoing.class)
+                .createQuery("select p from Outgoing p WHERE BILL = true and archived = false and (paused = false or paused is null) and userId = :userId", Outgoing.class)
                 .setParameter("userId", userId)
                 .getResultList();
         return outgoings.stream();
