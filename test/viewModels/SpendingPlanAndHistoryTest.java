@@ -3,6 +3,7 @@ package viewModels;
 import helpers.HistoricSpentCalculator;
 import models.Account;
 import models.Balance;
+import models.Incoming;
 import models.Pot;
 import org.junit.Test;
 
@@ -364,5 +365,149 @@ public class SpendingPlanAndHistoryTest {
         assertThat(cycle.getTotalSpent()).isEqualTo(200.0);
         assertThat(cycle.getAccountBreakdowns()).hasSize(1);
         assertThat(cycle.getAccountBreakdowns().get(0).getAccountName()).isEqualTo("Main Current");
+    }
+
+    @Test
+    public void incomingWorkRateChipCalculation() {
+        Incoming inc = new Incoming();
+        // £4,583.333/month * 12 = £55,000 / year
+        inc.setGrossValue(4583.333f);
+        inc.setNetValue(3200f);
+
+        assertThat(inc.getDailyRate()).isNotNull();
+        // 55,000 / 253 = 217.39
+        assertThat(String.format("%.2f", inc.getDailyRate())).isEqualTo("217.39");
+        // 217.39 / 7.5 = 28.99
+        assertThat(String.format("%.2f", inc.getHourlyRate())).isEqualTo("28.99");
+        assertThat(inc.getWorkRateChip()).isEqualTo("[£217.39/day for 7.5 hours £28.99/hr]");
+    }
+
+    @Test
+    public void paydayIncomingAssumedIntoTargetAccountWhenNoPaydayBalanceEntered() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(1L, "Main Current");
+        // Balance on Sept 30 (day before payday): £100
+        current.balances.add(bal(current, 100f, LocalDate.of(2026, 9, 30), 18));
+
+        // User does NOT enter a balance on Oct 1 payday.
+        // User spends £400 by Oct 5 (recorded balance £2,200)
+        current.balances.add(bal(current, 2200f, LocalDate.of(2026, 10, 5), 12));
+        // User spends further by Oct 20 (recorded balance £700)
+        current.balances.add(bal(current, 700f, LocalDate.of(2026, 10, 20), 12));
+
+        Incoming salary = new Incoming();
+        salary.setId(10L);
+        salary.setName("Employer Salary");
+        salary.setNetValue(2500f);
+        salary.setIncomingMonthDay(1);
+        salary.setPayDay(true);
+        salary.setAccount(current);
+        salary.setCreatedAt(LocalDate.of(2026, 8, 1).atStartOfDay(UK).toEpochSecond());
+
+        Pot pot = new Pot();
+        pot.setType(Pot.PotType.MONTHLY);
+        pot.setCreatedAt(LocalDate.of(2026, 9, 1).atStartOfDay(UK).toEpochSecond());
+        pot.addAccount(current);
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                List.of(pot), List.of(current), List.of(salary), payday, today, UK, 500f);
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        assertThat(cycle).isNotNull();
+
+        // Starting total balance should assume the £2,500 salary landed on Oct 1: 100 + 2500 = 2600.0
+        assertThat(cycle.getStartingTotalBalance()).isEqualTo(2600.0);
+        // Ending balance is 700.0
+        assertThat(cycle.getEndingTotalBalance()).isEqualTo(700.0);
+        // Total spent across cycle should be: 2600.0 - 700.0 = 1900.0
+        assertThat(cycle.getTotalSpent()).isEqualTo(1900.0);
+        // The monthly budget derived from the pot should also be 2600.0
+        assertThat(cycle.getMonthlyBudget()).isEqualTo(2600.0f);
+    }
+
+    @Test
+    public void paydayIncomingNotDoubleCountedIfUserEntersPaydayBalance() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(1L, "Main Current");
+        // Balance on Sept 30: £100
+        current.balances.add(bal(current, 100f, LocalDate.of(2026, 9, 30), 18));
+        // User logged in on Oct 1 at 09:00 and explicitly recorded £2,600 (already including salary)
+        current.balances.add(bal(current, 2600f, LocalDate.of(2026, 10, 1), 9));
+        // End of month balance: £600
+        current.balances.add(bal(current, 600f, LocalDate.of(2026, 10, 25), 12));
+
+        Incoming salary = new Incoming();
+        salary.setId(10L);
+        salary.setName("Employer Salary");
+        salary.setNetValue(2500f);
+        salary.setIncomingMonthDay(1);
+        salary.setPayDay(true);
+        salary.setAccount(current);
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(), List.of(current), List.of(salary), payday, today, UK, 500f);
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        // Since Oct 1 snapshot exists, it is NOT double-counted: starting balance stays 2600.0
+        assertThat(cycle.getStartingTotalBalance()).isEqualTo(2600.0);
+        assertThat(cycle.getEndingTotalBalance()).isEqualTo(600.0);
+        assertThat(cycle.getTotalSpent()).isEqualTo(2000.0);
+    }
+
+    @Test
+    public void historicAndSoftDeletedIncomingsHonoredInTheirActiveCycles() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(1L, "Main Current");
+        // Balance before Sept cycle (Aug 31): £200
+        current.balances.add(bal(current, 200f, LocalDate.of(2026, 8, 31), 18));
+        // End of Sept cycle (Sept 30): £500
+        current.balances.add(bal(current, 500f, LocalDate.of(2026, 9, 30), 18));
+        // End of Oct cycle (Oct 25): £800
+        current.balances.add(bal(current, 800f, LocalDate.of(2026, 10, 25), 18));
+
+        // Old salary: active in Sept cycle, but archived on Sept 25 before Oct cycle
+        Incoming oldSalary = new Incoming();
+        oldSalary.setId(1L);
+        oldSalary.setName("Old Job Salary");
+        oldSalary.setNetValue(2000f);
+        oldSalary.setPayDay(true);
+        oldSalary.setIncomingMonthDay(1);
+        oldSalary.setAccount(current);
+        oldSalary.setCreatedAt(LocalDate.of(2026, 1, 1).atStartOfDay(UK).toEpochSecond());
+        oldSalary.setArchived(true);
+        // Archived on Sept 25, so it was active on Sept 1 cycle start, but dead by Oct 1
+        oldSalary.setArchivedAt(LocalDate.of(2026, 9, 25).atStartOfDay(UK).toEpochSecond());
+
+        // New salary: created Sept 26, active for Oct cycle
+        Incoming newSalary = new Incoming();
+        newSalary.setId(2L);
+        newSalary.setName("New Job Salary");
+        newSalary.setNetValue(3000f);
+        newSalary.setPayDay(true);
+        newSalary.setIncomingMonthDay(1);
+        newSalary.setAccount(current);
+        newSalary.setCreatedAt(LocalDate.of(2026, 9, 26).atStartOfDay(UK).toEpochSecond());
+        newSalary.setArchived(false);
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(), List.of(current), List.of(oldSalary, newSalary), payday, today, UK, 500f);
+
+        // Current cycle (Oct 1 - Nov 1): uses newSalary (+3000)
+        HistoricCycleSpent octCycle = vm.getCurrentCycle();
+        assertThat(octCycle.getStartingTotalBalance()).isEqualTo(3500.0); // 500 + 3000
+
+        // Previous cycle (Sept 1 - Oct 1): uses oldSalary (+2000)
+        List<HistoricCycleSpent> cycles = vm.getCycles();
+        HistoricCycleSpent septCycle = cycles.stream()
+                .filter(c -> c.getCycleStartDate().equals(LocalDate.of(2026, 9, 1)))
+                .findFirst().orElse(null);
+        assertThat(septCycle).isNotNull();
+        assertThat(septCycle.getStartingTotalBalance()).isEqualTo(2200.0); // 200 + 2000
     }
 }

@@ -88,6 +88,9 @@ public class JPAIncomingRepository implements IncomingRepository {
     }
 
     private Incoming insert(EntityManager em, Incoming incoming) {
+        if (incoming.getCreatedAt() == null) {
+            incoming.setCreatedAt(System.currentTimeMillis());
+        }
         em.persist(incoming);
         return incoming;
     }
@@ -96,6 +99,7 @@ public class JPAIncomingRepository implements IncomingRepository {
         Incoming toArchive = em.find(Incoming.class, (long)incomingId);
         System.out.println("Archiving :: " + toArchive.getName());
         toArchive.setArchived(true);
+        toArchive.setArchivedAt(System.currentTimeMillis());
         em.persist(toArchive);
         return toArchive;
     }
@@ -104,10 +108,12 @@ public class JPAIncomingRepository implements IncomingRepository {
         Incoming toUpdate = em.find(Incoming.class, (long)incomingId);
         System.out.println("Updating :: " + toUpdate.getName());
         toUpdate.setNetValue(incoming.getNetValue());
+        toUpdate.setGrossValue(incoming.getGrossValue());
         toUpdate.setName(incoming.getName());
         toUpdate.setPayDay(incoming.payDay);
         toUpdate.setIncomingMonthDay(incoming.getIncomingMonthDay());
         toUpdate.setType(incoming.getType());
+        toUpdate.setAccount(incoming.getAccount());
         em.persist(toUpdate);
         return toUpdate;
     }

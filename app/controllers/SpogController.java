@@ -363,7 +363,7 @@ public class SpogController extends Controller {
 
         List<Account> allAccounts = repoListToList(this.accountRepository.listComplete(sup.getUserId()));
         List<Pot> allPots = repoListToList(this.potRepository.listComplete(sup.getUserId()));
-        List<Incoming> allIncomings = repoListToList(incomingRepository.list(sup.getUserId()));
+        List<Incoming> allIncomings = repoListToList(incomingRepository.listComplete(sup.getUserId()));
         List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         List<Plan> allPlans = repoListToList(this.planRepository.list(sup.getUserId()));
         Float monthlySurplus = helpers.ModelHelpers.calculateMonthlyAllowance(allIncomings, allOutgoings, allPlans, today);
@@ -371,6 +371,7 @@ public class SpogController extends Controller {
         viewModels.HistoricSpentViewModel viewModel = helpers.HistoricSpentCalculator.calculate(
                 allPots,
                 allAccounts,
+                allIncomings,
                 nominalPayday,
                 today,
                 zone,
@@ -444,6 +445,7 @@ public class SpogController extends Controller {
         salary.setPayDay(true);
         salary.setIncomingMonthDay(26);
         salary.setType("salary");
+        salary.setAccount(natwestDFullAccount);
         salary.setUserId(sup.getUserId());
         this.incomingRepository.add(salary);
         // Incomings end

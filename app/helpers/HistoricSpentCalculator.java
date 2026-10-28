@@ -2,6 +2,7 @@ package helpers;
 
 import models.Account;
 import models.Balance;
+import models.Incoming;
 import models.Pot;
 import viewModels.AccountSpentItem;
 import viewModels.HistoricCycleSpent;
@@ -28,9 +29,39 @@ public class HistoricSpentCalculator {
                 .collect(Collectors.toList());
     }
 
+    public static double getAccountPaydayInflow(Account acc, List<Incoming> cycleIncomings, LocalDate cycleStart) {
+        if (acc == null || cycleIncomings == null || cycleIncomings.isEmpty()) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (Incoming inc : cycleIncomings) {
+            if (inc != null && inc.getAccount() != null && inc.getAccount().getId() != null
+                    && inc.getAccount().getId().equals(acc.getId())) {
+                if (inc.isPayDay() || inc.getEffectiveIncomingMonthDay(cycleStart) == cycleStart.getDayOfMonth()) {
+                    if (inc.getNetValue() != null && inc.getNetValue() > 0) {
+                        total += inc.getNetValue();
+                    }
+                }
+            }
+        }
+        return round2(total);
+    }
+
     public static HistoricSpentViewModel calculate(
             List<Pot> allPots,
             List<Account> allAccounts,
+            int nominalPayday,
+            LocalDate today,
+            ZoneId zone,
+            Float monthlySurplus
+    ) {
+        return calculate(allPots, allAccounts, Collections.emptyList(), nominalPayday, today, zone, monthlySurplus);
+    }
+
+    public static HistoricSpentViewModel calculate(
+            List<Pot> allPots,
+            List<Account> allAccounts,
+            List<Incoming> allIncomings,
             int nominalPayday,
             LocalDate today,
             ZoneId zone,
@@ -99,6 +130,12 @@ public class HistoricSpentCalculator {
             // Find which pot configuration was active during this cycle
             Pot activePot = findActivePotForCycle(monthlyPots, cycleStartSec, cycleEndSec);
 
+            // Incomings active during this cycle (taking historic and soft-deleted into account)
+            List<Incoming> cycleIncomings = allIncomings != null ? allIncomings.stream()
+                    .filter(i -> i != null && (i.getCreatedAt() == null || i.getCreatedAt() <= cycleStartSec + 86400L))
+                    .filter(i -> !i.isArchived() || (i.getArchivedAt() != null && i.getArchivedAt() >= cycleStartSec))
+                    .collect(Collectors.toList()) : Collections.emptyList();
+
             // Accounts associated with this pot configuration for pot budget calculation
             Pot accountSourcePot = activePot;
             if (activePot != null && (activePot.accounts == null || activePot.accounts.isEmpty())) {
@@ -115,7 +152,8 @@ public class HistoricSpentCalculator {
             double startingPotBudget = 0.0;
             double endingPotBudget = 0.0;
             for (Account pa : potAccounts) {
-                startingPotBudget += getAccountStartBalance(pa, cycleStartSec, cycleEndSec);
+                double paInflow = getAccountPaydayInflow(pa, cycleIncomings, currCycleStart);
+                startingPotBudget += getAccountStartBalance(pa, cycleStartSec, cycleEndSec, paInflow);
                 endingPotBudget += getAccountEndBalance(pa, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
             }
             startingPotBudget = round2(startingPotBudget);
@@ -137,7 +175,8 @@ public class HistoricSpentCalculator {
                     continue;
                 }
 
-                double startBal = getAccountStartBalance(acc, cycleStartSec, cycleEndSec);
+                double accInflow = getAccountPaydayInflow(acc, cycleIncomings, currCycleStart);
+                double startBal = getAccountStartBalance(acc, cycleStartSec, cycleEndSec, accInflow);
                 double endBal = getAccountEndBalance(acc, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
                 double accSpent = calculateAccountNetSpent(acc, cycleStartSec, effectiveEndSec, startBal, endBal);
 
@@ -308,7 +347,52 @@ public class HistoricSpentCalculator {
     }
 
     public static double getAccountStartBalance(Account acc, long cycleStartSec, long cycleEndSec) {
+        return getAccountStartBalance(acc, cycleStartSec, cycleEndSec, 0.0);
+    }
+
+    public static double getAccountStartBalance(Account acc, long cycleStartSec, long cycleEndSec, double paydayInflow) {
         List<Balance> valid = getValidBalances(acc);
+        if (valid.isEmpty()) {
+            return paydayInflow > 0.0 ? round2(paydayInflow) : 0.0;
+        }
+
+        // If the earliest recorded balance for this account is after cycleEndSec, account did not exist yet
+        if (toEpochSec(valid.get(0).getTimestamp()) > cycleEndSec) {
+            return 0.0;
+        }
+
+        // Check if an explicit balance was recorded on or shortly after payday (within 24 hours after cycleStartSec)
+        Balance explicitPaydayBalance = null;
+        for (Balance b : valid) {
+            long t = toEpochSec(b.getTimestamp());
+            if (t >= cycleStartSec && t <= cycleStartSec + 86400L) {
+                explicitPaydayBalance = b;
+                break;
+            }
+        }
+
+        if (explicitPaydayBalance != null) {
+            return round2((double) explicitPaydayBalance.getValue());
+        }
+
+        // If no explicit balance on payday, but we have a payday inflow:
+        if (paydayInflow > 0.0) {
+            // Find latest balance recorded before cycleStartSec
+            Balance latestBefore = null;
+            for (Balance b : valid) {
+                long t = toEpochSec(b.getTimestamp());
+                if (t < cycleStartSec) {
+                    latestBefore = b;
+                } else {
+                    break;
+                }
+            }
+            if (latestBefore != null) {
+                return round2((double) latestBefore.getValue() + paydayInflow);
+            }
+            return round2(paydayInflow);
+        }
+
         Balance b = getAccountStartBalanceObject(valid, cycleStartSec, cycleEndSec);
         return b != null ? round2((double) b.getValue()) : 0.0;
     }
@@ -487,6 +571,13 @@ public class HistoricSpentCalculator {
 
         if (!hasTransition) {
             return round2(startBal - endBal);
+        }
+
+        // If startBal was adjusted with payday inflow (i.e. startBal differs from startObj),
+        // reconcile the starting difference into totalNetSpent
+        if (startObj != null && round2((double) startObj.getValue()) != startBal) {
+            double startOffset = startBal - (double) startObj.getValue();
+            totalNetSpent += startOffset;
         }
 
         return round2(totalNetSpent);
