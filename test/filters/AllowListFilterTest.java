@@ -57,6 +57,12 @@ public class AllowListFilterTest {
 
         assertThat(result).isSameAs(expected);
         verifyNoInteractions(repo);
+
+        // Also verify /api/user/accessStatus passes through
+        Http.RequestHeader rhStatus = Helpers.fakeRequest("GET", "/api/user/accessStatus").build();
+        Result resultStatus = filter.apply(req -> CompletableFuture.completedFuture(expected), rhStatus)
+                .toCompletableFuture().join();
+        assertThat(resultStatus).isSameAs(expected);
     }
 
     @Test
@@ -78,7 +84,7 @@ public class AllowListFilterTest {
     }
 
     @Test
-    public void testPendingUserRedirectsToWaitingList() {
+    public void testPendingUserPostingReturns403Forbidden() {
         Materializer mat = mock(Materializer.class);
         SessionStore sessionStore = mock(SessionStore.class);
         UserAccessRepository repo = mock(UserAccessRepository.class);
@@ -97,13 +103,44 @@ public class AllowListFilterTest {
         profiles.put("OidcClient", profile);
         when(sessionStore.get(any(), eq("pac4jUserProfiles"))).thenReturn(Optional.of(profiles));
 
-        Http.RequestHeader rh = Helpers.fakeRequest("GET", "/spog").build();
+        // Attempting to add an account while pending
+        Http.RequestHeader rh = Helpers.fakeRequest("POST", "/account").build();
 
-        Result result = filter.apply(req -> CompletableFuture.completedFuture(Results.ok("spog")), rh)
+        Result result = filter.apply(req -> CompletableFuture.completedFuture(Results.ok("account created")), rh)
                 .toCompletableFuture().join();
 
-        assertThat(result.status()).isEqualTo(303);
-        assertThat(result.redirectLocation()).contains("/waitinglist");
+        assertThat(result.status()).isEqualTo(403);
+        assertThat(Helpers.contentAsString(result)).contains("Waiting list");
+    }
+
+    @Test
+    public void testPendingUserUIGetRequestPassesThroughForModalOverlay() {
+        Materializer mat = mock(Materializer.class);
+        SessionStore sessionStore = mock(SessionStore.class);
+        UserAccessRepository repo = mock(UserAccessRepository.class);
+
+        UserAccess pendingUser = new UserAccess("user-pending", "newguy", "new@monmon.com", UserAccess.AccessStatus.PENDING);
+        when(repo.getOrCreate(eq("user-pending"), any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(pendingUser));
+
+        AllowListFilter filter = new AllowListFilter(mat, sessionStore, repo);
+
+        CommonProfile profile = new CommonProfile();
+        profile.setId("user-pending");
+        profile.addAttribute("preferred_username", "newguy");
+
+        LinkedHashMap<String, UserProfile> profiles = new LinkedHashMap<>();
+        profiles.put("OidcClient", profile);
+        when(sessionStore.get(any(), eq("pac4jUserProfiles"))).thenReturn(Optional.of(profiles));
+
+        // GET request to /spog renders UI with the blocking modal overlay
+        Http.RequestHeader rh = Helpers.fakeRequest("GET", "/spog").build();
+        Result expected = Results.ok("spog page with modal");
+
+        Result result = filter.apply(req -> CompletableFuture.completedFuture(expected), rh)
+                .toCompletableFuture().join();
+
+        assertThat(result).isSameAs(expected);
     }
 
     @Test

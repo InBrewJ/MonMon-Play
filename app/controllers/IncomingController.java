@@ -57,6 +57,12 @@ public class IncomingController extends Controller {
         if (sup == null || "guest".equals(sup.getUserId())) {
             return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
         }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         return incomingRepository
                 .list(sup.getUserId())
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
@@ -67,6 +73,12 @@ public class IncomingController extends Controller {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         if (sup == null || "guest".equals(sup.getUserId())) {
             return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
         }
         return incomingRepository
                 .listComplete(sup.getUserId())
@@ -110,6 +122,12 @@ public class IncomingController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         System.out.println("Updating Incoming with id : " + id);
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
@@ -123,6 +141,12 @@ public class IncomingController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addIncoming(final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Incoming incoming = formFactory.form(Incoming.class).bindFromRequest(request).get();
         incoming.setUserId(sup.getUserId());
@@ -133,6 +157,12 @@ public class IncomingController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveIncoming(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         System.out.println("Deleting Incoming with id : " + id);
         // perhaps just update an 'archived' field here
         return incomingRepository

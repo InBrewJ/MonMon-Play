@@ -72,6 +72,12 @@ public class NomMonController extends Controller {
         if (sup == null || "guest".equals(sup.getUserId())) {
             return java.util.concurrent.CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
         }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         String userId = sup.getUserId();
         boolean force = request.queryString("force").map("true"::equalsIgnoreCase).orElse(false);
         String postcode = request.queryString("postcode").orElse(null);

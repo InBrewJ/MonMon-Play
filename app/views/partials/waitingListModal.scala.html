@@ -1,0 +1,40 @@
+@()
+
+<!-- Waiting List UI Blocking Modal -->
+<div id="monmon-waiting-list-modal" class="waiting-list-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="waiting-list-modal-title">
+    <div class="waiting-list-modal-backdrop"></div>
+    <div class="waiting-list-modal-dialog">
+        <div class="waiting-list-modal-card">
+            <div class="waiting-list-icon-ring">
+                <i class="fas fa-user-clock waiting-list-pulse-icon" id="waiting-list-icon"></i>
+            </div>
+
+            <h2 id="waiting-list-modal-title" class="waiting-list-title">You're on the Waiting List</h2>
+
+            <div class="waiting-list-status-badge">
+                <span class="badge-pill badge-freshness-stale" id="waiting-list-badge" style="font-size: 0.82rem; padding: 6px 14px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">
+                    <i class="fas fa-hourglass-half"></i> Pending Administrator Approval
+                </span>
+            </div>
+
+            <p class="waiting-list-text" id="waiting-list-message">
+                Welcome to MonMon! Your account (<strong id="waiting-list-username">Your account</strong>) has been placed on the waiting list.
+                An administrator must approve your account before you can view or manage financial data.
+            </p>
+
+            <div class="waiting-list-poll-box">
+                <i class="fas fa-spinner fa-spin" id="waiting-list-spinner" style="color: var(--primary); margin-right: 8px;"></i>
+                <span id="waiting-list-poll-status">Checking for approval automatically...</span>
+            </div>
+
+            <div class="waiting-list-actions">
+                <button type="button" class="btn btn-primary" id="waiting-list-check-btn" onclick="window.monmonCheckWaitingList(true)">
+                    <i class="fas fa-sync-alt"></i> Check Status Now
+                </button>
+                <a href="/centralLogout" class="btn btn-secondary" style="text-decoration: none;">
+                    <i class="fas fa-sign-out-alt"></i> Sign Out
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

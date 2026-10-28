@@ -16,6 +16,7 @@ import viewModels.SimpleUserProfile;
 import javax.inject.Inject;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -128,6 +129,12 @@ public class PotController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addPot(final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
 
@@ -213,6 +220,12 @@ public class PotController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> applyGruelling(final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Pot> activePots = repoListToList(potRepository.list(sup.getUserId()));
         Pot active = activePots.stream().filter(p -> p.getType() == Pot.PotType.MONTHLY).findFirst().orElse(null);
@@ -276,6 +289,12 @@ public class PotController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archivePot(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         System.out.println("Archiving pot with id : " + id);
         return potRepository
                 .archive(id)

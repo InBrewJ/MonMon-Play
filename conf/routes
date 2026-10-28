@@ -81,6 +81,7 @@ GET     /binPot/:id                                 controllers.PotController.ar
 # Waiting List (Allow List Onboarding)
 GET     /waitinglist                                controllers.WaitingListController.index(req: Request)
 GET     /waitlinglist                               controllers.WaitingListController.index(req: Request)
+GET     /api/user/accessStatus                      controllers.WaitingListController.accessStatus(req: Request)
 
 # Settings
 GET     /settings                                   controllers.SettingsController.index(req: Request)

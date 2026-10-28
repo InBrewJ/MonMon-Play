@@ -106,6 +106,12 @@ public class SpogController extends Controller {
         if (sup == null || "guest".equals(sup.getUserId())) {
             return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
         }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         boolean force = request.queryString("force").map(Boolean::parseBoolean).orElse(false);
         String timestamp = java.time.format.DateTimeFormatter.ISO_INSTANT.format(java.time.Instant.now());
         String userId = sup.getUserId();
@@ -378,6 +384,9 @@ public class SpogController extends Controller {
     // with a well defined role. Maybe an admin/seeder
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result seed(final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval.")).as("application/json");
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         // wtf is this
         // should probably be able to

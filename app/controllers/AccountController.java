@@ -87,6 +87,12 @@ public class AccountController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addAccount(final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
         System.out.println("this limit :: " + account.getAvailableLimit());
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
@@ -102,6 +108,12 @@ public class AccountController extends Controller {
         if (sup == null || "guest".equals(sup.getUserId())) {
             return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
         }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         return accountRepository
                 .listComplete(sup.getUserId())
                 .thenApplyAsync(accountStream -> ok(toJson(accountStream.collect(Collectors.toList()))), ec.current());
@@ -109,6 +121,12 @@ public class AccountController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveAccount(int id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         System.out.println("Deleting account with id : " + id);
         return accountRepository
                 .archive(id)
@@ -117,6 +135,12 @@ public class AccountController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateAccount(int id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         Account account = formFactory.form(Account.class).bindFromRequest(request).get();
         System.out.println("this limit :: " + account.getAvailableLimit());
         return accountRepository

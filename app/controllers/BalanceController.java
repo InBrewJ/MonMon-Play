@@ -74,6 +74,12 @@ public class BalanceController extends Controller {
     // https://stackoverflow.com/questions/26129994/playframework-2-and-manytoone-form-binding
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addBalance(final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Balance balance = formFactory.form(Balance.class).bindFromRequest(request).get();
         balance.setTimestamp(generateUnixTimestamp());
@@ -100,6 +106,12 @@ public class BalanceController extends Controller {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         if (sup == null || "guest".equals(sup.getUserId())) {
             return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
         }
         return balanceRepository
                 .list(sup.getUserId())

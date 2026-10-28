@@ -63,5 +63,21 @@ public class UserHelpers {
         }
         return sup;
     }
+
+    static public boolean isUserApproved(SessionStore playSessionStore, Http.Request request) {
+        return isUserApproved(playSessionStore, (Http.RequestHeader) request);
+    }
+
+    static public boolean isUserApproved(SessionStore playSessionStore, Http.RequestHeader requestHeader) {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, requestHeader);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return false;
+        }
+        models.JPAUserAccessRepository repo = models.JPAUserAccessRepository.getInstance();
+        if (repo != null) {
+            return repo.isUserApprovedSync(sup.getUserId());
+        }
+        return true;
+    }
 }
 

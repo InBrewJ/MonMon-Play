@@ -81,6 +81,12 @@ public class OutgoingController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addOutgoing(final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         outgoing.setUserId(sup.getUserId());
@@ -92,6 +98,12 @@ public class OutgoingController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         System.out.println("Updating outgoing with id : " + id);
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Outgoing outgoing = formFactory.form(Outgoing.class).bindFromRequest(request).get();
@@ -107,6 +119,12 @@ public class OutgoingController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveOutgoing(int id, final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         System.out.println("Archiving outgoing with id : " + id);
         // perhaps just update an 'archived' field here
         return outgoingRepository
@@ -145,6 +163,12 @@ public class OutgoingController extends Controller {
         if (sup == null || "guest".equals(sup.getUserId())) {
             return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
         }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         return outgoingRepository
                 .list(sup.getUserId())
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
@@ -155,6 +179,12 @@ public class OutgoingController extends Controller {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         if (sup == null || "guest".equals(sup.getUserId())) {
             return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
         }
         return outgoingRepository
                 .listComplete(sup.getUserId())

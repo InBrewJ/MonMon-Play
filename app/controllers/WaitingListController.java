@@ -51,4 +51,26 @@ public class WaitingListController extends Controller {
                     ));
                 });
     }
+
+    public CompletionStage<Result> accessStatus(Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(sessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            com.fasterxml.jackson.databind.node.ObjectNode node = play.libs.Json.newObject();
+            node.put("authenticated", false);
+            node.put("approved", false);
+            return CompletableFuture.completedFuture(ok(node).as("application/json"));
+        }
+
+        return userAccessRepository.getOrCreate(sup.getUserId(), sup.getUsername(), sup.getUserEmail())
+                .thenApply(access -> {
+                    com.fasterxml.jackson.databind.node.ObjectNode node = play.libs.Json.newObject();
+                    node.put("authenticated", true);
+                    node.put("userId", sup.getUserId());
+                    node.put("username", sup.getUsername());
+                    node.put("email", sup.getUserEmail());
+                    node.put("status", access != null ? access.getStatus().name() : "PENDING");
+                    node.put("approved", access != null && access.isApproved());
+                    return ok(node).as("application/json");
+                });
+    }
 }

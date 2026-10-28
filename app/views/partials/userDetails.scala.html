@@ -8,3 +8,15 @@
         <span>@UIHelpers.userDetails(playSessionStore, request)</span>
     </div>
 </div>
+
+@if(!UIHelpers.isUserApproved(playSessionStore, request)) {
+<script>
+    (function() {
+        var m = document.getElementById('monmon-waiting-list-modal');
+        if (m) {
+            m.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+    })();
+</script>
+}

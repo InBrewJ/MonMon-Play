@@ -47,7 +47,8 @@ public class AllowListFilter extends Filter {
             path.startsWith("/logout") ||
             path.startsWith("/centralLogout") ||
             path.equals("/waitinglist") ||
-            path.equals("/waitlinglist")) {
+            path.equals("/waitlinglist") ||
+            path.equals("/api/user/accessStatus")) {
             return next.apply(rh);
         }
 
@@ -76,20 +77,32 @@ public class AllowListFilter extends Filter {
                         return next.apply(rh);
                     }
 
-                    // User is not approved (PENDING or REJECTED)
+                    // User is on waiting list (PENDING or REJECTED)
+                    // Block ALL API, data mutation, and data retrieval endpoints
+                    String method = rh.method().toUpperCase();
+                    boolean isMutation = method.equals("POST") || method.equals("PUT") || method.equals("DELETE") || method.equals("PATCH");
                     boolean isApiOrJson = path.startsWith("/api/") ||
+                            path.equals("/accounts") ||
+                            path.equals("/outgoings") ||
+                            path.equals("/incomings") ||
+                            path.equals("/balances") ||
+                            path.equals("/plans") ||
+                            path.startsWith("/bin") ||
+                            path.startsWith("/edit") ||
                             rh.header("Accept").map(h -> h.contains("application/json")).orElse(false) ||
                             rh.header("X-Requested-With").map(h -> h.equalsIgnoreCase("XMLHttpRequest")).orElse(false);
 
-                    if (isApiOrJson) {
+                    if (isMutation || isApiOrJson) {
                         return CompletableFuture.completedFuture(
-                                Results.forbidden(Json.newObject().put("error", "Waiting list: Your account is pending approval by an administrator."))
+                                Results.forbidden(Json.newObject()
+                                        .put("error", "Waiting list: Your account is pending administrator approval.")
+                                        .put("status", "PENDING"))
                                         .as("application/json")
                         );
                     }
 
-                    // Redirect browser to /waitinglist
-                    return CompletableFuture.completedFuture(Results.redirect("/waitinglist"));
+                    // For UI page GET requests (e.g. /spog), allow page to render so the UI-blocking modal appears
+                    return next.apply(rh);
                 });
     }
 }

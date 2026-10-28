@@ -25,6 +25,7 @@ import javax.inject.Inject;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -181,6 +182,12 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> createOrUpdatePlan(final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
 
@@ -209,6 +216,12 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updatePercentage(final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
 
@@ -230,6 +243,12 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> addItem(final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
 
@@ -281,6 +300,12 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> updateItem(Long itemId, final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
 
@@ -328,6 +353,9 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result addAllOverdrafts(final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval.")).as("application/json");
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         String userId = sup.getUserId();
 
@@ -380,6 +408,9 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result addAllCreditCards(final Http.Request request) throws ExecutionException, InterruptedException {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval.")).as("application/json");
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         String userId = sup.getUserId();
 
@@ -433,30 +464,60 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archiveItem(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         return savingsPlanRepository.archiveItem(id)
                 .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> moveItemUp(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         return savingsPlanRepository.moveItemUp(id)
                 .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> moveItemDown(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         return savingsPlanRepository.moveItemDown(id)
                 .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> toggleLock(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         return savingsPlanRepository.toggleLock(id)
                 .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> balanceEvenly(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         return incomingRepository.list(sup.getUserId())
                 .thenApplyAsync(incomings -> Incoming.getTotalIncomings(incomings.collect(Collectors.toList())), ec.current())
@@ -466,6 +527,12 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> saveAllocations(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
         Map<String, String> rawData = requestData.rawData();
         Map<Long, Float> amounts = new java.util.HashMap<>();
@@ -484,6 +551,12 @@ public class SavingsPlanController extends Controller {
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> archivePlan(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
 
         Plan zeroPlan = new Plan();

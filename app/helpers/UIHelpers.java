@@ -22,4 +22,8 @@ public class UIHelpers {
         }
         return sup.getUsername();
     }
+
+    static public boolean isUserApproved(SessionStore playSessionStore, Http.Request request) {
+        return UserHelpers.isUserApproved(playSessionStore, request);
+    }
 }

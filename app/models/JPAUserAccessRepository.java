@@ -17,6 +17,8 @@ import static java.util.concurrent.CompletableFuture.supplyAsync;
 @Singleton
 public class JPAUserAccessRepository implements UserAccessRepository {
 
+    private static volatile JPAUserAccessRepository instance;
+
     private final JPAApi jpaApi;
     private final DatabaseExecutionContext executionContext;
 
@@ -24,6 +26,11 @@ public class JPAUserAccessRepository implements UserAccessRepository {
     public JPAUserAccessRepository(JPAApi jpaApi, DatabaseExecutionContext executionContext) {
         this.jpaApi = jpaApi;
         this.executionContext = executionContext;
+        instance = this;
+    }
+
+    public static JPAUserAccessRepository getInstance() {
+        return instance;
     }
 
     private <T> T wrap(Function<EntityManager, T> function) {
@@ -187,13 +194,18 @@ public class JPAUserAccessRepository implements UserAccessRepository {
     }
 
     private boolean isUserApprovedInternal(EntityManager em, String userId) {
+        if (userId == null || "guest".equals(userId)) {
+            return false;
+        }
         try {
             UserAccess u = em.createQuery("SELECT u FROM UserAccess u WHERE u.userId = :userId", UserAccess.class)
                     .setParameter("userId", userId)
                     .getSingleResult();
             return u.isApproved();
         } catch (NoResultException e) {
-            return false;
+            // New user not yet recorded in user_access - run getOrCreate to properly determine initial status
+            UserAccess created = getOrCreateInternal(em, userId, null, null);
+            return created.isApproved();
         }
     }
 }
