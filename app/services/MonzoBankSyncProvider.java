@@ -185,6 +185,14 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 });
     }
 
+    public float convertToAvailableBalance(Account account, float monzoBalance) {
+        if (account != null && account.getType() == Account.AccountType.CREDIT) {
+            float creditLimit = account.getAvailableLimit() != null ? account.getAvailableLimit() : 0f;
+            return (float) helpers.MathHelpers.round2(creditLimit - Math.abs(monzoBalance));
+        }
+        return monzoBalance;
+    }
+
     public CompletionStage<MonzoConnection> registerWebhooks(MonzoConnection conn, String baseUrl) {
         if (conn == null || conn.getAccessToken() == null || conn.getAccessToken().trim().isEmpty()) {
             return CompletableFuture.completedFuture(conn);
@@ -409,9 +417,10 @@ public class MonzoBankSyncProvider implements BankSyncService {
                     if (balanceRepository != null && targetAccount != null && monzoAccId != null && !monzoAccId.isEmpty()) {
                         return fetchBalance(conn.getAccessToken(), monzoAccId).thenCompose(balVal -> {
                             if (balVal != null) {
+                                float availableVal = convertToAvailableBalance(targetAccount, balVal);
                                 Balance bal = new Balance();
                                 bal.setUserId(effectiveUserId);
-                                bal.setValue(balVal);
+                                bal.setValue(availableVal);
                                 bal.setAccount(targetAccount);
                                 bal.setTimestamp(Instant.now().getEpochSecond());
                                 return balanceRepository.add(bal).thenApply(b -> true);
@@ -602,13 +611,17 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 if (balanceRepository != null) {
                     return fetchBalance(conn.getAccessToken(), target.id).thenCompose(balVal -> {
                         if (balVal != null) {
+                            float availableVal = convertToAvailableBalance(account, balVal);
                             Balance bal = new Balance();
                             bal.setUserId(account.getUserId());
-                            bal.setValue(balVal);
+                            bal.setValue(availableVal);
                             bal.setAccount(account);
                             bal.setTimestamp(Instant.now().getEpochSecond());
+                            String msg = (account.getType() == Account.AccountType.CREDIT)
+                                    ? "Available balance updated (£" + String.format("%.2f", availableVal) + " available from limit £" + String.format("%.2f", account.getAvailableLimit()) + ") for " + account.getName() + "."
+                                    : "Balance refreshed (£" + String.format("%.2f", availableVal) + ") for " + account.getName() + ".";
                             return balanceRepository.add(bal).thenApply(b ->
-                                    SyncResult.ok(1, "Balance refreshed (£" + String.format("%.2f", balVal) + ") for " + account.getName() + ". Webhooks stream transactions automatically in real time."));
+                                    SyncResult.ok(1, msg + " Webhooks stream transactions automatically in real time."));
                         }
                         return CompletableFuture.completedFuture(SyncResult.ok(0, "Monzo connected. Transactions stream automatically via webhooks."));
                     });
@@ -648,9 +661,10 @@ public class MonzoBankSyncProvider implements BankSyncService {
                         final Account targetAcc = matched;
                         balFutures.add(fetchBalance(conn.getAccessToken(), mAcc.id).thenCompose(balVal -> {
                             if (balVal != null) {
+                                float availableVal = convertToAvailableBalance(targetAcc, balVal);
                                 Balance bal = new Balance();
                                 bal.setUserId(userId);
-                                bal.setValue(balVal);
+                                bal.setValue(availableVal);
                                 bal.setAccount(targetAcc);
                                 bal.setTimestamp(Instant.now().getEpochSecond());
                                 return balanceRepository.add(bal).thenAccept(b -> {});

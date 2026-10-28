@@ -373,6 +373,35 @@ public class BankSyncAndStatementTest {
     }
 
     @Test
+    public void testConvertToAvailableBalanceForCreditAndDebitAccounts() {
+        com.typesafe.config.Config config = com.typesafe.config.ConfigFactory.empty();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+        InMemoryMonzoConnectionRepository connRepo = new InMemoryMonzoConnectionRepository();
+        StatementParserService parser = new StatementParserService(txRepo);
+
+        MonzoBankSyncProvider provider = new MonzoBankSyncProvider(config, txRepo, connRepo, parser);
+
+        Account flexAccount = new Account();
+        flexAccount.setType(Account.AccountType.CREDIT);
+        flexAccount.setAvailableLimit(3000.0f); // £3000 credit limit in MonMon
+
+        // When Monzo reports £900 spent / drawn on Flex:
+        float flexAvailable1 = provider.convertToAvailableBalance(flexAccount, 900.0f);
+        assertThat(flexAvailable1).isEqualTo(2100.0f);
+
+        // When Monzo reports -£900:
+        float flexAvailable2 = provider.convertToAvailableBalance(flexAccount, -900.0f);
+        assertThat(flexAvailable2).isEqualTo(2100.0f);
+
+        // For debit accounts, balance is unchanged:
+        Account debitAccount = new Account();
+        debitAccount.setType(Account.AccountType.DEBIT);
+        debitAccount.setAvailableLimit(500.0f);
+        float debitAvailable = provider.convertToAvailableBalance(debitAccount, 450.50f);
+        assertThat(debitAvailable).isEqualTo(450.50f);
+    }
+
+    @Test
     public void testHandleWebhookEventParsesLocationAndSavesTransaction() throws Exception {
         com.typesafe.config.Config config = com.typesafe.config.ConfigFactory.empty();
         InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();

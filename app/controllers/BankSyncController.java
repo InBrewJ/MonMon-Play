@@ -306,36 +306,6 @@ public class BankSyncController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
-    public CompletionStage<Result> uploadStatement(final Http.Request request) {
-        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
-        DynamicForm form = formFactory.form().bindFromRequest(request);
-
-        String accountIdStr = form.get("accountId");
-        String csvContent = form.get("csvContent");
-        boolean rewriteHistory = "true".equalsIgnoreCase(form.get("rewriteHistory"));
-
-        if (accountIdStr == null || accountIdStr.trim().isEmpty() || csvContent == null || csvContent.trim().isEmpty()) {
-            return CompletableFuture.completedFuture(
-                    redirect(routes.BankSyncController.index()).flashing("error", "Account and CSV statement data are required."));
-        }
-
-        try {
-            Long accountId = Long.parseLong(accountIdStr);
-            return statementParserService.importStatement(sup.getUserId(), accountId, csvContent, rewriteHistory)
-                    .thenApplyAsync(res -> {
-                        if (res.isSuccess()) {
-                            return redirect(routes.BankSyncController.index()).flashing("info", res.getMessage());
-                        } else {
-                            return redirect(routes.BankSyncController.index()).flashing("error", res.getMessage());
-                        }
-                    }, ec.current());
-        } catch (NumberFormatException e) {
-            return CompletableFuture.completedFuture(
-                    redirect(routes.BankSyncController.index()).flashing("error", "Invalid account ID."));
-        }
-    }
-
-    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> toggleAccountLedgerMode(Long id, final Http.Request request) {
         return accountRepository.toggleLedgerMode(id).thenApplyAsync(acc -> {
             if (acc == null) {

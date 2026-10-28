@@ -33,9 +33,6 @@
                     <i class="fas fa-exclamation-circle"></i> Monzo Not Connected
                 </span>
             }
-            <span class="badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
-                <i class="fas fa-layer-group"></i> 32-Account Scale Ready
-            </span>
         </div>
     </div>
 
@@ -142,75 +139,34 @@
             </div>
             <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
                 <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #475569;">
-                    <i class="fas fa-hand-paper"></i> Manual ABL / Statement Mode
+                    <i class="fas fa-hand-paper"></i> Manual ABL Mode
                 </h4>
                 <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 0.85rem; line-height: 1.5;">
-                    <li><strong>External Banks (HSBC, Barclays, Amex):</strong> Ingest via CSV statement upload or track via balance delta.</li>
-                    <li><strong>Pensions:</strong> SIPP &amp; Workplace (Nest, Aviva). No open banking feeds; track via balance delta.</li>
+                    <li><strong>External Banks (HSBC, Barclays, Amex):</strong> Tracked via balance snapshots.</li>
+                    <li><strong>Pensions:</strong> SIPP &amp; Workplace (Nest, Aviva). Tracked via balance snapshots.</li>
                     <li><strong>Loans &amp; Mortgages:</strong> Tracked via balance amortization.</li>
                 </ul>
             </div>
         </div>
     </div>
 
-    <div class="w3-row-padding" style="margin: 0 -12px;">
-        <!-- Real-Time Stream Card -->
-        <div class="w3-col m6" style="margin-bottom: 24px;">
-            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); height: 100%;">
-                <h3 style="margin: 0 0 12px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
+    <!-- Real-Time Push Stream Card -->
+    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h3 style="margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
                     <i class="fas fa-satellite-dish" style="color: #6366f1;"></i> Real-Time Push Stream (Webhooks)
                 </h3>
-                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 16px;">
-                    Monzo transactions, balances, and merchant location data stream into MonMon in real time whenever activity occurs. Set it once and forget it!
+                <p style="color: #64748b; font-size: 0.9rem; margin: 0;">
+                    Monzo transactions, available balances, and merchant metadata stream into MonMon in real time whenever activity occurs.
                 </p>
-
-                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                    <form action="/bank/sync/all" method="POST" style="margin: 0;">
-                        @helper.CSRF.formField
-                        <input type="hidden" name="provider" value="MOCK" />
-                        <button type="submit" class="w3-button w3-indigo w3-round" style="font-weight: 600; padding: 10px 18px;">
-                            <i class="fas fa-vial"></i> Test Ingest (Mock Provider)
-                        </button>
-                    </form>
-                </div>
             </div>
-        </div>
-
-        <!-- Statement Upload Card -->
-        <div class="w3-col m6" style="margin-bottom: 24px;">
-            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); height: 100%;">
-                <h3 style="margin: 0 0 12px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
-                    <i class="fas fa-file-upload" style="color: #6366f1;"></i> Statement Upload (CSV)
-                </h3>
-                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 16px;">
-                    For other accounts (Amex, Barclaycard, HSBC), drop in a CSV statement.
-                </p>
-
-                <form action="/bank/statement/upload" method="POST">
+            <div>
+                <form action="/bank/sync/all" method="POST" style="margin: 0;">
                     @helper.CSRF.formField
-                    <div style="margin-bottom: 12px;">
-                        <label style="font-size: 0.85rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">Target Account</label>
-                        <select name="accountId" class="w3-select w3-border w3-round" required style="padding: 8px;">
-                            @for(acc <- accounts) {
-                                <option value="@acc.getId()">@acc.getName() (@acc.getType())</option>
-                            }
-                        </select>
-                    </div>
-
-                    <div style="margin-bottom: 12px;">
-                        <label style="font-size: 0.85rem; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">CSV Statement Data</label>
-                        <textarea name="csvContent" rows="3" class="w3-input w3-border w3-round" placeholder="Date,Description,Amount&#10;2026-10-25,Tesco Superstore,-34.50&#10;2026-10-26,Shell Petrol,-45.00" required style="font-family: monospace; font-size: 0.85rem;"></textarea>
-                    </div>
-
-                    <div style="margin-bottom: 16px;">
-                        <label style="font-size: 0.85rem; color: #dc2626; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" name="rewriteHistory" value="true" class="w3-check" />
-                            <span><strong>Dangerously rewrite history:</strong> Purge existing transactions in the statement's date range and replace with this upload.</span>
-                        </label>
-                    </div>
-
-                    <button type="submit" class="w3-button w3-blue-grey w3-round" style="font-weight: 600;">
-                        <i class="fas fa-upload"></i> Upload &amp; Ingest Statement
+                    <input type="hidden" name="provider" value="MOCK" />
+                    <button type="submit" class="w3-button w3-indigo w3-round" style="font-weight: 600; padding: 8px 16px;">
+                        <i class="fas fa-vial"></i> Test Ingest (Mock Provider)
                     </button>
                 </form>
             </div>
