@@ -12,6 +12,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static helpers.ModelHelpers.findAlreadyPaid;
+import static helpers.ModelHelpers.findYetToPay;
 import static java.util.concurrent.CompletableFuture.supplyAsync;
 
 /**
@@ -154,9 +155,8 @@ public class JPAOutgoingRepository implements OutgoingRepository {
                 .createQuery("select p from Outgoing p where archived = false and userId = :userId", Outgoing.class)
                 .setParameter("userId", userId)
                 .getResultList();
-        List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
-        outgoings.removeAll(paid);
-        return outgoings.stream();
+        List<Outgoing> yetToPay = findYetToPay(outgoings, asOf, paydayDay);
+        return yetToPay.stream();
     }
 
     private Stream<Outgoing> alreadyPaid(EntityManager em, LocalDate asOf, int paydayDay, String userId) {

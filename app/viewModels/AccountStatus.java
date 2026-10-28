@@ -12,6 +12,16 @@ public class AccountStatus {
     private final Float availableLimit;
     private final Account.AccountType accountType;
 
+    public enum FreshnessStatus {
+        FRESH,          // Balance submitted after latest payment due date
+        STALE,          // Payment was due after the last balance submission
+        NO_PAYMENT_DUE, // No outgoings have been due yet this cycle
+        NO_BALANCE      // No balance has ever been recorded
+    }
+
+    private FreshnessStatus freshnessStatus = FreshnessStatus.NO_PAYMENT_DUE;
+    private String freshnessMessage = "";
+
     AccountStatus(Float alreadyPaid, Float pending, Double lastBalance, Account.AccountType accountType, Float availableLimit) {
         this.alreadyPaid = alreadyPaid;
         this.pending = pending;
@@ -19,6 +29,35 @@ public class AccountStatus {
         this.accountType = accountType;
         this.availableLimit = availableLimit;
         this.adjustedAvailable = round2(this.latestBalance - this.pending);
+    }
+
+    public void setFreshness(FreshnessStatus status, String message) {
+        this.freshnessStatus = status != null ? status : FreshnessStatus.NO_PAYMENT_DUE;
+        this.freshnessMessage = message != null ? message : "";
+    }
+
+    public FreshnessStatus getFreshnessStatus() {
+        return freshnessStatus;
+    }
+
+    public String getFreshnessMessage() {
+        return freshnessMessage;
+    }
+
+    public boolean isFresh() {
+        return freshnessStatus == FreshnessStatus.FRESH;
+    }
+
+    public boolean isStale() {
+        return freshnessStatus == FreshnessStatus.STALE;
+    }
+
+    public boolean isNoPaymentDue() {
+        return freshnessStatus == FreshnessStatus.NO_PAYMENT_DUE;
+    }
+
+    public boolean isNoBalance() {
+        return freshnessStatus == FreshnessStatus.NO_BALANCE;
     }
 
     public Float getAlreadyPaid() {

@@ -298,7 +298,16 @@ public class ModelHelpersTest {
         assertThat(decTotal).isEqualTo(40.0f);
 
         // Test findAlreadyPaid / findYetToPay
-        // Nominal payday 1st of month. On Oct 16 (after Car Insurance on 15th):
+        // Nominal payday 1st of month. On Oct 10 (before Car Insurance on 15th):
+        LocalDate oct10 = LocalDate.of(2026, 10, 10);
+        List<Outgoing> paidOct10 = ModelHelpers.findAlreadyPaid(all, oct10, 1);
+        assertThat(paidOct10).extracting(Outgoing::getName).containsExactly("Gym");
+
+        List<Outgoing> yetToPayOct10 = ModelHelpers.findYetToPay(all, oct10, 1);
+        // Car Insurance is due Oct 15 (in this cycle). Amazon Prime (Nov) MUST NOT bleed into pending!
+        assertThat(yetToPayOct10).extracting(Outgoing::getName).containsExactly("Car Insurance");
+
+        // On Oct 16 (after Car Insurance on 15th):
         LocalDate oct16 = LocalDate.of(2026, 10, 16);
         List<Outgoing> paidOct16 = ModelHelpers.findAlreadyPaid(all, oct16, 1);
         assertThat(paidOct16).extracting(Outgoing::getName).containsExactlyInAnyOrder("Gym", "Car Insurance");
@@ -306,6 +315,20 @@ public class ModelHelpersTest {
         List<Outgoing> yetToPayOct16 = ModelHelpers.findYetToPay(all, oct16, 1);
         // Amazon Prime is November, so nothing left yet to pay in October cycle
         assertThat(yetToPayOct16).isEmpty();
+
+        // In November cycle:
+        LocalDate nov10 = LocalDate.of(2026, 11, 10);
+        List<Outgoing> paidNov10 = ModelHelpers.findAlreadyPaid(all, nov10, 1);
+        assertThat(paidNov10).extracting(Outgoing::getName).containsExactly("Gym");
+
+        List<Outgoing> yetToPayNov10 = ModelHelpers.findYetToPay(all, nov10, 1);
+        // In November, Amazon Prime IS due Nov 20, but Car Insurance (October) is NOT due!
+        assertThat(yetToPayNov10).extracting(Outgoing::getName).containsExactly("Amazon Prime");
+
+        LocalDate nov25 = LocalDate.of(2026, 11, 25);
+        List<Outgoing> paidNov25 = ModelHelpers.findAlreadyPaid(all, nov25, 1);
+        assertThat(paidNov25).extracting(Outgoing::getName).containsExactlyInAnyOrder("Gym", "Amazon Prime");
+        assertThat(ModelHelpers.findYetToPay(all, nov25, 1)).isEmpty();
     }
 
     @Test
@@ -368,8 +391,16 @@ public class ModelHelpersTest {
         Float oct2026Total = Outgoing.getTotalOutgoings(list, oct2026);
         assertThat(oct2026Total).isEqualTo(30.0f);
 
+        // findYetToPay in Oct 2026 (day 5, payday 1) must NOT include biYearlyHosting (not due in 2026!)
+        List<Outgoing> yetToPayOct2026 = ModelHelpers.findYetToPay(list, oct2026, 1);
+        assertThat(yetToPayOct2026).isEmpty();
+
         // In Oct 2027, biYearlyHosting IS due, total should be 30 + 120 = 150.0
         Float oct2027Total = Outgoing.getTotalOutgoings(list, oct2027);
         assertThat(oct2027Total).isEqualTo(150.0f);
+
+        // findYetToPay in Oct 2027 (day 5, payday 1) MUST include biYearlyHosting (due Oct 10, 2027!)
+        List<Outgoing> yetToPayOct2027 = ModelHelpers.findYetToPay(list, oct2027, 1);
+        assertThat(yetToPayOct2027).extracting(Outgoing::getName).containsExactly("2-Year Hosting Plan");
     }
 }

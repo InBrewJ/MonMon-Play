@@ -152,13 +152,13 @@ public class SavingsPlanController extends Controller {
                 o.setCost(o.getCost() * firstRentShare.getSplit());
             }
         }
-        Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings));
+        String region = request.session().get("region").orElse("UK");
+        java.time.LocalDate today = helpers.BankHolidayHelper.nowInRegion(region);
+        Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings, today));
         Float maxSurplus = round2(Math.max(0.0f, incomingTotal - outgoingTotal));
         int maxPercent = incomingTotal > 0 ? Math.min(100, Math.max(0, (int) Math.floor((maxSurplus / incomingTotal) * 100))) : 100;
 
         int nextPayDay = incomingRepository.getNextPayDay(userId);
-        String region = request.session().get("region").orElse("UK");
-        java.time.LocalDate today = helpers.BankHolidayHelper.nowInRegion(region);
         java.time.LocalDate lastPayDate = helpers.ModelHelpers.findLastPaydayDate(today, nextPayDay);
         java.time.LocalDate nextPayDate = helpers.ModelHelpers.findNextPaydayDate(today, nextPayDay);
         int daysBetweenPaydays = (int) java.time.temporal.ChronoUnit.DAYS.between(lastPayDate, nextPayDate);

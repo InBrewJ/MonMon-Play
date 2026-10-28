@@ -70,37 +70,41 @@ public class ModelHelpers {
     }
 
     public static List<Outgoing> findYetToPay(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
-        List<Outgoing> paid = findAlreadyPaid(outgoings, asOf, paydayDay);
-        List<Outgoing> remaining = new ArrayList<>();
+        if (outgoings == null || outgoings.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Outgoing> found = new ArrayList<>();
         LocalDate nextPayday = findNextPaydayDate(asOf, paydayDay);
-        for (Outgoing o : outgoings) {
-            if (paid.contains(o)) {
-                continue;
-            }
-            if (o.isYearly()) {
-                boolean isDueInWindow = false;
-                LocalDate d = asOf;
-                while (d.isBefore(nextPayday)) {
-                    if (o.isDueInMonth(d)) {
-                        isDueInWindow = true;
-                        break;
-                    }
-                    d = d.plusDays(1);
-                }
-                if (!isDueInWindow) {
+        LocalDate searchDate = asOf.plusDays(1);
+        while (searchDate.isBefore(nextPayday)) {
+            for (Outgoing o : outgoings) {
+                if (o == null || o.isArchived()) {
                     continue;
                 }
+                if (o.isYearly() && !o.isDueInMonth(searchDate)) {
+                    continue;
+                }
+                int effectiveDay = getEffectiveOutgoingDay(o.getOutgoingDay(), searchDate);
+                if (effectiveDay == searchDate.getDayOfMonth() && !found.contains(o)) {
+                    found.add(o);
+                }
             }
-            remaining.add(o);
+            searchDate = searchDate.plusDays(1);
         }
-        return remaining;
+        return found;
     }
 
     public static List<Outgoing> findAlreadyPaid(List<Outgoing> outgoings, LocalDate asOf, int paydayDay) {
+        if (outgoings == null || outgoings.isEmpty()) {
+            return Collections.emptyList();
+        }
         List<Outgoing> found = new ArrayList<>();
         LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);
         while (!searchDate.isAfter(asOf)) {
             for (Outgoing o : outgoings) {
+                if (o == null || o.isArchived()) {
+                    continue;
+                }
                 if (o.isYearly() && !o.isDueInMonth(searchDate)) {
                     continue;
                 }
@@ -120,6 +124,10 @@ public class ModelHelpers {
      * and deductions for monthly savings goals.
      */
     public static Float calculateMonthlyAllowance(List<Incoming> incomings, List<Outgoing> outgoings, List<Plan> plans) {
+        return calculateMonthlyAllowance(incomings, outgoings, plans, helpers.BankHolidayHelper.nowInRegion("UK"));
+    }
+
+    public static Float calculateMonthlyAllowance(List<Incoming> incomings, List<Outgoing> outgoings, List<Plan> plans, LocalDate asOf) {
         if (incomings == null) {
             incomings = Collections.emptyList();
         }
@@ -144,6 +152,8 @@ public class ModelHelpers {
                 .filter(p -> p != null && p.getType() == Plan.PlanType.BILL_SHARE)
                 .findFirst()
                 .orElse(null);
+
+        LocalDate effectiveAsOf = asOf != null ? asOf : helpers.BankHolidayHelper.nowInRegion("UK");
 
         List<Outgoing> adjustedOutgoings = new ArrayList<>();
         for (Outgoing o : outgoings) {
@@ -170,7 +180,7 @@ public class ModelHelpers {
             }
         }
 
-        Float outgoingTotal = round2(Outgoing.getTotalOutgoingsWithoutHidden(adjustedOutgoings));
+        Float outgoingTotal = round2(Outgoing.getTotalOutgoingsWithoutHidden(adjustedOutgoings, effectiveAsOf));
         Float incomingTotal = Incoming.getTotalIncomings(incomings);
         Float surplus = round2(incomingTotal - outgoingTotal);
 

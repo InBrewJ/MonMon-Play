@@ -1471,4 +1471,177 @@ hr {
   }
 }
 
+/* ==========================================================================
+   SPOG Deck Layout, Mobile Swipeable Cards & Accordions
+   ========================================================================== */
+
+/* Top Deck Navigation Pills (Mobile only, sticky) */
+.spog-deck-nav {
+  display: none;
+  position: sticky;
+  top: 56px;
+  z-index: 90;
+  background: var(--bg-main);
+  padding: 8px 0;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  gap: 8px;
+}
+
+.spog-deck-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.spog-nav-pill {
+  flex: 1 0 auto;
+  text-align: center;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  background: var(--card-bg-subtle);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.spog-nav-pill.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+/* SPOG Details Accordions for Secondary Info */
+.spog-details-accordion {
+  margin-top: 0.75rem;
+  background: var(--card-bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+  text-align: left;
+}
+
+.spog-details-accordion summary {
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  color: var(--text-main);
+}
+
+.spog-details-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.spog-details-accordion summary::after {
+  content: "\f078";
+  font-family: "Font Awesome 5 Free";
+  font-weight: 900;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.spog-details-accordion[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.spog-details-content {
+  padding: 10px 14px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 0.88rem;
+}
+
+/* Account Freshness Badges */
+.badge-freshness-fresh {
+  background: var(--success-light);
+  color: var(--success);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+.badge-freshness-stale {
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  animation: pulseBadge 2s infinite ease-in-out;
+}
+
+.badge-freshness-neutral {
+  background: var(--card-bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+@keyframes pulseBadge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+/* Desktop and Mobile responsive deck container */
+@media (max-width: 768px) {
+  .spog-deck-nav {
+    display: flex;
+  }
+
+  .spog-layout-grid {
+    display: flex !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    gap: 16px;
+    padding-bottom: 1.5rem;
+  }
+
+  .spog-column-left,
+  .spog-column-right {
+    display: contents !important;
+  }
+
+  .spog-deck-card {
+    min-width: 100% !important;
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    box-sizing: border-box;
+    margin-bottom: 0 !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .spog-layout-grid {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+  }
+
+  .spog-column-left,
+  .spog-column-right {
+    flex: 1 1 50%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .spog-deck-card {
+    margin-bottom: 0;
+  }
+}
+
+
 

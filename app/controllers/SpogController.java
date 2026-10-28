@@ -177,9 +177,10 @@ public class SpogController extends Controller {
         Float outgoingTotal = round2(getTotalOutgoingsWithoutHidden(allOutgoings, today));
         Float incomingTotal = getTotalIncomings(repoListToList(incomingRepository.list(sup.getUserId())));
         List<Outgoing> rents = repoListToList(outgoingRepository.rents(sup.getUserId()));
+        List<Outgoing> dueRents = rents.stream().filter(o -> o.isDueInMonth(today)).collect(Collectors.toList());
         // TODO: this only deals with one single rent payment
-        Float totalRentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
-        Float rentCost = !rents.isEmpty() ? rents.get(0).cost : 0;
+        Float totalRentCost = !dueRents.isEmpty() ? dueRents.get(0).cost : 0;
+        Float rentCost = !dueRents.isEmpty() ? dueRents.get(0).cost : 0;
         if (firstRentShare != null) {
             System.out.println("Rent share : " + firstRentShare.getSplit());
             rentCost = rentCost * firstRentShare.getSplit();
@@ -216,10 +217,11 @@ public class SpogController extends Controller {
         }
         System.out.println("P_Outgoings sum: " + pendingOutgoings.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum));
         List<Outgoing> bills = repoListToList(outgoingRepository.bills(sup.getUserId()));
-        for (Outgoing o: bills) {
+        List<Outgoing> dueBills = bills.stream().filter(o -> o.isDueInMonth(today)).collect(Collectors.toList());
+        for (Outgoing o: dueBills) {
             System.out.println("Bill :: " + o.getName() + " on " + o.getOutgoingDay());
         }
-        Float totalBillsCost = bills.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
+        Float totalBillsCost = dueBills.stream().reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
         Float billsCost = totalBillsCost;
         if (firstBillShare != null) {
             System.out.println("bill share : " + firstBillShare.getSplit());
@@ -303,7 +305,7 @@ public class SpogController extends Controller {
             }
         }
 
-        return new Spog(
+        Spog spog = new Spog(
                 surplus,
                 nextPayDay,
                 percentIncomeAsSavings,
@@ -321,6 +323,26 @@ public class SpogController extends Controller {
                 spendingPlan,
                 activeSavingsPlan
         );
+
+        try {
+            int nominalPayday = nextPayDay > 0 ? nextPayDay : 1;
+            java.time.ZoneId zone = helpers.BankHolidayHelper.getTimezone(region);
+            viewModels.HistoricSpentViewModel histVm = helpers.HistoricSpentCalculator.calculate(
+                    monthlyPots,
+                    allAccounts,
+                    nominalPayday,
+                    today,
+                    zone,
+                    surplus
+            );
+            if (histVm != null && histVm.getCycles() != null && histVm.getCycles().size() > 1) {
+                spog.setLastMonthSpent(histVm.getCycles().get(1).getTotalSpent());
+            }
+        } catch (Exception e) {
+            System.err.println("Could not calculate last month spent: " + e.getMessage());
+        }
+
+        return spog;
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -338,7 +360,7 @@ public class SpogController extends Controller {
         List<Incoming> allIncomings = repoListToList(incomingRepository.list(sup.getUserId()));
         List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         List<Plan> allPlans = repoListToList(this.planRepository.list(sup.getUserId()));
-        Float monthlySurplus = helpers.ModelHelpers.calculateMonthlyAllowance(allIncomings, allOutgoings, allPlans);
+        Float monthlySurplus = helpers.ModelHelpers.calculateMonthlyAllowance(allIncomings, allOutgoings, allPlans, today);
 
         viewModels.HistoricSpentViewModel viewModel = helpers.HistoricSpentCalculator.calculate(
                 allPots,

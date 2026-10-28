@@ -2,6 +2,7 @@ package viewModels;
 
 import models.Account;
 import models.Balance;
+import models.Outgoing;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -43,6 +44,7 @@ public class Spog {
     private final models.SavingsPlan savingsPlan;
     private Double totalAvailableDebit;
     private Double totalAvailableCredit;
+    private Double lastMonthSpent;
 
     public Spog(Float surplus,
                 int nextPayday,
@@ -343,6 +345,14 @@ public class Spog {
         return today;
     }
 
+    public Double getLastMonthSpent() {
+        return lastMonthSpent != null ? round2(lastMonthSpent) : null;
+    }
+
+    public void setLastMonthSpent(Double lastMonthSpent) {
+        this.lastMonthSpent = lastMonthSpent;
+    }
+
     public Double getSpentThisMonth() {
         if (this.monthlyPotAccounts == null || this.monthlyPotAccounts.isEmpty()) {
             return 0.0;
@@ -472,8 +482,13 @@ public class Spog {
         System.out.println("accounts size :: " + accounts.size());
 
         LocalDate asOfDate = this.today != null ? this.today : helpers.BankHolidayHelper.nowInRegion("UK");
+        LocalDate cycleStart = helpers.ModelHelpers.findLastPaydayDate(asOfDate, nextPayday);
+        java.time.format.DateTimeFormatter dFmt = java.time.format.DateTimeFormatter.ofPattern("d MMM");
+        java.time.ZoneId zone = java.time.ZoneId.of("Europe/London");
+
         for (Account a : accounts) {
-            Float alreadyPaidSum = findAlreadyPaid(a.outgoings, asOfDate, nextPayday)
+            List<Outgoing> alreadyPaidList = findAlreadyPaid(a.outgoings, asOfDate, nextPayday);
+            Float alreadyPaidSum = alreadyPaidList
                             .stream()
                             .filter(o -> !o.isArchived())
                             .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
@@ -482,13 +497,17 @@ public class Spog {
                     .filter(o -> !o.isArchived())
                     .reduce(0.0f, (partialResult, o) -> partialResult + o.cost, Float::sum);
             Float latestBalance = 0f;
+            Balance latestBalObj = null;
             try {
                 if (a.balances != null && !a.balances.isEmpty()) {
                     List<Balance> valid = a.balances.stream()
                             .filter(b -> b != null && b.getTimestamp() != null && b.getValue() != null)
                             .sorted(Comparator.comparing(Balance::getTimestamp).reversed())
                             .collect(Collectors.toList());
-                    latestBalance = !valid.isEmpty() ? valid.get(0).getValue() : 0f;
+                    if (!valid.isEmpty()) {
+                        latestBalObj = valid.get(0);
+                        latestBalance = latestBalObj.getValue();
+                    }
                     System.out.println("Latest balance :: " + latestBalance);
                 }
             } catch (Exception e) {
@@ -496,7 +515,46 @@ public class Spog {
                 System.out.println(e);
                 latestBalance = 0f;
             }
-            accountsAndPendings.put(a, new AccountStatus(alreadyPaidSum, yetToPaySum, (double)latestBalance, a.getType(), a.getAvailableLimit()));
+
+            AccountStatus accStatus = new AccountStatus(alreadyPaidSum, yetToPaySum, (double)latestBalance, a.getType(), a.getAvailableLimit());
+
+            // Compute freshness: check whether latest balance was recorded after the last outgoing payment was due
+            if (latestBalObj == null || latestBalObj.getTimestamp() == null) {
+                accStatus.setFreshness(AccountStatus.FreshnessStatus.NO_BALANCE, "No balance recorded");
+            } else {
+                LocalDate balDate = java.time.Instant.ofEpochSecond(latestBalObj.getTimestamp()).atZone(zone).toLocalDate();
+                LocalDate latestDue = null;
+                String latestOutgoingName = null;
+
+                if (a.outgoings != null) {
+                    for (Outgoing o : a.outgoings) {
+                        if (o.isArchived()) continue;
+                        LocalDate searchDate = cycleStart;
+                        while (!searchDate.isAfter(asOfDate)) {
+                            if (!o.isYearly() || o.isDueInMonth(searchDate)) {
+                                int effectiveDay = helpers.ModelHelpers.getEffectiveOutgoingDay(o.getOutgoingDay(), searchDate);
+                                if (searchDate.getDayOfMonth() == effectiveDay) {
+                                    if (latestDue == null || searchDate.isAfter(latestDue)) {
+                                        latestDue = searchDate;
+                                        latestOutgoingName = o.getName();
+                                    }
+                                }
+                            }
+                            searchDate = searchDate.plusDays(1);
+                        }
+                    }
+                }
+
+                if (latestDue == null) {
+                    accStatus.setFreshness(AccountStatus.FreshnessStatus.NO_PAYMENT_DUE, "No payments due yet (balance " + balDate.format(dFmt) + ")");
+                } else if (!balDate.isBefore(latestDue)) {
+                    accStatus.setFreshness(AccountStatus.FreshnessStatus.FRESH, "Up to date: balance from " + balDate.format(dFmt) + " is after " + (latestOutgoingName != null ? latestOutgoingName : "payment") + " on " + latestDue.format(dFmt));
+                } else {
+                    accStatus.setFreshness(AccountStatus.FreshnessStatus.STALE, "Update needed: " + (latestOutgoingName != null ? latestOutgoingName : "payment") + " was due " + latestDue.format(dFmt) + " after balance on " + balDate.format(dFmt));
+                }
+            }
+
+            accountsAndPendings.put(a, accStatus);
         }
         return accountsAndPendings;
     }

@@ -85,7 +85,7 @@ public class PotController extends Controller {
         List<Plan> plans = repoListToList(planRepository.list(sup.getUserId()));
         List<Incoming> incomings = repoListToList(incomingRepository.list(sup.getUserId()));
         List<Outgoing> outgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
-        Float surplus = helpers.ModelHelpers.calculateMonthlyAllowance(incomings, outgoings, plans);
+        Float surplus = helpers.ModelHelpers.calculateMonthlyAllowance(incomings, outgoings, plans, today);
 
         // Find active monthly pot
         Pot activeMonthlyPot = activePots.stream()
