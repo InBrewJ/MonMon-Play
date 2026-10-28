@@ -236,4 +236,82 @@ public class BankSyncAndStatementTest {
         HistoricCycleSpent currentCycleTbl = tblVm.getCycles().get(0);
         assertThat(currentCycleTbl.getTotalSpent()).isEqualTo(342.50);
     }
+
+    private static class InMemoryPlaidItemRepository implements models.PlaidItemRepository {
+        final List<models.PlaidItem> items = new ArrayList<>();
+
+        @Override
+        public CompletionStage<models.PlaidItem> save(models.PlaidItem item) {
+            if (item.getId() == null) {
+                item.setId((long) (items.size() + 1));
+            }
+            items.removeIf(i -> i.getId().equals(item.getId()));
+            items.add(item);
+            return CompletableFuture.completedFuture(item);
+        }
+
+        @Override
+        public CompletionStage<List<models.PlaidItem>> findByUserId(String userId) {
+            List<models.PlaidItem> userItems = new ArrayList<>();
+            for (models.PlaidItem i : items) {
+                if (userId.equals(i.getUserId())) {
+                    userItems.add(i);
+                }
+            }
+            return CompletableFuture.completedFuture(userItems);
+        }
+
+        @Override
+        public CompletionStage<models.PlaidItem> findByItemId(String itemId) {
+            for (models.PlaidItem i : items) {
+                if (itemId.equals(i.getItemId())) return CompletableFuture.completedFuture(i);
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Boolean> delete(Long id) {
+            boolean removed = items.removeIf(i -> i.getId().equals(id));
+            return CompletableFuture.completedFuture(removed);
+        }
+    }
+
+    @Test
+    public void testPlaidLinkFlowCreatesTokenAndExchangesPublicToken() {
+        com.typesafe.config.Config config = com.typesafe.config.ConfigFactory.empty();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+        InMemoryPlaidItemRepository itemRepo = new InMemoryPlaidItemRepository();
+        StatementParserService parser = new StatementParserService(txRepo);
+
+        PlaidBankSyncProvider plaidProvider = new PlaidBankSyncProvider(config, txRepo, itemRepo, parser);
+
+        // 1. Create Link Token
+        String linkToken = plaidProvider.createLinkToken("user123").toCompletableFuture().join();
+        assertThat(linkToken).contains("mock-link-token-user123");
+
+        // 2. Exchange public token from Plaid Link modal
+        models.PlaidItem saved = plaidProvider.exchangePublicToken("user123", "public-sandbox-abc", "ins_monzo", "Monzo Bank")
+                .toCompletableFuture().join();
+        assertThat(saved).isNotNull();
+        assertThat(saved.getInstitutionName()).isEqualTo("Monzo Bank");
+
+        // Verify it was stored in the repository
+        List<models.PlaidItem> userItems = itemRepo.findByUserId("user123").toCompletableFuture().join();
+        assertThat(userItems).hasSize(1);
+        assertThat(userItems.get(0).getInstitutionName()).isEqualTo("Monzo Bank");
+
+        // 3. Incompatible accounts (Pensions/Loans) are skipped from Plaid sync
+        Account pension = new Account();
+        pension.setId(201L);
+        pension.setName("Workplace Pension");
+        pension.setType(Account.AccountType.PENSION);
+        BankSyncService.SyncResult penRes = plaidProvider.syncAccount(pension, 30).toCompletableFuture().join();
+        assertThat(penRes.isSuccess()).isTrue();
+        assertThat(penRes.getMessage()).contains("Pension/Loan requires manual ABL entry");
+
+        // 4. Delete/Unlink item
+        Boolean unlinked = itemRepo.delete(saved.getId()).toCompletableFuture().join();
+        assertThat(unlinked).isTrue();
+        assertThat(itemRepo.findByUserId("user123").toCompletableFuture().join()).isEmpty();
+    }
 }

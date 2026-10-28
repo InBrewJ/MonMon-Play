@@ -2,11 +2,14 @@ package services;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import models.Account;
 import models.BankTransaction;
 import models.BankTransactionRepository;
+import models.PlaidItem;
+import models.PlaidItemRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +33,7 @@ public class PlaidBankSyncProvider implements BankSyncService {
 
     private final Config config;
     private final BankTransactionRepository bankTransactionRepository;
+    private final PlaidItemRepository plaidItemRepository;
     private final StatementParserService statementParserService;
     private final HttpClient httpClient;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -37,17 +41,20 @@ public class PlaidBankSyncProvider implements BankSyncService {
     @Inject
     public PlaidBankSyncProvider(Config config,
                                  BankTransactionRepository bankTransactionRepository,
+                                 PlaidItemRepository plaidItemRepository,
                                  StatementParserService statementParserService) {
-        this(config, bankTransactionRepository, statementParserService,
+        this(config, bankTransactionRepository, plaidItemRepository, statementParserService,
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
     }
 
     public PlaidBankSyncProvider(Config config,
                                  BankTransactionRepository bankTransactionRepository,
+                                 PlaidItemRepository plaidItemRepository,
                                  StatementParserService statementParserService,
                                  HttpClient httpClient) {
         this.config = config;
         this.bankTransactionRepository = bankTransactionRepository;
+        this.plaidItemRepository = plaidItemRepository;
         this.statementParserService = statementParserService;
         this.httpClient = httpClient;
     }
@@ -57,7 +64,7 @@ public class PlaidBankSyncProvider implements BankSyncService {
         return "PLAID";
     }
 
-    private String getClientId() {
+    public String getClientId() {
         if (config.hasPath("plaid.clientId")) {
             return config.getString("plaid.clientId");
         }
@@ -65,7 +72,7 @@ public class PlaidBankSyncProvider implements BankSyncService {
         return env != null ? env : "";
     }
 
-    private String getSecret() {
+    public String getSecret() {
         if (config.hasPath("plaid.secret")) {
             return config.getString("plaid.secret");
         }
@@ -73,7 +80,7 @@ public class PlaidBankSyncProvider implements BankSyncService {
         return env != null ? env : "";
     }
 
-    private String getEnv() {
+    public String getEnv() {
         if (config.hasPath("plaid.env")) {
             return config.getString("plaid.env");
         }
@@ -81,7 +88,7 @@ public class PlaidBankSyncProvider implements BankSyncService {
         return (env != null && !env.isEmpty()) ? env : "sandbox";
     }
 
-    private String getBaseUrl() {
+    public String getBaseUrl() {
         String env = getEnv().toLowerCase();
         if ("development".equals(env)) {
             return "https://development.plaid.com";
@@ -93,6 +100,100 @@ public class PlaidBankSyncProvider implements BankSyncService {
 
     public boolean isConfigured() {
         return !getClientId().isEmpty() && !getSecret().isEmpty();
+    }
+
+    /**
+     * Calls Plaid /link/token/create to generate a link_token for the Plaid Link modal
+     */
+    public CompletionStage<String> createLinkToken(String userId) {
+        if (!isConfigured()) {
+            return CompletableFuture.completedFuture("mock-link-token-" + userId);
+        }
+
+        try {
+            ObjectNode body = mapper.createObjectNode();
+            body.put("client_id", getClientId());
+            body.put("secret", getSecret());
+            body.put("client_name", "MonMon");
+
+            ArrayNode countryCodes = body.putArray("country_codes");
+            countryCodes.add("GB");
+
+            body.put("language", "en");
+
+            ObjectNode userObj = body.putObject("user");
+            userObj.put("client_user_id", userId != null ? userId : "user");
+
+            ArrayNode products = body.putArray("products");
+            products.add("transactions");
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(getBaseUrl() + "/link/token/create"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
+                    .build();
+
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(response -> {
+                        if (response.statusCode() == 200) {
+                            try {
+                                JsonNode json = mapper.readTree(response.body());
+                                return json.path("link_token").asText();
+                            } catch (Exception e) {
+                                throw new RuntimeException("Error parsing link_token: " + e.getMessage());
+                            }
+                        } else {
+                            logger.warn("Plaid /link/token/create returned status {}: {}", response.statusCode(), response.body());
+                            throw new RuntimeException("Plaid error: " + response.body());
+                        }
+                    });
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    /**
+     * Exchanges public_token from Plaid Link for access_token and stores PlaidItem
+     */
+    public CompletionStage<PlaidItem> exchangePublicToken(String userId, String publicToken, String institutionId, String institutionName) {
+        if (!isConfigured()) {
+            PlaidItem mockItem = new PlaidItem(userId, "item-mock-" + System.currentTimeMillis(), "access-mock-" + System.currentTimeMillis(), institutionId, institutionName != null ? institutionName : "Sandbox Bank");
+            return plaidItemRepository.save(mockItem);
+        }
+
+        try {
+            ObjectNode body = mapper.createObjectNode();
+            body.put("client_id", getClientId());
+            body.put("secret", getSecret());
+            body.put("public_token", publicToken);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(getBaseUrl() + "/item/public_token/exchange"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
+                    .build();
+
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenCompose(response -> {
+                        if (response.statusCode() == 200) {
+                            try {
+                                JsonNode json = mapper.readTree(response.body());
+                                String accessToken = json.path("access_token").asText();
+                                String itemId = json.path("item_id").asText();
+                                PlaidItem item = new PlaidItem(userId, itemId, accessToken, institutionId, institutionName);
+                                return plaidItemRepository.save(item);
+                            } catch (Exception e) {
+                                return CompletableFuture.failedFuture(e);
+                            }
+                        } else {
+                            return CompletableFuture.failedFuture(new RuntimeException("Exchange error: " + response.body()));
+                        }
+                    });
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
     @Override
@@ -109,9 +210,13 @@ public class PlaidBankSyncProvider implements BankSyncService {
                     "Plaid is not configured. Set PLAID_CLIENT_ID and PLAID_SECRET or switch to MOCK provider / CSV Statement Upload."));
         }
 
-        // In Plaid, accounts are linked via Plaid Item access tokens.
-        // We call Plaid /transactions/sync
-        return syncPlaidTransactions(account.getUserId(), account.getId(), "access-sandbox-monmon", null);
+        return plaidItemRepository.findByUserId(account.getUserId()).thenCompose(items -> {
+            if (items.isEmpty()) {
+                return CompletableFuture.completedFuture(SyncResult.error("No linked Plaid bank items found. Use 'Link Bank Account' first."));
+            }
+            PlaidItem firstItem = items.get(0);
+            return syncPlaidTransactions(account.getUserId(), account.getId(), firstItem.getAccessToken(), firstItem.getCursor());
+        });
     }
 
     @Override
@@ -120,34 +225,39 @@ public class PlaidBankSyncProvider implements BankSyncService {
             return CompletableFuture.completedFuture(SyncResult.error(
                     "Plaid is not configured. Set PLAID_CLIENT_ID and PLAID_SECRET in environment or conf/application.conf."));
         }
-        if (accounts == null || accounts.isEmpty()) {
-            return CompletableFuture.completedFuture(SyncResult.ok(0, "No accounts to sync."));
-        }
 
-        List<CompletableFuture<SyncResult>> futures = new ArrayList<>();
-        for (Account a : accounts) {
-            futures.add(syncAccount(a, daysBack).toCompletableFuture());
-        }
+        return plaidItemRepository.findByUserId(userId).thenCompose(items -> {
+            if (items.isEmpty()) {
+                return CompletableFuture.completedFuture(SyncResult.error(
+                        "No linked Plaid bank items found. Click 'Link Bank Account (Plaid Link)' to authenticate your banks."));
+            }
 
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                .thenApply(v -> {
-                    int total = 0;
-                    List<String> details = new ArrayList<>();
-                    for (CompletableFuture<SyncResult> f : futures) {
-                        try {
-                            SyncResult res = f.join();
-                            if (res.isSuccess()) {
-                                total += res.getImportedCount();
-                                details.add(res.getMessage());
-                            } else {
-                                details.add("Error: " + res.getMessage());
+            List<CompletableFuture<SyncResult>> futures = new ArrayList<>();
+            for (PlaidItem item : items) {
+                // Sync transactions for this linked item
+                futures.add(syncPlaidTransactions(userId, null, item.getAccessToken(), item.getCursor()).toCompletableFuture());
+            }
+
+            return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                    .thenApply(v -> {
+                        int total = 0;
+                        List<String> details = new ArrayList<>();
+                        for (CompletableFuture<SyncResult> f : futures) {
+                            try {
+                                SyncResult res = f.join();
+                                if (res.isSuccess()) {
+                                    total += res.getImportedCount();
+                                    details.add(res.getMessage());
+                                } else {
+                                    details.add("Error: " + res.getMessage());
+                                }
+                            } catch (Exception ex) {
+                                details.add("Error: " + ex.getMessage());
                             }
-                        } catch (Exception ex) {
-                            details.add("Error: " + ex.getMessage());
                         }
-                    }
-                    return SyncResult.ok(total, "Plaid sync completed across " + accounts.size() + " accounts (" + total + " transactions).", details);
-                });
+                        return SyncResult.ok(total, "Plaid sync completed across " + items.size() + " linked bank items (" + total + " transactions).", details);
+                    });
+        });
     }
 
     @Override
@@ -155,7 +265,7 @@ public class PlaidBankSyncProvider implements BankSyncService {
         return statementParserService.importStatement(userId, accountId, statementData, rewriteHistory);
     }
 
-    private CompletionStage<SyncResult> syncPlaidTransactions(String userId, Long accountId, String accessToken, String cursor) {
+    public CompletionStage<SyncResult> syncPlaidTransactions(String userId, Long accountId, String accessToken, String cursor) {
         try {
             ObjectNode body = mapper.createObjectNode();
             body.put("client_id", getClientId());

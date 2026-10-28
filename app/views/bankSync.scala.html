@@ -1,5 +1,6 @@
 @(accounts: Seq[models.Account],
   recentTransactions: Seq[models.BankTransaction],
+  linkedItems: Seq[models.PlaidItem],
   providerName: String,
   plaidConfigured: Boolean,
   accountsSyncedCount: Int,
@@ -7,6 +8,8 @@
   userProfile: viewModels.SimpleUserProfile)(implicit request: play.mvc.Http.Request, messages: play.i18n.Messages)
 
 @main("MonMon - Accurate Mode & Bank Sync") {
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+
 <div class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
     @partials.navbar()
 
@@ -20,13 +23,16 @@
                 Dual-ledger architecture: Transaction-Based Ledger (TBL) with Available-Based Ledger (ABL) fallback.
             </p>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <span class="badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
                 <i class="fas fa-check-circle"></i> Provider: @providerName
             </span>
             <span class="badge" style="background: #dcfce7; color: #15803d; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
                 <i class="fas fa-layer-group"></i> 32-Account Scale Ready
             </span>
+            <button id="plaid-link-button" type="button" class="w3-button w3-black w3-round" style="font-weight: 600; padding: 8px 16px;">
+                <i class="fas fa-link" style="color: #60a5fa; margin-right: 4px;"></i> Connect Bank via Plaid Link
+            </button>
         </div>
     </div>
 
@@ -41,15 +47,66 @@
         </div>
     }
 
-    <!-- Explanatory Architecture Banner -->
+    <!-- Dynamic Plaid Status Alert -->
+    <div id="plaid-status-banner" style="display: none; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem;"></div>
+
+    <!-- Linked Plaid Institutions Card -->
+    @if(!linkedItems.isEmpty) {
+        <div style="background: white; border: 1px solid #c7d2fe; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(99,102,241,0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.05rem; font-weight: 600; color: #3730a3;">
+                        <i class="fas fa-university" style="color: #6366f1;"></i> Connected Open Banking Institutions (@linkedItems.size())
+                    </h3>
+                    <p style="margin: 2px 0 0 0; color: #4338ca; font-size: 0.85rem;">
+                        Live transaction feeds will pull from these connections.
+                    </p>
+                </div>
+            </div>
+            <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+                @for(item <- linkedItems) {
+                    <div style="background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 8px 12px; display: inline-flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: 600; font-size: 0.9rem; color: #312e81;">
+                            <i class="fas fa-landmark" style="margin-right: 4px;"></i> @if(item.getInstitutionName() != null){@item.getInstitutionName()}else{Bank Item}
+                        </span>
+                        <form action="/bank/plaid/item/delete/@item.getId()" method="POST" style="margin: 0;" onsubmit="return confirm('Unlink this bank institution?');">
+                            <button type="submit" class="w3-button w3-tiny w3-text-red" style="padding: 2px 6px; border-radius: 4px;" title="Unlink institution">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </form>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Account Compatibility Matrix & Dual Ledger Architecture -->
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
         <h3 style="margin: 0 0 8px 0; font-size: 1.05rem; font-weight: 600; color: #334155;">
-            <i class="fas fa-balance-scale" style="color: #6366f1;"></i> Available Based Ledger (ABL) vs Transaction Based Ledger (TBL)
+            <i class="fas fa-balance-scale" style="color: #6366f1;"></i> Account Compatibility Matrix &amp; Dual-Ledger System
         </h3>
-        <p style="margin: 0; color: #475569; font-size: 0.9rem; line-height: 1.5;">
-            <strong>ABL (Available-Based Ledger):</strong> Derives spend from balance delta snapshots. Essential for pensions, mortgages, and manual savings accounts where open banking transaction feeds are unavailable.<br/>
-            <strong>TBL (Transaction-Based Ledger / Accurate Mode):</strong> Directly sums line-item transaction debits via Open Banking (Plaid) or CSV statement imports. PostgreSQL rollups aggregate 32+ accounts in milliseconds without in-memory Java crunching.
-        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 12px;">
+            <div style="background: white; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px;">
+                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #15803d;">
+                    <i class="fas fa-check-circle"></i> Compatible with Plaid &amp; TBL
+                </h4>
+                <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 0.85rem; line-height: 1.5;">
+                    <li><strong>Current &amp; Debit Accounts:</strong> Monzo, Starling, HSBC, Barclays, Lloyds, NatWest, Santander, Revolut.</li>
+                    <li><strong>Credit Cards:</strong> Amex, Barclaycard, Capital One, MBNA, Halifax Credit (Open Banking supports UK credit cards).</li>
+                    <li><strong>Easy-Access Savings / Pots:</strong> Retail bank instant pots with transactional feeds.</li>
+                </ul>
+            </div>
+            <div style="background: white; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px 14px;">
+                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #c2410c;">
+                    <i class="fas fa-hand-paper"></i> Incompatible: Manual ABL Delta Entry
+                </h4>
+                <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 0.85rem; line-height: 1.5;">
+                    <li><strong>Pensions:</strong> SIPP, Workplace pensions (Nest, Aviva, Scottish Widows). No open banking transactional APIs exist.</li>
+                    <li><strong>Loans &amp; Mortgages:</strong> Fixed debt balances. Tracked via balance amortization.</li>
+                    <li><strong>Niche Savings / Bonds:</strong> NS&amp;I Premium Bonds, Fixed-rate cash ISAs, locked investment accounts.</li>
+                </ul>
+            </div>
+        </div>
     </div>
 
     <div class="w3-row-padding" style="margin: 0 -12px;">
@@ -197,7 +254,7 @@
 
         @if(recentTransactions.isEmpty) {
             <p style="color: #64748b; font-size: 0.9rem; margin: 0;">
-                No transactions ingested yet. Click <strong>Sync All with Mock Provider</strong> above or upload a statement to populate.
+                No transactions ingested yet. Click <strong>Sync All with Mock Provider</strong> above, connect via Plaid Link, or upload a statement to populate.
             </p>
         } else {
             <div style="overflow-x: auto;">
@@ -229,4 +286,95 @@
         }
     </div>
 </div>
+
+<script type="text/javascript">
+(function() {
+    var linkBtn = document.getElementById('plaid-link-button');
+    var statusBanner = document.getElementById('plaid-status-banner');
+
+    function showStatus(msg, isError) {
+        if (!statusBanner) return;
+        statusBanner.style.display = 'block';
+        statusBanner.style.background = isError ? '#fee2e2' : '#dcfce7';
+        statusBanner.style.color = isError ? '#991b1b' : '#166534';
+        statusBanner.style.border = '1px solid ' + (isError ? '#f87171' : '#86efac');
+        statusBanner.innerHTML = msg;
+    }
+
+    if (linkBtn) {
+        linkBtn.addEventListener('click', function() {
+            linkBtn.disabled = true;
+            linkBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initializing Plaid Link...';
+
+            fetch('/bank/plaid/link-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(function(res) {
+                return res.json();
+            })
+            .then(function(data) {
+                if (data.error) {
+                    showStatus('Error starting Plaid Link: ' + data.error, true);
+                    linkBtn.disabled = false;
+                    linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
+                    return;
+                }
+
+                if (typeof Plaid === 'undefined') {
+                    showStatus('Plaid Link SDK is loading or unavailable. If testing offline, use the Mock Provider.', true);
+                    linkBtn.disabled = false;
+                    linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
+                    return;
+                }
+
+                var handler = Plaid.create({
+                    token: data.link_token,
+                    onSuccess: function(public_token, metadata) {
+                        showStatus('<i class="fas fa-spinner fa-spin"></i> Exchanging bank token and syncing initial transactions...', false);
+                        fetch('/bank/plaid/exchange-token', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                public_token: public_token,
+                                institution_id: metadata && metadata.institution ? metadata.institution.institution_id : 'unknown',
+                                institution_name: metadata && metadata.institution ? metadata.institution.name : 'Bank'
+                            })
+                        })
+                        .then(function(resp) { return resp.json(); })
+                        .then(function(result) {
+                            if (result.success) {
+                                showStatus('<i class="fas fa-check-circle"></i> Successfully connected ' + (result.institution || 'bank') + '! Reloading...', false);
+                                setTimeout(function() { window.location.reload(); }, 1200);
+                            } else {
+                                showStatus('Exchange error: ' + (result.error || 'Failed to exchange token'), true);
+                                linkBtn.disabled = false;
+                                linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
+                            }
+                        })
+                        .catch(function(err) {
+                            showStatus('Network error during exchange: ' + err.message, true);
+                            linkBtn.disabled = false;
+                            linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
+                        });
+                    },
+                    onExit: function(err, metadata) {
+                        linkBtn.disabled = false;
+                        linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
+                        if (err != null) {
+                            showStatus('Plaid Link exited: ' + err.display_message, true);
+                        }
+                    }
+                });
+                handler.open();
+            })
+            .catch(function(err) {
+                showStatus('Failed to request link token: ' + err.message, true);
+                linkBtn.disabled = false;
+                linkBtn.innerHTML = '<i class="fas fa-link"></i> Connect Bank via Plaid Link';
+            });
+        });
+    }
+})();
+</script>
 }
