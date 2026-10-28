@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import models.Account;
+import models.NetWorthAsset;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import viewModels.NetWorthViewModel;
 import viewModels.SpendingPlan;
 import viewModels.Spog;
 
@@ -43,6 +45,7 @@ public class MistralService {
     }
 
     private final Map<String, CacheEntry> userAdviceCache = new ConcurrentHashMap<>();
+    private final Map<String, CacheEntry> userNetWorthAdviceCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry> nomMonCache = new ConcurrentHashMap<>();
     private final Map<String, Long> userLastNomMonTimestamp = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 31L * 24L * 60L * 60L * 1000L; // 31 days TTL
@@ -263,6 +266,49 @@ public class MistralService {
         return sb.toString();
     }
 
+    public static String buildNetWorthContextPrompt(NetWorthViewModel vm) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Financial Portfolio & Net Worth Snapshot:\n");
+        sb.append("- Total Net Worth: £").append(vm.getNetWorth()).append("\n");
+        sb.append("- Total Assets: £").append(vm.getTotalAssets()).append("\n");
+        sb.append("- Total Liabilities / Debts: £").append(vm.getTotalLiabilities()).append("\n\n");
+
+        sb.append("Liquid & Investable Portfolio:\n");
+        sb.append("- Cash & Savings: £").append(vm.getCashTotal()).append("\n");
+        sb.append("- Pensions & Retirement: £").append(vm.getPensionTotal()).append("\n");
+        sb.append("- Combined Investable Portfolio: £").append(vm.getInvestablePortfolio()).append("\n");
+        sb.append("- 4% Safe Withdrawal Rule: £").append(vm.getAnnualSafeWithdrawal()).append("/year (£")
+                .append(vm.getMonthlySafeWithdrawal()).append("/month)\n\n");
+
+        if (!vm.getCustomAssets().isEmpty()) {
+            sb.append("Physical & Capital Assets (Flat, Car, Valuables):\n");
+            for (NetWorthAsset a : vm.getCustomAssets()) {
+                if (a != null && !a.isArchived()) {
+                    sb.append("  • ").append(a.getName()).append(" (").append(a.getCategoryHumanReadable())
+                            .append("): £").append(a.getValue());
+                    if (a.getNotes() != null && !a.getNotes().isBlank()) {
+                        sb.append(" [").append(a.getNotes()).append("]");
+                    }
+                    sb.append("\n");
+                }
+            }
+            sb.append("  • Total Physical Assets: £").append(vm.getCustomAssetsTotal()).append("\n\n");
+        }
+
+        if (vm.getTotalLiabilities() > 0) {
+            sb.append("Debts & Drag:\n");
+            sb.append("- Credit Card Debt: £").append(vm.getCreditDebtTotal()).append("\n");
+            sb.append("- Loans Remaining: £").append(vm.getLoanDebtTotal()).append("\n\n");
+        }
+
+        sb.append("Living Cost Benchmark:\n");
+        sb.append("- Estimated Monthly Food & Essentials Cost: £").append(vm.getMonthlyFoodCost()).append("/month\n");
+        sb.append("- Current Portfolio Food Coverage: ").append(vm.getFoodCoveredPercent()).append("% of monthly food covered by 4% safe withdrawal\n\n");
+
+        sb.append("Please evaluate this portfolio as Ed in the Hemingway style. Make a rough judgement on when the user can retire OR how the future value / annual yield of their portfolio can pay for essential living costs like food.");
+        return sb.toString();
+    }
+
     public static String extractErrorMessage(String respBody) {
         if (respBody == null || respBody.isBlank()) return null;
         try {
@@ -414,6 +460,104 @@ public class MistralService {
             log("ERROR", String.format("Error building Mistral request in %dms for user='%s': %s",
                     durationMs, userId, e.getMessage()));
             return CompletableFuture.completedFuture("Ed encountered an error preparing the request: " + e.getMessage());
+        }
+    }
+
+    public CompletableFuture<String> askEdNetWorth(String userId, String contextPrompt, boolean forceRefresh) {
+        log("INFO", String.format("askEdNetWorth requested: user='%s', forceRefresh=%s, promptLength=%d",
+                userId, forceRefresh, contextPrompt != null ? contextPrompt.length() : 0));
+
+        if (!isConfigured()) {
+            log("WARN", String.format("askEdNetWorth rejected: Mistral API key is not configured for user='%s'", userId));
+            return CompletableFuture.completedFuture(
+                    "Ed needs a Mistral API key to calculate your retirement horizon! Please configure `mistral.apiKey` in `conf/application.conf` or set the `MISTRAL_API_KEY` environment variable."
+            );
+        }
+
+        long now = System.currentTimeMillis();
+        if (!forceRefresh && userId != null) {
+            CacheEntry cached = userNetWorthAdviceCache.get(userId);
+            if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
+                long ageSec = (now - cached.timestamp) / 1000L;
+                log("INFO", String.format("askEdNetWorth cache HIT for user='%s' (cached %ds ago, TTL=%ds). Returning cached advice.",
+                        userId, ageSec, CACHE_TTL_MS / 1000L));
+                return CompletableFuture.completedFuture(cached.text);
+            }
+        }
+
+        long startTime = System.currentTimeMillis();
+        String model = getModel();
+        String apiKey = getApiKey();
+
+        log("INFO", String.format("askEdNetWorth sending API request: user='%s', model='%s', key=%s, endpoint='https://api.mistral.ai/v1/chat/completions'",
+                userId, model, maskKey(apiKey)));
+
+        try {
+            ObjectNode payload = mapper.createObjectNode();
+            payload.put("model", model);
+            payload.put("temperature", 0.7);
+            payload.put("max_tokens", 750);
+
+            ArrayNode messages = payload.putArray("messages");
+
+            ObjectNode systemMsg = messages.addObject();
+            systemMsg.put("role", "system");
+            systemMsg.put("content",
+                    "You are Ed, long-range financial strategist and observer in MonMon. " +
+                            "Speak strictly in the style of Ernest Hemingway: lean, spare, direct, honest, and unadorned. " +
+                            "Short sentences. No melodrama, no emojis, no exclamation marks. " +
+                            "Face the user's total net worth, pensions, physical assets, and debts with cool clarity.\n\n" +
+                            "Your objective:\n" +
+                            "1. Make a rough, honest judgement on when the user can retire or achieve financial independence, using sensible rules of thumb (e.g. 4% safe withdrawal rule, compound growth of pensions, and debt drag).\n" +
+                            "2. OR evaluate how the future value and annual yield of their portfolio could pay for essential living costs, such as food and groceries.\n" +
+                            "3. Provide exactly 2-3 blunt, practical steps to accelerate their timeline.\n\n" +
+                            "Use clean Markdown formatting with simple bold headings and bullet points."
+            );
+
+            ObjectNode userMsg = messages.addObject();
+            userMsg.put("role", "user");
+            userMsg.put("content", contextPrompt);
+
+            String requestBody = mapper.writeValueAsString(payload);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.mistral.ai/v1/chat/completions"))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .timeout(Duration.ofSeconds(25))
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(response -> {
+                        long durationMs = System.currentTimeMillis() - startTime;
+                        int status = response.statusCode();
+                        String respBody = response.body();
+
+                        if (status == 200) {
+                            try {
+                                JsonNode root = mapper.readTree(respBody);
+                                JsonNode choices = root.path("choices");
+                                if (choices.isArray() && choices.size() > 0) {
+                                    String text = choices.get(0).path("message").path("content").asText();
+                                    if (userId != null && text != null && !text.isBlank()) {
+                                        userNetWorthAdviceCache.put(userId, new CacheEntry(text, System.currentTimeMillis()));
+                                    }
+                                    return text;
+                                }
+                                return "Ed looked at the horizon, but received an empty response.";
+                            } catch (Exception e) {
+                                return "Ed couldn't parse the response (" + e.getMessage() + ")";
+                            }
+                        } else {
+                            String errorDetail = extractErrorMessage(respBody);
+                            return "Ed could not reach Mistral (" + status + ")" + (errorDetail != null ? ": " + errorDetail : "");
+                        }
+                    })
+                    .exceptionally(ex -> "Ed encountered an error contacting Mistral: " + ex.getMessage());
+        } catch (Exception e) {
+            return CompletableFuture.completedFuture("Ed encountered an error preparing the advice: " + e.getMessage());
         }
     }
 

@@ -332,4 +332,54 @@ public class MistralServiceTest {
         assertThat(MistralService.attemptRepairTruncatedJson(null, mapper)).isNull();
         assertThat(MistralService.attemptRepairTruncatedJson("", mapper)).isNull();
     }
+
+    @Test
+    public void testBuildNetWorthContextPromptContainsPortfolioAndRetirementMetrics() {
+        Account pension = new Account();
+        pension.setName("Aviva SIPP");
+        pension.setType(Account.AccountType.PENSION);
+        models.Balance pb = new models.Balance();
+        pb.setValue(80000f);
+        pb.setTimestamp(System.currentTimeMillis());
+        pension.balances = List.of(pb);
+
+        models.NetWorthAsset flat = new models.NetWorthAsset("u1", "Flat", models.NetWorthAsset.AssetCategory.PROPERTY, 200000.0, "Leith");
+
+        viewModels.NetWorthViewModel vm = new viewModels.NetWorthViewModel(
+                List.of(pension),
+                List.of(flat),
+                500.0,
+                200.0
+        );
+
+        String prompt = MistralService.buildNetWorthContextPrompt(vm);
+        assertThat(prompt).contains("Financial Portfolio & Net Worth Snapshot:");
+        assertThat(prompt).contains("Total Net Worth: £280000.0");
+        assertThat(prompt).contains("Pensions & Retirement: £80000.0");
+        assertThat(prompt).contains("Physical & Capital Assets");
+        assertThat(prompt).contains("Flat (Property (Flat/House)): £200000.0 [Leith]");
+        assertThat(prompt).contains("4% Safe Withdrawal Rule: £3200.0/year");
+        assertThat(prompt).contains("Current Portfolio Food Coverage: 133% of monthly food covered");
+        assertThat(prompt).contains("when the user can retire OR how the future value / annual yield of their portfolio can pay for essential living costs like food");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testAskEdNetWorthWithMockHttpClient() throws Exception {
+        HttpClient mockClient = mock(HttpClient.class);
+        HttpResponse<String> mockResponse = mock(HttpResponse.class);
+
+        when(mockResponse.statusCode()).thenReturn(200);
+        when(mockResponse.body()).thenReturn("{\"choices\":[{\"message\":{\"content\":\"You have eighty thousand in pensions and a flat in Leith. The sea does not care about your flat, but the eighty thousand will buy bread forever.\"}}]}");
+
+        when(mockClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(CompletableFuture.completedFuture(mockResponse));
+
+        Config config = ConfigFactory.parseString("mistral { apiKey = \"test-key\" }");
+        MistralService service = new MistralService(config, mockClient);
+
+        String advice = service.askEdNetWorth("user1", "Context prompt", false).get();
+        assertThat(advice).contains("eighty thousand");
+        assertThat(advice).contains("buy bread forever");
+    }
 }

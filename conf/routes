@@ -47,6 +47,13 @@ GET     /api/ed-says                  controllers.SpogController.edSays(req: Req
 GET     /nommon                       controllers.NomMonController.index(req: Request)
 GET     /api/nommon/plan              controllers.NomMonController.getPlan(req: Request)
 
+# Net Worth Tracker
+GET     /netWorth                              controllers.NetWorthController.index(req: Request)
+POST    /netWorth/addAsset                     controllers.NetWorthController.addAsset(req: Request)
+POST    /netWorth/updateAsset/:id              controllers.NetWorthController.updateAsset(id: Long, req: Request)
+GET     /netWorth/binAsset/:id                 controllers.NetWorthController.archiveAsset(id: Long, req: Request)
+GET     /api/ed-says-networth                  controllers.NetWorthController.edSaysNetWorth(req: Request)
+
 # Sharing (shared outgoings and tings)
 GET     /myPlans                               controllers.PlanController.sharedOutgoings(req: Request)
 POST    /plan                                  controllers.PlanController.addPlan(req: Request)

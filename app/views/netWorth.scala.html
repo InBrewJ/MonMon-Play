@@ -1,0 +1,422 @@
+@import play.mvc.Http.Request
+@import helper._
+@import viewModels._
+@import models._
+@import org.pac4j.core.context.session._;
+@(
+    vm: NetWorthViewModel
+)(
+    implicit
+    request: Http.Request,
+    playSessionStore: SessionStore
+)
+@main("MonMon - Net Worth & Retirement Tracker") {
+
+@partials.header()
+@partials.userDetails()
+@partials.navbar()
+
+<div class="w3-content" style="max-width: 1100px; padding: 0 1rem 3rem 1rem;">
+
+    @if(request.flash().get("success").isPresent) {
+        <div class="w3-panel w3-green w3-round" style="padding: 0.75rem 1rem; margin-top: 1rem;">
+            <i class="fas fa-check-circle" style="margin-right: 6px;"></i> @request.flash().get("success").get()
+        </div>
+    }
+    @if(request.flash().get("error").isPresent) {
+        <div class="w3-panel w3-red w3-round" style="padding: 0.75rem 1rem; margin-top: 1rem;">
+            <i class="fas fa-exclamation-circle" style="margin-right: 6px;"></i> @request.flash().get("error").get()
+        </div>
+    }
+    @if(request.flash().get("info").isPresent) {
+        <div class="w3-panel w3-blue w3-round" style="padding: 0.75rem 1rem; margin-top: 1rem;">
+            <i class="fas fa-info-circle" style="margin-right: 6px;"></i> @request.flash().get("info").get()
+        </div>
+    }
+
+    <!-- Header & Action -->
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0 1.25rem 0;">
+        <div>
+            <h2 style="margin: 0; font-weight: 800; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-landmark" style="color: var(--primary);"></i> Net Worth Tracker
+            </h2>
+            <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.88rem;">
+                Combined overview of your cash, pensions, physical assets (flat, car, etc.) and liabilities.
+            </p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button onclick="document.getElementById('add-asset-modal').style.display='block'" class="w3-button w3-primary w3-round" style="background: var(--primary); color: #fff; font-weight: 700;">
+                <i class="fas fa-plus-circle" style="margin-right: 6px;"></i> Add Asset (Flat, Car...)
+            </button>
+            <a href="/spog" class="w3-button w3-round w3-border"><i class="fas fa-arrow-left"></i> SPOG</a>
+        </div>
+    </div>
+
+    <!-- Main Hero Stat Card -->
+    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="w3-row" style="display: flex; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
+            <div style="flex: 1; min-width: 240px;">
+                <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 700;">Total Net Worth</span>
+                <div style="font-size: 2.6rem; font-weight: 900; color: @if(vm.getNetWorth() >= 0) {var(--primary)} else {var(--danger)}; margin: 4px 0;">
+                    £@vm.getNetWorth()
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted);">
+                    Assets: <b style="color: var(--success);">£@vm.getTotalAssets()</b> · Debts: <b style="color: var(--danger);">-£@vm.getTotalLiabilities()</b>
+                </div>
+            </div>
+            <div style="flex: 2; min-width: 280px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
+                <div style="background: var(--card-bg-subtle); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;"><i class="fas fa-money-bill-wave" style="color: var(--success); margin-right: 4px;"></i> Cash & Savings</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">£@vm.getCashTotal()</div>
+                </div>
+                <div style="background: var(--card-bg-subtle); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;"><i class="fas fa-piggy-bank" style="color: var(--primary); margin-right: 4px;"></i> Pensions</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">£@vm.getPensionTotal()</div>
+                </div>
+                <div style="background: var(--card-bg-subtle); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;"><i class="fas fa-home" style="color: #f59e0b; margin-right: 4px;"></i> Fixed Assets</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">£@vm.getCustomAssetsTotal()</div>
+                </div>
+                <div style="background: var(--card-bg-subtle); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;"><i class="fas fa-credit-card" style="color: var(--danger); margin-right: 4px;"></i> Debts</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--danger);">-£@vm.getTotalLiabilities()</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ed Says: Retirement & Financial Independence Horizon -->
+    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem; position: relative;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="background: var(--primary); color: #fff; border-radius: 50%; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 900;">E</span>
+                <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem;">Ed Says — Retirement & Independence Horizon</h4>
+                <span id="ed-networth-status" style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;"></span>
+            </div>
+            <button id="ed-networth-refresh-btn" type="button" class="w3-button w3-round w3-small w3-border" style="font-size: 0.8rem;" title="Ask Ed again with latest figures">
+                <i class="fas fa-sync-alt" style="margin-right: 4px;"></i> Refresh Ed's Assessment
+            </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 1rem; background: var(--card-bg-subtle); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <div>
+                <span style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Investable Portfolio (Cash + Pension)</span>
+                <div style="font-weight: 800; font-size: 1.15rem; color: var(--primary);">£@vm.getInvestablePortfolio()</div>
+            </div>
+            <div>
+                <span style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">4% Safe Annual Withdrawal</span>
+                <div style="font-weight: 800; font-size: 1.15rem; color: var(--success);">£@vm.getAnnualSafeWithdrawal() <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">/ year</span></div>
+            </div>
+            <div>
+                <span style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Food & Groceries Coverage</span>
+                <div style="font-weight: 800; font-size: 1.15rem; color: @if(vm.getFoodCoveredPercent() >= 100) {var(--success)} else {var(--primary)};">
+                    @vm.getFoodCoveredPercent()% <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">(covers £@vm.getMonthlySafeWithdrawal() of ~£@vm.getMonthlyFoodCost()/mo food)</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="ed-networth-content" style="color: var(--text-main); font-size: 0.92rem; min-height: 80px;">
+            <p style="color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Ed is surveying your portfolio and retirement horizon...</p>
+        </div>
+    </div>
+
+    <!-- Section 1: Physical & Fixed Assets (Flat, Car, Valuables) -->
+    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div>
+                <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem;">
+                    <i class="fas fa-home" style="color: #f59e0b; margin-right: 6px;"></i> Physical & Fixed Assets
+                </h4>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Real estate, vehicles, crypto, jewelry, or tangible wealth.</div>
+            </div>
+            <button onclick="document.getElementById('add-asset-modal').style.display='block'" class="w3-button w3-round w3-small w3-border">
+                <i class="fas fa-plus"></i> Add Item
+            </button>
+        </div>
+
+        @if(vm.getCustomAssets().isEmpty) {
+            <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); background: var(--card-bg-subtle); border-radius: 8px; border: 1px dashed var(--border-color);">
+                <p style="margin: 0 0 0.5rem 0;">No physical or capital assets added yet.</p>
+                <button onclick="document.getElementById('add-asset-modal').style.display='block'" class="w3-button w3-round w3-small w3-primary" style="background: var(--primary); color: #fff;">
+                    Add your Flat, Car, or other assets
+                </button>
+            </div>
+        } else {
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); text-align: left; font-size: 0.75rem; text-transform: uppercase;">
+                        <th style="padding: 6px;">Item</th>
+                        <th style="padding: 6px;">Category</th>
+                        <th style="padding: 6px;">Notes</th>
+                        <th style="padding: 6px; text-align: right;">Value</th>
+                        <th style="padding: 6px; text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for(asset <- vm.getCustomAssets()) {
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 6px;">
+                            <i class="fas @asset.getCategoryIcon()" style="color: var(--primary); margin-right: 6px;"></i>
+                            <b>@asset.getName()</b>
+                        </td>
+                        <td style="padding: 8px 6px;">
+                            <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-size: 0.75rem;">
+                                @asset.getCategoryHumanReadable()
+                            </span>
+                        </td>
+                        <td style="padding: 8px 6px; color: var(--text-muted); font-size: 0.82rem;">
+                            @(if(asset.getNotes() != null && !asset.getNotes().isEmpty()) asset.getNotes() else "—")
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; font-size: 1rem; color: var(--text-main);">
+                            £@asset.getValue()
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right;">
+                            <button onclick="openEditModal(@asset.getId(), '@asset.getName()', '@asset.getCategory()', @asset.getValue(), '@(if(asset.getNotes() != null) asset.getNotes() else "")')" class="w3-button w3-round w3-tiny w3-border" title="Edit asset"><i class="fas fa-pencil-alt"></i></button>
+                            <a href="/netWorth/binAsset/@asset.getId()" onclick="return confirm('Remove this asset from your net worth?');" class="w3-button w3-round w3-tiny w3-border" style="color: var(--danger);" title="Delete asset"><i class="fas fa-trash"></i></a>
+                        </td>
+                    </tr>
+                    }
+                    <tr style="background: var(--card-bg-subtle); font-weight: 800;">
+                        <td colspan="3" style="padding: 8px 6px;">Total Physical & Fixed Assets</td>
+                        <td style="padding: 8px 6px; text-align: right; color: var(--primary);">£@vm.getCustomAssetsTotal()</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <!-- Section 2: Pensions & Long-Term Retirement Accounts -->
+    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div>
+                <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem;">
+                    <i class="fas fa-piggy-bank" style="color: var(--primary); margin-right: 6px;"></i> Pensions & Retirement Accounts
+                </h4>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">SIPP, workplace pensions, and defined contribution pots.</div>
+            </div>
+            <a href="/myAccounts" class="w3-button w3-round w3-small w3-border">Manage Accounts</a>
+        </div>
+
+        @if(vm.getPensionAccounts().isEmpty) {
+            <div style="padding: 1rem; color: var(--text-muted); background: var(--card-bg-subtle); border-radius: 8px; font-size: 0.88rem;">
+                No pension accounts configured yet. <a href="/myAccounts">Add a Pension account</a> to track retirement assets.
+            </div>
+        } else {
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); text-align: left; font-size: 0.75rem; text-transform: uppercase;">
+                        <th style="padding: 6px;">Pension Account</th>
+                        <th style="padding: 6px; text-align: right;">Latest Valuation</th>
+                        <th style="padding: 6px; text-align: right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for(acc <- vm.getPensionAccounts()) {
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 6px;">
+                            <b>@acc.getName()</b>
+                            @if(acc.getNickname() != null && !acc.getNickname().isEmpty()) {
+                                <span style="color: var(--text-muted); font-size: 0.8rem;">(@acc.getNickname())</span>
+                            }
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; font-size: 1rem; color: var(--primary);">
+                            £@acc.getLatestBalanceValue()
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right;">
+                            <a href="/myBalances?accountId=@acc.getId()" class="w3-button w3-round w3-tiny w3-border"><i class="fas fa-sync-alt"></i> Update</a>
+                        </td>
+                    </tr>
+                    }
+                    <tr style="background: var(--card-bg-subtle); font-weight: 800;">
+                        <td style="padding: 8px 6px;">Total Pension Valuation</td>
+                        <td style="padding: 8px 6px; text-align: right; color: var(--primary);">£@vm.getPensionTotal()</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <!-- Section 3: Cash & Liquid Savings -->
+    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div>
+                <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem;">
+                    <i class="fas fa-wallet" style="color: var(--success); margin-right: 6px;"></i> Cash & Savings Accounts
+                </h4>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Current accounts, shared bills accounts, and liquid savings.</div>
+            </div>
+            <a href="/myBalances" class="w3-button w3-round w3-small w3-border">Balances</a>
+        </div>
+
+        @if(vm.getCashAccounts().isEmpty) {
+            <div style="padding: 1rem; color: var(--text-muted); background: var(--card-bg-subtle); border-radius: 8px; font-size: 0.88rem;">
+                No active cash or savings accounts.
+            </div>
+        } else {
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); text-align: left; font-size: 0.75rem; text-transform: uppercase;">
+                        <th style="padding: 6px;">Account</th>
+                        <th style="padding: 6px;">Type</th>
+                        <th style="padding: 6px; text-align: right;">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for(acc <- vm.getCashAccounts()) {
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 6px;"><b>@acc.getName()</b></td>
+                        <td style="padding: 8px 6px;"><span class="badge-pill" style="font-size: 0.75rem;">@acc.getType()</span></td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 700;">£@acc.getLatestBalanceValue()</td>
+                    </tr>
+                    }
+                    <tr style="background: var(--card-bg-subtle); font-weight: 800;">
+                        <td colspan="2" style="padding: 8px 6px;">Total Cash & Savings</td>
+                        <td style="padding: 8px 6px; text-align: right; color: var(--success);">£@vm.getCashTotal()</td>
+                    </tr>
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <!-- Section 4: Debts & Liabilities -->
+    @if(!vm.getCreditAccounts().isEmpty || !vm.getLoanAccounts().isEmpty) {
+    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div>
+                <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem; color: var(--danger);">
+                    <i class="fas fa-credit-card" style="margin-right: 6px;"></i> Debts & Liabilities
+                </h4>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Credit card balances owed and active loans deducted from net worth.</div>
+            </div>
+            <a href="/savingsPlan" class="w3-button w3-round w3-small w3-border">Payoff Plan</a>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); text-align: left; font-size: 0.75rem; text-transform: uppercase;">
+                    <th style="padding: 6px;">Liability</th>
+                    <th style="padding: 6px;">Type</th>
+                    <th style="padding: 6px; text-align: right;">Amount Owed</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for(acc <- vm.getCreditAccounts()) {
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 8px 6px;"><b>@acc.getName()</b></td>
+                    <td style="padding: 8px 6px;"><span class="badge-pill badge-danger" style="font-size: 0.75rem;">Credit Card</span></td>
+                    <td style="padding: 8px 6px; text-align: right; font-weight: 700; color: var(--danger);">
+                        £@vm.getAccountOwed(acc)
+                    </td>
+                </tr>
+                }
+                @for(acc <- vm.getLoanAccounts()) {
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 8px 6px;"><b>@acc.getName()</b></td>
+                    <td style="padding: 8px 6px;"><span class="badge-pill badge-danger" style="font-size: 0.75rem;">Loan</span></td>
+                    <td style="padding: 8px 6px; text-align: right; font-weight: 700; color: var(--danger);">£@acc.getLatestBalanceValue()</td>
+                </tr>
+                }
+                <tr style="background: var(--card-bg-subtle); font-weight: 800;">
+                    <td colspan="2" style="padding: 8px 6px;">Total Liabilities</td>
+                    <td style="padding: 8px 6px; text-align: right; color: var(--danger);">-£@vm.getTotalLiabilities()</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    }
+
+</div>
+
+<!-- Modal: Add Asset -->
+<div id="add-asset-modal" class="w3-modal" style="display: none; background-color: rgba(0,0,0,0.5);">
+    <div class="w3-modal-content w3-round w3-card-4" style="max-width: 500px; background: var(--card-bg); padding: 1.5rem; border: 1px solid var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4 style="margin: 0; font-weight: 800;"><i class="fas fa-plus-circle" style="color: var(--primary);"></i> Add Custom Asset</h4>
+            <span onclick="document.getElementById('add-asset-modal').style.display='none'" style="cursor: pointer; font-size: 1.25rem; color: var(--text-muted);">&times;</span>
+        </div>
+        <form action="/netWorth/addAsset" method="POST">
+            @CSRF.formField
+            <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Asset Name *</label>
+                <input class="w3-input w3-border w3-round" type="text" name="name" placeholder="e.g. Flat in Bristol, 2021 VW Golf, Gold Coins" required style="margin-top: 4px;">
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Category</label>
+                <select class="w3-select w3-border w3-round" name="category" style="margin-top: 4px;">
+                    <option value="PROPERTY">Property (Flat, House, Land)</option>
+                    <option value="VEHICLE">Vehicle (Car, Motorcycle, Van)</option>
+                    <option value="VALUABLE">Valuable (Jewellery, Watches, Art)</option>
+                    <option value="INVESTMENT">Investment (Crypto, Metals, Private)</option>
+                    <option value="OTHER" selected>Other Asset</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Current Estimated Value (£) *</label>
+                <input class="w3-input w3-border w3-round" type="number" step="0.01" name="value" placeholder="e.g. 250000" required style="margin-top: 4px;">
+            </div>
+            <div style="margin-bottom: 1.25rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Notes (optional)</label>
+                <input class="w3-input w3-border w3-round" type="text" name="notes" placeholder="e.g. Zoopla estimate, AutoTrader valuation" style="margin-top: 4px;">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button type="button" onclick="document.getElementById('add-asset-modal').style.display='none'" class="w3-button w3-round w3-border">Cancel</button>
+                <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700;">Add to Net Worth</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Edit Asset -->
+<div id="edit-asset-modal" class="w3-modal" style="display: none; background-color: rgba(0,0,0,0.5);">
+    <div class="w3-modal-content w3-round w3-card-4" style="max-width: 500px; background: var(--card-bg); padding: 1.5rem; border: 1px solid var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4 style="margin: 0; font-weight: 800;"><i class="fas fa-pencil-alt" style="color: var(--primary);"></i> Edit Asset</h4>
+            <span onclick="document.getElementById('edit-asset-modal').style.display='none'" style="cursor: pointer; font-size: 1.25rem; color: var(--text-muted);">&times;</span>
+        </div>
+        <form id="edit-asset-form" method="POST">
+            @CSRF.formField
+            <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Asset Name *</label>
+                <input class="w3-input w3-border w3-round" type="text" id="edit-name" name="name" required style="margin-top: 4px;">
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Category</label>
+                <select class="w3-select w3-border w3-round" id="edit-category" name="category" style="margin-top: 4px;">
+                    <option value="PROPERTY">Property (Flat, House, Land)</option>
+                    <option value="VEHICLE">Vehicle (Car, Motorcycle, Van)</option>
+                    <option value="VALUABLE">Valuable (Jewellery, Watches, Art)</option>
+                    <option value="INVESTMENT">Investment (Crypto, Metals, Private)</option>
+                    <option value="OTHER">Other Asset</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Current Estimated Value (£) *</label>
+                <input class="w3-input w3-border w3-round" type="number" step="0.01" id="edit-value" name="value" required style="margin-top: 4px;">
+            </div>
+            <div style="margin-bottom: 1.25rem;">
+                <label style="font-weight: 700; font-size: 0.85rem;">Notes</label>
+                <input class="w3-input w3-border w3-round" type="text" id="edit-notes" name="notes" style="margin-top: 4px;">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button type="button" onclick="document.getElementById('edit-asset-modal').style.display='none'" class="w3-button w3-round w3-border">Cancel</button>
+                <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700;">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="/assets/javascripts/edNetWorth.js"></script>
+<script>
+    function openEditModal(id, name, category, value, notes) {
+        document.getElementById('edit-asset-form').action = '/netWorth/updateAsset/' + id;
+        document.getElementById('edit-name').value = name;
+        document.getElementById('edit-category').value = category;
+        document.getElementById('edit-value').value = value;
+        document.getElementById('edit-notes').value = notes;
+        document.getElementById('edit-asset-modal').style.display = 'block';
+    }
+</script>
+
+}
