@@ -37,7 +37,7 @@ public class Outgoing {
     public boolean hiddenFromTotal = false;
 
     @Column(name = "paused")
-    public boolean paused = false;
+    public Boolean paused = false;
 
     @Column(name = "pause_reason")
     public String pauseReason;
@@ -220,11 +220,19 @@ public class Outgoing {
     }
 
     public boolean isPaused() {
-        return paused;
+        return Boolean.TRUE.equals(paused);
+    }
+
+    public Boolean getPaused() {
+        return paused != null ? paused : false;
     }
 
     public void setPaused(boolean paused) {
         this.paused = paused;
+    }
+
+    public void setPaused(Boolean paused) {
+        this.paused = Boolean.TRUE.equals(paused);
     }
 
     public String getPauseReason() {
@@ -244,7 +252,7 @@ public class Outgoing {
     }
 
     public Float getEffectiveCost() {
-        if (paused) {
+        if (isPaused()) {
             return 0.0f;
         }
         return cost != null ? cost : 0.0f;

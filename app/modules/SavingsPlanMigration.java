@@ -111,6 +111,15 @@ public class SavingsPlanMigration {
             }
         }
 
+        // 6. Backfill any null paused columns to FALSE
+        try {
+            jpaApi.withTransaction((java.util.function.Consumer<javax.persistence.EntityManager>) em -> {
+                em.createNativeQuery("UPDATE outgoing SET paused = false WHERE paused IS NULL").executeUpdate();
+            });
+        } catch (Exception e) {
+            System.out.println("SavingsPlanMigration :: error backfilling outgoing paused: " + e.getMessage());
+        }
+
         System.out.println("SavingsPlanMigration :: completed schema verification for savings_plan, savings_plan_item, and outgoing");
     }
 }
