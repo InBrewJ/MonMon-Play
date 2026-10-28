@@ -95,9 +95,12 @@ public class BalanceController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.BalanceController.listBalances()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getBalances(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         return balanceRepository
                 .list(sup.getUserId())
                 .thenApplyAsync(balanceStream -> ok(toJson(balanceStream.collect(Collectors.toList()))), ec.current());
@@ -226,7 +229,7 @@ public class BalanceController extends Controller {
         return play.libs.Json.stringify(play.libs.Json.toJson(list));
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> listBalances(Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         long tenDaysAgoSec = java.time.Instant.now().minus(10, java.time.temporal.ChronoUnit.DAYS).getEpochSecond();

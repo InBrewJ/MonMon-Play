@@ -21,6 +21,7 @@ import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -64,23 +65,29 @@ public class PlanController extends Controller {
         this.ec = ec;
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getPlans(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         return planRepository
                 .list(sup.getUserId())
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getPlansComplete(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         return planRepository
                 .listComplete(sup.getUserId())
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> setBasicSavingsPlan(int percent, final Http.Request request) {
         System.out.println("setting savings percentage to : " + percent);
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
@@ -143,7 +150,7 @@ public class PlanController extends Controller {
                         .flashing("success", "Sharing agreement for " + (plan.getType() == Plan.PlanType.BILL_SHARE ? "Bills" : "Rent") + " saved successfully!"), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> sharedOutgoings(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         return planRepository.list(sup.getUserId()).thenComposeAsync(plansStream -> {

@@ -51,23 +51,29 @@ public class IncomingController extends Controller {
         this.ec = ec;
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getIncomings(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         return incomingRepository
                 .list(sup.getUserId())
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getIncomingsComplete(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         return incomingRepository
                 .listComplete(sup.getUserId())
                 .thenApplyAsync(incomingStream -> ok(toJson(incomingStream.collect(Collectors.toList()))), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result listIncomings(Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Incoming> incomings = repoListToList(incomingRepository.list(sup.getUserId()));
@@ -81,7 +87,7 @@ public class IncomingController extends Controller {
         );
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result listIncomingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Incoming> incomings = repoListToList(incomingRepository.list(sup.getUserId()));

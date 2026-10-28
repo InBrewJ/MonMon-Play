@@ -34,7 +34,7 @@ public class SettingsController extends Controller {
         this.sessionStore = sessionStore;
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result index(Http.Request request) {
         String region = request.session().get("region").orElse("UK");
         return ok(views.html.settings.render(
@@ -48,7 +48,7 @@ public class SettingsController extends Controller {
         ));
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result updateSettings(Http.Request request) {
         DynamicForm requestData = formFactory.form().bindFromRequest(request);
         String region = Optional.ofNullable(requestData.get("region")).orElse("UK");

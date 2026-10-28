@@ -81,7 +81,7 @@ public class ModelHelpers {
                 boolean isDueInWindow = false;
                 LocalDate d = asOf;
                 while (d.isBefore(nextPayday)) {
-                    if (o.getOutgoingMonth() != null && o.getOutgoingMonth() == d.getMonthValue()) {
+                    if (o.isDueInMonth(d)) {
                         isDueInWindow = true;
                         break;
                     }
@@ -101,7 +101,7 @@ public class ModelHelpers {
         LocalDate searchDate = findLastPaydayDate(asOf, paydayDay);
         while (!searchDate.isAfter(asOf)) {
             for (Outgoing o : outgoings) {
-                if (o.isYearly() && (o.getOutgoingMonth() == null || o.getOutgoingMonth() != searchDate.getMonthValue())) {
+                if (o.isYearly() && !o.isDueInMonth(searchDate)) {
                     continue;
                 }
                 int effectiveDay = getEffectiveOutgoingDay(o.getOutgoingDay(), searchDate);
@@ -156,6 +156,8 @@ public class ModelHelpers {
                 copy.setHiddenFromTotal(o.isHiddenFromTotal());
                 copy.setOutgoingDay(o.getOutgoingDay());
                 copy.setOutgoingMonth(o.getOutgoingMonth());
+                copy.setYearInterval(o.getYearInterval());
+                copy.setStartingYear(o.getStartingYear());
                 float cost = o.getCost();
                 if (firstBillShare != null && o.isBill()) {
                     cost = cost * firstBillShare.getSplit();

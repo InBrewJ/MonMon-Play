@@ -59,7 +59,7 @@ public class OutgoingController extends Controller {
         this.ec = ec;
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         this.accounts = repoListToList(accountRepository.list(sup.getUserId()));
@@ -114,7 +114,7 @@ public class OutgoingController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.OutgoingController.index()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result listOutgoingsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Outgoing found = outgoingRepository.findById(id).toCompletableFuture().get();
@@ -139,17 +139,23 @@ public class OutgoingController extends Controller {
         );
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getOutgoings(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         return outgoingRepository
                 .list(sup.getUserId())
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getOutgoingsComplete(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         return outgoingRepository
                 .listComplete(sup.getUserId())
                 .thenApplyAsync(personStream -> ok(toJson(personStream.collect(Collectors.toList()))), ec.current());

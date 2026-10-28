@@ -15,6 +15,7 @@ import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -47,7 +48,7 @@ public class AccountController extends Controller {
         this.ec = ec;
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result listAccounts(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
@@ -63,7 +64,7 @@ public class AccountController extends Controller {
         );
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result listAccountsWithPrefill(int id, Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Account found = accountRepository.findById(id).toCompletableFuture().get();
@@ -95,9 +96,12 @@ public class AccountController extends Controller {
                 .thenApplyAsync(p -> redirect(routes.AccountController.listAccounts()), ec.current());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getAccountsComplete(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         return accountRepository
                 .listComplete(sup.getUserId())
                 .thenApplyAsync(accountStream -> ok(toJson(accountStream.collect(Collectors.toList()))), ec.current());

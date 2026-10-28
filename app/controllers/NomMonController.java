@@ -69,6 +69,9 @@ public class NomMonController extends Controller {
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> getPlan(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return java.util.concurrent.CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         String userId = sup.getUserId();
         boolean force = request.queryString("force").map("true"::equalsIgnoreCase).orElse(false);
         String postcode = request.queryString("postcode").orElse(null);

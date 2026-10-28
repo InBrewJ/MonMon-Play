@@ -25,6 +25,12 @@ public class Outgoing {
     @Column(name = "OUTGOINGMONTH")
     public Integer outgoingMonth; // null or 0 for monthly (every month); 1-12 for Jan-Dec
 
+    @Column(name = "YEARINTERVAL")
+    public Integer yearInterval = 1; // 1 = every year, 2 = every 2 years, 3 = every 3 years, etc.
+
+    @Column(name = "STARTINGYEAR")
+    public Integer startingYear; // e.g. 2025
+
     public boolean bill = false;
     public boolean rent = false;
     public boolean archived = false;
@@ -107,6 +113,22 @@ public class Outgoing {
         this.outgoingMonth = (outgoingMonth != null && outgoingMonth > 0 && outgoingMonth <= 12) ? outgoingMonth : null;
     }
 
+    public Integer getYearInterval() {
+        return (yearInterval != null && yearInterval > 0) ? yearInterval : 1;
+    }
+
+    public void setYearInterval(Integer yearInterval) {
+        this.yearInterval = (yearInterval != null && yearInterval > 0) ? yearInterval : 1;
+    }
+
+    public Integer getStartingYear() {
+        return startingYear;
+    }
+
+    public void setStartingYear(Integer startingYear) {
+        this.startingYear = (startingYear != null && startingYear > 1900) ? startingYear : null;
+    }
+
     public boolean isYearly() {
         return outgoingMonth != null && outgoingMonth > 0;
     }
@@ -117,20 +139,56 @@ public class Outgoing {
 
     public boolean isDueInMonth(java.time.LocalDate asOf) {
         if (asOf == null) {
-            return isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK").getMonthValue());
+            asOf = helpers.BankHolidayHelper.nowInRegion("UK");
         }
-        return isDueInMonth(asOf.getMonthValue());
+        if (!isYearly()) {
+            return true;
+        }
+        if (this.outgoingMonth == null || this.outgoingMonth != asOf.getMonthValue()) {
+            return false;
+        }
+        int interval = getYearInterval();
+        if (interval > 1) {
+            int start = (this.startingYear != null && this.startingYear > 0) ? this.startingYear : asOf.getYear();
+            int currentYear = asOf.getYear();
+            if (currentYear < start) {
+                return false;
+            }
+            return (currentYear - start) % interval == 0;
+        }
+        return true;
+    }
+
+    public int getNextDueYear(java.time.LocalDate asOf) {
+        if (asOf == null) {
+            asOf = helpers.BankHolidayHelper.nowInRegion("UK");
+        }
+        int interval = getYearInterval();
+        if (interval <= 1) {
+            if (this.outgoingMonth != null && asOf.getMonthValue() > this.outgoingMonth) {
+                return asOf.getYear() + 1;
+            }
+            return asOf.getYear();
+        }
+        int start = (this.startingYear != null && this.startingYear > 0) ? this.startingYear : asOf.getYear();
+        int y = start;
+        while (y < asOf.getYear() || (y == asOf.getYear() && this.outgoingMonth != null && asOf.getMonthValue() > this.outgoingMonth)) {
+            y += interval;
+        }
+        return y;
     }
 
     public String getFrequencyLabel() {
         if (!isYearly()) {
             return "Monthly";
         }
-        try {
-            return java.time.Month.of(this.outgoingMonth).getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.UK);
-        } catch (Exception e) {
-            return "Yearly (" + this.outgoingMonth + ")";
+        String month = getMonthName();
+        int interval = getYearInterval();
+        if (interval > 1) {
+            String startStr = (this.startingYear != null && this.startingYear > 0) ? (" started " + this.startingYear) : "";
+            return "Every " + interval + " yrs (" + month + startStr + ")";
         }
+        return "Yearly (" + month + ")";
     }
 
     public String getMonthName() {

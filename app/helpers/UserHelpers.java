@@ -27,6 +27,11 @@ public class UserHelpers {
         return profiles;
     }
 
+    static public boolean isAuthenticated(SessionStore playSessionStore, Http.Request request) {
+        List<UserProfile> allProfiles = getAuthProfiles(playSessionStore, request);
+        return allProfiles != null && !allProfiles.isEmpty();
+    }
+
     static public SimpleUserProfile getSimpleUserProfile(SessionStore playSessionStore, Http.Request request) {
         List<UserProfile> allProfiles = getAuthProfiles(playSessionStore, request);
         SimpleUserProfile sup = new SimpleUserProfile();

@@ -76,21 +76,9 @@ public class SpogController extends Controller {
     @Inject
     private SessionStore playSessionStore;
 
-    @Secure
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result protectedIndex(Http.Request request) {
         return protectedIndexView(request);
-    }
-
-    // pretty sure this doesn't work properly
-    public Result forceLogin(Http.Request request) {
-        final PlayWebContext context = new PlayWebContext(request);
-        final Client client = config.getClients().findClient(context.getRequestParameter(Pac4jConstants.DEFAULT_CLIENT_NAME_PARAMETER).get()).get();
-        try {
-            final HttpAction action = client.getRedirectionAction(context, playSessionStore).get();
-            return PlayHttpActionAdapter.INSTANCE.adapt(action, context);
-        } catch (final HttpAction e) {
-            throw new TechnicalException(e);
-        }
     }
 
     private Result protectedIndexView(Http.Request request) {
@@ -98,12 +86,12 @@ public class SpogController extends Controller {
         return ok(views.html.protectedIndex.render(getAuthProfiles(playSessionStore, request)));
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result oidcIndex(Http.Request request) {
         return protectedIndexView(request);
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result index(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         Spog spogVm = getSpogVm(sup, request);
@@ -112,12 +100,15 @@ public class SpogController extends Controller {
                 .addingToSession(request, "dangerDay", spogVm.getDangerDay());
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> edSays(final Http.Request request) {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        if (sup == null || "guest".equals(sup.getUserId())) {
+            return CompletableFuture.completedFuture(unauthorized(play.libs.Json.newObject().put("error", "Unauthorized")));
+        }
         boolean force = request.queryString("force").map(Boolean::parseBoolean).orElse(false);
         String timestamp = java.time.format.DateTimeFormatter.ISO_INSTANT.format(java.time.Instant.now());
-        String userId = sup != null ? sup.getUserId() : "unknown";
+        String userId = sup.getUserId();
         System.out.println(String.format("[%s] [SpogController] [INFO] /api/ed-says requested: user='%s', force=%s",
                 timestamp, userId, force));
 
@@ -332,7 +323,7 @@ public class SpogController extends Controller {
         );
     }
 
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result historicSpent(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         String region = request.session().get("region").orElse("UK");
@@ -363,7 +354,7 @@ public class SpogController extends Controller {
 
     // Ideally, seed should only be possible by someone
     // with a well defined role. Maybe an admin/seeder
-    @Secure(clients = "OidcClient")
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public Result seed(final Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
         // wtf is this

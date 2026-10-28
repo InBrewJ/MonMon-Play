@@ -89,7 +89,6 @@ GET     /callback                   @org.pac4j.play.CallbackController.callback(
 POST    /callback                   @org.pac4j.play.CallbackController.callback(request: Request)
 GET     /logout                     @org.pac4j.play.LogoutController.logout(request: Request)
 GET     /centralLogout              controllers.CentralLogoutController.logout(request: Request)
-GET     /forceLogin                 controllers.SpogController.forceLogin(request: Request)
 
 
 # Map static resources from the /public folder to the /assets URL path
