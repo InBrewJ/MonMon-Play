@@ -74,6 +74,11 @@
                         <span style="font-weight: 700; color: var(--primary);">
                           @o.outgoingDay @o.getMonthName()
                         </span>
+                        @if(o.getYearInterval() > 1) {
+                          <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 500;">
+                            Every @o.getYearInterval() yrs
+                          </div>
+                        }
                       } else {
                         @if(o.isAdjustedForMonth()) {
                           <span title="Adjusted from @o.outgoingDay for this month">
@@ -88,9 +93,9 @@
                       <b>@o.name</b>
                       @if(o.isYearly()) {
                         @if(o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))) {
-                          <span class="badge-pill badge-warning" style="font-size: 0.72rem; margin-left: 4px;"><i class="fas fa-bell"></i> Yearly (Due Now)</span>
+                          <span class="badge-pill badge-warning" style="font-size: 0.72rem; margin-left: 4px;"><i class="fas fa-bell"></i> @if(o.getYearInterval() > 1){Every @o.getYearInterval() yrs (Due Now)}else{Yearly (Due Now)}</span>
                         } else {
-                          <span class="badge-pill" style="font-size: 0.72rem; background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); margin-left: 4px;"><i class="fas fa-calendar"></i> Yearly (@o.getMonthName())</span>
+                          <span class="badge-pill" style="font-size: 0.72rem; background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); margin-left: 4px;" title="Next due in @o.getMonthName() @o.getNextDueYear(helpers.BankHolidayHelper.nowInRegion("UK"))"><i class="fas fa-calendar"></i> @o.getFrequencyLabel() · Next: @o.getNextDueYear(helpers.BankHolidayHelper.nowInRegion("UK"))</span>
                         }
                       } else {
                         <span class="badge-pill" style="font-size: 0.7rem; background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); margin-left: 4px;">Monthly</span>
@@ -158,9 +163,9 @@
                   </span>
                   @if(o.isYearly()) {
                     @if(o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))) {
-                      <span class="badge-pill badge-warning"><i class="fas fa-bell"></i> Yearly (Due Now)</span>
+                      <span class="badge-pill badge-warning"><i class="fas fa-bell"></i> @if(o.getYearInterval() > 1){Every @o.getYearInterval() yrs (Due Now)}else{Yearly (Due Now)}</span>
                     } else {
-                      <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);"><i class="fas fa-calendar"></i> Yearly (@o.getMonthName())</span>
+                      <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);" title="Next due: @o.getMonthName() @o.getNextDueYear(helpers.BankHolidayHelper.nowInRegion("UK"))"><i class="fas fa-calendar"></i> @o.getFrequencyLabel() · Next: @o.getNextDueYear(helpers.BankHolidayHelper.nowInRegion("UK"))</span>
                     }
                   } else {
                     <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">Monthly</span>
@@ -230,8 +235,8 @@
 
           <!-- Month of Year selector for Yearly bills -->
           <div id="yearly-month-group" style="display: @if(outgoingForm.field("outgoingMonth").value().isDefined && outgoingForm.field("outgoingMonth").value().get != "" && outgoingForm.field("outgoingMonth").value().get != "0"){block}else{none}; margin-bottom: 8px;">
-            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Month of Year</label><br/>
-            <select id="outgoingMonth" name="outgoingMonth" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg); color: var(--text-main);">
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Due Month</label><br/>
+            <select id="outgoingMonth" name="outgoingMonth" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg); color: var(--text-main); margin-bottom: 8px;">
               <option value="" disabled @if(outgoingForm.field("outgoingMonth").value().isEmpty || outgoingForm.field("outgoingMonth").value().get == ""){selected}>Select Due Month</option>
               <option value="1" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "1"){selected}>January</option>
               <option value="2" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "2"){selected}>February</option>
@@ -246,6 +251,40 @@
               <option value="11" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "11"){selected}>November</option>
               <option value="12" @if(outgoingForm.field("outgoingMonth").value().getOrElse("") == "12"){selected}>December</option>
             </select>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px;">
+              <div>
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">Repeats Every (Years)</label><br/>
+                <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        step="1"
+                        name="yearInterval"
+                        id="yearInterval"
+                        placeholder="1 for every year, 2 for every 2 years..."
+                        value='@{outgoingForm.field("yearInterval").value().getOrElse("1")}'
+                        style="width: 100%; padding: 7px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg); color: var(--text-main);"
+                />
+              </div>
+              <div>
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">Starting Year</label><br/>
+                <input
+                        type="number"
+                        min="1990"
+                        max="2100"
+                        step="1"
+                        name="startingYear"
+                        id="startingYear"
+                        placeholder="e.g. 2025"
+                        value='@{outgoingForm.field("startingYear").value().getOrElse(String.valueOf(java.time.LocalDate.now().getYear()))}'
+                        style="width: 100%; padding: 7px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg); color: var(--text-main);"
+                />
+              </div>
+            </div>
+            <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-bottom: 8px;">
+              For multi-year payments (e.g. every 2 or 3 years), set the interval and the first year paid.
+            </small>
           </div>
 
           <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month (1-31)</label><br/>

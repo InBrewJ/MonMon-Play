@@ -307,4 +307,69 @@ public class ModelHelpersTest {
         // Amazon Prime is November, so nothing left yet to pay in October cycle
         assertThat(yetToPayOct16).isEmpty();
     }
+
+    @Test
+    public void testNaryYearlyPaymentsWithStartingYear() {
+        // Payment that comes out every 2 years in October, starting last year (2025)
+        Outgoing biYearlyHosting = new Outgoing();
+        biYearlyHosting.setName("2-Year Hosting Plan");
+        biYearlyHosting.setCost(120f);
+        biYearlyHosting.setOutgoingDay(10);
+        biYearlyHosting.setOutgoingMonth(10); // October
+        biYearlyHosting.setYearInterval(2);   // Every 2 years
+        biYearlyHosting.setStartingYear(2025); // Started in 2025
+
+        // In October 2025: (2025 - 2025) % 2 == 0 -> DUE!
+        LocalDate oct2025 = LocalDate.of(2025, 10, 5);
+        assertThat(biYearlyHosting.isDueInMonth(oct2025)).isTrue();
+
+        // In October 2026: (2026 - 2025) % 2 == 1 -> NOT DUE!
+        LocalDate oct2026 = LocalDate.of(2026, 10, 5);
+        assertThat(biYearlyHosting.isDueInMonth(oct2026)).isFalse();
+        assertThat(biYearlyHosting.getNextDueYear(oct2026)).isEqualTo(2027);
+
+        // In October 2027: (2027 - 2025) % 2 == 0 -> DUE!
+        LocalDate oct2027 = LocalDate.of(2027, 10, 5);
+        assertThat(biYearlyHosting.isDueInMonth(oct2027)).isTrue();
+
+        // In November 2025: wrong month -> NOT DUE!
+        LocalDate nov2025 = LocalDate.of(2025, 11, 5);
+        assertThat(biYearlyHosting.isDueInMonth(nov2025)).isFalse();
+
+        // Prior to starting year (2024): NOT DUE!
+        LocalDate oct2024 = LocalDate.of(2024, 10, 5);
+        assertThat(biYearlyHosting.isDueInMonth(oct2024)).isFalse();
+
+        // 3-Year subscription started in 2023
+        Outgoing triYearlyLicense = new Outgoing();
+        triYearlyLicense.setName("3-Year Security Cert");
+        triYearlyLicense.setCost(300f);
+        triYearlyLicense.setOutgoingDay(1);
+        triYearlyLicense.setOutgoingMonth(3);  // March
+        triYearlyLicense.setYearInterval(3);   // Every 3 years
+        triYearlyLicense.setStartingYear(2023); // 2023, 2026, 2029...
+
+        LocalDate mar2026 = LocalDate.of(2026, 3, 15);
+        assertThat(triYearlyLicense.isDueInMonth(mar2026)).isTrue(); // 2026 is due
+
+        LocalDate mar2027 = LocalDate.of(2027, 3, 15);
+        assertThat(triYearlyLicense.isDueInMonth(mar2027)).isFalse(); // 2027 not due
+        assertThat(triYearlyLicense.getNextDueYear(mar2027)).isEqualTo(2029);
+
+        // Verification with getTotalOutgoings
+        Outgoing regularMonthly = new Outgoing();
+        regularMonthly.setName("Broadband");
+        regularMonthly.setCost(30f);
+        regularMonthly.setOutgoingDay(1);
+
+        List<Outgoing> list = List.of(regularMonthly, biYearlyHosting);
+
+        // In Oct 2026, biYearlyHosting is NOT due, total should just be 30.0
+        Float oct2026Total = Outgoing.getTotalOutgoings(list, oct2026);
+        assertThat(oct2026Total).isEqualTo(30.0f);
+
+        // In Oct 2027, biYearlyHosting IS due, total should be 30 + 120 = 150.0
+        Float oct2027Total = Outgoing.getTotalOutgoings(list, oct2027);
+        assertThat(oct2027Total).isEqualTo(150.0f);
+    }
 }

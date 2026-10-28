@@ -161,11 +161,14 @@ Please see the Play documentation for more details:
 
 ---
 
-## Outgoings: Monthly vs Yearly Bills
+## Outgoings: Monthly, Yearly, and N-ary Multi-Year Bills
 
 - **Monthly Outgoings:** Recur every calendar month on their designated day of the month (1–31) with smart month-length clamping.
-- **Yearly Bills:** Run once a year. They record both a day (1–31) and a due month (1–12, Jan–Dec).
+- **Yearly Bills (1 Year):** Run once a year. They record both a day (1–31) and a due month (1–12, Jan–Dec).
+- **N-ary Multi-Year Payments (e.g. Every 2 or 3 Years):**
+  - Configured with `yearInterval` ($N \ge 2$) and `startingYear`.
+  - Example: A payment occurring every 2 years with `startingYear = 2025` will only roll around in 2025, 2027, 2029, etc. In 2026, it is recognized as non-due and displays `Next: 2027`.
 - **Rollover to General Outgoings:**
-  - When the due month rolls around (e.g., an October bill in October), the yearly bill appears in the active monthly outgoings list and is included in this month's spending total and SPOG metrics.
-  - In non-due months, yearly bills remain cataloged under the "Yearly Bills" tab without artificially reducing current monthly disposable income.
+  - When the due year and month roll around, the bill automatically appears in the active monthly outgoings list ("Monthly & Due Now") and is factored into that month's spending total and SPOG metrics.
+  - In non-due months/years, it remains neatly organized under the "Yearly Bills" tab with a countdown to the next payment year, without artificially depressing current monthly disposable income.
 

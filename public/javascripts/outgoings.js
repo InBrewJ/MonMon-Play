@@ -83,12 +83,21 @@
         var monthSelect = document.getElementById('outgoingMonth');
 
         if (freqSelect && monthGroup && monthSelect) {
+            var intervalInput = document.getElementById('yearInterval');
+            var startYearInput = document.getElementById('startingYear');
+
             function updateFreqUI() {
                 if (freqSelect.value === 'yearly') {
                     monthGroup.style.display = 'block';
                     if (!monthSelect.value || monthSelect.value === '0') {
                         var currentMonth = new Date().getMonth() + 1;
                         monthSelect.value = String(currentMonth);
+                    }
+                    if (intervalInput && (!intervalInput.value || parseInt(intervalInput.value, 10) < 1)) {
+                        intervalInput.value = '1';
+                    }
+                    if (startYearInput && (!startYearInput.value || parseInt(startYearInput.value, 10) < 1990)) {
+                        startYearInput.value = String(new Date().getFullYear());
                     }
                 } else {
                     monthGroup.style.display = 'none';
