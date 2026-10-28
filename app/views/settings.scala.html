@@ -1,6 +1,18 @@
 @import play.mvc.Http.Request
 @import org.pac4j.core.context.session._;
-@(currentRegion: String, buildNumber: String = "dev", buildTimestamp: String = "unknown", buildCommit: String = "local")(implicit request: play.mvc.Http.Request, playSessionStore: SessionStore, messages: play.i18n.Messages)
+@(
+    currentRegion: String,
+    buildNumber: String = "dev",
+    buildTimestamp: String = "unknown",
+    buildCommit: String = "local",
+    pendingUsers: java.util.List[models.UserAccess] = java.util.Collections.emptyList(),
+    approvedUsers: java.util.List[models.UserAccess] = java.util.Collections.emptyList()
+)(
+    implicit
+    request: play.mvc.Http.Request,
+    playSessionStore: SessionStore,
+    messages: play.i18n.Messages
+)
 
 @main("MonMon - Settings") {
 @partials.header()
@@ -9,18 +21,122 @@
 
 <div class="w3-row-padding" style="max-width: 900px; margin: 0 auto; padding: 0 1rem 3rem 1rem;">
     <div class="w3-col l12 m12 s12">
+
+        @if(request.flash.get("success").isPresent) {
+            <div class="badge-pill badge-success" style="width: 100%; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem;">
+                <i class="fas fa-check-circle"></i> @request.flash.get("success").get()
+            </div>
+        }
+
+        <!-- Waiting List & User Approvals (User Request) -->
+        <div class="w3-card w3-padding w3-margin-bottom" id="waiting-list-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                    <i class="fas fa-user-clock" style="color: var(--primary); margin-right: 8px;"></i> User Waiting List & Approvals
+                </div>
+                @if(pendingUsers == null || pendingUsers.isEmpty()) {
+                    <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">
+                        0 pending
+                    </span>
+                } else {
+                    <span class="badge-pill badge-warning" style="font-weight: 700;">
+                        <i class="fas fa-exclamation-circle"></i> @pendingUsers.size() pending approval
+                    </span>
+                }
+            </div>
+
+            @if(pendingUsers == null || pendingUsers.isEmpty()) {
+                <div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0; font-size: 0.92rem;">
+                    <i class="fas fa-check-circle" style="color: var(--success); font-size: 1.5rem; display: block; margin-bottom: 0.5rem;"></i>
+                    No users are currently on the waiting list. When a new user registers through Keycloak, their account will appear here for approval.
+                </div>
+            } else {
+                <div style="overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 1rem;">
+                    <table class="w3-table w3-striped">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Joined</th>
+                                <th>Status</th>
+                                <th style="text-align: right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for(u <- pendingUsers) {
+                            <tr>
+                                <td><b>@u.getUsername()</b></td>
+                                <td><span style="color: var(--text-muted);">@if(u.getEmail() != null && !u.getEmail().isEmpty()) {@u.getEmail()} else {—}</span></td>
+                                <td style="font-size: 0.85rem;">@u.getFormattedCreatedAt()</td>
+                                <td>
+                                    <span class="badge-pill badge-warning" style="font-size: 0.78rem;">
+                                        <i class="fas fa-clock"></i> Pending
+                                    </span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <div style="display: inline-flex; gap: 6px;">
+                                        <form method="POST" action="@routes.SettingsController.approveUser(u.getId())" style="margin: 0; display: inline;">
+                                            @helper.CSRF.formField
+                                            <button type="submit" class="w3-button w3-round" style="background: var(--success); color: #fff; font-size: 0.82rem; padding: 4px 10px; font-weight: 600;">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="@routes.SettingsController.rejectUser(u.getId())" style="margin: 0; display: inline;">
+                                            @helper.CSRF.formField
+                                            <button type="submit" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--danger); font-size: 0.82rem; padding: 4px 10px;" onclick="return confirm('Reject user @u.getUsername()?');">
+                                                <i class="fas fa-times"></i> Reject
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            <!-- Approved Users Accordion -->
+            @if(approvedUsers != null && !approvedUsers.isEmpty()) {
+                <details class="spog-details-accordion" style="margin-top: 1rem;">
+                    <summary>
+                        <span><i class="fas fa-user-check" style="color: var(--success); margin-right: 6px;"></i> Approved Users (@approvedUsers.size())</span>
+                    </summary>
+                    <div class="spog-details-content" style="padding: 0;">
+                        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                            <table class="w3-table" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border-color);">
+                                        <th>Username</th>
+                                        <th>Email</th>
+                                        <th>Approved Date</th>
+                                        <th>Approved By</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for(u <- approvedUsers) {
+                                    <tr>
+                                        <td><b>@u.getUsername()</b></td>
+                                        <td style="color: var(--text-muted);">@if(u.getEmail() != null && !u.getEmail().isEmpty()) {@u.getEmail()} else {—}</td>
+                                        <td>@u.getFormattedApprovedAt()</td>
+                                        <td><span class="badge-pill" style="background: var(--card-bg); border: 1px solid var(--border-color); font-size: 0.75rem;">@u.getApprovedBy()</span></td>
+                                    </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </details>
+            }
+        </div>
+
+        <!-- Regional Settings Card -->
         <div class="w3-card w3-padding w3-margin-bottom">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-                <div style="font-weight: 800; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
                     <i class="fas fa-cog" style="color: var(--primary); margin-right: 8px;"></i> Regional & System Settings
                 </div>
             </div>
-
-            @if(request.flash.get("success").isPresent) {
-                <div class="badge-pill badge-success" style="width: 100%; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem;">
-                    <i class="fas fa-check-circle"></i> @request.flash.get("success").get()
-                </div>
-            }
 
             <form method="POST" action="@routes.SettingsController.updateSettings()">
                 @helper.CSRF.formField
@@ -54,6 +170,7 @@
             </form>
         </div>
 
+        <!-- Build Info Card -->
         <div class="w3-card w3-padding w3-margin-bottom">
             <div style="font-weight: 800; font-size: 1.0rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 0.85rem;">
                 <i class="fas fa-code-branch" style="color: var(--primary); margin-right: 8px;"></i> Version & Build Information

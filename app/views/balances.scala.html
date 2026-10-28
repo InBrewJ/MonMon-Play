@@ -9,7 +9,8 @@
     chartBalancesJson: String,
     chartEventsJson: String,
     paydaysJson: String = "[]",
-    defaultAccountIdsJson: String = "[]"
+    defaultAccountIdsJson: String = "[]",
+    selectedAccountId: java.lang.Long = null
 )(
     implicit request: Http.Request,
     playSessionStore: SessionStore,
@@ -29,6 +30,16 @@
                 <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 1rem;">
                     <i class="fas fa-plus-circle" style="color: var(--primary); margin-right: 6px;"></i> Record Available Balance
                 </div>
+
+                @if(selectedAccountId != null) {
+                    @for(a <- accounts) {
+                        @if(a.id != null && selectedAccountId == a.id) {
+                            <div style="background: var(--primary-light); color: var(--primary); font-size: 0.83rem; font-weight: 600; padding: 7px 12px; border-radius: 6px; margin-bottom: 0.85rem; border: 1px solid rgba(99, 102, 241, 0.3); display: flex; align-items: center; gap: 6px;">
+                                <i class="fas fa-arrow-circle-right"></i> Updating balance for <strong>@a.name</strong>
+                            </div>
+                        }
+                    }
+                }
                 
                 <form method="POST" action="@routes.BalanceController.addBalance()">
                     @helper.CSRF.formField
@@ -47,7 +58,7 @@
                     <label for="account" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-top: 0.5rem; display: block;">Which Account?</label>
                     <select id="account" name="account_id" style="width: 100%; max-width: 100%;">
                         @for(a <- accounts) {
-                        <option value="@a.id">@a.name (@{a.`type`})</option>
+                        <option value="@a.id" @if(selectedAccountId != null && a.id != null && selectedAccountId == a.id) {selected}>@a.name (@{a.`type`})</option>
                         }
                     </select>
                     
@@ -191,8 +202,20 @@ $(function() {
         $(this).css('background', col);
     });
 
-    // Initialize selected accounts (default to monthly pot)
+    // Initialize selected accounts (default to monthly pot + preselected account if specified)
     var selectedAccountIds = new Set(defaultAccountIds.map(String));
+    var preselectedAccountId = @if(selectedAccountId != null) { '@selectedAccountId' } else { null };
+    if (preselectedAccountId) {
+        selectedAccountIds.add(String(preselectedAccountId));
+        $('#account').val(preselectedAccountId);
+        setTimeout(function() {
+            var valInput = document.getElementById('balance-value');
+            if (valInput) {
+                valInput.focus();
+                valInput.select();
+            }
+        }, 150);
+    }
 
     function syncCheckboxes() {
         $('.account-filter-chk').each(function() {

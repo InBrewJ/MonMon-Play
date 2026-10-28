@@ -279,6 +279,15 @@ public class BalanceController extends Controller {
         }
         String defaultAccountIdsJson = play.libs.Json.stringify(play.libs.Json.toJson(defaultAccountIds));
 
+        Long preselectedAccountId = request.queryString("accountId")
+                .map(s -> {
+                    try {
+                        return Long.parseLong(s);
+                    } catch (Exception e) {
+                        return null;
+                    }
+                }).orElse(null);
+
         java.time.LocalDate oneYearAgo = nowLocalDate.minusYears(1);
 
         return gcalService.getEventsForYear(oneYearAgo, nowLocalDate)
@@ -293,6 +302,7 @@ public class BalanceController extends Controller {
                                     chartEventsJson,
                                     paydaysJson,
                                     defaultAccountIdsJson,
+                                    preselectedAccountId,
                                     request,
                                     playSessionStore,
                                     messagesApi.preferred(request)

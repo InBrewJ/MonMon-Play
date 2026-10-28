@@ -452,21 +452,21 @@
                                     <!-- Account Freshness Indicator (User Request Item 2) -->
                                     <div style="margin: 0.25rem 0 0.45rem 0;">
                                         @if(status.getFreshnessStatus() == viewModels.AccountStatus.FreshnessStatus.FRESH) {
-                                            <span class="badge-pill badge-freshness-fresh" title="@status.getFreshnessMessage()" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px;">
-                                                <i class="fas fa-check-circle"></i> Up to date
-                                            </span>
+                                            <a href="/myBalances?accountId=@a.getId()" class="badge-pill badge-freshness-fresh" title="@status.getFreshnessMessage() · Click to update balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                                                <i class="fas fa-check-circle"></i> Up to date · <u>Update</u>
+                                            </a>
                                         } else if(status.getFreshnessStatus() == viewModels.AccountStatus.FreshnessStatus.STALE) {
-                                            <a href="/myBalances" class="badge-pill badge-freshness-stale" title="@status.getFreshnessMessage()" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                                            <a href="/myBalances?accountId=@a.getId()" class="badge-pill badge-freshness-stale" title="@status.getFreshnessMessage() · Click to update balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
                                                 <i class="fas fa-exclamation-triangle"></i> Balance Stale · <u>Update</u>
                                             </a>
                                         } else if(status.getFreshnessStatus() == viewModels.AccountStatus.FreshnessStatus.NO_BALANCE) {
-                                            <a href="/myBalances" class="badge-pill badge-freshness-neutral" title="@status.getFreshnessMessage()" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                                            <a href="/myBalances?accountId=@a.getId()" class="badge-pill badge-freshness-neutral" title="@status.getFreshnessMessage() · Click to record initial balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
                                                 <i class="fas fa-clock"></i> No balance · <u>Add</u>
                                             </a>
                                         } else {
-                                            <span class="badge-pill badge-freshness-neutral" title="@status.getFreshnessMessage()" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px;">
-                                                <i class="fas fa-calendar-check"></i> No payments due
-                                            </span>
+                                            <a href="/myBalances?accountId=@a.getId()" class="badge-pill badge-freshness-neutral" title="@status.getFreshnessMessage() · Click to record balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                                                <i class="fas fa-calendar-check"></i> No payments due · <u>Update</u>
+                                            </a>
                                         }
                                     </div>
 

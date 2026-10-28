@@ -16,24 +16,30 @@ public class UserHelpers {
     private SessionStore playSessionStore;
 
     static public List<UserProfile> getAuthProfiles(SessionStore playSessionStore, Http.Request request) {
-        final PlayWebContext context = new PlayWebContext(request);
+        return getAuthProfiles(playSessionStore, (Http.RequestHeader) request);
+    }
+
+    static public List<UserProfile> getAuthProfiles(SessionStore playSessionStore, Http.RequestHeader requestHeader) {
+        final PlayWebContext context = new PlayWebContext(requestHeader);
         final ProfileManager profileManager = new ProfileManager(context, playSessionStore);
-        List<UserProfile> profiles = profileManager.getProfiles();
-        System.out.println("Profiles:");
-        for (UserProfile up: profiles) {
-            System.out.println(up.getUsername());
-            System.out.println(up.getId());
-        }
-        return profiles;
+        return profileManager.getProfiles();
     }
 
     static public boolean isAuthenticated(SessionStore playSessionStore, Http.Request request) {
-        List<UserProfile> allProfiles = getAuthProfiles(playSessionStore, request);
+        return isAuthenticated(playSessionStore, (Http.RequestHeader) request);
+    }
+
+    static public boolean isAuthenticated(SessionStore playSessionStore, Http.RequestHeader requestHeader) {
+        List<UserProfile> allProfiles = getAuthProfiles(playSessionStore, requestHeader);
         return allProfiles != null && !allProfiles.isEmpty();
     }
 
     static public SimpleUserProfile getSimpleUserProfile(SessionStore playSessionStore, Http.Request request) {
-        List<UserProfile> allProfiles = getAuthProfiles(playSessionStore, request);
+        return getSimpleUserProfile(playSessionStore, (Http.RequestHeader) request);
+    }
+
+    static public SimpleUserProfile getSimpleUserProfile(SessionStore playSessionStore, Http.RequestHeader requestHeader) {
+        List<UserProfile> allProfiles = getAuthProfiles(playSessionStore, requestHeader);
         SimpleUserProfile sup = new SimpleUserProfile();
         if (allProfiles != null && !allProfiles.isEmpty()) {
             UserProfile firstUp = allProfiles.get(0);
@@ -58,3 +64,4 @@ public class UserHelpers {
         return sup;
     }
 }
+

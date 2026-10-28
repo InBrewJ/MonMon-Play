@@ -1,0 +1,75 @@
+@import play.mvc.Http.Request
+@import org.pac4j.core.context.session._;
+@(
+    access: models.UserAccess
+)(
+    implicit
+    request: Http.Request,
+    playSessionStore: SessionStore,
+    messages: play.i18n.Messages
+)
+
+@main("MonMon - Waiting List") {
+
+<div style="min-height: 80vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;">
+    <div class="w3-card" style="max-width: 540px; width: 100%; padding: 2.25rem; border-radius: 16px; background: var(--card-bg); border: 1px solid var(--border-color); text-align: center; box-shadow: var(--shadow-lg);">
+        
+        <!-- Logo / Icon -->
+        <div style="width: 80px; height: 80px; margin: 0 auto 1.25rem auto; border-radius: 50%; background: var(--primary-light); display: flex; align-items: center; justify-content: center;">
+            <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="MonMon" style="width: 50px; height: 50px;" />
+        </div>
+
+        <h2 style="margin: 0 0 0.5rem 0; font-size: 1.65rem; font-weight: 800; color: var(--text-main);">
+            You're on the Waiting List
+        </h2>
+
+        <div style="margin: 0.75rem 0 1.25rem 0;">
+            @if(access != null && access.isPending()) {
+                <span class="badge-pill badge-warning" style="font-size: 0.88rem; padding: 6px 14px; font-weight: 700;">
+                    <i class="fas fa-clock" style="margin-right: 5px;"></i> Pending Administrator Approval
+                </span>
+            } else if(access != null && access.isRejected()) {
+                <span class="badge-pill badge-danger" style="font-size: 0.88rem; padding: 6px 14px; font-weight: 700;">
+                    <i class="fas fa-times-circle" style="margin-right: 5px;"></i> Access Request Not Approved
+                </span>
+            } else {
+                <span class="badge-pill badge-success" style="font-size: 0.88rem; padding: 6px 14px; font-weight: 700;">
+                    <i class="fas fa-check-circle" style="margin-right: 5px;"></i> Approved
+                </span>
+            }
+        </div>
+
+        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;">
+            Welcome to MonMon! Your Keycloak account has been created and placed on our waiting list.
+            An administrator must approve your account before you can access MonMon financial planning or NomMon meal planning.
+        </p>
+
+        <!-- Account Details Box -->
+        <div class="metric-box" style="text-align: left; margin-bottom: 1.75rem; font-size: 0.9rem;">
+            <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.65rem; border-bottom: 1px dashed var(--border-color); padding-bottom: 0.4rem;">
+                <i class="fas fa-id-card" style="color: var(--primary); margin-right: 6px;"></i> Account Details
+            </div>
+            <div style="display: grid; grid-template-columns: 120px 1fr; gap: 0.5rem;">
+                <span style="color: var(--text-muted);">Username:</span>
+                <b>@if(access != null) {@access.getUsername()} else {User}</b>
+
+                <span style="color: var(--text-muted);">Email:</span>
+                <span>@if(access != null && access.getEmail() != null && !access.getEmail().isEmpty()) {@access.getEmail()} else {—}</span>
+
+                <span style="color: var(--text-muted);">Registered:</span>
+                <span>@if(access != null) {@access.getFormattedCreatedAt()} else {—}</span>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <a href="/spog" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; padding: 10px 20px; font-size: 0.95rem; text-decoration: none;">
+                <i class="fas fa-sync-alt" style="margin-right: 6px;"></i> Check Approval Status
+            </a>
+            <a href="@routes.CentralLogoutController.logout()" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 8px 16px; font-size: 0.88rem; text-decoration: none;">
+                <i class="fas fa-sign-out-alt" style="margin-right: 6px;"></i> Log Out
+            </a>
+        </div>
+    </div>
+</div>
+
+}

@@ -78,9 +78,15 @@ POST    /pot                                        controllers.PotController.ad
 POST    /pot/applyGruelling                         controllers.PotController.applyGruelling(req: Request)
 GET     /binPot/:id                                 controllers.PotController.archivePot(id: Int, req: Request)
 
+# Waiting List (Allow List Onboarding)
+GET     /waitinglist                                controllers.WaitingListController.index(req: Request)
+GET     /waitlinglist                               controllers.WaitingListController.index(req: Request)
+
 # Settings
 GET     /settings                                   controllers.SettingsController.index(req: Request)
 POST    /settings                                   controllers.SettingsController.updateSettings(req: Request)
+POST    /settings/approveUser/:id                   controllers.SettingsController.approveUser(id: Long, req: Request)
+POST    /settings/rejectUser/:id                    controllers.SettingsController.rejectUser(id: Long, req: Request)
 
 # Auth + Authz (via pac4j / keycloak / OpenIDConnect, see SecurityModule)
 GET     /oidc/index.html            controllers.SpogController.oidcIndex(req: Request)
