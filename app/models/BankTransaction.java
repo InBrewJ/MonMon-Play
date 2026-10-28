@@ -49,6 +49,10 @@ public class BankTransaction {
 
     private String merchantEmoji;
 
+    @Column(name = "raw_data", columnDefinition = "jsonb")
+    @Convert(converter = helpers.JsonbConverter.class)
+    private String rawData;
+
     private String source = "MANUAL"; // MONZO, MOCK, FILE_UPLOAD, MANUAL
 
     private boolean pending = false;
@@ -207,5 +211,13 @@ public class BankTransaction {
 
     public void setMerchantEmoji(String merchantEmoji) {
         this.merchantEmoji = merchantEmoji;
+    }
+
+    public String getRawData() {
+        return rawData;
+    }
+
+    public void setRawData(String rawData) {
+        this.rawData = rawData;
     }
 }

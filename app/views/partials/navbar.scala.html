@@ -14,28 +14,65 @@
     else if (target == "networth" && path.startsWith("/netWorth")) "active"
     else if (target == "nommon" && path.startsWith("/nommon")) "active"
     else if (target == "bank" && path.startsWith("/bank")) "active"
+    else if (target == "dig" && path.startsWith("/dig")) "active"
     else if (target == "settings" && path.startsWith("/settings")) "active"
     else ""
 }
 
+@currentInfo = @{
+    if (isActive("spog") != "") ("SPOG", "fas fa-chart-pie", "/spog")
+    else if (isActive("outgoings") != "") ("Outgoings", "fas fa-credit-card", "/myOutgoings")
+    else if (isActive("accounts") != "") ("Accounts", "fas fa-university", "/myAccounts")
+    else if (isActive("incomings") != "") ("Incomings", "fas fa-money-bill-wave", "/myIncomings")
+    else if (isActive("balances") != "") ("Balances", "fas fa-coins", "/myBalances")
+    else if (isActive("plans") != "") ("Plans", "fas fa-sliders-h", "/myPlans")
+    else if (isActive("pot") != "") ("Monthly Pot", "fas fa-archive", "/myMonthlyPot")
+    else if (isActive("networth") != "") ("Net Worth", "fas fa-landmark", "/netWorth")
+    else if (isActive("nommon") != "") ("NomMon", "fas fa-utensils", "/nommon")
+    else if (isActive("bank") != "") ("Bank Sync", "fas fa-exchange-alt", "/bank")
+    else if (isActive("dig") != "") ("Dig", "fas fa-map-marked-alt", "/dig")
+    else if (isActive("settings") != "") ("Settings", "fas fa-cog", "/settings")
+    else ("Menu", "fas fa-compass", "/spog")
+}
+
 <nav class="crumbs" id="main-nav">
     <div class="nav-bar-inner">
-        <ol id="nav-crumbs-list">
-            <li class="crumb @isActive("spog")"><a href="/spog"><i class="fas fa-chart-pie"></i> SPOG</a></li>
-            <li class="crumb @isActive("outgoings")"><a href="/myOutgoings"><i class="fas fa-credit-card"></i> Outgoings</a></li>
-            <li class="crumb @isActive("accounts")"><a href="/myAccounts"><i class="fas fa-university"></i> Accounts</a></li>
-            <li class="crumb @isActive("incomings")"><a href="/myIncomings"><i class="fas fa-money-bill-wave"></i> Incomings</a></li>
-            <li class="crumb @isActive("balances")"><a href="/myBalances"><i class="fas fa-coins"></i> Balances</a></li>
-            <li class="crumb @isActive("plans")"><a href="/myPlans"><i class="fas fa-sliders-h"></i> Plans</a></li>
-            <li class="crumb @isActive("pot")"><a href="/myMonthlyPot"><i class="fas fa-archive"></i> Monthly Pot</a></li>
-            <li class="crumb @isActive("networth")"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
-            <li class="crumb @isActive("nommon")"><a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a></li>
-            <li class="crumb @isActive("bank")"><a href="/bank"><i class="fas fa-exchange-alt"></i> Bank Sync</a></li>
-            <li class="crumb @isActive("settings")"><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
-            <li class="crumb"><a href="/centralLogout" style="color: var(--danger);"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
-        </ol>
-        <button id="nav-toggle" class="nav-chevron-toggle" type="button" aria-label="Toggle navigation options" title="Toggle navigation options">
+        <button id="nav-toggle" class="nav-chevron-toggle" type="button" aria-label="Toggle navigation options" title="Open navigation menu" aria-expanded="false">
             <i class="fas fa-chevron-right" id="nav-toggle-icon"></i>
+            <span class="nav-toggle-text">Menu</span>
         </button>
+        <div class="nav-current-crumb-pill">
+            <a href="@currentInfo._3" class="current-crumb-link"><i class="@currentInfo._2"></i> @currentInfo._1</a>
+        </div>
     </div>
 </nav>
+
+<!-- Left-hand slide-out navigation drawer -->
+<div id="nav-backdrop" class="nav-drawer-backdrop"></div>
+<aside id="nav-drawer" class="nav-drawer" aria-label="Main Navigation">
+    <div class="nav-drawer-header">
+        <div class="nav-drawer-brand">
+            <img src='@routes.Assets.versioned("images/monmon-monster.svg")' alt="MonMon" width="30" height="30" />
+            <span>MonMon</span>
+        </div>
+        <button id="nav-drawer-close" class="nav-drawer-close" type="button" aria-label="Close navigation">&times;</button>
+    </div>
+    <div class="nav-drawer-content">
+        <ol class="nav-drawer-list" id="nav-crumbs-list">
+            <li class="drawer-crumb @isActive("spog")"><a href="/spog"><i class="fas fa-chart-pie"></i> SPOG</a></li>
+            <li class="drawer-crumb @isActive("outgoings")"><a href="/myOutgoings"><i class="fas fa-credit-card"></i> Outgoings</a></li>
+            <li class="drawer-crumb @isActive("accounts")"><a href="/myAccounts"><i class="fas fa-university"></i> Accounts</a></li>
+            <li class="drawer-crumb @isActive("incomings")"><a href="/myIncomings"><i class="fas fa-money-bill-wave"></i> Incomings</a></li>
+            <li class="drawer-crumb @isActive("balances")"><a href="/myBalances"><i class="fas fa-coins"></i> Balances</a></li>
+            <li class="drawer-crumb @isActive("plans")"><a href="/myPlans"><i class="fas fa-sliders-h"></i> Plans</a></li>
+            <li class="drawer-crumb @isActive("pot")"><a href="/myMonthlyPot"><i class="fas fa-archive"></i> Monthly Pot</a></li>
+            <li class="drawer-crumb @isActive("networth")"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
+            <li class="drawer-crumb @isActive("nommon")"><a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a></li>
+            <li class="drawer-crumb @isActive("bank")"><a href="/bank"><i class="fas fa-exchange-alt"></i> Bank Sync</a></li>
+            <li class="drawer-crumb @isActive("dig")"><a href="/dig"><i class="fas fa-map-marked-alt"></i> Dig</a></li>
+            <li class="drawer-crumb @isActive("settings")"><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
+            <li class="drawer-divider"></li>
+            <li class="drawer-crumb drawer-logout"><a href="/centralLogout"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+        </ol>
+    </div>
+</aside>

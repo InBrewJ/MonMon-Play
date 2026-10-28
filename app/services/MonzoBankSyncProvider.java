@@ -356,6 +356,13 @@ public class MonzoBankSyncProvider implements BankSyncService {
         final float finalAmount = amountPounds;
         final long finalEpochSec = epochSec;
         final String finalDateStr = dateStr;
+        String rawDataStr = null;
+        try {
+            rawDataStr = mapper.writeValueAsString(data);
+        } catch (Exception e) {
+            logger.warn("Could not serialize Monzo webhook data to JSON string", e);
+        }
+        final String finalRawData = rawDataStr;
 
         return connFuture.thenCompose(connOpt -> {
             if (connOpt.isEmpty()) {
@@ -410,6 +417,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 tx.setLatitude(finalLat);
                 tx.setLongitude(finalLon);
                 tx.setMerchantEmoji(finalEmoji);
+                tx.setRawData(finalRawData);
 
                 final Account targetAccount = matchedAcc;
                 return bankTransactionRepository.save(tx).thenCompose(savedTx -> {
@@ -546,6 +554,10 @@ public class MonzoBankSyncProvider implements BankSyncService {
             String description = tx.path("description").asText("Transaction");
             String merchantName = null;
             String category = tx.path("category").asText("General");
+            String merchantAddress = null;
+            Double latitude = null;
+            Double longitude = null;
+            String merchantEmoji = null;
 
             JsonNode merchantNode = tx.get("merchant");
             if (merchantNode != null && !merchantNode.isNull()) {
@@ -556,6 +568,23 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 if (merchantNode.has("category") && !merchantNode.path("category").asText().isEmpty()) {
                     category = merchantNode.path("category").asText();
                 }
+                if (merchantNode.has("emoji") && !merchantNode.path("emoji").asText().isEmpty()) {
+                    merchantEmoji = merchantNode.path("emoji").asText();
+                }
+                JsonNode addressNode = merchantNode.get("address");
+                if (addressNode != null && !addressNode.isNull()) {
+                    if (addressNode.has("formatted") && !addressNode.path("formatted").asText().isEmpty()) {
+                        merchantAddress = addressNode.path("formatted").asText();
+                    } else if (addressNode.has("short_formatted")) {
+                        merchantAddress = addressNode.path("short_formatted").asText();
+                    }
+                    if (addressNode.has("latitude") && addressNode.get("latitude").isNumber()) {
+                        latitude = addressNode.get("latitude").asDouble();
+                    }
+                    if (addressNode.has("longitude") && addressNode.get("longitude").isNumber()) {
+                        longitude = addressNode.get("longitude").asDouble();
+                    }
+                }
             }
 
             boolean declined = tx.path("decline_reason").isTextual();
@@ -563,7 +592,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 continue; // Skip declined transactions
             }
 
-            list.add(new BankTransaction(
+            BankTransaction bankTx = new BankTransaction(
                     userId,
                     accountId,
                     extId,
@@ -575,7 +604,16 @@ public class MonzoBankSyncProvider implements BankSyncService {
                     category,
                     "MONZO",
                     false
-            ));
+            );
+            bankTx.setMerchantAddress(merchantAddress);
+            bankTx.setLatitude(latitude);
+            bankTx.setLongitude(longitude);
+            bankTx.setMerchantEmoji(merchantEmoji);
+            try {
+                bankTx.setRawData(mapper.writeValueAsString(tx));
+            } catch (Exception ignored) {
+            }
+            list.add(bankTx);
         }
         return list;
     }

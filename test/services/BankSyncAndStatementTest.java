@@ -85,6 +85,35 @@ public class BankSyncAndStatementTest {
                     && t.getTimestamp() != null && t.getTimestamp() >= startSec && t.getTimestamp() <= endSec);
             return CompletableFuture.completedFuture(before - storage.size());
         }
+
+        @Override
+        public CompletionStage<List<BankTransaction>> findGeotaggedTransactions(String userId, int limit) {
+            List<BankTransaction> res = storage.stream()
+                    .filter(t -> userId.equals(t.getUserId()) && t.getLatitude() != null && t.getLongitude() != null && t.getAmount() > 0)
+                    .limit(limit > 0 ? limit : 2000)
+                    .collect(Collectors.toList());
+            return CompletableFuture.completedFuture(res);
+        }
+
+        @Override
+        public CompletionStage<List<viewModels.CategorySpend>> getCategorySpendingHistogram(String userId) {
+            Map<String, List<BankTransaction>> grouped = storage.stream()
+                    .filter(t -> userId.equals(t.getUserId()) && t.getAmount() > 0)
+                    .collect(Collectors.groupingBy(t -> t.getCategory() != null && !t.getCategory().trim().isEmpty() ? t.getCategory().trim() : "General"));
+            double grandTotal = storage.stream()
+                    .filter(t -> userId.equals(t.getUserId()) && t.getAmount() > 0)
+                    .mapToDouble(BankTransaction::getAmount).sum();
+            List<viewModels.CategorySpend> res = new ArrayList<>();
+            for (Map.Entry<String, List<BankTransaction>> entry : grouped.entrySet()) {
+                long cnt = entry.getValue().size();
+                double total = entry.getValue().stream().mapToDouble(BankTransaction::getAmount).sum();
+                double avg = total / cnt;
+                double pct = grandTotal > 0 ? (Math.round((total / grandTotal * 100.0) * 10.0) / 10.0) : 0.0;
+                res.add(new viewModels.CategorySpend(entry.getKey(), cnt, total, avg, pct));
+            }
+            res.sort((a, b) -> Double.compare(b.getTotalSpent(), a.getTotalSpent()));
+            return CompletableFuture.completedFuture(res);
+        }
     }
 
     @Test

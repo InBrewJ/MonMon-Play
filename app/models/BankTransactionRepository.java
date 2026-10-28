@@ -25,4 +25,8 @@ public interface BankTransactionRepository {
     CompletionStage<Integer> deleteForAccount(Long accountId);
 
     CompletionStage<Integer> deleteByTimeRange(Long accountId, Long startSec, Long endSec);
+
+    CompletionStage<List<BankTransaction>> findGeotaggedTransactions(String userId, int limit);
+
+    CompletionStage<List<viewModels.CategorySpend>> getCategorySpendingHistogram(String userId);
 }

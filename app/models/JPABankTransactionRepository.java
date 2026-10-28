@@ -52,7 +52,8 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS merchant_address VARCHAR(500)",
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION",
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION",
-                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS merchant_emoji VARCHAR(50)"
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS merchant_emoji VARCHAR(50)",
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS raw_data JSONB"
                         };
                         jpaApi.withTransaction(em -> {
                             for (String sql : statements) {
@@ -101,6 +102,11 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                         prev.setMerchantName(tx.getMerchantName());
                         prev.setCategory(tx.getCategory());
                         prev.setPending(tx.isPending());
+                        if (tx.getMerchantAddress() != null) prev.setMerchantAddress(tx.getMerchantAddress());
+                        if (tx.getLatitude() != null) prev.setLatitude(tx.getLatitude());
+                        if (tx.getLongitude() != null) prev.setLongitude(tx.getLongitude());
+                        if (tx.getMerchantEmoji() != null) prev.setMerchantEmoji(tx.getMerchantEmoji());
+                        if (tx.getRawData() != null) prev.setRawData(tx.getRawData());
                         em.merge(prev);
                         count++;
                         continue;
@@ -220,6 +226,111 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
             } catch (Exception e) {
                 return 0;
             }
+        }), executionContext);
+    }
+
+    @Override
+    public CompletionStage<List<BankTransaction>> findGeotaggedTransactions(String userId, int limit) {
+        return supplyAsync(() -> wrap(em -> {
+            try {
+                // First try strictly MONZO transactions with coordinates
+                List<BankTransaction> list = em.createQuery(
+                        "select t from BankTransaction t where t.userId = :userId " +
+                                "and t.latitude is not null and t.longitude is not null and t.amount > 0 " +
+                                "and (t.source = 'MONZO' or t.accountId in (select a.id from Account a where a.userId = :userId and lower(a.name) like '%monzo%')) " +
+                                "order by t.timestamp desc",
+                        BankTransaction.class)
+                        .setParameter("userId", userId)
+                        .setMaxResults(limit > 0 ? limit : 2000)
+                        .getResultList();
+
+                // If no strictly Monzo transactions found, check if user has other geotagged transactions
+                if (list.isEmpty()) {
+                    list = em.createQuery(
+                            "select t from BankTransaction t where t.userId = :userId " +
+                                    "and t.latitude is not null and t.longitude is not null and t.amount > 0 " +
+                                    "order by t.timestamp desc",
+                            BankTransaction.class)
+                            .setParameter("userId", userId)
+                            .setMaxResults(limit > 0 ? limit : 2000)
+                            .getResultList();
+                }
+                return list;
+            } catch (Exception e) {
+                return Collections.emptyList();
+            }
+        }), executionContext);
+    }
+
+    @Override
+    public CompletionStage<List<viewModels.CategorySpend>> getCategorySpendingHistogram(String userId) {
+        return supplyAsync(() -> wrap(em -> {
+            List<viewModels.CategorySpend> results = new ArrayList<>();
+            try {
+                // Heavy aggregation preferred in PostgreSQL: native window function for percentage and totals
+                String sql = "SELECT COALESCE(NULLIF(TRIM(t.category), ''), 'General') as cat, " +
+                        "COUNT(*) as cnt, " +
+                        "CAST(COALESCE(SUM(t.amount), 0.0) AS DOUBLE PRECISION) as total_spent, " +
+                        "CAST(COALESCE(AVG(t.amount), 0.0) AS DOUBLE PRECISION) as avg_spent, " +
+                        "CAST(ROUND((COALESCE(SUM(t.amount), 0.0) / NULLIF(SUM(SUM(t.amount)) OVER (), 0) * 100)::numeric, 1) AS DOUBLE PRECISION) as pct " +
+                        "FROM bank_transaction t " +
+                        "WHERE t.user_id = :userId AND t.amount > 0 " +
+                        "AND (t.source = 'MONZO' OR t.account_id IN (SELECT a.id FROM accounts a WHERE a.user_id = :userId AND LOWER(a.name) LIKE '%monzo%')) " +
+                        "GROUP BY COALESCE(NULLIF(TRIM(t.category), ''), 'General') " +
+                        "ORDER BY total_spent DESC";
+
+                List<Object[]> rows = em.createNativeQuery(sql)
+                        .setParameter("userId", userId)
+                        .getResultList();
+
+                if (rows.isEmpty()) {
+                    String fallbackSql = "SELECT COALESCE(NULLIF(TRIM(t.category), ''), 'General') as cat, " +
+                            "COUNT(*) as cnt, " +
+                            "CAST(COALESCE(SUM(t.amount), 0.0) AS DOUBLE PRECISION) as total_spent, " +
+                            "CAST(COALESCE(AVG(t.amount), 0.0) AS DOUBLE PRECISION) as avg_spent, " +
+                            "CAST(ROUND((COALESCE(SUM(t.amount), 0.0) / NULLIF(SUM(SUM(t.amount)) OVER (), 0) * 100)::numeric, 1) AS DOUBLE PRECISION) as pct " +
+                            "FROM bank_transaction t " +
+                            "WHERE t.user_id = :userId AND t.amount > 0 " +
+                            "GROUP BY COALESCE(NULLIF(TRIM(t.category), ''), 'General') " +
+                            "ORDER BY total_spent DESC";
+                    rows = em.createNativeQuery(fallbackSql)
+                            .setParameter("userId", userId)
+                            .getResultList();
+                }
+
+                for (Object[] row : rows) {
+                    String cat = row[0] != null ? row[0].toString() : "General";
+                    long cnt = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+                    double total = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+                    double avg = row[3] != null ? ((Number) row[3]).doubleValue() : 0.0;
+                    double pct = row[4] != null ? ((Number) row[4]).doubleValue() : 0.0;
+                    results.add(new viewModels.CategorySpend(cat, cnt, total, avg, pct));
+                }
+            } catch (Exception e) {
+                try {
+                    List<Object[]> jpqlRows = em.createQuery(
+                            "select coalesce(nullif(trim(t.category), ''), 'General'), count(t), coalesce(sum(t.amount), 0.0), coalesce(avg(t.amount), 0.0) " +
+                                    "from BankTransaction t where t.userId = :userId and t.amount > 0 " +
+                                    "group by coalesce(nullif(trim(t.category), ''), 'General') " +
+                                    "order by coalesce(sum(t.amount), 0.0) desc")
+                            .setParameter("userId", userId)
+                            .getResultList();
+                    double grandTotal = 0.0;
+                    for (Object[] r : jpqlRows) {
+                        grandTotal += r[2] != null ? ((Number) r[2]).doubleValue() : 0.0;
+                    }
+                    for (Object[] r : jpqlRows) {
+                        String cat = r[0] != null ? r[0].toString() : "General";
+                        long cnt = r[1] != null ? ((Number) r[1]).longValue() : 0L;
+                        double total = r[2] != null ? ((Number) r[2]).doubleValue() : 0.0;
+                        double avg = r[3] != null ? ((Number) r[3]).doubleValue() : 0.0;
+                        double pct = grandTotal > 0 ? (Math.round((total / grandTotal * 100.0) * 10.0) / 10.0) : 0.0;
+                        results.add(new viewModels.CategorySpend(cat, cnt, total, avg, pct));
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            return results;
         }), executionContext);
     }
 

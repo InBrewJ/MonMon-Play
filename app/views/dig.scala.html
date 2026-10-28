@@ -1,0 +1,315 @@
+@import helper._
+@(vm: viewModels.DigViewModel)(implicit request: play.mvc.Http.Request, messages: play.i18n.Messages)
+
+@main("MonMon - Dig (Spending Heatmap & Histogram)") {
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+    .dig-stat-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 16px 20px;
+        box-shadow: var(--shadow-sm);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 180px;
+    }
+    .dig-map-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-md);
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+    .dig-map-header {
+        padding: 16px 20px;
+        background: var(--card-bg-subtle);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    #dig-map {
+        height: 500px;
+        width: 100%;
+        background: var(--bg-main);
+        z-index: 1;
+    }
+    .dig-legend {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        padding: 10px 20px;
+        background: var(--card-bg-subtle);
+        border-top: 1px solid var(--border-color);
+        flex-wrap: wrap;
+    }
+    .dig-legend-gradient {
+        width: 140px;
+        height: 10px;
+        border-radius: 999px;
+        background: linear-gradient(to right, #10b981 0%, #84cc16 30%, #eab308 60%, #f97316 80%, #ef4444 100%);
+    }
+    .hist-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-md);
+        padding: 20px;
+        margin-bottom: 32px;
+    }
+    .hist-btn-group {
+        display: inline-flex;
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius-sm);
+        overflow: hidden;
+    }
+    .hist-btn {
+        background: var(--card-bg-subtle);
+        color: var(--text-muted);
+        border: none;
+        padding: 6px 14px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .hist-btn:hover {
+        color: var(--text-main);
+    }
+    .hist-btn.active {
+        background: var(--primary);
+        color: #ffffff;
+    }
+    .hist-row:hover {
+        background: var(--table-hover);
+    }
+    .hist-row-active {
+        background: var(--primary-light) !important;
+        outline: 1px solid var(--primary);
+    }
+    .dig-toggle-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.85rem;
+        color: var(--text-main);
+        cursor: pointer;
+        user-select: none;
+    }
+</style>
+
+<div class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
+    @partials.navbar()
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h1 style="margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-primary, #1e293b);">
+                <i class="fas fa-search-location" style="color: var(--primary); margin-right: 8px;"></i>
+                Dig — Spending Heatmap &amp; Breakdown
+            </h1>
+            <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.95rem;">
+                Visualise <strong>WHERE</strong> and <strong>HOW</strong> you have spent your money across your Monzo accounts.
+            </p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            @if(vm.isMonzoConnected) {
+                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem; border: 1px solid rgba(16, 185, 129, 0.3);">
+                    <i class="fas fa-check-circle"></i> Monzo Connected
+                </span>
+            } else {
+                <a href="/bank" class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem; text-decoration: none; border: 1px solid rgba(245, 158, 11, 0.3);">
+                    <i class="fas fa-link"></i> Connect Monzo in Bank Sync
+                </a>
+            }
+            @if(vm.isLimitReached) {
+                <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: var(--primary); padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem; border: 1px solid rgba(99, 102, 241, 0.3);">
+                    <i class="fas fa-filter"></i> Capped at latest @vm.getDataLimit txs
+                </span>
+            }
+        </div>
+    </div>
+
+    <!-- Quick Stat Cards -->
+    <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+        <div class="dig-stat-card">
+            <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Total Monzo Spent</span>
+            <span style="font-size: 1.6rem; font-weight: 800; color: var(--text-main); font-family: 'Plus Jakarta Sans', sans-serif;">
+                £@String.format("%.2f", vm.getTotalSpent)
+            </span>
+        </div>
+        <div class="dig-stat-card">
+            <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Geotagged Locations</span>
+            <span style="font-size: 1.6rem; font-weight: 800; color: var(--primary); font-family: 'Plus Jakarta Sans', sans-serif;">
+                @vm.getTotalGeotagged
+            </span>
+        </div>
+        <div class="dig-stat-card">
+            <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Top Spending Category</span>
+            <span style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); font-family: 'Plus Jakarta Sans', sans-serif;">
+                @if(vm.getHistogram != null && !vm.getHistogram.isEmpty) {
+                    @vm.getHistogram.get(0).getFormattedCategory
+                } else {
+                    None
+                }
+            </span>
+        </div>
+    </div>
+
+    <!-- Empty state if no data available -->
+    @if(!vm.hasData || vm.getTotalGeotagged == 0) {
+        <div class="dig-map-card" style="padding: 48px 24px; text-align: center;">
+            <div style="display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 50%; background: var(--primary-light); color: var(--primary); font-size: 2rem; margin-bottom: 16px;">
+                <i class="fas fa-map-marked-alt"></i>
+            </div>
+            <h2 style="font-size: 1.4rem; font-weight: 700; margin: 0 0 8px 0; color: var(--text-main);">
+                No Geotagged Monzo Transactions Found
+            </h2>
+            <p style="color: var(--text-muted); max-width: 580px; margin: 0 auto 20px auto; font-size: 0.95rem; line-height: 1.6;">
+                We could not find any Monzo transactions with merchant coordinates (latitude and longitude).
+                When you make in-store purchases on your Monzo debit or Flex card, Monzo enriches transactions with merchant location data.
+                Sync your transactions via Bank Sync or hook up Monzo webhooks to see your spending heatmap light up.
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                <a href="/bank" class="w3-button w3-round" style="background: var(--primary); color: #ffffff; font-weight: 600; text-decoration: none; padding: 10px 20px;">
+                    <i class="fas fa-exchange-alt"></i> Open Bank Sync
+                </a>
+            </div>
+        </div>
+    } else {
+        <!-- Map Card (WHERE you spent your money) -->
+        <div class="dig-map-card">
+            <div class="dig-map-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h2 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                        <i class="fas fa-fire-alt" style="color: #ef4444; margin-right: 6px;"></i>
+                        Where You've Spent Your Money
+                    </h2>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">
+                        (@vm.getTotalGeotagged geotagged spots)
+                    </span>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                    <!-- Layer Toggles -->
+                    <label class="dig-toggle-label">
+                        <input type="checkbox" id="toggle-heat" checked style="accent-color: var(--primary);" />
+                        <span>Heatmap</span>
+                    </label>
+                    <label class="dig-toggle-label">
+                        <input type="checkbox" id="toggle-markers" checked style="accent-color: var(--primary);" />
+                        <span>Merchant Pins</span>
+                    </label>
+
+                    <!-- Category Filter Dropdown -->
+                    <div style="display: inline-flex; align-items: center; gap: 6px;">
+                        <label for="dig-category-select" style="font-size: 0.82rem; color: var(--text-muted);">Category:</label>
+                        <select id="dig-category-select" style="background: var(--input-bg); color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 4px 8px; font-size: 0.85rem;">
+                            <option value="ALL">All Categories</option>
+                            @for(cat <- vm.getHistogram) {
+                                <option value="@cat.getCategory">@cat.getFormattedCategory (@cat.getCount)</option>
+                            }
+                        </select>
+                    </div>
+
+                    <button id="btn-reset-view" type="button" class="w3-button w3-round w3-small" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; padding: 4px 10px;">
+                        <i class="fas fa-compress-arrows-alt"></i> Reset View
+                    </button>
+                </div>
+            </div>
+
+            <!-- Leaflet Map Container -->
+            <div id="dig-map"></div>
+
+            <!-- Heatmap Gradient Legend -->
+            <div class="dig-legend">
+                <span style="font-weight: 600; color: var(--text-main);">Heat Intensity:</span>
+                <span style="color: #10b981; font-weight: 600;"><i class="fas fa-check-circle"></i> Green (Lower spend)</span>
+                <div class="dig-legend-gradient"></div>
+                <span style="color: #ef4444; font-weight: 600;"><i class="fas fa-fire"></i> Red (Higher spend)</span>
+                <span style="margin-left: auto; color: var(--text-muted); font-size: 0.78rem;">
+                    Free map data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color: var(--primary);">OpenStreetMap</a> contributors
+                </span>
+            </div>
+        </div>
+    }
+
+    <!-- Histogram Card (HOW you spent your money) -->
+    <div class="hist-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+            <div>
+                <h2 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                    <i class="fas fa-chart-bar" style="color: var(--primary); margin-right: 6px;"></i>
+                    How You've Spent Your Money — Transaction Types
+                </h2>
+                <p style="margin: 2px 0 0 0; color: var(--text-muted); font-size: 0.85rem;">
+                    Categorical breakdown from your Monzo accounts. Click any category row to filter and focus the heatmap above.
+                </p>
+            </div>
+            <div class="hist-btn-group">
+                <button type="button" id="btn-sort-spend" class="hist-btn active" title="Sort by Total Spent">
+                    <i class="fas fa-sort-amount-down"></i> By Amount (£)
+                </button>
+                <button type="button" id="btn-sort-count" class="hist-btn" title="Sort by Transaction Count">
+                    <i class="fas fa-sort-numeric-down"></i> By Frequency (#)
+                </button>
+            </div>
+        </div>
+
+        <div id="dig-histogram-bars">
+            <!-- Populated dynamically via dig.js -->
+        </div>
+    </div>
+</div>
+
+<!-- Embedded JSON Data for Leaflet and Histogram -->
+<script id="dig-data" type="application/json">
+{
+  "transactions": [
+    @for((t, idx) <- vm.getGeotaggedTransactions.zipWithIndex) {
+      {
+        "id": @t.getId,
+        "lat": @t.getLatitude,
+        "lng": @t.getLongitude,
+        "amount": @t.getAmount,
+        "merchant": "@escapeJson(if (t.getMerchantName != null) t.getMerchantName else t.getDescription)",
+        "category": "@escapeJson(t.getCategory)",
+        "emoji": "@escapeJson(if (t.getMerchantEmoji != null) t.getMerchantEmoji else "")",
+        "address": "@escapeJson(if (t.getMerchantAddress != null) t.getMerchantAddress else "")",
+        "date": "@escapeJson(if (t.getDate != null) t.getDate else "")"
+      }@if(idx < vm.getGeotaggedTransactions.size - 1){,}
+    }
+  ],
+  "histogram": [
+    @for((cs, idx) <- vm.getHistogram.zipWithIndex) {
+      {
+        "category": "@escapeJson(cs.getFormattedCategory)",
+        "rawCategory": "@escapeJson(cs.getCategory)",
+        "count": @cs.getCount,
+        "total": @cs.getTotalSpent,
+        "average": @cs.getAverageSpent,
+        "percentage": @cs.getPercentage
+      }@if(idx < vm.getHistogram.size - 1){,}
+    }
+  ]
+}
+</script>
+
+<script src="https://unpkg.com/leaflet@@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src='@routes.Assets.versioned("javascripts/leaflet-heat.js")' type="text/javascript"></script>
+<script src='@routes.Assets.versioned("javascripts/dig.js")' type="text/javascript"></script>
+
+}
+
+@escapeJson(str: String) = @{
+    if (str == null) ""
+    else str.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
+}

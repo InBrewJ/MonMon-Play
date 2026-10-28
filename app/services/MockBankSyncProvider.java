@@ -29,6 +29,28 @@ public class MockBankSyncProvider implements BankSyncService {
             "Groceries", "Fuel", "Transport", "Fun", "Shopping", "Entertainment", "Dining", "Health"
     };
 
+    private static final Double[][] MERCHANT_LOCATIONS = {
+            {51.5135, -0.1235}, // Tesco (Covent Garden)
+            {51.5033, -0.1195}, // Sainsbury's (Waterloo)
+            {51.4880, -0.1200}, // Shell (Vauxhall)
+            {51.5200, -0.0600}, // BP Fuel (Whitechapel)
+            {51.5074, -0.1278}, // TFL Travel (Westminster)
+            {51.5154, -0.0921}, // Pret A Manger (Cheapside)
+            {51.5080, -0.0760}, // Costa Coffee (Tower Hill)
+            null,               // Amazon UK (Online)
+            null,               // Netflix (Online)
+            null,               // Spotify (Online)
+            {51.5190, -0.1310}, // Gym Membership (Fitzrovia)
+            {51.5140, -0.1420}, // Boots Pharmacy (Oxford St)
+            {51.5180, -0.0800}, // Deliveroo (Shoreditch)
+            {51.5050, -0.0900}, // Uber (London Bridge)
+            {51.5320, -0.1260}  // Waitrose (King's Cross)
+    };
+
+    private static final String[] MERCHANT_EMOJIS = {
+            "🛒", "🥖", "⛽", "⛽", "🚇", "☕", "☕", "📦", "🎬", "🎵", "💪", "💊", "🍔", "🚗", "🥑"
+    };
+
     @Inject
     public MockBankSyncProvider(BankTransactionRepository bankTransactionRepository,
                                 StatementParserService statementParserService) {
@@ -119,7 +141,7 @@ public class MockBankSyncProvider implements BankSyncService {
                 float amount = (float) (Math.round((5.0 + rng.nextDouble() * 45.0) * 100.0) / 100.0);
                 String extId = "mock-" + accountId + "-" + date.toString() + "-" + t;
 
-                list.add(new BankTransaction(
+                BankTransaction tx = new BankTransaction(
                         userId,
                         accountId,
                         extId,
@@ -131,7 +153,19 @@ public class MockBankSyncProvider implements BankSyncService {
                         category,
                         "MOCK",
                         false
-                ));
+                );
+                Double[] loc = MERCHANT_LOCATIONS[merchantIdx];
+                if (loc != null) {
+                    // Slight jitter per purchase (e.g. ±200 meters)
+                    double jitterLat = (rng.nextDouble() - 0.5) * 0.004;
+                    double jitterLon = (rng.nextDouble() - 0.5) * 0.004;
+                    tx.setLatitude(loc[0] + jitterLat);
+                    tx.setLongitude(loc[1] + jitterLon);
+                    tx.setMerchantAddress(merchant + ", London, UK");
+                }
+                tx.setMerchantEmoji(MERCHANT_EMOJIS[merchantIdx]);
+                tx.setRawData("{\"id\":\"" + extId + "\",\"merchant\":\"" + merchant + "\",\"category\":\"" + category + "\",\"amount\":" + (int)(amount * -100) + "}");
+                list.add(tx);
             }
         }
         return list;
