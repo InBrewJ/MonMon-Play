@@ -88,12 +88,12 @@ public class SpendingPlanAndHistoryTest {
         Account oldAcc = debit(1L, "Old Current");
         Account newAcc = debit(2L, "New Current");
 
-        // September cycle: old account spends 100
+        // September cycle: old account spends 100 (1000 -> 900)
         oldAcc.balances.add(bal(oldAcc, 1000f, LocalDate.of(2026, 8, 31), 12));
         oldAcc.balances.add(bal(oldAcc, 900f, LocalDate.of(2026, 9, 10), 12));
-        // October cycle: old account spends another 50 (should be ignored - pot changed)
+        // October cycle: old account spends another 50 (900 -> 850)
         oldAcc.balances.add(bal(oldAcc, 850f, LocalDate.of(2026, 10, 10), 12));
-        // October cycle: new account spends 40
+        // October cycle: new account spends 40 (500 -> 460)
         newAcc.balances.add(bal(newAcc, 500f, LocalDate.of(2026, 10, 1), 9));
         newAcc.balances.add(bal(newAcc, 460f, LocalDate.of(2026, 10, 5), 9));
 
@@ -130,6 +130,7 @@ public class SpendingPlanAndHistoryTest {
         HistoricCycleSpent sep = vm.getCycles().stream()
                 .filter(c -> c.getCycleStartDate().equals(LocalDate.of(2026, 9, 1)))
                 .findFirst().orElseThrow();
+        // September cycle: newAcc did not exist yet, oldAcc spent 100
         assertThat(sep.getTotalSpent()).isEqualTo(100.0);
         assertThat(sep.getStartingPotValue()).isEqualTo(1000.0);
         assertThat(sep.getEndingPotValue()).isEqualTo(900.0);
@@ -177,23 +178,22 @@ public class SpendingPlanAndHistoryTest {
     }
 
     @Test
-    public void historicSpentUsesLastMonthlyPotInCycleAndNegativeDeltasOnly() {
+    public void historicSpentTracksNetDeltasAcrossAccounts() {
         LocalDate today = LocalDate.of(2026, 10, 27);
         int payday = 1;
         Account acc = debit(100L, "Main Current");
 
         // Payday balance on Oct 1: 1000
         acc.balances.add(bal(acc, 1000f, LocalDate.of(2026, 10, 1), 9));
-        // Oct 5: Spent 200 (balance drops to 800) -> delta = -200
+        // Oct 5: Spent 200 (balance drops to 800) -> delta = -200 (spend +200)
         acc.balances.add(bal(acc, 800f, LocalDate.of(2026, 10, 5), 12));
-        // Oct 10: Money in from outside source: +500 (balance goes up to 1300) -> delta = +500 (IGNORED)
+        // Oct 10: Inflow of +500 (balance goes up to 1300) -> delta = +500 (offsets spend by -500)
         acc.balances.add(bal(acc, 1300f, LocalDate.of(2026, 10, 10), 12));
-        // Oct 15: Spent 300 (balance drops to 1000) -> delta = -300
+        // Oct 15: Spent 300 (balance drops to 1000) -> delta = -300 (spend +300)
         acc.balances.add(bal(acc, 1000f, LocalDate.of(2026, 10, 15), 14));
+        // Oct 20: Spent 150 (balance drops to 850) -> delta = -150 (spend +150)
+        acc.balances.add(bal(acc, 850f, LocalDate.of(2026, 10, 20), 14));
 
-        // Two pots created in October:
-        // Pot A: created Oct 1, archived Oct 12
-        // Pot B: created Oct 12 (the last monthly pot used in this cycle)
         long oct1Sec = LocalDate.of(2026, 10, 1).atStartOfDay(UK).toEpochSecond();
         long oct12Sec = LocalDate.of(2026, 10, 12).atStartOfDay(UK).toEpochSecond();
 
@@ -216,12 +216,153 @@ public class SpendingPlanAndHistoryTest {
 
         HistoricCycleSpent cycle = vm.getCurrentCycle();
         assertThat(cycle).isNotNull();
-
-        // Must pick potB (the last monthly pot used in October)
         assertThat(cycle.getPotConfig()).isSameAs(potB);
 
-        // Spending must be exactly 200 + 300 = 500 (using negative deltas only)
-        // The +500 deposit must NOT reduce the spending to 0!
-        assertThat(cycle.getTotalSpent()).isEqualTo(500.0);
+        // Net spent: +200 - 500 + 300 + 150 = 150.0
+        assertThat(cycle.getTotalSpent()).isEqualTo(150.0);
+    }
+
+    @Test
+    public void currentToSavingsTransferNetsToZeroSpend() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(1L, "Main Current");
+        Account savings = new Account();
+        savings.setId(2L);
+        savings.setName("Instant Access Savings");
+        savings.setType(Account.AccountType.SHORT_TERM_SAVINGS);
+        savings.setAvailableLimit(0f);
+        savings.outgoings = Collections.emptyList();
+        savings.balances = new ArrayList<>();
+
+        // Payday start balances on Oct 1
+        current.balances.add(bal(current, 1000f, LocalDate.of(2026, 10, 1), 9));
+        savings.balances.add(bal(savings, 2000f, LocalDate.of(2026, 10, 1), 9));
+
+        // Oct 10: Transfer £400 from Current to Savings
+        current.balances.add(bal(current, 600f, LocalDate.of(2026, 10, 10), 11)); // -400
+        savings.balances.add(bal(savings, 2400f, LocalDate.of(2026, 10, 10), 11)); // +400
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(), List.of(current, savings), payday, today, UK, 1000f);
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        assertThat(cycle).isNotNull();
+
+        // Across accounts, the transfer nets to 0 spend
+        assertThat(cycle.getTotalSpent()).isEqualTo(0.0);
+        assertThat(cycle.getStartingTotalBalance()).isEqualTo(3000.0);
+        assertThat(cycle.getEndingTotalBalance()).isEqualTo(3000.0);
+    }
+
+    @Test
+    public void spendingFromSavingsIsCapturedAsSpend() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(1L, "Main Current");
+        Account savings = new Account();
+        savings.setId(2L);
+        savings.setName("Holiday Savings");
+        savings.setType(Account.AccountType.SHORT_TERM_SAVINGS);
+        savings.setAvailableLimit(0f);
+        savings.outgoings = Collections.emptyList();
+        savings.balances = new ArrayList<>();
+
+        current.balances.add(bal(current, 1000f, LocalDate.of(2026, 10, 1), 9));
+        savings.balances.add(bal(savings, 3000f, LocalDate.of(2026, 10, 1), 9));
+
+        // Oct 12: Pay £600 for flights directly out of savings
+        savings.balances.add(bal(savings, 2400f, LocalDate.of(2026, 10, 12), 15));
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(), List.of(current, savings), payday, today, UK, 1000f);
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        assertThat(cycle).isNotNull();
+
+        // 600 spend out of savings is captured
+        assertThat(cycle.getTotalSpent()).isEqualTo(600.0);
+        assertThat(cycle.getStartingTotalBalance()).isEqualTo(4000.0);
+        assertThat(cycle.getEndingTotalBalance()).isEqualTo(3400.0);
+    }
+
+    @Test
+    public void creditCardSpendAndPayoffFromCurrent() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(1L, "Main Current");
+        Account credit = new Account();
+        credit.setId(2L);
+        credit.setName("Barclaycard");
+        credit.setType(Account.AccountType.CREDIT);
+        credit.setAvailableLimit(2000f);
+        credit.outgoings = Collections.emptyList();
+        credit.balances = new ArrayList<>();
+
+        current.balances.add(bal(current, 1000f, LocalDate.of(2026, 10, 1), 9));
+        credit.balances.add(bal(credit, 1500f, LocalDate.of(2026, 10, 1), 9)); // 500 owed
+
+        // Oct 5: Spend 150 on credit card (available limit drops from 1500 to 1350)
+        credit.balances.add(bal(credit, 1350f, LocalDate.of(2026, 10, 5), 14));
+
+        HistoricSpentViewModel vm1 = HistoricSpentCalculator.calculate(
+                Collections.emptyList(), List.of(current, credit), payday, today, UK, 1000f);
+        assertThat(vm1.getCurrentCycle().getTotalSpent()).isEqualTo(150.0);
+
+        // Oct 15: Pay off 150 from Current to Credit Card
+        // Current drops by 150 (1000 -> 850), Credit available limit rises by 150 (1350 -> 1500)
+        current.balances.add(bal(current, 850f, LocalDate.of(2026, 10, 15), 10));
+        credit.balances.add(bal(credit, 1500f, LocalDate.of(2026, 10, 15), 10));
+
+        HistoricSpentViewModel vm2 = HistoricSpentCalculator.calculate(
+                Collections.emptyList(), List.of(current, credit), payday, today, UK, 1000f);
+        // The payoff netted to 0, so total spend remains 150.0
+        assertThat(vm2.getCurrentCycle().getTotalSpent()).isEqualTo(150.0);
+    }
+
+    @Test
+    public void pensionAndLoanAccountsAreExcludedFromLedger() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(1L, "Main Current");
+        Account pension = new Account();
+        pension.setId(2L);
+        pension.setName("Aviva SIPP");
+        pension.setType(Account.AccountType.PENSION);
+        pension.setAvailableLimit(0f);
+        pension.outgoings = Collections.emptyList();
+        pension.balances = new ArrayList<>();
+
+        Account loan = new Account();
+        loan.setId(3L);
+        loan.setName("Bank Loan");
+        loan.setType(Account.AccountType.LOAN);
+        loan.setAvailableLimit(10000f);
+        loan.outgoings = Collections.emptyList();
+        loan.balances = new ArrayList<>();
+
+        current.balances.add(bal(current, 1000f, LocalDate.of(2026, 10, 1), 9));
+        current.balances.add(bal(current, 800f, LocalDate.of(2026, 10, 5), 12)); // Spent 200
+
+        // Pension grows by 10,000 due to market
+        pension.balances.add(bal(pension, 50000f, LocalDate.of(2026, 10, 1), 9));
+        pension.balances.add(bal(pension, 60000f, LocalDate.of(2026, 10, 20), 9));
+
+        // Loan balance decreases by 500
+        loan.balances.add(bal(loan, 5000f, LocalDate.of(2026, 10, 1), 9));
+        loan.balances.add(bal(loan, 4500f, LocalDate.of(2026, 10, 20), 9));
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(), List.of(current, pension, loan), payday, today, UK, 1000f);
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        // Pension and loan are excluded, so spend is strictly current account's 200.0
+        assertThat(cycle.getTotalSpent()).isEqualTo(200.0);
+        assertThat(cycle.getAccountBreakdowns()).hasSize(1);
+        assertThat(cycle.getAccountBreakdowns().get(0).getAccountName()).isEqualTo("Main Current");
     }
 }

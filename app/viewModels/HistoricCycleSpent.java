@@ -21,9 +21,43 @@ public class HistoricCycleSpent {
     private final Double actualDailySpend;
     private final Double startingPotValue;
     private final Double endingPotValue;
+    private final Double startingTotalBalance;
+    private final Double endingTotalBalance;
     private final Float fallbackMonthlyBudget;
     private final Pot potConfig;
     private final List<AccountSpentItem> accountBreakdowns;
+
+    public HistoricCycleSpent(
+            LocalDate cycleStartDate,
+            LocalDate cycleEndDate,
+            boolean isCurrentCycle,
+            int daysInCycle,
+            int daysElapsed,
+            Double totalSpent,
+            Double actualDailySpend,
+            Double startingPotValue,
+            Double endingPotValue,
+            Double startingTotalBalance,
+            Double endingTotalBalance,
+            Float fallbackMonthlyBudget,
+            Pot potConfig,
+            List<AccountSpentItem> accountBreakdowns
+    ) {
+        this.cycleStartDate = cycleStartDate;
+        this.cycleEndDate = cycleEndDate;
+        this.isCurrentCycle = isCurrentCycle;
+        this.daysInCycle = daysInCycle;
+        this.daysElapsed = daysElapsed;
+        this.totalSpent = round2(totalSpent);
+        this.actualDailySpend = round2(actualDailySpend);
+        this.startingPotValue = round2(startingPotValue != null ? startingPotValue : 0.0);
+        this.endingPotValue = round2(endingPotValue != null ? endingPotValue : 0.0);
+        this.startingTotalBalance = round2(startingTotalBalance != null ? startingTotalBalance : this.startingPotValue);
+        this.endingTotalBalance = round2(endingTotalBalance != null ? endingTotalBalance : this.endingPotValue);
+        this.fallbackMonthlyBudget = round2(fallbackMonthlyBudget);
+        this.potConfig = potConfig;
+        this.accountBreakdowns = accountBreakdowns != null ? accountBreakdowns : Collections.emptyList();
+    }
 
     public HistoricCycleSpent(
             LocalDate cycleStartDate,
@@ -39,18 +73,22 @@ public class HistoricCycleSpent {
             Pot potConfig,
             List<AccountSpentItem> accountBreakdowns
     ) {
-        this.cycleStartDate = cycleStartDate;
-        this.cycleEndDate = cycleEndDate;
-        this.isCurrentCycle = isCurrentCycle;
-        this.daysInCycle = daysInCycle;
-        this.daysElapsed = daysElapsed;
-        this.totalSpent = round2(totalSpent);
-        this.actualDailySpend = round2(actualDailySpend);
-        this.startingPotValue = round2(startingPotValue != null ? startingPotValue : 0.0);
-        this.endingPotValue = round2(endingPotValue != null ? endingPotValue : 0.0);
-        this.fallbackMonthlyBudget = round2(fallbackMonthlyBudget);
-        this.potConfig = potConfig;
-        this.accountBreakdowns = accountBreakdowns != null ? accountBreakdowns : Collections.emptyList();
+        this(
+                cycleStartDate,
+                cycleEndDate,
+                isCurrentCycle,
+                daysInCycle,
+                daysElapsed,
+                totalSpent,
+                actualDailySpend,
+                startingPotValue,
+                endingPotValue,
+                startingPotValue,
+                endingPotValue,
+                fallbackMonthlyBudget,
+                potConfig,
+                accountBreakdowns
+        );
     }
 
     public HistoricCycleSpent(
@@ -119,6 +157,14 @@ public class HistoricCycleSpent {
 
     public Double getEndingPotValue() {
         return endingPotValue;
+    }
+
+    public Double getStartingTotalBalance() {
+        return startingTotalBalance != null ? startingTotalBalance : startingPotValue;
+    }
+
+    public Double getEndingTotalBalance() {
+        return endingTotalBalance != null ? endingTotalBalance : endingPotValue;
     }
 
     /**

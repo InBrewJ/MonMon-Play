@@ -6,7 +6,6 @@ import models.Pot;
 import viewModels.AccountSpentItem;
 import viewModels.HistoricCycleSpent;
 import viewModels.HistoricSpentViewModel;
-import viewModels.Spog;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -19,6 +18,15 @@ import java.util.stream.Collectors;
 import static helpers.MathHelpers.round2;
 
 public class HistoricSpentCalculator {
+
+    public static List<Account> resolveLedgerAccounts(List<Account> allAccounts) {
+        if (allAccounts == null) {
+            return Collections.emptyList();
+        }
+        return allAccounts.stream()
+                .filter(a -> a != null && a.getType() != Account.AccountType.PENSION && a.getType() != Account.AccountType.LOAN)
+                .collect(Collectors.toList());
+    }
 
     public static HistoricSpentViewModel calculate(
             List<Pot> allPots,
@@ -40,12 +48,14 @@ public class HistoricSpentCalculator {
                 .sorted(Comparator.comparing(p -> p.getCreatedAt() != null ? p.getCreatedAt() : 0L))
                 .collect(Collectors.toList());
 
+        List<Account> ledgerAccounts = resolveLedgerAccounts(allAccounts);
+
         LocalDate currentCycleStart = ModelHelpers.findLastPaydayDate(today, nominalPayday);
         LocalDate currentCycleEnd = ModelHelpers.findNextPaydayDate(today, nominalPayday);
 
-        // Find earliest date across all account balances
+        // Find earliest date across all ledger account balances
         long minBalanceSec = Long.MAX_VALUE;
-        for (Account a : allAccounts) {
+        for (Account a : ledgerAccounts) {
             if (a.balances != null) {
                 for (Balance b : a.balances) {
                     if (b != null && b.getTimestamp() != null) {
@@ -89,9 +99,7 @@ public class HistoricSpentCalculator {
             // Find which pot configuration was active during this cycle
             Pot activePot = findActivePotForCycle(monthlyPots, cycleStartSec, cycleEndSec);
 
-            // Accounts associated with this pot configuration.
-            // Legacy archived pots (pre pot_accounts join table) may have lost their accounts,
-            // so borrow from the nearest later pot config that still has some.
+            // Accounts associated with this pot configuration for pot budget calculation
             Pot accountSourcePot = activePot;
             if (activePot != null && (activePot.accounts == null || activePot.accounts.isEmpty())) {
                 int idx = monthlyPots.indexOf(activePot);
@@ -104,23 +112,41 @@ public class HistoricSpentCalculator {
                 }
             }
             List<Account> potAccounts = resolvePotAccounts(accountSourcePot, allAccounts);
+            double startingPotBudget = 0.0;
+            double endingPotBudget = 0.0;
+            for (Account pa : potAccounts) {
+                startingPotBudget += getAccountStartBalance(pa, cycleStartSec, cycleEndSec);
+                endingPotBudget += getAccountEndBalance(pa, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
+            }
+            startingPotBudget = round2(startingPotBudget);
+            endingPotBudget = round2(endingPotBudget);
 
             double cycleSpent = 0.0;
-            double startingPotValue = 0.0;
-            double endingPotValue = 0.0;
+            double startingTotalBalance = 0.0;
+            double endingTotalBalance = 0.0;
             List<AccountSpentItem> accountItems = new ArrayList<>();
 
-            for (Account acc : potAccounts) {
-                double startBal = getAccountStartBalance(acc, cycleStartSec, cycleEndSec);
-                double endBal = getAccountEndBalance(acc, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
-                double accSpent = calculateAccountSpent(acc, cycleStartSec, effectiveEndSec);
-
-                if (accSpent <= 0.0 && startBal > endBal) {
-                    accSpent = round2(startBal - endBal);
+            for (Account acc : ledgerAccounts) {
+                List<Balance> valid = getValidBalances(acc);
+                if (valid.isEmpty()) {
+                    continue;
+                }
+                long earliestSec = toEpochSec(valid.get(0).getTimestamp());
+                if (earliestSec > effectiveEndSec) {
+                    // Account was created in a future cycle
+                    continue;
                 }
 
-                startingPotValue += startBal;
-                endingPotValue += endBal;
+                double startBal = getAccountStartBalance(acc, cycleStartSec, cycleEndSec);
+                double endBal = getAccountEndBalance(acc, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
+                double accSpent = calculateAccountNetSpent(acc, cycleStartSec, effectiveEndSec, startBal, endBal);
+
+                if (acc.isArchived() && startBal == 0.0 && endBal == 0.0 && accSpent == 0.0) {
+                    continue;
+                }
+
+                startingTotalBalance += startBal;
+                endingTotalBalance += endBal;
                 cycleSpent += accSpent;
 
                 accountItems.add(new AccountSpentItem(
@@ -132,9 +158,12 @@ public class HistoricSpentCalculator {
                 ));
             }
 
-            cycleSpent = round2(cycleSpent);
-            startingPotValue = round2(startingPotValue);
-            endingPotValue = round2(endingPotValue);
+            cycleSpent = round2(Math.max(0.0, cycleSpent));
+            startingTotalBalance = round2(startingTotalBalance);
+            endingTotalBalance = round2(endingTotalBalance);
+
+            double startingPotValue = startingPotBudget > 0.0 ? startingPotBudget : startingTotalBalance;
+            double endingPotValue = endingPotBudget > 0.0 ? endingPotBudget : endingTotalBalance;
 
             int daysInCycle = Math.max(1, (int) ChronoUnit.DAYS.between(currCycleStart, currCycleEnd));
             int daysElapsed = isCurrent ? Math.max(1, (int) ChronoUnit.DAYS.between(currCycleStart, today)) : daysInCycle;
@@ -150,6 +179,8 @@ public class HistoricSpentCalculator {
                     actualDailySpend,
                     startingPotValue,
                     endingPotValue,
+                    startingTotalBalance,
+                    endingTotalBalance,
                     monthlySurplus,
                     activePot,
                     accountItems
@@ -163,18 +194,25 @@ public class HistoricSpentCalculator {
         return new HistoricSpentViewModel(cycles);
     }
 
-    public static double getAccountStartBalance(Account acc, long cycleStartSec, long cycleEndSec) {
+    private static List<Balance> getValidBalances(Account acc) {
         if (acc == null || acc.balances == null || acc.balances.isEmpty()) {
-            return 0.0;
+            return Collections.emptyList();
         }
-        List<Balance> valid = acc.balances.stream()
+        return acc.balances.stream()
                 .filter(b -> b != null && b.getTimestamp() != null && b.getValue() != null)
                 .sorted(Comparator.comparing((Balance b) -> toEpochSec(b.getTimestamp()))
                         .thenComparing(b -> b.getId() != null ? b.getId() : 0L))
                 .collect(Collectors.toList());
+    }
 
-        if (valid.isEmpty()) {
-            return 0.0;
+    public static Balance getAccountStartBalanceObject(List<Balance> valid, long cycleStartSec, long cycleEndSec) {
+        if (valid == null || valid.isEmpty()) {
+            return null;
+        }
+
+        // If the earliest recorded balance for this account is after cycleEndSec, account did not exist yet
+        if (toEpochSec(valid.get(0).getTimestamp()) > cycleEndSec) {
+            return null;
         }
 
         // 1. Balance near cycle start (within 24 hours around cycleStartSec)
@@ -189,14 +227,14 @@ public class HistoricSpentCalculator {
             }
         }
         if (bestNearStart != null) {
-            return round2((double) bestNearStart.getValue());
+            return bestNearStart;
         }
 
         // 2. Earliest balance recorded within the cycle
         for (Balance b : valid) {
             long t = toEpochSec(b.getTimestamp());
             if (t >= cycleStartSec && t < cycleEndSec) {
-                return round2((double) b.getValue());
+                return b;
             }
         }
 
@@ -211,24 +249,20 @@ public class HistoricSpentCalculator {
             }
         }
         if (latestBefore != null) {
-            return round2((double) latestBefore.getValue());
+            return latestBefore;
         }
 
-        return round2((double) valid.get(0).getValue());
+        return valid.get(0);
     }
 
-    public static double getAccountEndBalance(Account acc, long cycleStartSec, long cycleEndSec, boolean isCurrentCycle, long nowSec) {
-        if (acc == null || acc.balances == null || acc.balances.isEmpty()) {
-            return 0.0;
+    public static Balance getAccountEndBalanceObject(List<Balance> valid, long cycleStartSec, long cycleEndSec, boolean isCurrentCycle, long nowSec) {
+        if (valid == null || valid.isEmpty()) {
+            return null;
         }
-        List<Balance> valid = acc.balances.stream()
-                .filter(b -> b != null && b.getTimestamp() != null && b.getValue() != null)
-                .sorted(Comparator.comparing((Balance b) -> toEpochSec(b.getTimestamp()))
-                        .thenComparing(b -> b.getId() != null ? b.getId() : 0L))
-                .collect(Collectors.toList());
 
-        if (valid.isEmpty()) {
-            return 0.0;
+        long maxBoundary = isCurrentCycle ? nowSec : cycleEndSec;
+        if (toEpochSec(valid.get(0).getTimestamp()) > maxBoundary) {
+            return null;
         }
 
         // For current cycle, latest balance recorded up to now
@@ -241,9 +275,9 @@ public class HistoricSpentCalculator {
                 }
             }
             if (latest != null) {
-                return round2((double) latest.getValue());
+                return latest;
             }
-            return round2((double) valid.get(valid.size() - 1).getValue());
+            return valid.get(valid.size() - 1);
         }
 
         // For completed past cycle: latest balance within the cycle (up to cycleEndSec)
@@ -255,7 +289,7 @@ public class HistoricSpentCalculator {
             }
         }
         if (latestInCycle != null) {
-            return round2((double) latestInCycle.getValue());
+            return latestInCycle;
         }
 
         // Otherwise latest before cycleEndSec
@@ -267,10 +301,22 @@ public class HistoricSpentCalculator {
             }
         }
         if (latestBeforeEnd != null) {
-            return round2((double) latestBeforeEnd.getValue());
+            return latestBeforeEnd;
         }
 
-        return round2((double) valid.get(0).getValue());
+        return valid.get(0);
+    }
+
+    public static double getAccountStartBalance(Account acc, long cycleStartSec, long cycleEndSec) {
+        List<Balance> valid = getValidBalances(acc);
+        Balance b = getAccountStartBalanceObject(valid, cycleStartSec, cycleEndSec);
+        return b != null ? round2((double) b.getValue()) : 0.0;
+    }
+
+    public static double getAccountEndBalance(Account acc, long cycleStartSec, long cycleEndSec, boolean isCurrentCycle, long nowSec) {
+        List<Balance> valid = getValidBalances(acc);
+        Balance b = getAccountEndBalanceObject(valid, cycleStartSec, cycleEndSec, isCurrentCycle, nowSec);
+        return b != null ? round2((double) b.getValue()) : 0.0;
     }
 
     /**
@@ -382,12 +428,7 @@ public class HistoricSpentCalculator {
             return 0.0;
         }
 
-        List<Balance> valid = acc.balances.stream()
-                .filter(b -> b != null && b.getTimestamp() != null && b.getValue() != null)
-                .sorted(Comparator.comparing((Balance b) -> toEpochSec(b.getTimestamp()))
-                        .thenComparing(b -> b.getId() != null ? b.getId() : 0L))
-                .collect(Collectors.toList());
-
+        List<Balance> valid = getValidBalances(acc);
         if (valid.size() < 2) {
             return 0.0;
         }
@@ -405,6 +446,50 @@ public class HistoricSpentCalculator {
             }
         }
         return round2(Math.max(0.0, totalSpent));
+    }
+
+    public static double calculateAccountNetSpent(Account acc, long startSec, long endSec) {
+        double startBal = getAccountStartBalance(acc, startSec, endSec);
+        double endBal = getAccountEndBalance(acc, startSec, endSec, false, endSec);
+        return calculateAccountNetSpent(acc, startSec, endSec, startBal, endBal);
+    }
+
+    public static double calculateAccountNetSpent(Account acc, long cycleStartSec, long effectiveEndSec, double startBal, double endBal) {
+        if (acc == null || acc.balances == null || acc.balances.isEmpty()) {
+            return 0.0;
+        }
+
+        List<Balance> valid = getValidBalances(acc);
+        if (valid.size() < 2) {
+            return round2(startBal - endBal);
+        }
+
+        Balance startObj = getAccountStartBalanceObject(valid, cycleStartSec, effectiveEndSec);
+        int startIndex = startObj != null ? valid.indexOf(startObj) : -1;
+
+        double totalNetSpent = 0.0;
+        boolean hasTransition = false;
+
+        if (startIndex >= 0) {
+            for (int i = startIndex + 1; i < valid.size(); i++) {
+                Balance curr = valid.get(i);
+                long tCurr = toEpochSec(curr.getTimestamp());
+                if (tCurr <= effectiveEndSec) {
+                    Balance prev = valid.get(i - 1);
+                    double delta = (double) curr.getValue() - (double) prev.getValue();
+                    totalNetSpent += (-delta);
+                    hasTransition = true;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if (!hasTransition) {
+            return round2(startBal - endBal);
+        }
+
+        return round2(totalNetSpent);
     }
 
     private static long toEpochSec(Long timestamp) {
