@@ -41,4 +41,18 @@ public class LandingControllerTest {
         String body = contentAsString(result);
         assertThat(body).contains("NomMon Food Planner");
     }
+
+    @Test
+    public void testHealthEndpointReturnsOkJson() {
+        SessionStore sessionStore = mock(SessionStore.class);
+        LandingController controller = new LandingController(sessionStore);
+
+        Http.Request request = Helpers.fakeRequest("GET", "/health").build();
+        Result result = controller.health(request);
+
+        assertThat(result.status()).isEqualTo(200);
+        String body = contentAsString(result);
+        assertThat(body).contains("\"status\":\"ok\"");
+        assertThat(body).contains("\"service\":\"MonMon\"");
+    }
 }

@@ -212,7 +212,8 @@ public class TransactionBalanceReconstructionTest {
         String[] samples = new String[]{
                 "legmon/test_fixtures/sample_monzo_statement.pdf",
                 "legmon/test_fixtures/sample_natwest_statement.pdf",
-                "legmon/test_fixtures/sample_firstdirect_statement.pdf"
+                "legmon/test_fixtures/sample_firstdirect_statement.pdf",
+                "legmon/test_fixtures/sample_natwest_transaction_list.pdf"
         };
 
         for (String samplePath : samples) {
@@ -225,8 +226,27 @@ public class TransactionBalanceReconstructionTest {
             p.waitFor();
 
             assertThat(text.length()).isGreaterThan(50);
-            boolean matchedBank = text.contains("Monzo") || text.contains("NatWest") || text.contains("first direct");
+            boolean matchedBank = text.contains("Monzo") || text.contains("NatWest") || text.contains("first direct") || text.contains("Transactions-01");
             assertThat(matchedBank).isTrue();
         }
+    }
+
+    @Test
+    public void testSyntheticTransactionListFixtureHasNoBalances() throws Exception {
+        File f = new File("legmon/test_fixtures/sample_natwest_transaction_list.pdf");
+        assertThat(f).exists();
+
+        Process p = new ProcessBuilder("pdftotext", f.getAbsolutePath(), "-").start();
+        String text = new String(p.getInputStream().readAllBytes());
+        p.waitFor();
+
+        // Must contain transaction columns
+        assertThat(text).contains("Transactions-01");
+        assertThat(text).contains("Paid in");
+        assertThat(text).contains("Paid out");
+
+        // Must NOT contain balance columns or summary
+        assertThat(text.toLowerCase()).doesNotContain("closing balance");
+        assertThat(text.toLowerCase()).doesNotContain("opening balance");
     }
 }

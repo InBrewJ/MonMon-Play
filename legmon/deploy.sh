@@ -79,15 +79,39 @@ docker run -d \
     -e MONMON_URL="http://127.0.0.1:9000" \
     legmon:latest
 
-sleep 3
-if docker ps | grep -q legmon; then
-    echo "✅ LegMon container is running:"
+echo "Waiting for LegMon service to become healthy (probing http://127.0.0.1:9005/health)..."
+MAX_ATTEMPTS=25
+ATTEMPT=1
+HEALTHY=false
+
+while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+    RUNNING=$(docker inspect -f '{{.State.Running}}' legmon 2>/dev/null || echo "false")
+    if [ "$RUNNING" != "true" ]; then
+        echo "❌ ERROR: LegMon container is not running (State.Running=$RUNNING)!" >&2
+        docker logs --tail 40 legmon || true
+        exit 1
+    fi
+
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9005/health 2>/dev/null || true)
+    if [ "$HTTP_CODE" = "200" ]; then
+        HEALTHY=true
+        break
+    fi
+
+    echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: LegMon starting up (HTTP probe: $HTTP_CODE)... waiting 2s"
+    sleep 2
+    ATTEMPT=$((ATTEMPT + 1))
+done
+
+if [ "$HEALTHY" = true ]; then
+    echo "✅ LegMon is healthy and accepting traffic (HTTP $HTTP_CODE)!"
     docker ps -f name=^legmon$
-    echo "Status probe:"
-    curl -s http://127.0.0.1:9005/status || echo "Probe waiting..."
+    echo "LegMon Status Summary:"
+    curl -s http://127.0.0.1:9005/status | head -n 15 || true
+    echo ""
 else
-    echo "❌ ERROR: LegMon failed to start! Container logs:" >&2
-    docker logs --tail 30 legmon || true
+    echo "❌ ERROR: LegMon health check failed after $((MAX_ATTEMPTS * 2)) seconds! Container logs:" >&2
+    docker logs --tail 40 legmon || true
     exit 1
 fi
 REMOTE_SCRIPT

@@ -35,4 +35,11 @@ public class LandingController extends Controller {
     public Result about(final Http.Request request) {
         return ok(views.html.landing.render(request));
     }
+
+    public Result health(final Http.Request request) {
+        return ok(play.libs.Json.newObject()
+                .put("status", "ok")
+                .put("service", "MonMon")
+                .put("timestamp", System.currentTimeMillis()));
+    }
 }

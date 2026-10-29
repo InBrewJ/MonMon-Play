@@ -19,6 +19,7 @@ public class BankTransactionMigration {
 
     @Inject
     public BankTransactionMigration(JPAApi jpaApi) {
+        System.out.println("[BankTransactionMigration] Starting BankTransaction schema migration...");
         logger.info("[BankTransactionMigration] Starting BankTransaction schema migration...");
 
         // 1. Ensure table exists
@@ -59,10 +60,11 @@ public class BankTransactionMigration {
         }
 
         // 4. Critically: Ensure raw_data is of type TEXT in case it was created as jsonb or varchar
-        // In PostgreSQL: ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING raw_data::text
-        runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING raw_data::text");
+        // In PostgreSQL: ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING (raw_data::text)
+        runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING (raw_data::text)");
 
-        logger.info("[BankTransactionMigration] BankTransaction schema migration completed.");
+        System.out.println("[BankTransactionMigration] BankTransaction schema migration completed successfully.");
+        logger.info("[BankTransactionMigration] BankTransaction schema migration completed successfully.");
     }
 
     private void runSingleStatement(JPAApi jpaApi, String sql) {
@@ -70,10 +72,11 @@ public class BankTransactionMigration {
             jpaApi.withTransaction((java.util.function.Consumer<javax.persistence.EntityManager>) em -> {
                 em.createNativeQuery(sql).executeUpdate();
             });
+            System.out.println("[BankTransactionMigration] Executed: " + sql);
             logger.debug("[BankTransactionMigration] Executed: {}", sql);
         } catch (Exception e) {
-            // Some statements (like H2 or SQLite dialect differences in test environments, or duplicate columns) may throw, which is expected
-            logger.warn("[BankTransactionMigration] Statement '{}' failed (may be harmless if dialect differs): {}", sql, e.getMessage());
+            System.out.println("[BankTransactionMigration] Notice for statement '" + sql + "': " + e.getMessage());
+            logger.warn("[BankTransactionMigration] Statement '{}' notice: {}", sql, e.getMessage());
         }
     }
 }

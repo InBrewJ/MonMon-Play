@@ -5,6 +5,7 @@
 # Landing Page (public & search-engine indexable)
 GET     /                            controllers.LandingController.index(req: Request)
 GET     /about                       controllers.LandingController.about(req: Request)
+GET     /health                      controllers.LandingController.health(req: Request)
 
 # Outgoings
 GET     /myOutgoings                 controllers.OutgoingController.index(req: Request)

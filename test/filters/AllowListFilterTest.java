@@ -39,6 +39,12 @@ public class AllowListFilterTest {
 
         assertThat(result).isSameAs(expected);
         verifyNoInteractions(repo);
+
+        // Also verify /health passes through without auth
+        Http.RequestHeader rhHealth = Helpers.fakeRequest("GET", "/health").build();
+        Result resultHealth = filter.apply(req -> CompletableFuture.completedFuture(expected), rhHealth)
+                .toCompletableFuture().join();
+        assertThat(resultHealth).isSameAs(expected);
     }
 
     @Test
@@ -57,6 +63,12 @@ public class AllowListFilterTest {
 
         assertThat(result).isSameAs(expected);
         verifyNoInteractions(repo);
+
+        // Also verify /health passes through without auth
+        Http.RequestHeader rhHealth = Helpers.fakeRequest("GET", "/health").build();
+        Result resultHealth = filter.apply(req -> CompletableFuture.completedFuture(expected), rhHealth)
+                .toCompletableFuture().join();
+        assertThat(resultHealth).isSameAs(expected);
 
         // Also verify /api/user/accessStatus passes through
         Http.RequestHeader rhStatus = Helpers.fakeRequest("GET", "/api/user/accessStatus").build();
@@ -81,6 +93,12 @@ public class AllowListFilterTest {
 
         assertThat(result).isSameAs(expected);
         verifyNoInteractions(repo);
+
+        // Also verify /health passes through without auth
+        Http.RequestHeader rhHealth = Helpers.fakeRequest("GET", "/health").build();
+        Result resultHealth = filter.apply(req -> CompletableFuture.completedFuture(expected), rhHealth)
+                .toCompletableFuture().join();
+        assertThat(resultHealth).isSameAs(expected);
     }
 
     @Test

@@ -42,6 +42,7 @@ public class AllowListFilter extends Filter {
         // 1. Allow publicly accessible & auth infrastructure routes
         if (path.equals("/") ||
             path.equals("/about") ||
+            path.equals("/health") ||
             path.startsWith("/assets/") ||
             path.startsWith("/callback") ||
             path.startsWith("/logout") ||

@@ -63,15 +63,39 @@ docker run -d \
     $ENV_ARG \
     monmon:latest
 
-sleep 3
+# 5. Wait for MonMon to become healthy via HTTP health check probe
+echo "Waiting for MonMon service to become healthy (probing http://127.0.0.1:9000/health)..."
+MAX_ATTEMPTS=30
+ATTEMPT=1
+HEALTHY=false
 
-if docker ps | grep -q monmon; then
-    echo "✅ MonMon container is running:"
+while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+    # Check if container stopped or died
+    RUNNING=$(docker inspect -f '{{.State.Running}}' monmon 2>/dev/null || echo "false")
+    if [ "$RUNNING" != "true" ]; then
+        echo "❌ ERROR: MonMon container is not running (State.Running=$RUNNING)!" >&2
+        docker logs --tail 40 monmon || true
+        exit 1
+    fi
+
+    # Probe /health endpoint
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9000/health 2>/dev/null || true)
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "303" ]; then
+        HEALTHY=true
+        break
+    fi
+
+    echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: MonMon JVM starting up (HTTP probe: $HTTP_CODE)... waiting 2s"
+    sleep 2
+    ATTEMPT=$((ATTEMPT + 1))
+done
+
+if [ "$HEALTHY" = true ]; then
+    echo "✅ MonMon is healthy and accepting traffic (HTTP $HTTP_CODE)!"
     docker ps -f name=^monmon$
-    echo "Status probe (HTTP localhost:9000):"
-    curl -I -s http://127.0.0.1:9000/ || echo "Container started, waiting for Play framework to finish initial binding..."
+    exit 0
 else
-    echo "❌ ERROR: MonMon container failed to start! Container logs:" >&2
-    docker logs --tail 30 monmon || true
+    echo "❌ ERROR: MonMon health check failed after $((MAX_ATTEMPTS * 2)) seconds! Container logs:" >&2
+    docker logs --tail 40 monmon || true
     exit 1
 fi
