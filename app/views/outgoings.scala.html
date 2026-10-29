@@ -85,7 +85,8 @@
                 <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No outgoings recorded. Add one on the right.</td></tr>
               } else {
                 @for(o <- outgoings) {
-                  <tr class="outgoing-row @if(o.isPaused()){outgoing-row-paused}"
+                  <tr id="outgoing-@o.id" data-entity-id="outgoing-@o.id"
+                      class="outgoing-row @if(o.isPaused()){outgoing-row-paused}"
                       data-is-yearly="@o.isYearly()"
                       data-due-now="@o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))"
                       data-month="@o.getOutgoingMonth()"
@@ -179,7 +180,8 @@
             <div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0;">No outgoings recorded. Add one below.</div>
           } else {
             @for(o <- outgoings) {
-              <div class="item-card outgoing-card @if(o.isPaused()){outgoing-card-paused}"
+              <div id="outgoing-card-@o.id" data-entity-id="outgoing-@o.id"
+                   class="item-card outgoing-card @if(o.isPaused()){outgoing-card-paused}"
                    data-is-yearly="@o.isYearly()"
                    data-due-now="@o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))"
                    data-month="@o.getOutgoingMonth()"

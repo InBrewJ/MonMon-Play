@@ -82,7 +82,7 @@ messages: play.i18n.Messages
                     <p style="color: var(--text-muted);">No pots configured yet.</p>
                 } else {
                     @for(p <- pots) {
-                    <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 1rem; margin-bottom: 1rem; background: var(--card-bg);">
+                    <div id="pot-@p.id" data-entity-id="pot-@p.id" style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 1rem; margin-bottom: 1rem; background: var(--card-bg);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                             <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.9rem; font-weight: 700;">
                                 @{p.`type`} POT

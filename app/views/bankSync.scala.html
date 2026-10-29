@@ -498,7 +498,7 @@
                         </thead>
                         <tbody>
                             @for(tx <- recentTransactions) {
-                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                <tr id="tx-@tx.getId()" data-entity-id="tx-@tx.getId()" style="border-bottom: 1px solid var(--border-color);">
                                     <td style="font-family: monospace; font-size: 0.85rem; padding: 10px 12px; color: var(--text-muted);">@tx.getDate()</td>
                                     <td style="padding: 10px 12px;"><strong style="color: var(--text-main);">@tx.getDescription()</strong></td>
                                     <td style="padding: 10px 12px;">

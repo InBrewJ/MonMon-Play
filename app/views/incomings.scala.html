@@ -51,7 +51,7 @@
                                 <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">No incomings found. Click <b>+ Add Incoming</b> above to add one.</td></tr>
                             } else {
                                 @for(i <- incomings) {
-                                <tr>
+                                <tr id="incoming-@i.id" data-entity-id="incoming-@i.id">
                                     <td class="w3-center">
                                         @if(i.isAdjustedForMonth()) {
                                             <span title="Adjusted from @i.incomingMonthDay for this month @if(i.isPayDay()){(last working day)}">

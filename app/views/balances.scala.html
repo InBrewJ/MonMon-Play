@@ -200,7 +200,7 @@
                             </tr>
                             }
                             @for(b <- balances) {
-                            <tr class="balance-data-row" data-account-id="@b.getAccount().getId()" data-account-name="@b.getAccount().getName().toLowerCase()" data-balance-val="@String.format(java.util.Locale.UK, "%.2f", b.getValue())" data-timestamp="@b.getTimestamp()">
+                            <tr id="balance-@b.getId()" data-entity-id="balance-@b.getId()" class="balance-data-row" data-account-id="@b.getAccount().getId()" data-account-name="@b.getAccount().getName().toLowerCase()" data-balance-val="@String.format(java.util.Locale.UK, "%.2f", b.getValue())" data-timestamp="@b.getTimestamp()">
                                 <td class="col-balance-date">@b.getTimestampHumanReadable</td>
                                 <td class="col-balance-account"><span class="account-tag">🏛️ @b.getAccount().getName()</span></td>
                                 <td class="col-balance-avail">£@String.format(java.util.Locale.UK, "%.2f", b.getValue())</td>

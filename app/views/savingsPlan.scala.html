@@ -67,7 +67,7 @@
     <div class="deck-layout-grid">
     @if(activePlan != null) {
         <!-- Active Savings Plan Summary & Slider -->
-        <div class="w3-card w3-padding w3-margin-bottom deck-card" id="savings-card-target" style="border-radius: 8px;">
+        <div class="w3-card w3-padding w3-margin-bottom deck-card" id="savings-plan-@activePlan.getId()" data-entity-id="savings-plan-@activePlan.getId()" style="border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
                 <div>
                     <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-weight: 700; margin-right: 6px;">ACTIVE PLAN</span>
@@ -280,6 +280,8 @@
                             @defining(activePlan.getItems()) { activeItems =>
                             @for((item, itemIdx) <- activeItems.zipWithIndex) {
                                 <tr class="savings-item-row"
+                                    id="savings-item-@item.getId()"
+                                    data-entity-id="savings-item-@item.getId()"
                                     data-id="@item.getId()"
                                     data-name="@item.getName()"
                                     data-priority="@item.getPriority()"

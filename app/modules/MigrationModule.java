@@ -10,5 +10,6 @@ public class MigrationModule extends AbstractModule {
         bind(NetWorthAssetMigration.class).asEagerSingleton();
         bind(IncomingMigration.class).asEagerSingleton();
         bind(BankTransactionMigration.class).asEagerSingleton();
+        bind(AppSearchMigration.class).asEagerSingleton();
     }
 }

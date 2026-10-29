@@ -221,7 +221,7 @@
                 </thead>
                 <tbody>
                     @for(asset <- vm.getCustomAssets()) {
-                    <tr style="border-bottom: 1px solid var(--border-color);">
+                    <tr id="asset-@asset.getId()" data-entity-id="asset-@asset.getId()" style="border-bottom: 1px solid var(--border-color);">
                         <td style="padding: 8px 6px;">
                             <i class="fas @asset.getCategoryIcon()" style="color: var(--primary); margin-right: 6px;"></i>
                             <b>@asset.getName()</b>

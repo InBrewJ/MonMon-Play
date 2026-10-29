@@ -33,6 +33,10 @@
         type="text/javascript"
         src='@routes.Assets.versioned("javascripts/disco.js")'
 ></script>
+<script
+        type="text/javascript"
+        src='@routes.Assets.versioned("javascripts/global-search.js")'
+></script>
 
 <div id="ticker"></div>
 
@@ -54,6 +58,37 @@
     </div>
 
     <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <!-- Global Expandable Search Bar -->
+        <div class="header-search-container" id="header-search-container">
+            <div class="header-search-input-wrap">
+                <i class="fas fa-search header-search-icon" id="header-search-trigger" title="Search MonMon (Press / or Ctrl+K)"></i>
+                <input type="text"
+                       id="global-search-input"
+                       class="header-search-input"
+                       placeholder="Search... (/)"
+                       autocomplete="off"
+                       spellcheck="false"
+                       aria-label="Search MonMon" />
+                <button type="button" id="header-search-clear" class="header-search-clear" aria-label="Clear search" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
+                <span class="header-search-spinner" id="header-search-spinner" style="display: none;">
+                    <i class="fas fa-circle-notch fa-spin"></i>
+                </span>
+                <kbd class="header-search-kbd-hint" id="header-search-kbd">/</kbd>
+            </div>
+
+            <!-- Search Results Dropdown -->
+            <div class="header-search-dropdown" id="header-search-dropdown" style="display: none;">
+                <div class="header-search-results-list" id="header-search-results-list" role="listbox"></div>
+                <div class="header-search-footer" id="header-search-footer">
+                    <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+                    <span><kbd>↵</kbd> select</span>
+                    <span><kbd>esc</kbd> close</span>
+                </div>
+            </div>
+        </div>
+
         <button id="theme-toggle" class="theme-toggle-btn" type="button" aria-label="Toggle theme" title="Switch to Light/Dark Mode">
             <i class="fas fa-sun" id="theme-toggle-icon"></i>
             <span id="theme-toggle-text">Light Mode</span>
