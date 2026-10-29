@@ -541,6 +541,157 @@ public class BankSyncController extends Controller {
                 }, ec.current());
     }
 
+    public CompletionStage<Result> apiConfirmStatement(Long id, final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        String userId = request.queryString("userId").orElse(null);
+        JsonNode bodyJson = request.body().asJson();
+        if (bodyJson != null && bodyJson.has("userId")) {
+            userId = bodyJson.get("userId").asText();
+        }
+        if (userId == null || userId.trim().isEmpty() || "guest".equals(userId)) {
+            userId = (sup != null && !"guest".equals(sup.getUserId())) ? sup.getUserId() : null;
+        }
+
+        String accountIdStr = request.queryString("accountId").orElse(null);
+        String anchorBalanceStr = request.queryString("anchorBalance").orElse(null);
+        String anchorDateStr = request.queryString("anchorDate").orElse(null);
+
+        if (bodyJson != null) {
+            if (bodyJson.has("accountId")) accountIdStr = bodyJson.get("accountId").asText();
+            if (bodyJson.has("anchorBalance")) anchorBalanceStr = bodyJson.get("anchorBalance").asText();
+            if (bodyJson.has("anchorDate")) anchorDateStr = bodyJson.get("anchorDate").asText();
+        }
+
+        if (accountIdStr == null || accountIdStr.trim().isEmpty()) {
+            return CompletableFuture.completedFuture(badRequest(Json.newObject().put("error", "accountId is required")));
+        }
+        final Long accountId = Long.parseLong(accountIdStr.trim());
+        final String effectiveUserId = userId;
+        final String effAnchorBal = anchorBalanceStr;
+        final String effAnchorDate = anchorDateStr;
+
+        return pendingStatementRepository.findById(id).thenComposeAsync(optStmt -> {
+            if (optStmt.isEmpty()) {
+                return CompletableFuture.completedFuture(notFound(Json.newObject().put("error", "Statement not found")));
+            }
+            PendingStatement stmt = optStmt.get();
+            final String stmtUserId = (effectiveUserId != null && !effectiveUserId.isEmpty()) ? effectiveUserId : stmt.getUserId();
+
+            return accountRepository.list(stmtUserId).thenComposeAsync(accStream -> {
+                Optional<Account> matchedAccOpt = accStream.filter(a -> a.getId().equals(accountId)).findFirst();
+                if (matchedAccOpt.isEmpty()) {
+                    return CompletableFuture.completedFuture(notFound(Json.newObject().put("error", "Account not found")));
+                }
+                Account targetAccount = matchedAccOpt.get();
+
+                // 1. Parse transactions
+                List<BankTransaction> txsToSave = new ArrayList<>();
+                try {
+                    JsonNode payloadJson = Json.parse(stmt.getRawPayload());
+                    JsonNode txArray = payloadJson.path("transactions");
+                    if (txArray.isArray()) {
+                        for (JsonNode txItem : txArray) {
+                            JsonNode data = txItem.has("data") ? txItem.get("data") : txItem;
+                            String txId = data.path("id").asText("legmon_tx_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
+                            long pence = data.path("amount").asLong(0L);
+                            float amount = (data.has("amount") && data.get("amount").isFloatingPointNumber())
+                                    ? (float) data.get("amount").asDouble()
+                                    : (Math.abs(pence) / 100.0f * (pence > 0 ? -1.0f : 1.0f));
+
+                            String created = data.path("created").asText(LocalDate.now().toString());
+                            long epochSec = System.currentTimeMillis() / 1000L;
+                            String dateStr = stmt.getEndDate();
+                            try {
+                                if (created.contains("T")) {
+                                    Instant inst = Instant.parse(created);
+                                    epochSec = inst.getEpochSecond();
+                                    dateStr = inst.atZone(ZoneOffset.UTC).toLocalDate().toString();
+                                } else {
+                                    LocalDate ld = LocalDate.parse(created);
+                                    epochSec = ld.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+                                    dateStr = ld.toString();
+                                }
+                            } catch (Exception ignored) {
+                            }
+
+                            String desc = data.path("description").asText("Statement item");
+                            String merchant = data.path("merchant").path("name").asText(desc);
+                            String category = data.path("category").asText("General");
+
+                            BankTransaction tx = new BankTransaction(
+                                    stmtUserId,
+                                    accountId,
+                                    txId,
+                                    epochSec,
+                                    dateStr,
+                                    amount,
+                                    desc,
+                                    merchant,
+                                    category,
+                                    "STATEMENT",
+                                    false
+                            );
+                            try {
+                                tx.setRawData(Json.stringify(data));
+                            } catch (Exception ignored) {
+                            }
+                            txsToSave.add(tx);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Could not parse transactions from statement: " + e.getMessage());
+                }
+
+                return bankTransactionRepository.saveAll(txsToSave).thenComposeAsync(savedCount -> {
+                    boolean isTxListOnly = helpers.TransactionBalanceReconstructor.isTransactionListOnly(stmt);
+                    Float userAnchorVal = null;
+                    if (effAnchorBal != null && !effAnchorBal.trim().isEmpty()) {
+                        try {
+                            userAnchorVal = Float.parseFloat(effAnchorBal.trim());
+                        } catch (Exception ignored) {}
+                    }
+
+                    if (userAnchorVal != null) {
+                        long anchorTs = (effAnchorDate != null && !effAnchorDate.trim().isEmpty())
+                                ? parseEpochSeconds(effAnchorDate.trim(), false)
+                                : stmt.getEndTimestamp();
+                        List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
+                                helpers.TransactionBalanceReconstructor.fromBankTransactions(txsToSave);
+                        helpers.TransactionBalanceReconstructor.ReconstructionResult rec =
+                                helpers.TransactionBalanceReconstructor.reconstruct(
+                                        deltas, anchorTs, userAnchorVal, stmt.getStartTimestamp(), stmt.getEndTimestamp());
+                        stmt.setOpeningBalance(rec.getOpeningBalance());
+                        stmt.setClosingBalance(rec.getClosingBalance());
+                    }
+
+                    // Apply balances
+                    return balanceRepository.deleteForAccountBetween(accountId, stmtUserId, stmt.getStartTimestamp(), stmt.getEndTimestamp())
+                            .thenComposeAsync(deletedCount -> {
+                                Balance closingBal = new Balance();
+                                closingBal.setUserId(stmtUserId);
+                                closingBal.setAccount(targetAccount);
+                                closingBal.setValue(stmt.getClosingBalance());
+                                closingBal.setTimestamp(stmt.getEndTimestamp());
+
+                                return balanceRepository.add(closingBal).thenComposeAsync(addedClosing -> {
+                                    stmt.setStatus("APPLIED");
+                                    stmt.setMatchedAccountId(accountId);
+                                    stmt.setAppliedAt(System.currentTimeMillis() / 1000L);
+                                    return pendingStatementRepository.save(stmt).thenApplyAsync(savedStmt -> {
+                                        ObjectNode resp = Json.newObject();
+                                        resp.put("status", "ok");
+                                        resp.put("statementId", stmt.getId());
+                                        resp.put("importedTransactions", savedCount);
+                                        resp.put("closingBalance", stmt.getClosingBalance());
+                                        return ok(resp);
+                                    }, ec.current());
+                                }, ec.current());
+                            }, ec.current());
+                }, ec.current());
+            }, ec.current());
+        }, ec.current());
+    }
+
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> discardStatement(Long id, final Http.Request request) {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);

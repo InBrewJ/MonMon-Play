@@ -124,6 +124,8 @@ POST    /bank/monzo/disconnect                      controllers.BankSyncControll
 POST    /api/monzo/webhook                          controllers.BankSyncController.handleMonzoWebhook(req: Request)
 + nocsrf
 POST    /api/statement/webhook                      controllers.BankSyncController.handleStatementWebhook(req: Request)
++ nocsrf
+POST    /api/bank/statement/:id/confirm             controllers.BankSyncController.apiConfirmStatement(id: Long, req: Request)
 POST    /bank/statement/upload                      controllers.BankSyncController.uploadStatement(req: Request)
 POST    /bank/statement/:id/confirm                 controllers.BankSyncController.confirmStatement(id: Long, req: Request)
 POST    /bank/statement/:id/discard                 controllers.BankSyncController.discardStatement(id: Long, req: Request)

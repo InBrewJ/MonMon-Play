@@ -48,6 +48,8 @@ public class AllowListFilter extends Filter {
             path.startsWith("/logout") ||
             path.startsWith("/centralLogout") ||
             path.startsWith("/api/monzo/webhook") ||
+            path.startsWith("/api/statement/webhook") ||
+            path.startsWith("/api/bank/statement/") ||
             path.equals("/waitinglist") ||
             path.equals("/waitlinglist") ||
             path.equals("/api/user/accessStatus")) {
