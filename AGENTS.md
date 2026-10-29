@@ -16,3 +16,5 @@
 ## Deploying
 
 - never under and circumstances do you run deploy scripts. That is human work
+  - test out deployment artifacts locally, by all means, but those artefacts are pushed
+    to live by a human
