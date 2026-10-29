@@ -1,6 +1,3 @@
-DO NOT COMMIT ANYTHING A MISTRAL SECRET IS BAKED INTO CODE
-
-
 0. Are there any secrets exposed in this repo? If there are, let's work towards rotating them
    and getting everything set from gitignored files and one single, root level .env file
 

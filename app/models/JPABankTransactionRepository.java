@@ -53,7 +53,8 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION",
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION",
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS merchant_emoji VARCHAR(50)",
-                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS raw_data JSONB"
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS raw_data TEXT",
+                                "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING raw_data::text"
                         };
                         jpaApi.withTransaction(em -> {
                             for (String sql : statements) {
