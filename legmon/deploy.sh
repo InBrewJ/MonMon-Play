@@ -29,9 +29,6 @@ set -euo pipefail
 
 mkdir -p /home/circle/app/legmon/logs
 
-# Extract Mistral API key from secureProd.conf if present
-MISTRAL_KEY=$(grep -oP 'apiKey\s*=\s*"\K[^"]+' /home/circle/app/secureProd.conf 2>/dev/null || echo "mstrl_ky6PZVYNZ0A7ssFrAl2f8AremfYf2rCD_3tipYx")
-
 # Stop existing container if running
 if docker ps -q -f name=^legmon$ | grep -q .; then
     echo "Stopping existing legmon container..."
@@ -44,6 +41,7 @@ if docker ps -a -q -f name=^legmon$ | grep -q .; then
 fi
 
 echo "Starting new LegMon container on port 9005..."
+# Note: MISTRAL_API_KEY & MISTRAL_MODEL are baked directly into the image from conf/secureProd.conf during ./build.sh
 docker run -d \
     --name legmon \
     --restart always \
@@ -51,7 +49,6 @@ docker run -d \
     -v /home/circle/app/legmon/logs:/app/logs \
     -e PORT=9005 \
     -e MONMON_URL="http://127.0.0.1:9000" \
-    -e MISTRAL_API_KEY="${MISTRAL_KEY}" \
     legmon:latest
 
 sleep 3

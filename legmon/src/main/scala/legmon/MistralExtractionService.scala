@@ -31,15 +31,58 @@ case class ExtractedStatement(
 object MistralExtractionService {
   private val logger = LoggerFactory.getLogger(getClass)
 
+  private val ConfCandidatePaths: Seq[String] = Seq(
+    "/app/secureProd.conf",
+    "conf/secureProd.conf",
+    "../conf/secureProd.conf"
+  )
+
+  private def readKeyFromFile(path: String): Option[String] = {
+    Try {
+      val file = new java.io.File(path)
+      if (file.exists() && file.isFile) {
+        val src = scala.io.Source.fromFile(file)
+        try {
+          val content = src.mkString
+          val pattern = """apiKey\s*=\s*"([^"]+)"""".r
+          pattern.findFirstMatchIn(content).map(_.group(1).trim)
+        } finally {
+          src.close()
+        }
+      } else None
+    }.toOption.flatten
+  }
+
+  private def readModelFromFile(path: String): Option[String] = {
+    Try {
+      val file = new java.io.File(path)
+      if (file.exists() && file.isFile) {
+        val src = scala.io.Source.fromFile(file)
+        try {
+          val content = src.mkString
+          val pattern = """model\s*=\s*"([^"]+)"""".r
+          pattern.findFirstMatchIn(content).map(_.group(1).trim)
+        } finally {
+          src.close()
+        }
+      } else None
+    }.toOption.flatten
+  }
+
   def getApiKey: String = {
     sys.env.get("MISTRAL_API_KEY")
       .orElse(sys.props.get("MISTRAL_API_KEY"))
+      .orElse(ConfCandidatePaths.flatMap(readKeyFromFile).headOption)
       .getOrElse("")
       .trim
   }
 
   def getModel: String = {
-    sys.env.getOrElse("MISTRAL_MODEL", "mistral-small-latest")
+    sys.env.get("MISTRAL_MODEL")
+      .orElse(sys.props.get("MISTRAL_MODEL"))
+      .orElse(ConfCandidatePaths.flatMap(readModelFromFile).headOption)
+      .getOrElse("mistral-small-latest")
+      .trim
   }
 
   def extract(text: String): ExtractedStatement = {

@@ -12,3 +12,7 @@
 ## Committing and pushing
 
 - feel free to commit and push, but your commit messages should be prefixed with \[agy\]
+
+## Deploying
+
+- never under and circumstances do you run deploy scripts. That is human work
