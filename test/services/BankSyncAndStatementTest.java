@@ -743,4 +743,94 @@ public class BankSyncAndStatementTest {
         // Balance repository remains clean (not overwritten with 0) until anchor balance is set on /myBalances
         assertThat(balanceRepo.balances).isEmpty();
     }
+
+    @Test
+    public void testStatementPreviewReconstructionAndDailyIntermediateBalances() {
+        InMemoryBalanceRepository balanceRepo = new InMemoryBalanceRepository();
+        Account acc = new Account();
+        acc.setId(88L);
+        acc.setName("NatWest Current");
+        acc.setType(Account.AccountType.DEBIT);
+        acc.setLedgerMode(Account.LedgerMode.ABL);
+
+        long startSec = 1722470400L; // 2026-08-01 00:00:00
+        long endSec = 1725148799L;   // 2026-08-31 23:59:59
+
+        // Existing old balance entry that should be replaced
+        models.Balance oldEntry = new models.Balance();
+        oldEntry.setId(1L);
+        oldEntry.setUserId("user_preview");
+        oldEntry.setAccount(acc);
+        oldEntry.setValue(100.0f);
+        oldEntry.setTimestamp(startSec + 5000);
+        balanceRepo.add(oldEntry).toCompletableFuture().join();
+
+        // 3 Transactions:
+        // Day 10 (Aug 11): Inflow +£1000 (salary) -> amount -1000
+        // Day 15 (Aug 16): Outflow -£250 (rent) -> amount +250
+        // Day 20 (Aug 21): Outflow -£50 (groceries) -> amount +50
+        long t1 = startSec + (10 * 86400);
+        long t2 = startSec + (15 * 86400);
+        long t3 = startSec + (20 * 86400);
+
+        BankTransaction tx1 = new BankTransaction("user_preview", acc.getId(), "tx_p1", t1, "2026-08-11", -1000.0f, "Salary", "Boss", "income", "STATEMENT", false);
+        BankTransaction tx2 = new BankTransaction("user_preview", acc.getId(), "tx_p2", t2, "2026-08-16", 250.0f, "Rent", "Landlord", "bills", "STATEMENT", false);
+        BankTransaction tx3 = new BankTransaction("user_preview", acc.getId(), "tx_p3", t3, "2026-08-21", 50.0f, "Groceries", "Tesco", "groceries", "STATEMENT", false);
+
+        List<BankTransaction> txs = Arrays.asList(tx1, tx2, tx3);
+        List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
+                helpers.TransactionBalanceReconstructor.fromBankTransactions(txs);
+
+        float openingBal = 500.0f;
+        float closingBal = 1200.0f; // 500 + 1000 - 250 - 50 = 1200
+
+        // Reconstruct trajectory using closing balance as anchor
+        helpers.TransactionBalanceReconstructor.ReconstructionResult rec =
+                helpers.TransactionBalanceReconstructor.reconstruct(deltas, endSec, closingBal, startSec, endSec);
+
+        assertThat(rec.getOpeningBalance()).isEqualTo(500.0f);
+        assertThat(rec.getClosingBalance()).isEqualTo(1200.0f);
+        assertThat(rec.getRunningBalances()).hasSize(3);
+        assertThat(rec.getRunningBalances().get(t1)).isEqualTo(1500.0f); // 500 + 1000
+        assertThat(rec.getRunningBalances().get(t2)).isEqualTo(1250.0f); // 1500 - 250
+        assertThat(rec.getRunningBalances().get(t3)).isEqualTo(1200.0f); // 1250 - 50
+
+        // Simulate daily balance persistence (as done in applyBalancesAndFinalize)
+        balanceRepo.deleteForAccountBetween(acc.getId(), "user_preview", startSec, endSec).toCompletableFuture().join();
+
+        // 1. Opening
+        models.Balance bOpen = new models.Balance();
+        bOpen.setUserId("user_preview");
+        bOpen.setAccount(acc);
+        bOpen.setValue(rec.getOpeningBalance());
+        bOpen.setTimestamp(startSec);
+        balanceRepo.add(bOpen).toCompletableFuture().join();
+
+        // 2. Intermediate daily points
+        for (Map.Entry<Long, Float> entry : rec.getRunningBalances().entrySet()) {
+            models.Balance bMid = new models.Balance();
+            bMid.setUserId("user_preview");
+            bMid.setAccount(acc);
+            bMid.setValue(entry.getValue());
+            bMid.setTimestamp(entry.getKey());
+            balanceRepo.add(bMid).toCompletableFuture().join();
+        }
+
+        // 3. Closing
+        models.Balance bClose = new models.Balance();
+        bClose.setUserId("user_preview");
+        bClose.setAccount(acc);
+        bClose.setValue(rec.getClosingBalance());
+        bClose.setTimestamp(endSec);
+        balanceRepo.add(bClose).toCompletableFuture().join();
+
+        // Verify: Old single entry deleted, replaced with 5 chronological points spanning whole month
+        List<models.Balance> saved = balanceRepo.list("user_preview").toCompletableFuture().join().collect(Collectors.toList());
+        assertThat(saved).hasSize(5);
+        assertThat(saved.get(0).getValue()).isEqualTo(500.0f);
+        assertThat(saved.get(1).getValue()).isEqualTo(1500.0f);
+        assertThat(saved.get(2).getValue()).isEqualTo(1250.0f);
+        assertThat(saved.get(3).getValue()).isEqualTo(1200.0f);
+        assertThat(saved.get(4).getValue()).isEqualTo(1200.0f);
+    }
 }
