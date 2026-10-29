@@ -205,6 +205,36 @@ public class MonzoBankSyncProvider implements BankSyncService {
         }
     }
 
+    public static class LiveWebhookDetail {
+        public final String accountId;
+        public final String accountLabel;
+        public final String webhookId;
+        public final String url;
+
+        public LiveWebhookDetail(String accountId, String accountLabel, String webhookId, String url) {
+            this.accountId = accountId;
+            this.accountLabel = accountLabel;
+            this.webhookId = webhookId;
+            this.url = url;
+        }
+
+        public String getAccountId() {
+            return accountId;
+        }
+
+        public String getAccountLabel() {
+            return accountLabel;
+        }
+
+        public String getWebhookId() {
+            return webhookId;
+        }
+
+        public String getUrl() {
+            return url;
+        }
+    }
+
     public static class WebhookSyncResult {
         private final boolean success;
         private final String message;
@@ -261,6 +291,77 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 .exceptionally(err -> conn);
     }
 
+    public CompletionStage<List<LiveWebhookDetail>> discoverLiveWebhooks(MonzoConnection conn) {
+        if (conn == null || conn.getAccessToken() == null || conn.getAccessToken().trim().isEmpty()) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+
+        return fetchAccounts(conn.getAccessToken()).thenCompose(accounts -> {
+            MonzoAccountInfo debitAcc = accounts.stream().filter(MonzoAccountInfo::isDebit).findFirst().orElse(null);
+            MonzoAccountInfo flexAcc = accounts.stream().filter(MonzoAccountInfo::isFlexCreditCard).findFirst().orElse(null);
+
+            CompletableFuture<List<MonzoWebhookInfo>> debitWhFuture = debitAcc != null
+                    ? listMonzoWebhooks(conn.getAccessToken(), debitAcc.id)
+                    : CompletableFuture.completedFuture(Collections.emptyList());
+
+            CompletableFuture<List<MonzoWebhookInfo>> flexWhFuture = flexAcc != null
+                    ? listMonzoWebhooks(conn.getAccessToken(), flexAcc.id)
+                    : CompletableFuture.completedFuture(Collections.emptyList());
+
+            return CompletableFuture.allOf(debitWhFuture, flexWhFuture).thenCompose(v -> {
+                List<MonzoWebhookInfo> debitWhs = debitWhFuture.join();
+                List<MonzoWebhookInfo> flexWhs = flexWhFuture.join();
+
+                List<LiveWebhookDetail> details = new ArrayList<>();
+                boolean changed = false;
+
+                if (debitAcc != null && !debitWhs.isEmpty()) {
+                    for (MonzoWebhookInfo wh : debitWhs) {
+                        details.add(new LiveWebhookDetail(debitAcc.id, debitAcc.getDisplayName(), wh.id, wh.url));
+                    }
+                    MonzoWebhookInfo primaryDebit = debitWhs.get(0);
+                    if (!primaryDebit.id.equals(conn.getWebhookDebitId())) {
+                        conn.setWebhookDebitId(primaryDebit.id);
+                        changed = true;
+                    }
+                    if (primaryDebit.url != null && !primaryDebit.url.equals(conn.getWebhookUrl())) {
+                        conn.setWebhookUrl(primaryDebit.url);
+                        changed = true;
+                    }
+                } else if (debitAcc != null && conn.getWebhookDebitId() != null) {
+                    conn.setWebhookDebitId(null);
+                    changed = true;
+                }
+
+                if (flexAcc != null && !flexWhs.isEmpty()) {
+                    for (MonzoWebhookInfo wh : flexWhs) {
+                        details.add(new LiveWebhookDetail(flexAcc.id, flexAcc.getDisplayName(), wh.id, wh.url));
+                    }
+                    MonzoWebhookInfo primaryFlex = flexWhs.get(0);
+                    if (!primaryFlex.id.equals(conn.getWebhookFlexId())) {
+                        conn.setWebhookFlexId(primaryFlex.id);
+                        changed = true;
+                    }
+                    if (conn.getWebhookUrl() == null && primaryFlex.url != null) {
+                        conn.setWebhookUrl(primaryFlex.url);
+                        changed = true;
+                    }
+                } else if (flexAcc != null && conn.getWebhookFlexId() != null) {
+                    conn.setWebhookFlexId(null);
+                    changed = true;
+                }
+
+                if (changed) {
+                    return monzoConnectionRepository.save(conn).thenApply(saved -> details);
+                }
+                return CompletableFuture.completedFuture(details);
+            });
+        }).exceptionally(err -> {
+            System.err.println("Failed to discover live Monzo webhooks: " + err.getMessage());
+            return Collections.emptyList();
+        });
+    }
+
     public CompletionStage<WebhookSyncResult> syncWebhooks(MonzoConnection conn, String baseUrl) {
         if (conn == null || conn.getAccessToken() == null || conn.getAccessToken().trim().isEmpty()) {
             return CompletableFuture.completedFuture(
@@ -269,10 +370,20 @@ public class MonzoBankSyncProvider implements BankSyncService {
 
         String trimmedBaseUrl = baseUrl != null ? baseUrl.replaceAll("/+$", "") : "";
         if (!trimmedBaseUrl.toLowerCase().startsWith("https://")) {
-            return CompletableFuture.completedFuture(
-                    new WebhookSyncResult(false,
-                            "Monzo requires a public HTTPS webhook URL (starting with https://). Detected: '" + trimmedBaseUrl + "'. If running locally, please supply an ngrok or Cloudflare tunnel URL.",
-                            null, null, Collections.emptyList()));
+            return discoverLiveWebhooks(conn).thenApply(existingList -> {
+                if (!existingList.isEmpty()) {
+                    List<String> labels = new ArrayList<>();
+                    for (LiveWebhookDetail d : existingList) {
+                        labels.add(d.accountLabel + " (" + d.webhookId + " -> " + d.url + ")");
+                    }
+                    return new WebhookSyncResult(true,
+                            "Discovered " + existingList.size() + " active webhook(s) already registered on Monzo! Linked successfully: " + String.join(", ", labels),
+                            conn.getWebhookDebitId(), conn.getWebhookFlexId(), labels);
+                }
+                return new WebhookSyncResult(false,
+                        "Monzo requires a public HTTPS webhook URL (starting with https://). Detected: '" + trimmedBaseUrl + "'. No existing webhooks were found on Monzo. If running locally, please supply an ngrok or Cloudflare tunnel URL.",
+                        null, null, Collections.emptyList());
+            });
         }
 
         String webhookCallbackUrl = trimmedBaseUrl + "/api/monzo/webhook?userId=" +

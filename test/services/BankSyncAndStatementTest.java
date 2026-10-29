@@ -938,4 +938,68 @@ public class BankSyncAndStatementTest {
         assertThat(updated.getWebhookFlexId()).isEqualTo("wh_new_flex");
         assertThat(updated.getWebhookUrl()).isEqualTo(targetUrl);
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testDiscoverLiveWebhooksAdoptsExternalWebhooksFromMonzo() throws Exception {
+        com.typesafe.config.Config config = com.typesafe.config.ConfigFactory.empty();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+        InMemoryMonzoConnectionRepository connRepo = new InMemoryMonzoConnectionRepository();
+        StatementParserService parser = new StatementParserService(txRepo);
+
+        java.net.http.HttpClient mockClient = org.mockito.Mockito.mock(java.net.http.HttpClient.class);
+        MonzoBankSyncProvider provider = new MonzoBankSyncProvider(config, txRepo, connRepo, parser, null, null, mockClient);
+
+        // Connection exists locally without webhooks
+        models.MonzoConnection conn = new models.MonzoConnection("user_ext", "tok_ext", null, "m_user", 1999999999L);
+        connRepo.save(conn).toCompletableFuture().join();
+        assertThat(conn.hasActiveWebhooks()).isFalse();
+
+        // Monzo API returns debit & flex accounts
+        String accountsJson = "{\"accounts\":[" +
+                "{\"id\":\"acc_retail_ext\",\"type\":\"uk_retail\",\"description\":\"Current\",\"closed\":false}," +
+                "{\"id\":\"acc_flex_ext\",\"type\":\"uk_monzo_flex\",\"description\":\"Flex\",\"closed\":false}" +
+                "]}";
+        java.net.http.HttpResponse<String> accountsResp = org.mockito.Mockito.mock(java.net.http.HttpResponse.class);
+        org.mockito.Mockito.when(accountsResp.statusCode()).thenReturn(200);
+        org.mockito.Mockito.when(accountsResp.body()).thenReturn(accountsJson);
+
+        // Monzo API returns webhooks registered externally on portal
+        String debitWhJson = "{\"webhooks\":[{\"id\":\"wh_portal_debit\",\"account_id\":\"acc_retail_ext\",\"url\":\"https://tunnel.ngrok.app/api/monzo/webhook?userId=user_ext\"}]}";
+        java.net.http.HttpResponse<String> debitResp = org.mockito.Mockito.mock(java.net.http.HttpResponse.class);
+        org.mockito.Mockito.when(debitResp.statusCode()).thenReturn(200);
+        org.mockito.Mockito.when(debitResp.body()).thenReturn(debitWhJson);
+
+        String flexWhJson = "{\"webhooks\":[{\"id\":\"wh_portal_flex\",\"account_id\":\"acc_flex_ext\",\"url\":\"https://tunnel.ngrok.app/api/monzo/webhook?userId=user_ext\"}]}";
+        java.net.http.HttpResponse<String> flexResp = org.mockito.Mockito.mock(java.net.http.HttpResponse.class);
+        org.mockito.Mockito.when(flexResp.statusCode()).thenReturn(200);
+        org.mockito.Mockito.when(flexResp.body()).thenReturn(flexWhJson);
+
+        org.mockito.Mockito.when(mockClient.sendAsync(org.mockito.ArgumentMatchers.any(java.net.http.HttpRequest.class), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> {
+                    java.net.http.HttpRequest req = invocation.getArgument(0);
+                    String uri = req.uri().toString();
+                    if (uri.endsWith("/accounts")) {
+                        return CompletableFuture.completedFuture(accountsResp);
+                    } else if (uri.contains("/webhooks?account_id=acc_retail_ext")) {
+                        return CompletableFuture.completedFuture(debitResp);
+                    } else if (uri.contains("/webhooks?account_id=acc_flex_ext")) {
+                        return CompletableFuture.completedFuture(flexResp);
+                    }
+                    return CompletableFuture.completedFuture(accountsResp);
+                });
+
+        List<MonzoBankSyncProvider.LiveWebhookDetail> details = provider.discoverLiveWebhooks(conn).toCompletableFuture().join();
+        assertThat(details).hasSize(2);
+        assertThat(details.get(0).webhookId).isEqualTo("wh_portal_debit");
+        assertThat(details.get(1).webhookId).isEqualTo("wh_portal_flex");
+
+        // Verify local MonzoConnection was updated and persisted
+        models.MonzoConnection updated = connRepo.findByUserId("user_ext").toCompletableFuture().join().orElse(null);
+        assertThat(updated).isNotNull();
+        assertThat(updated.hasActiveWebhooks()).isTrue();
+        assertThat(updated.getWebhookDebitId()).isEqualTo("wh_portal_debit");
+        assertThat(updated.getWebhookFlexId()).isEqualTo("wh_portal_flex");
+        assertThat(updated.getWebhookUrl()).isEqualTo("https://tunnel.ngrok.app/api/monzo/webhook?userId=user_ext");
+    }
 }

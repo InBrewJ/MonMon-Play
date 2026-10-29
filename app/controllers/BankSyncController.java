@@ -125,24 +125,32 @@ public class BankSyncController extends Controller {
                     boolean isMonzoConnected = monzoConnOpt.isPresent();
                     String providerName = isMonzoConnected ? "MONZO" : "MOCK";
 
-                    CompletionStage<List<PendingStatement>> pendingStage = (pendingStatementRepository != null)
-                            ? pendingStatementRepository.listPending(sup.getUserId())
-                            : CompletableFuture.completedFuture(Collections.emptyList());
+                    CompletionStage<MonzoConnection> connStage = isMonzoConnected
+                            ? monzoBankSyncProvider.discoverLiveWebhooks(monzoConnOpt.get())
+                                    .thenApply(details -> monzoConnOpt.get())
+                                    .exceptionally(err -> monzoConnOpt.get())
+                            : CompletableFuture.completedFuture(null);
 
-                    return pendingStage.thenApplyAsync(pendingStatements -> {
-                        return ok(views.html.bankSync.render(
-                                asScala(accounts),
-                                asScala(txList),
-                                monzoConnOpt.orElse(null),
-                                providerName,
-                                isMonzoConnected,
-                                accounts.size(),
-                                txList.size(),
-                                sup,
-                                asScala(pendingStatements),
-                                request,
-                                messagesApi.preferred(request)
-                        ));
+                    return connStage.thenComposeAsync(freshConn -> {
+                        CompletionStage<List<PendingStatement>> pendingStage = (pendingStatementRepository != null)
+                                ? pendingStatementRepository.listPending(sup.getUserId())
+                                : CompletableFuture.completedFuture(Collections.emptyList());
+
+                        return pendingStage.thenApplyAsync(pendingStatements -> {
+                            return ok(views.html.bankSync.render(
+                                    asScala(accounts),
+                                    asScala(txList),
+                                    freshConn,
+                                    providerName,
+                                    isMonzoConnected,
+                                    accounts.size(),
+                                    txList.size(),
+                                    sup,
+                                    asScala(pendingStatements),
+                                    request,
+                                    messagesApi.preferred(request)
+                            ));
+                        }, ec.current());
                     }, ec.current());
                 }, ec.current());
             }, ec.current());
@@ -1154,13 +1162,6 @@ public class BankSyncController extends Controller {
                 baseUrl = scheme + "://" + hostHeader;
             }
 
-            if (!baseUrl.toLowerCase().startsWith("https://")) {
-                return CompletableFuture.completedFuture(
-                        redirect(routes.BankSyncController.index())
-                                .flashing("error", "Monzo requires a public HTTPS callback URL. Detected: '" + baseUrl + "'. Please provide a public HTTPS tunnel URL (e.g. from ngrok: https://xxxx.ngrok-free.app).")
-                );
-            }
-
             return monzoBankSyncProvider.syncWebhooks(conn, baseUrl).thenApplyAsync(syncResult -> {
                 if (syncResult.isSuccess()) {
                     return redirect(routes.BankSyncController.index()).flashing("info", syncResult.getMessage());
@@ -1170,6 +1171,49 @@ public class BankSyncController extends Controller {
             }, ec.current());
         }, ec.current()).exceptionally(err -> redirect(routes.BankSyncController.index())
                 .flashing("error", "Failed to sync webhooks with Monzo: " + err.getMessage()));
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> getWebhookStatus(final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(connOpt -> {
+            if (!connOpt.isPresent()) {
+                com.fasterxml.jackson.databind.node.ObjectNode res = play.libs.Json.newObject();
+                res.put("connected", false);
+                res.put("hasActiveWebhooks", false);
+                return CompletableFuture.completedFuture(ok(res));
+            }
+            MonzoConnection conn = connOpt.get();
+            return monzoBankSyncProvider.discoverLiveWebhooks(conn).thenApplyAsync(details -> {
+                com.fasterxml.jackson.databind.node.ObjectNode res = play.libs.Json.newObject();
+                res.put("connected", true);
+                res.put("hasActiveWebhooks", conn.hasActiveWebhooks() || !details.isEmpty());
+                res.put("webhookUrl", conn.getWebhookUrl());
+                res.put("webhookDebitId", conn.getWebhookDebitId());
+                res.put("webhookFlexId", conn.getWebhookFlexId());
+                if (conn.getLastReceivedAt() != null) {
+                    res.put("lastReceivedAt", conn.getLastReceivedAt());
+                    res.put("lastReceivedText", "Last received from Monzo " + helpers.TimeHelpers.timeAgo(conn.getLastReceivedAt()));
+                } else {
+                    res.putNull("lastReceivedAt");
+                    res.put("lastReceivedText", "Awaiting first transaction event");
+                }
+                com.fasterxml.jackson.databind.node.ArrayNode arr = res.putArray("webhooks");
+                for (MonzoBankSyncProvider.LiveWebhookDetail d : details) {
+                    com.fasterxml.jackson.databind.node.ObjectNode item = arr.addObject();
+                    item.put("accountId", d.accountId);
+                    item.put("accountLabel", d.accountLabel);
+                    item.put("webhookId", d.webhookId);
+                    item.put("url", d.url);
+                }
+                return ok(res);
+            }, ec.current());
+        }, ec.current()).exceptionally(err -> {
+            com.fasterxml.jackson.databind.node.ObjectNode res = play.libs.Json.newObject();
+            res.put("connected", false);
+            res.put("error", err.getMessage());
+            return ok(res);
+        });
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
