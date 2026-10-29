@@ -46,9 +46,28 @@
         </div>
     </div>
 
+    <!-- Mobile Navigation Pills for Swipable Cards -->
+    <div class="deck-nav" id="savings-plan-nav" role="tablist" aria-label="Savings Plan Sections">
+        <button type="button" class="deck-nav-pill active" data-target="savings-card-target" role="tab" aria-selected="true">
+            <i class="fas fa-bullseye"></i> Target &amp; Pot
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="sliced-items-card" role="tab" aria-selected="false">
+            <i class="fas fa-list-ul"></i> Slices (@if(activePlan != null){@activePlan.getItems().size()}else{0})
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="edit-form" role="tab" aria-selected="false">
+            <i class="fas fa-plus-circle"></i> @{if(editing) "Amend" else "Add Item"}
+        </button>
+        @if(!previousPlans.isEmpty()) {
+            <button type="button" class="deck-nav-pill" data-target="savings-card-history" role="tab" aria-selected="false">
+                <i class="fas fa-archive"></i> Archive (@previousPlans.size())
+            </button>
+        }
+    </div>
+
+    <div class="deck-layout-grid">
     @if(activePlan != null) {
         <!-- Active Savings Plan Summary & Slider -->
-        <div class="w3-card w3-padding w3-margin-bottom" style="border-radius: 8px;">
+        <div class="w3-card w3-padding w3-margin-bottom deck-card" id="savings-card-target" style="border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
                 <div>
                     <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-weight: 700; margin-right: 6px;">ACTIVE PLAN</span>
@@ -180,7 +199,7 @@
         </div>
 
         <!-- Table of Sliced Items -->
-        <div class="w3-card w3-padding w3-margin-bottom" id="sliced-items-card" style="border-radius: 8px;">
+        <div class="w3-card w3-padding w3-margin-bottom deck-card" id="sliced-items-card" style="border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
                 <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">
                     <i class="fas fa-list-ul" style="color: var(--primary); margin-right: 6px;"></i>
@@ -432,7 +451,7 @@
         </div>
 
         <!-- Add / Amend Item Form Card -->
-        <div class="w3-card w3-padding w3-margin-bottom @if(editing){editing-mode}" id="edit-form" style="border-radius: 8px;">
+        <div class="w3-card w3-padding w3-margin-bottom deck-card @if(editing){editing-mode}" id="edit-form" style="border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
                 <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">
                     <i class="fas fa-@{if(editing) "pen" else "plus-circle"}" style="color: var(--primary); margin-right: 6px;"></i>
@@ -627,7 +646,7 @@
 
     <!-- Previous / Archived Plans -->
     @if(!previousPlans.isEmpty()) {
-        <div class="w3-card w3-padding w3-margin-top" style="border-radius: 8px;">
+        <div class="w3-card w3-padding w3-margin-top deck-card" id="savings-card-history" style="border-radius: 8px;">
             <h4 style="margin: 0 0 0.75rem; font-size: 1rem; font-weight: 700; color: var(--text-muted);">
                 <i class="fas fa-archive" style="margin-right: 6px;"></i> Archived Savings Plans (@previousPlans.size())
             </h4>
@@ -657,6 +676,7 @@
             </div>
         </div>
     }
+    </div>
 
 </div>
 

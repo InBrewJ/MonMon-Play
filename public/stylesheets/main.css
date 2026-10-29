@@ -478,26 +478,29 @@ input[type="text"],
 input[type="number"],
 input[type="email"],
 input[type="password"],
+input[type="date"],
 select,
-textarea {
+textarea,
+.w3-input,
+.w3-select {
   width: 100%;
-  max-width: 380px;
+  max-width: 100%;
   padding: 0.55rem 0.85rem;
   margin: 0.35rem 0 0.85rem 0;
   display: inline-block;
-  border: 1px solid var(--input-border);
+  border: 1px solid var(--input-border) !important;
   border-radius: var(--border-radius-sm);
-  background-color: var(--input-bg);
+  background-color: var(--input-bg) !important;
   font-family: inherit;
   font-size: 0.95rem;
-  color: var(--text-main);
+  color: var(--text-main) !important;
   box-sizing: border-box;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.2s ease;
 }
 
-input:focus, select:focus, textarea:focus {
+input:focus, select:focus, textarea:focus, .w3-input:focus, .w3-select:focus {
   outline: none;
-  border-color: var(--primary);
+  border-color: var(--primary) !important;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
 }
 
@@ -1570,10 +1573,11 @@ body.modal-scroll-locked {
 }
 
 /* ==========================================================================
-   SPOG Deck Layout, Mobile Swipeable Cards & Accordions
+   Deck Layout, Mobile Swipeable Cards & Accordions (SPOG, Bank Sync, Savings Plan, Net Worth)
    ========================================================================== */
 
 /* Top Deck Navigation Pills (Mobile only, sticky) */
+.deck-nav,
 .spog-deck-nav {
   display: none;
   position: sticky;
@@ -1588,10 +1592,12 @@ body.modal-scroll-locked {
   border-bottom: 1px solid var(--border-color);
 }
 
+.deck-nav::-webkit-scrollbar,
 .spog-deck-nav::-webkit-scrollbar {
   display: none;
 }
 
+.deck-nav-pill,
 .spog-nav-pill {
   flex: 1 0 auto;
   text-align: center;
@@ -1613,6 +1619,8 @@ body.modal-scroll-locked {
   opacity: 0.75;
 }
 
+.deck-nav-pill:hover,
+.deck-nav-pill:focus,
 .spog-nav-pill:hover,
 .spog-nav-pill:focus {
   opacity: 1;
@@ -1620,6 +1628,7 @@ body.modal-scroll-locked {
   border-color: var(--primary-text);
 }
 
+.deck-nav-pill.active,
 .spog-nav-pill.active {
   opacity: 1;
   background: var(--primary);
@@ -1630,10 +1639,12 @@ body.modal-scroll-locked {
   transform: translateY(-1px) scale(1.02);
 }
 
+.deck-nav-pill.active i,
 .spog-nav-pill.active i {
   color: #ffffff;
 }
 
+.deck-nav-pill.active::after,
 .spog-nav-pill.active::after {
   content: '';
   display: inline-block;
@@ -1717,10 +1728,12 @@ body.modal-scroll-locked {
 
 /* Desktop and Mobile responsive deck container */
 @media (max-width: 768px) {
+  .deck-nav,
   .spog-deck-nav {
     display: flex;
   }
 
+  .deck-layout-grid,
   .spog-layout-grid {
     display: flex !important;
     overflow-x: auto;
@@ -1729,6 +1742,8 @@ body.modal-scroll-locked {
     scroll-behavior: smooth;
     gap: 16px;
     padding-bottom: 1.5rem;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .spog-column-left,
@@ -1736,6 +1751,7 @@ body.modal-scroll-locked {
     display: contents !important;
   }
 
+  .deck-card,
   .spog-deck-card {
     min-width: 100% !important;
     max-width: 100% !important;
@@ -1751,9 +1767,47 @@ body.modal-scroll-locked {
   #spog-card-spent { order: 2; }
   #spog-card-savings { order: 3; }
   #spog-card-accounts { order: 4; }
+
+  /* Mobile button & circle layout fixes - prevents overflow and clips */
+  .w3-button,
+  button,
+  .btn,
+  .btn-action {
+    white-space: normal !important;
+    word-break: break-word;
+    box-sizing: border-box;
+    line-height: 1.35;
+    max-width: 100%;
+  }
+
+  .btn-mobile-full {
+    width: 100% !important;
+    display: block !important;
+    margin-top: 8px !important;
+    text-align: center !important;
+    white-space: normal !important;
+    padding: 10px 14px !important;
+  }
+
+  .circle-btn,
+  .icon-circle,
+  .pot-legend-dot {
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+  }
 }
 
 @media (min-width: 769px) {
+  .deck-layout-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .deck-card {
+    margin-bottom: 0;
+  }
+
   .spog-layout-grid {
     display: flex;
     gap: 1.5rem;

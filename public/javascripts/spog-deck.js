@@ -1,14 +1,12 @@
-// MonMon SPOG Mobile Deck Navigation & Swipe Synchronization
+// MonMon Mobile Deck Navigation & Swipe Synchronization (SPOG, Bank Sync, Savings Plan, Net Worth)
 (function() {
     'use strict';
 
-    function initSpogDeck() {
-        var nav = document.getElementById('spog-nav');
-        var grid = document.querySelector('.spog-layout-grid');
+    function setupSingleDeck(nav, grid) {
         if (!nav || !grid) return;
 
-        var pills = Array.prototype.slice.call(nav.querySelectorAll('.spog-nav-pill'));
-        var cards = Array.prototype.slice.call(grid.querySelectorAll('.spog-deck-card'));
+        var pills = Array.prototype.slice.call(nav.querySelectorAll('.spog-nav-pill, .deck-nav-pill'));
+        var cards = Array.prototype.slice.call(grid.querySelectorAll('.spog-deck-card, .deck-card'));
         if (cards.length === 0 || pills.length === 0) return;
 
         var currentActiveId = null;
@@ -112,9 +110,29 @@
         }
     }
 
+    function initAllDecks() {
+        // 1. SPOG Deck
+        var spogNav = document.getElementById('spog-nav');
+        var spogGrid = document.querySelector('.spog-layout-grid');
+        if (spogNav && spogGrid) {
+            setupSingleDeck(spogNav, spogGrid);
+        }
+
+        // 2. Generic Decks (.deck-nav + .deck-layout-grid)
+        var allNavs = document.querySelectorAll('.deck-nav');
+        allNavs.forEach(function(nav) {
+            if (nav === spogNav) return;
+            var container = nav.closest('.w3-content') || nav.closest('.w3-container') || nav.parentElement;
+            var grid = container ? container.querySelector('.deck-layout-grid') : document.querySelector('.deck-layout-grid');
+            if (grid) {
+                setupSingleDeck(nav, grid);
+            }
+        });
+    }
+
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initSpogDeck);
+        document.addEventListener('DOMContentLoaded', initAllDecks);
     } else {
-        initSpogDeck();
+        initAllDecks();
     }
 })();

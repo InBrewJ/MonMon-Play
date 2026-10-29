@@ -11,26 +11,26 @@
 
 @main("MonMon - Accurate Mode & Monzo Bank Sync") {
 
-<div class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
+<div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
     @partials.navbar()
 
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
         <div>
-            <h1 style="margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-primary, #1e293b);">
-                <i class="fas fa-satellite-dish" style="color: #6366f1; margin-right: 8px;"></i>
+            <h1 style="margin: 0; font-size: 1.75rem; font-weight: 800; color: var(--text-main);">
+                <i class="fas fa-satellite-dish" style="color: var(--primary); margin-right: 8px;"></i>
                 Accurate Mode &amp; Monzo Sync
             </h1>
-            <p style="margin: 4px 0 0 0; color: var(--text-secondary, #64748b); font-size: 0.95rem;">
+            <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.92rem;">
                 Dual-ledger architecture: Monzo API (Debit &amp; Flex Credit Card) with Available-Based Ledger (ABL) fallback.
             </p>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             @if(isMonzoConnected) {
-                <span class="badge" style="background: #dcfce7; color: #15803d; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
+                <span class="badge" style="background: var(--success-light); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); padding: 6px 12px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
                     <i class="fas fa-check-circle"></i> Monzo Connected (Debit + Flex)
                 </span>
             } else {
-                <span class="badge" style="background: #fef3c7; color: #b45309; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem;">
+                <span class="badge" style="background: var(--warning-light); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.3); padding: 6px 12px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
                     <i class="fas fa-exclamation-circle"></i> Monzo Not Connected
                 </span>
             }
@@ -38,409 +38,434 @@
     </div>
 
     @if(request.flash().get("info").isPresent) {
-        <div class="w3-panel w3-blue w3-round" style="padding: 12px 16px; margin-bottom: 20px;">
+        <div class="w3-panel w3-round" style="background: var(--primary-light); color: var(--primary-text); border: 1px solid var(--primary); padding: 12px 16px; margin-bottom: 20px;">
             <i class="fas fa-info-circle"></i> @request.flash().get("info").get()
         </div>
     }
     @if(request.flash().get("error").isPresent) {
-        <div class="w3-panel w3-red w3-round" style="padding: 12px 16px; margin-bottom: 20px;">
+        <div class="w3-panel w3-round" style="background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger); padding: 12px 16px; margin-bottom: 20px;">
             <i class="fas fa-exclamation-triangle"></i> @request.flash().get("error").get()
         </div>
     }
 
-    <!-- Monzo Direct Connection Card -->
-    <div style="background: white; border: 1px solid #fed7aa; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(249,115,22,0.08); margin-bottom: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-            <div>
-                <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #9a3412;">
-                    <i class="fas fa-bolt" style="color: #ea580c; margin-right: 6px;"></i>
-                    Monzo Developer API (Debit Current Accounts &amp; Monzo Flex Credit Cards)
-                </h3>
-                <p style="margin: 4px 0 0 0; color: #7c2d12; font-size: 0.9rem;">
-                    100% free direct API. Connect your personal Monzo account to sync all transactions for your <strong>Debit account</strong> and <strong>Monzo Flex credit card</strong>.
-                </p>
-            </div>
-            @if(isMonzoConnected) {
-                <form action="/bank/monzo/disconnect" method="POST" style="margin: 0;" onsubmit="return confirm('Disconnect Monzo integration?');">
-                    @helper.CSRF.formField
-                    <button type="submit" class="w3-button w3-small w3-pale-red w3-round" style="font-weight: 600;">
-                        <i class="fas fa-unlink"></i> Disconnect Monzo
-                    </button>
-                </form>
+    <!-- Mobile Navigation Pills for Swipable Cards -->
+    <div class="deck-nav" id="bank-sync-nav" role="tablist" aria-label="Bank Sync Sections">
+        <button type="button" class="deck-nav-pill active" data-target="card-bank-statement" role="tab" aria-selected="true">
+            <i class="fas fa-file-invoice-dollar"></i> Statements @if(!pendingStatements.isEmpty){<span class="badge" style="background: var(--danger); color: white; padding: 1px 6px; border-radius: 9999px; font-size: 0.72rem; margin-left: 2px;">@pendingStatements.size()</span>}
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-bank-monzo" role="tab" aria-selected="false">
+            <i class="fas fa-bolt"></i> Monzo API
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-bank-matrix" role="tab" aria-selected="false">
+            <i class="fas fa-balance-scale"></i> Matrix
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-bank-accounts" role="tab" aria-selected="false">
+            <i class="fas fa-university"></i> Accounts (@accounts.size())
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-bank-txs" role="tab" aria-selected="false">
+            <i class="fas fa-list"></i> Transactions (@recentTransactions.size())
+        </button>
+    </div>
+
+    <div class="deck-layout-grid">
+        <!-- CARD 1: Statements & LegMon OCR Pipeline -->
+        <div class="deck-card w3-card w3-round" id="card-bank-statement" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px;">
+            <!-- Pending Statement Matching Action Card (if any pending statement extracted by LegMon) -->
+            @if(!pendingStatements.isEmpty) {
+                @for(stmt <- pendingStatements) {
+                    <div data-has-pending-statement="true" style="background: var(--card-bg-subtle); border: 2px solid var(--warning); border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.15);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <div style="display: inline-flex; align-items: center; gap: 6px; background: var(--warning-light); color: var(--warning); padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.78rem; text-transform: uppercase; border: 1px solid rgba(251, 191, 36, 0.4);">
+                                    <i class="fas fa-file-invoice-dollar"></i> Statement Processed — Action Required
+                                </div>
+                                <h3 style="margin: 8px 0 4px 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">
+                                    Extracted Bank: <span style="color: var(--warning); text-decoration: underline;">@stmt.getBankName()</span>
+                                </h3>
+                                <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">
+                                    Period: <strong style="color: var(--text-main);">@stmt.getStartDate()</strong> to <strong style="color: var(--text-main);">@stmt.getEndDate()</strong> &bull;
+                                    Transactions: <strong style="color: var(--text-main);">@stmt.getTransactionCount()</strong> &bull;
+                                    Closing Balance: <strong style="color: var(--text-main);">£@String.format("%.2f", stmt.getClosingBalance())</strong>
+                                    @if(stmt.getOpeningBalance() != null) {
+                                        &bull; Opening Balance: <strong style="color: var(--text-main);">£@String.format("%.2f", stmt.getOpeningBalance())</strong>
+                                    }
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 14px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px;">
+                            <form action="/bank/statement/@stmt.getId()/confirm" method="POST" style="margin: 0;">
+                                @helper.CSRF.formField
+                                <label style="display: block; font-weight: 700; font-size: 0.88rem; color: var(--text-main); margin-bottom: 6px;">
+                                    Match to MonMon Account:
+                                </label>
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch;">
+                                    <select name="accountId" class="w3-select w3-border w3-round" style="flex: 1 1 240px; min-width: 220px; background: var(--input-bg); color: var(--text-main); border-color: var(--input-border); padding: 10px 12px; font-size: 0.9rem;" required>
+                                        <option value="">-- Choose Account to Match --</option>
+                                        @for(acc <- accounts) {
+                                            <option value="@acc.getId()" @if(stmt.getMatchedAccountId() != null && stmt.getMatchedAccountId() == acc.getId() || acc.getName().toLowerCase().contains(stmt.getBankName().toLowerCase()) || stmt.getBankName().toLowerCase().contains(acc.getName().toLowerCase())) { selected }>
+                                                @acc.getName() (@acc.getType() - @acc.getLedgerMode())
+                                            </option>
+                                        }
+                                    </select>
+
+                                    <button type="submit" class="w3-button w3-round btn-mobile-full"
+                                            style="background: var(--danger); color: #ffffff; font-weight: 700; padding: 10px 18px; line-height: 1.35; white-space: normal; text-align: center; border: 1px solid rgba(255,255,255,0.2);"
+                                            onclick="return confirm('⚠️ DANGER: This will delete any existing balance entries for this account between @stmt.getStartDate() and @stmt.getEndDate() and dangerously overwrite them with the statement closing balance of £@stmt.getClosingBalance(). It will also import @stmt.getTransactionCount() transactions.\n\nProceed?');">
+                                        <i class="fas fa-exclamation-triangle" style="margin-right: 4px;"></i> Dangerously Overwrite ABL Balances &amp; Import
+                                    </button>
+                                </div>
+                            </form>
+
+                            <div style="margin-top: 10px; text-align: right;">
+                                <form action="/bank/statement/@stmt.getId()/discard" method="POST" style="display: inline;" onsubmit="return confirm('Discard this extracted statement?');">
+                                    @helper.CSRF.formField
+                                    <button type="submit" class="w3-button w3-small" style="background: none; border: none; padding: 4px 8px; color: var(--text-muted); cursor: pointer; text-decoration: underline;">
+                                        <i class="fas fa-trash-alt"></i> Discard Statement
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                }
             }
-        </div>
 
-        @if(!isMonzoConnected) {
-            <div style="margin-top: 16px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 8px; padding: 14px 16px;">
-                <p style="margin: 0 0 10px 0; font-size: 0.85rem; color: #9a3412;">
-                    <strong>Quick Setup (Personal Access Token):</strong>
-                    <ol style="margin: 4px 0 0 0; padding-left: 20px; font-size: 0.85rem; color: #7c2d12; line-height: 1.6;">
-                        <li>Go to <a href="https://developers.monzo.com/" target="_blank" rel="noopener" style="color: #ea580c; font-weight: 600; text-decoration: underline;">developers.monzo.com</a> and sign in with your Monzo email.</li>
-                        <li>Click the magic link in your email and tap the notification prompt on your Monzo mobile app.</li>
-                        <li>Copy your <strong>Access Token</strong> (from the top-right menu or API Playground) and paste it below.</li>
-                    </ol>
-                </p>
-
-                <form action="/bank/monzo/token" method="POST" style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-                    @helper.CSRF.formField
-                    <input type="text" name="accessToken" class="w3-input w3-border w3-round" placeholder="eyJhbGciOiJFUzI1NiIs..." required style="flex: 1; min-width: 280px; font-family: monospace; font-size: 0.85rem;" />
-                    <button type="submit" class="w3-button w3-round" style="background: #ea580c; color: white; font-weight: 600;">
-                        <i class="fas fa-plug"></i> Connect Monzo
-                    </button>
-                </form>
-            </div>
-        } else {
-            <div style="margin-top: 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
-                    <span style="color: #166534; font-size: 0.95rem; font-weight: 700;">
-                        <i class="fas fa-satellite-dish" style="color: #16a34a; margin-right: 4px;"></i> Real-Time Push Stream Active
-                    </span>
-                    <span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
-                        @if(monzoConnection.getLastReceivedAt() != null) {
-                            <i class="fas fa-clock"></i> Last received from Monzo @helpers.TimeHelpers.timeAgo(monzoConnection.getLastReceivedAt())
-                        } else {
-                            <i class="fas fa-circle-notch fa-spin"></i> Awaiting first transaction event
-                        }
-                    </span>
-                </div>
-                <div style="color: #475569; font-size: 0.85rem; line-height: 1.6;">
-                    <div><strong>Connected Accounts:</strong> Monzo Current (`uk_retail`) &amp; Monzo Flex Credit Card (`uk_monzo_flex`)</div>
-                    @if(monzoConnection.getWebhookUrl() != null) {
-                        <div style="margin-top: 4px; font-family: monospace; font-size: 0.8rem; color: #64748b; word-break: break-all;">
-                            <strong>Webhook URL:</strong> @monzoConnection.getWebhookUrl()
-                        </div>
-                    }
-                    @if(monzoConnection.getWebhookDebitId() != null || monzoConnection.getWebhookFlexId() != null) {
-                        <div style="margin-top: 4px; font-size: 0.8rem; color: #64748b;">
-                            <strong>Active Webhooks:</strong>
-                            @if(monzoConnection.getWebhookDebitId() != null) { <span class="badge" style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-family: monospace;">Debit: @monzoConnection.getWebhookDebitId()</span> }
-                            @if(monzoConnection.getWebhookFlexId() != null) { <span class="badge" style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-family: monospace;">Flex: @monzoConnection.getWebhookFlexId()</span> }
-                        </div>
-                    }
-                </div>
-            </div>
-        }
-    </div>
-
-    <!-- Account Compatibility Matrix & Dual Ledger Architecture -->
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
-        <h3 style="margin: 0 0 8px 0; font-size: 1.05rem; font-weight: 600; color: #334155;">
-            <i class="fas fa-balance-scale" style="color: #6366f1;"></i> Account Compatibility Matrix &amp; Dual-Ledger System
-        </h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 12px;">
-            <div style="background: white; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px 14px;">
-                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #ea580c;">
-                    <i class="fas fa-bolt"></i> Monzo API Supported (TBL Mode)
-                </h4>
-                <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 0.85rem; line-height: 1.5;">
-                    <li><strong>Monzo Current / Debit:</strong> Regular current accounts (`uk_retail`) and joint accounts.</li>
-                    <li><strong>Monzo Flex Credit Card:</strong> Virtual/physical installment credit line (`uk_monzo_flex`).</li>
-                    <li><strong>Monzo Savings Pots:</strong> Standard instant pots.</li>
-                </ul>
-            </div>
-            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 700; color: #475569;">
-                    <i class="fas fa-hand-paper"></i> Manual ABL Mode
-                </h4>
-                <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 0.85rem; line-height: 1.5;">
-                    <li><strong>External Banks (HSBC, Barclays, Amex):</strong> Tracked via balance snapshots.</li>
-                    <li><strong>Pensions:</strong> SIPP &amp; Workplace (Nest, Aviva). Tracked via balance snapshots.</li>
-                    <li><strong>Loans &amp; Mortgages:</strong> Tracked via balance amortization.</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-
-    <!-- Pending Statement Matching Action Card (if any pending statement extracted by LegMon) -->
-    @if(!pendingStatements.isEmpty) {
-        @for(stmt <- pendingStatements) {
-            <div data-has-pending-statement="true" style="background: #fffbeb; border: 2px solid #f59e0b; border-radius: 12px; padding: 22px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.12);">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+            <!-- LegMon Statement Sync Pipeline Form -->
+            <div id="statement-upload">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
                     <div>
-                        <div style="display: inline-flex; align-items: center; gap: 6px; background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.8rem; text-transform: uppercase;">
-                            <i class="fas fa-file-invoice-dollar"></i> Statement Processed — Action Required
-                        </div>
-                        <h3 style="margin: 8px 0 4px 0; font-size: 1.35rem; font-weight: 800; color: #78350f;">
-                            Extracted Bank: <span style="color: #b45309; text-decoration: underline;">@stmt.getBankName()</span>
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                            <i class="fas fa-file-pdf" style="color: var(--danger); margin-right: 6px;"></i>
+                            LegMon Statement Pipeline (PDF &rarr; OCR &rarr; Mistral &rarr; Monzo Webhook)
                         </h3>
-                        <p style="margin: 0; color: #92400e; font-size: 0.95rem;">
-                            Period: <strong>@stmt.getStartDate()</strong> to <strong>@stmt.getEndDate()</strong> &bull;
-                            Transactions: <strong>@stmt.getTransactionCount()</strong> &bull;
-                            Closing Balance: <strong>£@String.format("%.2f", stmt.getClosingBalance())</strong>
-                            @if(stmt.getOpeningBalance() != null) {
-                                &bull; Opening Balance: <strong>£@String.format("%.2f", stmt.getOpeningBalance())</strong>
-                            }
+                        <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.88rem;">
+                            Fills the public API gap for <strong>ABL accounts</strong>. Upload a bank statement PDF to extract bank name, balances, and transactions via fixed-cost OCR and Mistral AI.
                         </p>
                     </div>
-                </div>
-
-                <div style="margin-top: 16px; background: white; border: 1px solid #fde68a; border-radius: 8px; padding: 16px;">
-                    <form action="/bank/statement/@stmt.getId()/confirm" method="POST" style="margin: 0;">
-                        @helper.CSRF.formField
-                        <label style="display: block; font-weight: 700; font-size: 0.9rem; color: #374151; margin-bottom: 6px;">
-                            Match to MonMon Account:
-                        </label>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                            <select name="accountId" class="w3-select w3-border w3-round" style="flex: 1; min-width: 260px; padding: 8px 12px;" required>
-                                <option value="">-- Choose Account to Match --</option>
-                                @for(acc <- accounts) {
-                                    <option value="@acc.getId()" @if(stmt.getMatchedAccountId() != null && stmt.getMatchedAccountId() == acc.getId() || acc.getName().toLowerCase().contains(stmt.getBankName().toLowerCase()) || stmt.getBankName().toLowerCase().contains(acc.getName().toLowerCase())) { selected }>
-                                        @acc.getName() (@acc.getType() - @acc.getLedgerMode())
-                                    </option>
-                                }
-                            </select>
-
-                            <button type="submit" class="w3-button w3-round" style="background: #dc2626; color: white; font-weight: 700; padding: 8px 18px;"
-                                    onclick="return confirm('⚠️ DANGER: This will delete any existing balance entries for this account between @stmt.getStartDate() and @stmt.getEndDate() and dangerously overwrite them with the statement closing balance of £@stmt.getClosingBalance(). It will also import @stmt.getTransactionCount() transactions.\n\nProceed?');">
-                                <i class="fas fa-exclamation-triangle"></i> Dangerously Overwrite ABL Balances &amp; Import
-                            </button>
-                        </div>
-                    </form>
-
-                    <div style="margin-top: 12px; text-align: right;">
-                        <form action="/bank/statement/@stmt.getId()/discard" method="POST" style="display: inline;" onsubmit="return confirm('Discard this extracted statement?');">
-                            @helper.CSRF.formField
-                            <button type="submit" class="w3-button w3-small w3-text-grey w3-hover-text-red" style="background: none; border: none; padding: 0; text-decoration: underline; cursor: pointer;">
-                                <i class="fas fa-trash-alt"></i> Discard Statement
-                            </button>
-                        </form>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span id="legmon-status-badge" class="badge" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.8rem;">
+                            <i class="fas fa-circle-notch fa-spin"></i> Checking LegMon...
+                        </span>
+                        <button type="button" class="w3-button w3-small w3-round" onclick="toggleLegmonLogs()" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600;">
+                            <i class="fas fa-terminal"></i> Service Logs
+                        </button>
                     </div>
                 </div>
-            </div>
-        }
-    }
 
-    <!-- LegMon Statement Sync Pipeline Card -->
-    <div id="statement-upload" style="background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
-            <div>
-                <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #0f172a;">
-                    <i class="fas fa-file-pdf" style="color: #ef4444; margin-right: 6px;"></i>
-                    LegMon Statement Pipeline (PDF &rarr; OCR &rarr; Mistral &rarr; Monzo Webhook)
-                </h3>
-                <p style="margin: 4px 0 0 0; color: #475569; font-size: 0.9rem;">
-                    Fills the public API gap for <strong>ABL accounts</strong>. Upload a bank statement PDF to extract bank name, balances, and transactions via fixed-cost OCR and Mistral AI.
-                </p>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span id="legmon-status-badge" class="badge" style="background: #e2e8f0; color: #475569; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.8rem;">
-                    <i class="fas fa-circle-notch fa-spin"></i> Checking LegMon...
-                </span>
-                <button type="button" class="w3-button w3-small w3-round w3-light-grey" onclick="toggleLegmonLogs()" style="font-weight: 600;">
-                    <i class="fas fa-terminal"></i> Service Logs
-                </button>
+                <form action="/bank/statement/upload" method="POST" enctype="multipart/form-data" style="margin: 0; background: var(--card-bg-subtle); border: 2px dashed var(--border-color); border-radius: 8px; padding: 18px;">
+                    @helper.CSRF.formField
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; align-items: end;">
+                        <div>
+                            <label style="display: block; font-weight: 600; font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px;">
+                                Select Bank Statement PDF:
+                            </label>
+                            <input type="file" name="pdfFile" accept=".pdf,application/pdf" class="w3-input w3-border w3-round" style="background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);" required />
+                            <small style="color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 4px;">PDF is processed by LegMon and immediately deleted after text extraction.</small>
+                        </div>
+                        <div>
+                            <label style="display: block; font-weight: 600; font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px;">
+                                Target Account (Optional Pre-match):
+                            </label>
+                            <select name="accountId" class="w3-select w3-border w3-round" style="background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);">
+                                <option value="">-- Auto-detect / Match Later --</option>
+                                @for(acc <- accounts) {
+                                    <option value="@acc.getId()">@acc.getName() (@acc.getType() - @acc.getLedgerMode())</option>
+                                }
+                            </select>
+                            <small style="color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 4px;">You can confirm or change this account after extraction.</small>
+                        </div>
+                        <div>
+                            <button type="submit" class="w3-button w3-round w3-block" style="background: var(--primary); color: white; font-weight: 700; padding: 10px 16px;">
+                                <i class="fas fa-upload"></i> Upload &amp; Run LegMon
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- LegMon Live Logs Viewer Panel (Collapsible) -->
+                <div id="legmon-logs-container" style="display: none; margin-top: 14px; background: #070a12; border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; color: #f8fafc; font-family: monospace; font-size: 0.82rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 8px; margin-bottom: 10px;">
+                        <span style="font-weight: 700; color: var(--primary-text);"><i class="fas fa-terminal"></i> LegMon Service Logs &amp; Errors (Rotated)</span>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" onclick="fetchLegmonLogs()" class="w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); padding: 3px 10px;">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button type="button" onclick="toggleLegmonLogs()" class="w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); padding: 3px 10px;">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                    <div id="legmon-error-banner" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; color: var(--danger);">
+                        <strong><i class="fas fa-exclamation-triangle"></i> Flagged Error:</strong> <span id="legmon-error-text"></span>
+                    </div>
+                    <pre id="legmon-logs-output" style="margin: 0; max-height: 250px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: var(--text-muted); font-size: 0.8rem;"></pre>
+                </div>
             </div>
         </div>
 
-        <form action="/bank/statement/upload" method="POST" enctype="multipart/form-data" style="margin: 0; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px;">
-            @helper.CSRF.formField
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: end;">
+        <!-- CARD 2: Monzo Direct Connection & Real-Time Stream -->
+        <div class="deck-card w3-card w3-round" id="card-bank-monzo" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
                 <div>
-                    <label style="display: block; font-weight: 600; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">
-                        Select Bank Statement PDF:
-                    </label>
-                    <input type="file" name="pdfFile" accept=".pdf,application/pdf" class="w3-input w3-border w3-round" style="background: white;" required />
-                    <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">PDF is processed by LegMon and immediately deleted after text extraction.</small>
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                        <i class="fas fa-bolt" style="color: #ea580c; margin-right: 6px;"></i>
+                        Monzo Developer API (Debit &amp; Monzo Flex Credit Cards)
+                    </h3>
+                    <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.88rem;">
+                        100% free direct API. Connect your personal Monzo account to sync all transactions for your <strong>Debit account</strong> and <strong>Monzo Flex credit card</strong>.
+                    </p>
                 </div>
-                <div>
-                    <label style="display: block; font-weight: 600; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">
-                        Target Account (Optional Pre-match):
-                    </label>
-                    <select name="accountId" class="w3-select w3-border w3-round" style="background: white;">
-                        <option value="">-- Auto-detect / Match Later --</option>
-                        @for(acc <- accounts) {
-                            <option value="@acc.getId()">@acc.getName() (@acc.getType() - @acc.getLedgerMode())</option>
+                @if(isMonzoConnected) {
+                    <form action="/bank/monzo/disconnect" method="POST" style="margin: 0;" onsubmit="return confirm('Disconnect Monzo integration?');">
+                        @helper.CSRF.formField
+                        <button type="submit" class="w3-button w3-small w3-round" style="background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger); font-weight: 600;">
+                            <i class="fas fa-unlink"></i> Disconnect Monzo
+                        </button>
+                    </form>
+                }
+            </div>
+
+            @if(!isMonzoConnected) {
+                <div style="margin-top: 14px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px;">
+                    <p style="margin: 0 0 10px 0; font-size: 0.85rem; color: var(--text-main);">
+                        <strong>Quick Setup (Personal Access Token):</strong>
+                        <ol style="margin: 4px 0 0 0; padding-left: 20px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+                            <li>Go to <a href="https://developers.monzo.com/" target="_blank" rel="noopener" style="color: var(--primary); font-weight: 600; text-decoration: underline;">developers.monzo.com</a> and sign in with your Monzo email.</li>
+                            <li>Click the magic link in your email and tap the notification prompt on your Monzo mobile app.</li>
+                            <li>Copy your <strong>Access Token</strong> (from the top-right menu or API Playground) and paste it below.</li>
+                        </ol>
+                    </p>
+
+                    <form action="/bank/monzo/token" method="POST" style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        @helper.CSRF.formField
+                        <input type="text" name="accessToken" class="w3-input w3-border w3-round" placeholder="eyJhbGciOiJFUzI1NiIs..." required style="flex: 1 1 260px; min-width: 220px; font-family: monospace; font-size: 0.85rem; background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);" />
+                        <button type="submit" class="w3-button w3-round btn-mobile-full" style="background: #ea580c; color: white; font-weight: 700; padding: 10px 18px;">
+                            <i class="fas fa-plug"></i> Connect Monzo
+                        </button>
+                    </form>
+                </div>
+            } else {
+                <div style="margin-top: 14px; background: var(--card-bg-subtle); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 14px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: var(--success); font-size: 0.95rem; font-weight: 700;">
+                            <i class="fas fa-satellite-dish" style="color: var(--success); margin-right: 4px;"></i> Real-Time Push Stream Active
+                        </span>
+                        <span style="background: var(--success-light); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
+                            @if(monzoConnection.getLastReceivedAt() != null) {
+                                <i class="fas fa-clock"></i> Last received from Monzo @helpers.TimeHelpers.timeAgo(monzoConnection.getLastReceivedAt())
+                            } else {
+                                <i class="fas fa-circle-notch fa-spin"></i> Awaiting first transaction event
+                            }
+                        </span>
+                    </div>
+                    <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6;">
+                        <div><strong style="color: var(--text-main);">Connected Accounts:</strong> Monzo Current (`uk_retail`) &amp; Monzo Flex Credit Card (`uk_monzo_flex`)</div>
+                        @if(monzoConnection.getWebhookUrl() != null) {
+                            <div style="margin-top: 4px; font-family: monospace; font-size: 0.8rem; color: var(--text-muted); word-break: break-all;">
+                                <strong>Webhook URL:</strong> @monzoConnection.getWebhookUrl()
+                            </div>
                         }
-                    </select>
-                    <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">You can confirm or change this account after extraction.</small>
+                        @if(monzoConnection.getWebhookDebitId() != null || monzoConnection.getWebhookFlexId() != null) {
+                            <div style="margin-top: 4px; font-size: 0.8rem; color: var(--text-muted);">
+                                <strong>Active Webhooks:</strong>
+                                @if(monzoConnection.getWebhookDebitId() != null) { <span class="badge" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 2px 6px; border-radius: 4px; font-family: monospace;">Debit: @monzoConnection.getWebhookDebitId()</span> }
+                                @if(monzoConnection.getWebhookFlexId() != null) { <span class="badge" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 2px 6px; border-radius: 4px; font-family: monospace;">Flex: @monzoConnection.getWebhookFlexId()</span> }
+                            </div>
+                        }
+                    </div>
                 </div>
-                <div>
-                    <button type="submit" class="w3-button w3-round w3-block" style="background: #ef4444; color: white; font-weight: 700; padding: 9px 16px;">
-                        <i class="fas fa-upload"></i> Upload &amp; Run LegMon
-                    </button>
-                </div>
-            </div>
-        </form>
+            }
 
-        <!-- LegMon Live Logs Viewer Panel (Collapsible) -->
-        <div id="legmon-logs-container" style="display: none; margin-top: 16px; background: #0f172a; border-radius: 8px; padding: 14px; color: #f8fafc; font-family: monospace; font-size: 0.82rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 8px; margin-bottom: 10px;">
-                <span style="font-weight: 700; color: #38bdf8;"><i class="fas fa-terminal"></i> LegMon Service Logs &amp; Errors (Rotated)</span>
-                <div style="display: flex; gap: 8px;">
-                    <button type="button" onclick="fetchLegmonLogs()" class="w3-button w3-tiny w3-round w3-dark-grey" style="padding: 2px 8px;">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                    <button type="button" onclick="toggleLegmonLogs()" class="w3-button w3-tiny w3-round w3-dark-grey" style="padding: 2px 8px;">
-                        Close
-                    </button>
-                </div>
-            </div>
-            <div id="legmon-error-banner" style="display: none; background: #7f1d1d; border: 1px solid #f87171; border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; color: #fee2e2;">
-                <strong><i class="fas fa-exclamation-triangle"></i> Flagged Error:</strong> <span id="legmon-error-text"></span>
-            </div>
-            <pre id="legmon-logs-output" style="margin: 0; max-height: 250px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #94a3b8; font-size: 0.8rem;"></pre>
-        </div>
-    </div>
-
-    <!-- Real-Time Push Stream Card -->
-    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-            <div>
-                <h3 style="margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
-                    <i class="fas fa-satellite-dish" style="color: #6366f1;"></i> Real-Time Push Stream (Webhooks)
-                </h3>
-                <p style="color: #64748b; font-size: 0.9rem; margin: 0;">
-                    Monzo transactions, available balances, and merchant metadata stream into MonMon in real time whenever activity occurs.
-                </p>
-            </div>
-            <div>
+            <!-- Test Ingest Button -->
+            <div style="margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <span style="font-size: 0.85rem; color: var(--text-muted);">Test the webhook ingestion pipeline locally or without waiting:</span>
                 <form action="/bank/sync/all" method="POST" style="margin: 0;">
                     @helper.CSRF.formField
                     <input type="hidden" name="provider" value="MOCK" />
-                    <button type="submit" class="w3-button w3-indigo w3-round" style="font-weight: 600; padding: 8px 16px;">
+                    <button type="submit" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; padding: 6px 14px; font-size: 0.85rem;">
                         <i class="fas fa-vial"></i> Test Ingest (Mock Provider)
                     </button>
                 </form>
             </div>
         </div>
-    </div>
 
-    <!-- Accounts Status Table -->
-    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px;">
-        <h3 style="margin: 0 0 16px 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
-            <i class="fas fa-university" style="color: #6366f1;"></i> Configured Accounts (@accounts.size() Total)
-        </h3>
-
-        <div style="overflow-x: auto;">
-            <table class="w3-table w3-striped w3-bordered">
-                <thead>
-                    <tr style="background: #f8fafc; color: #475569;">
-                        <th>Account</th>
-                        <th>Type</th>
-                        <th>Ledger Mode</th>
-                        <th>Sync Source</th>
-                        <th style="text-align: right;">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @for(acc <- accounts) {
-                        @defining(acc.getName().toLowerCase().contains("monzo") || (acc.getType() == models.Account.AccountType.CREDIT && acc.getName().toLowerCase().contains("flex"))) { isMonzoAcc =>
-                        <tr>
-                            <td><strong>@acc.getName()</strong></td>
-                            <td><span class="badge" style="background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">@acc.getType()</span></td>
-                            <td>
-                                @if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
-                                    <span style="color: #64748b; font-size: 0.85rem;"><i class="fas fa-hand-paper"></i> ABL (Manual Delta)</span>
-                                } else if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
-                                    <span style="color: #d97706; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-coins"></i> ABL (Balance Delta)</span>
-                                } else {
-                                    <span style="color: #16a34a; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-check"></i> TBL (Accurate Mode)</span>
-                                }
-                            </td>
-                            <td>
-                                @if(isMonzoAcc && isMonzoConnected) {
-                                    <div>
-                                        <span style="color: #15803d; font-weight: 600; font-size: 0.85rem;"><i class="fas fa-satellite-dish"></i> Monzo Webhook (Push)</span>
-                                        @if(monzoConnection != null && monzoConnection.getLastReceivedAt() != null) {
-                                            <div style="color: #64748b; font-size: 0.75rem; margin-top: 2px;">
-                                                <i class="fas fa-bolt" style="color: #ea580c;"></i> Live @helpers.TimeHelpers.timeAgo(monzoConnection.getLastReceivedAt())
-                                            </div>
-                                        }
-                                    </div>
-                                } else if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
-                                    Manual Entry
-                                } else if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
-                                    Balance Snapshots
-                                } else {
-                                    Statement / Manual
-                                }
-                            </td>
-                            <td style="text-align: right;">
-                                @if(acc.getType() != models.Account.AccountType.PENSION && acc.getType() != models.Account.AccountType.LOAN) {
-                                    <div style="display: inline-flex; gap: 6px; align-items: center;">
-                                        <form action="/bank/account/@acc.getId()/toggle-mode" method="POST" style="margin: 0;">
-                                            @helper.CSRF.formField
-                                            @if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
-                                                <button type="submit" class="w3-button w3-tiny w3-round w3-pale-green w3-hover-green" title="Switch to TBL Accurate Mode (retains all balance history)">
-                                                    <i class="fas fa-exchange-alt"></i> Use TBL
-                                                </button>
-                                            } else {
-                                                <button type="submit" class="w3-button w3-tiny w3-round w3-pale-yellow w3-hover-amber" title="Switch to ABL Balance Mode (retains all transaction history)">
-                                                    <i class="fas fa-exchange-alt"></i> Use ABL
-                                                </button>
-                                            }
-                                        </form>
-                                        @if(isMonzoAcc && isMonzoConnected) {
-                                            <form action="/bank/sync/account/@acc.getId()" method="POST" style="margin: 0;">
-                                                @helper.CSRF.formField
-                                                <input type="hidden" name="provider" value="MONZO" />
-                                                <button type="submit" class="w3-button w3-tiny w3-round" style="background: #ea580c; color: white;" title="Refresh Monzo live balance">
-                                                    <i class="fas fa-bolt"></i> Balance
-                                                </button>
-                                            </form>
-                                        }
-                                        <form action="/bank/transactions/clear/@acc.getId()" method="POST" style="margin: 0;" onsubmit="return confirm('Clear all transactions for @acc.getName()?');">
-                                            @helper.CSRF.formField
-                                            <button type="submit" class="w3-button w3-tiny w3-red w3-round" title="Purge transactions">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </form>
-                                    </div>
-                                }
-                            </td>
-                        </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Recent Transactions Table -->
-    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 600; color: #1e293b;">
-                <i class="fas fa-list" style="color: #6366f1;"></i> Recent Ingested Transactions (@recentTransactions.size())
+        <!-- CARD 3: Account Compatibility Matrix & Dual Ledger Architecture -->
+        <div class="deck-card w3-card w3-round" id="card-bank-matrix" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px;">
+            <h3 style="margin: 0 0 8px 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                <i class="fas fa-balance-scale" style="color: var(--primary); margin-right: 6px;"></i> Account Compatibility Matrix &amp; Dual-Ledger System
             </h3>
+            <p style="margin: 0 0 14px 0; color: var(--text-muted); font-size: 0.88rem;">
+                MonMon automatically assigns the optimal ledger tracking mode based on the account provider and capabilities.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+                <div style="background: var(--card-bg-subtle); border: 1px solid rgba(234, 88, 12, 0.3); border-radius: 8px; padding: 14px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: #fb923c;">
+                        <i class="fas fa-bolt"></i> Monzo API Supported (TBL Mode)
+                    </h4>
+                    <ul style="margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 0.85rem; line-height: 1.55;">
+                        <li><strong style="color: var(--text-main);">Monzo Current / Debit:</strong> Regular current accounts (`uk_retail`) and joint accounts.</li>
+                        <li><strong style="color: var(--text-main);">Monzo Flex Credit Card:</strong> Virtual/physical installment credit line (`uk_monzo_flex`).</li>
+                        <li><strong style="color: var(--text-main);">Monzo Savings Pots:</strong> Standard instant pots.</li>
+                    </ul>
+                </div>
+                <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: var(--text-main);">
+                        <i class="fas fa-hand-paper"></i> Manual &amp; LegMon ABL Mode
+                    </h4>
+                    <ul style="margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 0.85rem; line-height: 1.55;">
+                        <li><strong style="color: var(--text-main);">External Banks (Barclays, Lloyds, Amex):</strong> Ingested via LegMon PDF statement pipeline.</li>
+                        <li><strong style="color: var(--text-main);">Pensions:</strong> SIPP &amp; Workplace (Nest, Aviva) via balance snapshots.</li>
+                        <li><strong style="color: var(--text-main);">Loans &amp; Mortgages:</strong> Tracked via balance amortization.</li>
+                    </ul>
+                </div>
+            </div>
         </div>
 
-        @if(recentTransactions.isEmpty) {
-            <p style="color: #64748b; font-size: 0.9rem; margin: 0;">
-                No transactions ingested yet. Connect your Monzo account above, click <strong>Sync All (Mock Provider)</strong>, or upload a statement to populate.
-            </p>
-        } else {
+        <!-- CARD 4: Configured Accounts Table -->
+        <div class="deck-card w3-card w3-round" id="card-bank-accounts" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px;">
+            <h3 style="margin: 0 0 14px 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                <i class="fas fa-university" style="color: var(--primary); margin-right: 6px;"></i> Configured Accounts (@accounts.size() Total)
+            </h3>
+
             <div style="overflow-x: auto;">
-                <table class="w3-table w3-striped w3-bordered">
+                <table class="w3-table w3-striped w3-bordered" style="color: var(--text-main);">
                     <thead>
-                        <tr style="background: #f8fafc; color: #475569;">
-                            <th>Date</th>
-                            <th>Description</th>
-                            <th>Category</th>
-                            <th>Source</th>
-                            <th style="text-align: right;">Amount</th>
+                        <tr style="background: var(--table-stripe, var(--card-bg-subtle)); color: var(--text-muted); border-bottom: 2px solid var(--border-color);">
+                            <th style="padding: 10px 12px;">Account</th>
+                            <th style="padding: 10px 12px;">Type</th>
+                            <th style="padding: 10px 12px;">Ledger Mode</th>
+                            <th style="padding: 10px 12px;">Sync Source</th>
+                            <th style="text-align: right; padding: 10px 12px;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @for(tx <- recentTransactions) {
-                            <tr>
-                                <td style="font-family: monospace; font-size: 0.85rem;">@tx.getDate()</td>
-                                <td><strong>@tx.getDescription()</strong></td>
-                                <td><span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">@tx.getCategory()</span></td>
-                                <td><span class="badge" style="background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">@tx.getSource()</span></td>
-                                <td style="text-align: right; font-weight: 600; color: @if(tx.getAmount() > 0){#dc2626}else{#16a34a};">
-                                    £@String.format("%.2f", tx.getAmount())
+                        @for(acc <- accounts) {
+                            @defining(acc.getName().toLowerCase().contains("monzo") || (acc.getType() == models.Account.AccountType.CREDIT && acc.getName().toLowerCase().contains("flex"))) { isMonzoAcc =>
+                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                <td style="padding: 10px 12px;"><strong>@acc.getName()</strong></td>
+                                <td style="padding: 10px 12px;">
+                                    <span class="badge" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; font-size: 0.8rem;">
+                                        @acc.getType()
+                                    </span>
+                                </td>
+                                <td style="padding: 10px 12px;">
+                                    @if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
+                                        <span style="color: var(--text-muted); font-size: 0.85rem;"><i class="fas fa-hand-paper"></i> ABL (Manual Delta)</span>
+                                    } else if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
+                                        <span style="color: var(--warning); font-weight: 600; font-size: 0.85rem;"><i class="fas fa-coins"></i> ABL (Balance Delta)</span>
+                                    } else {
+                                        <span style="color: var(--success); font-weight: 600; font-size: 0.85rem;"><i class="fas fa-check"></i> TBL (Accurate Mode)</span>
+                                    }
+                                </td>
+                                <td style="padding: 10px 12px;">
+                                    @if(isMonzoAcc && isMonzoConnected) {
+                                        <div>
+                                            <span style="color: var(--success); font-weight: 600; font-size: 0.85rem;"><i class="fas fa-satellite-dish"></i> Monzo Webhook (Push)</span>
+                                            @if(monzoConnection != null && monzoConnection.getLastReceivedAt() != null) {
+                                                <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 2px;">
+                                                    <i class="fas fa-bolt" style="color: #ea580c;"></i> Live @helpers.TimeHelpers.timeAgo(monzoConnection.getLastReceivedAt())
+                                                </div>
+                                            }
+                                        </div>
+                                    } else if(acc.getType() == models.Account.AccountType.PENSION || acc.getType() == models.Account.AccountType.LOAN) {
+                                        <span style="color: var(--text-muted); font-size: 0.85rem;">Manual Entry</span>
+                                    } else if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
+                                        <span style="color: var(--text-muted); font-size: 0.85rem;">Balance Snapshots</span>
+                                    } else {
+                                        <span style="color: var(--text-muted); font-size: 0.85rem;">Statement / Manual</span>
+                                    }
+                                </td>
+                                <td style="text-align: right; padding: 10px 12px;">
+                                    @if(acc.getType() != models.Account.AccountType.PENSION && acc.getType() != models.Account.AccountType.LOAN) {
+                                        <div style="display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+                                            <form action="/bank/account/@acc.getId()/toggle-mode" method="POST" style="margin: 0;">
+                                                @helper.CSRF.formField
+                                                @if(acc.getLedgerMode() == models.Account.LedgerMode.ABL) {
+                                                    <button type="submit" class="w3-button w3-tiny w3-round" style="background: var(--success-light); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); font-weight: 600;" title="Switch to TBL Accurate Mode (retains all balance history)">
+                                                        <i class="fas fa-exchange-alt"></i> Use TBL
+                                                    </button>
+                                                } else {
+                                                    <button type="submit" class="w3-button w3-tiny w3-round" style="background: var(--warning-light); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.3); font-weight: 600;" title="Switch to ABL Balance Mode (retains all transaction history)">
+                                                        <i class="fas fa-exchange-alt"></i> Use ABL
+                                                    </button>
+                                                }
+                                            </form>
+                                            @if(isMonzoAcc && isMonzoConnected) {
+                                                <form action="/bank/sync/account/@acc.getId()" method="POST" style="margin: 0;">
+                                                    @helper.CSRF.formField
+                                                    <input type="hidden" name="provider" value="MONZO" />
+                                                    <button type="submit" class="w3-button w3-tiny w3-round" style="background: #ea580c; color: white; font-weight: 600;" title="Refresh Monzo live balance">
+                                                        <i class="fas fa-bolt"></i> Balance
+                                                    </button>
+                                                </form>
+                                            }
+                                            <form action="/bank/transactions/clear/@acc.getId()" method="POST" style="margin: 0;" onsubmit="return confirm('Clear all transactions for @acc.getName()?');">
+                                                @helper.CSRF.formField
+                                                <button type="submit" class="w3-button w3-tiny w3-round" style="background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger);" title="Purge transactions">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    }
                                 </td>
                             </tr>
+                            }
                         }
                     </tbody>
                 </table>
             </div>
-        }
+        </div>
+
+        <!-- CARD 5: Recent Transactions Table -->
+        <div class="deck-card w3-card w3-round" id="card-bank-txs" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                    <i class="fas fa-list" style="color: var(--primary); margin-right: 6px;"></i> Recent Ingested Transactions (@recentTransactions.size())
+                </h3>
+            </div>
+
+            @if(recentTransactions.isEmpty) {
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">
+                    No transactions ingested yet. Connect your Monzo account above, click <strong>Test Ingest</strong>, or upload a statement to populate.
+                </p>
+            } else {
+                <div style="overflow-x: auto;">
+                    <table class="w3-table w3-striped w3-bordered" style="color: var(--text-main);">
+                        <thead>
+                            <tr style="background: var(--table-stripe, var(--card-bg-subtle)); color: var(--text-muted); border-bottom: 2px solid var(--border-color);">
+                                <th style="padding: 10px 12px;">Date</th>
+                                <th style="padding: 10px 12px;">Description</th>
+                                <th style="padding: 10px 12px;">Category</th>
+                                <th style="padding: 10px 12px;">Source</th>
+                                <th style="text-align: right; padding: 10px 12px;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for(tx <- recentTransactions) {
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <td style="font-family: monospace; font-size: 0.85rem; padding: 10px 12px; color: var(--text-muted);">@tx.getDate()</td>
+                                    <td style="padding: 10px 12px;"><strong style="color: var(--text-main);">@tx.getDescription()</strong></td>
+                                    <td style="padding: 10px 12px;">
+                                        <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: var(--primary-text); border: 1px solid rgba(99, 102, 241, 0.3); padding: 3px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600;">
+                                            @tx.getCategory()
+                                        </span>
+                                    </td>
+                                    <td style="padding: 10px 12px;">
+                                        <span class="badge" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; font-size: 0.8rem;">
+                                            @tx.getSource()
+                                        </span>
+                                    </td>
+                                    <td style="text-align: right; font-weight: 700; padding: 10px 12px; color: @if(tx.getAmount() > 0){var(--danger)}else{var(--success)};">
+                                        £@String.format("%.2f", tx.getAmount())
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
     </div>
 </div>
-<script src="/assets/javascripts/legmon.js"></script>
+<script src="@routes.Assets.versioned("javascripts/legmon.js")"></script>
 }

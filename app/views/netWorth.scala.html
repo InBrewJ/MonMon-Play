@@ -49,12 +49,41 @@
             <button onclick="document.getElementById('add-asset-modal').style.display='block'" class="w3-button w3-primary w3-round" style="background: var(--primary); color: #fff; font-weight: 700;">
                 <i class="fas fa-plus-circle" style="margin-right: 6px;"></i> Add Asset (Flat, Car...)
             </button>
-            <a href="/spog" class="w3-button w3-round w3-border"><i class="fas fa-arrow-left"></i> SPOG</a>
+            <a href="/spog" class="w3-button w3-round w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);"><i class="fas fa-arrow-left"></i> SPOG</a>
         </div>
     </div>
 
+    <!-- Mobile Navigation Pills for Swipable Cards -->
+    <div class="deck-nav" id="nw-deck-nav" role="tablist" aria-label="Net Worth Sections">
+        <button type="button" class="deck-nav-pill active" data-target="card-nw-overview" role="tab" aria-selected="true">
+            <i class="fas fa-landmark"></i> Overview
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-nw-horizon" role="tab" aria-selected="false">
+            <i class="fas fa-seedling"></i> Horizon &amp; SWR
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-nw-trajectory" role="tab" aria-selected="false">
+            <i class="fas fa-chart-area"></i> Trajectory
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-nw-assets" role="tab" aria-selected="false">
+            <i class="fas fa-home"></i> Assets (@vm.getCustomAssets().size())
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-nw-pensions" role="tab" aria-selected="false">
+            <i class="fas fa-piggy-bank"></i> Pensions (@vm.getPensionAccounts().size())
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-nw-cash" role="tab" aria-selected="false">
+            <i class="fas fa-wallet"></i> Cash (@vm.getCashAccounts().size())
+        </button>
+        @if(!vm.getCreditAccounts().isEmpty || !vm.getLoanAccounts().isEmpty) {
+        <button type="button" class="deck-nav-pill" data-target="card-nw-debts" role="tab" aria-selected="false">
+            <i class="fas fa-credit-card"></i> Debts (@(vm.getCreditAccounts().size() + vm.getLoanAccounts().size()))
+        </button>
+        }
+    </div>
+
+    <div class="deck-layout-grid">
+
     <!-- Main Hero Stat Card -->
-    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.5rem; margin-bottom: 1.5rem;">
+    <div class="deck-card w3-card w3-round" id="card-nw-overview" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.5rem; margin-bottom: 1.5rem;">
         <div class="w3-row" style="display: flex; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
             <div style="flex: 1; min-width: 240px;">
                 <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 700;">Total Net Worth</span>
@@ -87,7 +116,7 @@
     </div>
 
     <!-- Financial Independence & 4% SWR Horizon Card -->
-    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+    <div class="deck-card w3-card w3-round" id="card-nw-horizon" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
             <div>
                 <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
@@ -95,7 +124,7 @@
                 </h4>
                 <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">4% Safe Withdrawal Rate (SWR) & grocery coverage from liquid + pension assets.</div>
             </div>
-            <button type="button" class="open-ed-modal-btn w3-button w3-round w3-small w3-border" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: var(--card-bg-subtle);" title="Ask Ed for his advice">
+            <button type="button" class="open-ed-modal-btn w3-button w3-round w3-small w3-border" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color);" title="Ask Ed for his advice">
                 <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 20px; height: 20px; vertical-align: middle;" />
                 <span>Ed Says</span>
             </button>
@@ -120,7 +149,7 @@
     </div>
 
     <!-- Net Worth Trajectory Chart Card -->
-    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+    <div class="deck-card w3-card w3-round" id="card-nw-trajectory" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 8px;">
             <div>
                 <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
@@ -159,7 +188,7 @@
     </div>
 
     <!-- Section 1: Physical & Fixed Assets (Flat, Car, Valuables) -->
-    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+    <div class="deck-card w3-card w3-round" id="card-nw-assets" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <div>
                 <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem;">
@@ -167,7 +196,7 @@
                 </h4>
                 <div style="font-size: 0.8rem; color: var(--text-muted);">Real estate, vehicles, crypto, jewelry, or tangible wealth.</div>
             </div>
-            <button onclick="document.getElementById('add-asset-modal').style.display='block'" class="w3-button w3-round w3-small w3-border">
+            <button onclick="document.getElementById('add-asset-modal').style.display='block'" class="w3-button w3-round w3-small w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">
                 <i class="fas fa-plus"></i> Add Item
             </button>
         </div>
@@ -210,8 +239,8 @@
                             £@asset.getValue()
                         </td>
                         <td style="padding: 8px 6px; text-align: right;">
-                            <button onclick="openEditModal(@asset.getId(), '@asset.getName()', '@asset.getCategory()', @asset.getValue(), '@(if(asset.getNotes() != null) asset.getNotes() else "")', '@asset.getAcquiredDateHtmlValue()')" class="w3-button w3-round w3-tiny w3-border" title="Edit asset"><i class="fas fa-pencil-alt"></i></button>
-                            <a href="/netWorth/binAsset/@asset.getId()" onclick="return confirm('Remove this asset from your net worth?');" class="w3-button w3-round w3-tiny w3-border" style="color: var(--danger);" title="Delete asset"><i class="fas fa-trash"></i></a>
+                            <button onclick="openEditModal(@asset.getId(), '@asset.getName()', '@asset.getCategory()', @asset.getValue(), '@(if(asset.getNotes() != null) asset.getNotes() else "")', '@asset.getAcquiredDateHtmlValue()')" class="w3-button w3-round w3-tiny w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);" title="Edit asset"><i class="fas fa-pencil-alt"></i></button>
+                            <a href="/netWorth/binAsset/@asset.getId()" onclick="return confirm('Remove this asset from your net worth?');" class="w3-button w3-round w3-tiny w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--danger);" title="Delete asset"><i class="fas fa-trash"></i></a>
                         </td>
                     </tr>
                     }
@@ -226,7 +255,7 @@
     </div>
 
     <!-- Section 2: Pensions & Long-Term Retirement Accounts -->
-    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+    <div class="deck-card w3-card w3-round" id="card-nw-pensions" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <div>
                 <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem;">
@@ -234,7 +263,7 @@
                 </h4>
                 <div style="font-size: 0.8rem; color: var(--text-muted);">SIPP, workplace pensions, and defined contribution pots.</div>
             </div>
-            <a href="/myAccounts" class="w3-button w3-round w3-small w3-border">Manage Accounts</a>
+            <a href="/myAccounts" class="w3-button w3-round w3-small w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">Manage Accounts</a>
         </div>
 
         @if(vm.getPensionAccounts().isEmpty) {
@@ -263,7 +292,7 @@
                             £@acc.getLatestBalanceValue()
                         </td>
                         <td style="padding: 8px 6px; text-align: right;">
-                            <a href="/myBalances?accountId=@acc.getId()" class="w3-button w3-round w3-tiny w3-border"><i class="fas fa-sync-alt"></i> Update</a>
+                            <a href="/myBalances?accountId=@acc.getId()" class="w3-button w3-round w3-tiny w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);"><i class="fas fa-sync-alt"></i> Update</a>
                         </td>
                     </tr>
                     }
@@ -278,7 +307,7 @@
     </div>
 
     <!-- Section 3: Cash & Liquid Savings -->
-    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
+    <div class="deck-card w3-card w3-round" id="card-nw-cash" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <div>
                 <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem;">
@@ -286,7 +315,7 @@
                 </h4>
                 <div style="font-size: 0.8rem; color: var(--text-muted);">Current accounts, shared bills accounts, and liquid savings.</div>
             </div>
-            <a href="/myBalances" class="w3-button w3-round w3-small w3-border">Balances</a>
+            <a href="/myBalances" class="w3-button w3-round w3-small w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">Balances</a>
         </div>
 
         @if(vm.getCashAccounts().isEmpty) {
@@ -321,7 +350,7 @@
 
     <!-- Section 4: Debts & Liabilities -->
     @if(!vm.getCreditAccounts().isEmpty || !vm.getLoanAccounts().isEmpty) {
-    <div class="w3-card w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem;">
+    <div class="deck-card w3-card w3-round" id="card-nw-debts" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 1.25rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <div>
                 <h4 style="margin: 0; font-weight: 800; font-size: 1.05rem; color: var(--danger);">
@@ -329,7 +358,7 @@
                 </h4>
                 <div style="font-size: 0.8rem; color: var(--text-muted);">Credit card balances owed and active loans deducted from net worth.</div>
             </div>
-            <a href="/savingsPlan" class="w3-button w3-round w3-small w3-border">Payoff Plan</a>
+            <a href="/savingsPlan" class="w3-button w3-round w3-small w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">Payoff Plan</a>
         </div>
 
         <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
@@ -365,6 +394,8 @@
         </table>
     </div>
     }
+
+    </div><!-- End deck-layout-grid -->
 
 </div>
 
@@ -405,7 +436,7 @@
                 <input class="w3-input w3-border w3-round" type="text" name="notes" placeholder="e.g. Zoopla estimate, AutoTrader valuation" style="margin-top: 4px;">
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                <button type="button" onclick="document.getElementById('add-asset-modal').style.display='none'" class="w3-button w3-round w3-border">Cancel</button>
+                <button type="button" onclick="document.getElementById('add-asset-modal').style.display='none'" class="w3-button w3-round w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">Cancel</button>
                 <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700;">Add to Net Worth</button>
             </div>
         </form>
@@ -449,7 +480,7 @@
                 <input class="w3-input w3-border w3-round" type="text" id="edit-notes" name="notes" style="margin-top: 4px;">
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                <button type="button" onclick="document.getElementById('edit-asset-modal').style.display='none'" class="w3-button w3-round w3-border">Cancel</button>
+                <button type="button" onclick="document.getElementById('edit-asset-modal').style.display='none'" class="w3-button w3-round w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">Cancel</button>
                 <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700;">Save Changes</button>
             </div>
         </form>
