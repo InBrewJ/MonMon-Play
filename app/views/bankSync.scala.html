@@ -265,12 +265,18 @@
                     </form>
                 </div>
             } else {
-                <div style="margin-top: 14px; background: var(--card-bg-subtle); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 14px 16px;">
+                <div style="margin-top: 14px; background: var(--card-bg-subtle); border: 1px solid @if(monzoConnection.hasActiveWebhooks()){rgba(52, 211, 153, 0.3)}else{rgba(234, 179, 8, 0.4)}; border-radius: 8px; padding: 14px 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
-                        <span style="color: var(--success); font-size: 0.95rem; font-weight: 700;">
-                            <i class="fas fa-satellite-dish" style="color: var(--success); margin-right: 4px;"></i> Real-Time Push Stream Active
-                        </span>
-                        <span style="background: var(--success-light); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
+                        @if(monzoConnection.hasActiveWebhooks()) {
+                            <span style="color: var(--success); font-size: 0.95rem; font-weight: 700;">
+                                <i class="fas fa-satellite-dish" style="color: var(--success); margin-right: 4px;"></i> Real-Time Push Stream Active
+                            </span>
+                        } else {
+                            <span style="color: #eab308; font-size: 0.95rem; font-weight: 700;">
+                                <i class="fas fa-exclamation-triangle" style="margin-right: 4px;"></i> Webhook Inactive / Not Registered
+                            </span>
+                        }
+                        <span style="background: @if(monzoConnection.hasActiveWebhooks()){var(--success-light)}else{rgba(234, 179, 8, 0.15)}; color: @if(monzoConnection.hasActiveWebhooks()){var(--success)}else{#eab308}; border: 1px solid @if(monzoConnection.hasActiveWebhooks()){rgba(52, 211, 153, 0.3)}else{rgba(234, 179, 8, 0.3)}; padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
                             @if(monzoConnection.getLastReceivedAt() != null) {
                                 <i class="fas fa-clock"></i> Last received from Monzo @helpers.TimeHelpers.timeAgo(monzoConnection.getLastReceivedAt())
                             } else {
@@ -280,18 +286,38 @@
                     </div>
                     <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6;">
                         <div><strong style="color: var(--text-main);">Connected Accounts:</strong> Monzo Current (`uk_retail`) &amp; Monzo Flex Credit Card (`uk_monzo_flex`)</div>
+                        @if(!monzoConnection.hasActiveWebhooks()) {
+                            <div style="margin-top: 8px; color: var(--text-muted); font-size: 0.82rem; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; line-height: 1.5;">
+                                <strong style="color: var(--text-main);"><i class="fas fa-info-circle" style="color: #ea580c;"></i> Webhooks not registered:</strong>
+                                Monzo requires an <strong>HTTPS URL</strong> reachable over the public internet (e.g. <code>https://...ngrok-free.app</code> or your live domain). If running locally, enter your tunnel URL below to sync.
+                            </div>
+                        }
                         @if(monzoConnection.getWebhookUrl() != null) {
-                            <div style="margin-top: 4px; font-family: monospace; font-size: 0.8rem; color: var(--text-muted); word-break: break-all;">
+                            <div style="margin-top: 6px; font-family: monospace; font-size: 0.8rem; color: var(--text-muted); word-break: break-all;">
                                 <strong>Webhook URL:</strong> @monzoConnection.getWebhookUrl()
                             </div>
                         }
                         @if(monzoConnection.getWebhookDebitId() != null || monzoConnection.getWebhookFlexId() != null) {
-                            <div style="margin-top: 4px; font-size: 0.8rem; color: var(--text-muted);">
-                                <strong>Active Webhooks:</strong>
+                            <div style="margin-top: 6px; font-size: 0.8rem; color: var(--text-muted);">
+                                <strong>Active Webhooks on Monzo:</strong>
                                 @if(monzoConnection.getWebhookDebitId() != null) { <span class="badge" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 2px 6px; border-radius: 4px; font-family: monospace;">Debit: @monzoConnection.getWebhookDebitId()</span> }
                                 @if(monzoConnection.getWebhookFlexId() != null) { <span class="badge" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 2px 6px; border-radius: 4px; font-family: monospace;">Flex: @monzoConnection.getWebhookFlexId()</span> }
                             </div>
                         }
+
+                        <!-- Webhook Re-registration / Deduplication Form -->
+                        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color);">
+                            <form action="/bank/monzo/webhooks/sync" method="POST" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                                @helper.CSRF.formField
+                                <input type="text" name="customBaseUrl" placeholder="Callback host (optional, e.g. https://xyz.ngrok-free.app)" class="w3-input w3-border w3-round" style="flex: 1 1 280px; min-width: 200px; font-size: 0.8rem; padding: 6px 10px; font-family: monospace; background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);" />
+                                <button type="submit" class="w3-button w3-round btn-mobile-full" style="background: #ea580c; color: white; font-weight: 600; font-size: 0.82rem; padding: 7px 14px;">
+                                    <i class="fas fa-sync-alt"></i> Re-register / Sync Webhooks
+                                </button>
+                            </form>
+                            <span style="display: block; font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;">
+                                Inspects existing webhooks on Monzo first to avoid duplicates, prunes obsolete callback URLs, and registers missing webhooks.
+                            </span>
+                        </div>
                     </div>
                 </div>
             }

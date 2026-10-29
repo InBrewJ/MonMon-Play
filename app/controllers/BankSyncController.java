@@ -1100,9 +1100,21 @@ public class BankSyncController extends Controller {
                                     System.currentTimeMillis() + (expiresIn * 1000L)
                             );
 
-                            return monzoConnectionRepository.save(conn).thenApplyAsync(saved -> {
-                                return redirect(routes.BankSyncController.index())
-                                        .flashing("info", "Monzo connected via OAuth! Approve data access on your Monzo mobile app if prompted.");
+                            return monzoConnectionRepository.save(conn).thenComposeAsync(saved -> {
+                                String hostHeader = request.host();
+                                String scheme = request.secure() ? "https" : "http";
+                                if (request.header("X-Forwarded-Proto").isPresent()) {
+                                    scheme = request.header("X-Forwarded-Proto").get();
+                                }
+                                String baseUrl = scheme + "://" + hostHeader;
+
+                                return monzoBankSyncProvider.registerWebhooks(saved, baseUrl).thenApplyAsync(registeredConn -> {
+                                    String webhookMsg = registeredConn.hasActiveWebhooks()
+                                            ? " Real-time webhooks registered successfully!"
+                                            : " Approve data access on your Monzo mobile app if prompted.";
+                                    return redirect(routes.BankSyncController.index())
+                                            .flashing("info", "Monzo connected via OAuth!" + webhookMsg);
+                                }, ec.current());
                             }, ec.current());
                         } catch (Exception e) {
                             return CompletableFuture.completedFuture(
@@ -1117,11 +1129,61 @@ public class BankSyncController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> syncWebhooks(final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        DynamicForm form = formFactory.form().bindFromRequest(request);
+        String customBaseUrl = form.get("customBaseUrl");
+
+        return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(connOpt -> {
+            if (!connOpt.isPresent()) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index()).flashing("error", "No Monzo connection found. Connect Monzo first.")
+                );
+            }
+            MonzoConnection conn = connOpt.get();
+
+            String baseUrl;
+            if (customBaseUrl != null && !customBaseUrl.trim().isEmpty()) {
+                baseUrl = customBaseUrl.trim();
+            } else {
+                String hostHeader = request.host();
+                String scheme = request.secure() ? "https" : "http";
+                if (request.header("X-Forwarded-Proto").isPresent()) {
+                    scheme = request.header("X-Forwarded-Proto").get();
+                }
+                baseUrl = scheme + "://" + hostHeader;
+            }
+
+            if (!baseUrl.toLowerCase().startsWith("https://")) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index())
+                                .flashing("error", "Monzo requires a public HTTPS callback URL. Detected: '" + baseUrl + "'. Please provide a public HTTPS tunnel URL (e.g. from ngrok: https://xxxx.ngrok-free.app).")
+                );
+            }
+
+            return monzoBankSyncProvider.syncWebhooks(conn, baseUrl).thenApplyAsync(syncResult -> {
+                if (syncResult.isSuccess()) {
+                    return redirect(routes.BankSyncController.index()).flashing("info", syncResult.getMessage());
+                } else {
+                    return redirect(routes.BankSyncController.index()).flashing("error", syncResult.getMessage());
+                }
+            }, ec.current());
+        }, ec.current()).exceptionally(err -> redirect(routes.BankSyncController.index())
+                .flashing("error", "Failed to sync webhooks with Monzo: " + err.getMessage()));
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> disconnectMonzo(final Http.Request request) {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
-        return monzoConnectionRepository.deleteByUserId(sup.getUserId())
-                .thenApplyAsync(deleted -> redirect(routes.BankSyncController.index())
-                        .flashing("info", "Disconnected Monzo integration."), ec.current());
+        return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(connOpt -> {
+            if (connOpt.isPresent()) {
+                return monzoBankSyncProvider.unregisterWebhooks(connOpt.get()).thenComposeAsync(v ->
+                        monzoConnectionRepository.deleteByUserId(sup.getUserId())
+                );
+            }
+            return monzoConnectionRepository.deleteByUserId(sup.getUserId());
+        }, ec.current()).thenApplyAsync(deleted -> redirect(routes.BankSyncController.index())
+                .flashing("info", "Disconnected Monzo integration and removed registered webhooks."), ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
