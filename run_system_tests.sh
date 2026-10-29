@@ -46,28 +46,28 @@ echo -e "${BLUE}==> [3/7] Re-creating legacy PostgreSQL schema bug: raw_data as 
 docker exec -e PGPASSWORD=docker postgres psql -U postgres -d "$SYSTEST_DB" -c '
 CREATE TABLE bank_transaction (
     id BIGSERIAL PRIMARY KEY,
-    "userId" VARCHAR(255) NOT NULL,
-    "accountId" BIGINT,
-    "externalId" VARCHAR(255) UNIQUE,
+    userid VARCHAR(255) NOT NULL,
+    accountid BIGINT,
+    externalid VARCHAR(255) UNIQUE,
     timestamp BIGINT,
     date VARCHAR(64),
     amount REAL DEFAULT 0,
     description VARCHAR(500),
-    merchant_name VARCHAR(255),
+    merchantname VARCHAR(255),
     category VARCHAR(255),
-    merchant_address VARCHAR(500),
+    merchantaddress VARCHAR(500),
     latitude DOUBLE PRECISION,
     longitude DOUBLE PRECISION,
-    merchant_emoji VARCHAR(50),
+    merchantemoji VARCHAR(50),
     source VARCHAR(64) DEFAULT '\''MANUAL'\'',
     pending BOOLEAN DEFAULT FALSE,
-    created_at BIGINT,
+    createdat BIGINT,
     raw_data JSONB
 );
 
 CREATE TABLE account (
     id BIGSERIAL PRIMARY KEY,
-    "userId" VARCHAR(255) NOT NULL,
+    userid VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(50) NOT NULL,
     ledger_mode VARCHAR(50) DEFAULT '\''ABL'\'',
@@ -75,7 +75,7 @@ CREATE TABLE account (
     archived BOOLEAN DEFAULT FALSE
 );
 
-INSERT INTO account (id, "userId", name, type, ledger_mode, available_limit, archived)
+INSERT INTO account (id, userid, name, type, ledger_mode, available_limit, archived)
 VALUES (101, '\''systest_user'\'', '\''NatWest Reward Platinum'\'', '\''DEBIT'\'', '\''ABL'\'', 0, false);
 ' >/dev/null
 
@@ -240,7 +240,7 @@ fi
 
 # Verify rows and data in real PostgreSQL
 TX_COUNT=$(docker exec -e PGPASSWORD=docker postgres psql -U postgres -d "$SYSTEST_DB" -t -A -c "
-SELECT count(*) FROM bank_transaction WHERE user_id = 'systest_user';
+SELECT count(*) FROM bank_transaction WHERE userid = 'systest_user';
 ")
 echo -e "Bank transactions inserted in PostgreSQL: ${BOLD}$TX_COUNT${NC} (expected 3)"
 if [ "$TX_COUNT" != "3" ]; then
@@ -249,7 +249,7 @@ if [ "$TX_COUNT" != "3" ]; then
 fi
 
 RAW_CHECK=$(docker exec -e PGPASSWORD=docker postgres psql -U postgres -d "$SYSTEST_DB" -t -A -c "
-SELECT raw_data FROM bank_transaction WHERE external_id = 'systest_tx_01';
+SELECT raw_data FROM bank_transaction WHERE externalid = 'systest_tx_01';
 ")
 if ! echo "$RAW_CHECK" | grep -q "Techworks Salary"; then
     echo -e "${RED}❌ raw_data not populated properly in PostgreSQL! Value: $RAW_CHECK${NC}" >&2
@@ -257,7 +257,7 @@ if ! echo "$RAW_CHECK" | grep -q "Techworks Salary"; then
 fi
 
 BAL_CHECK=$(docker exec -e PGPASSWORD=docker postgres psql -U postgres -d "$SYSTEST_DB" -t -A -c "
-SELECT value FROM balance WHERE user_id = 'systest_user' ORDER BY id DESC LIMIT 1;
+SELECT value FROM balance WHERE userid = 'systest_user' ORDER BY id DESC LIMIT 1;
 ")
 echo -e "Closing balance written to PostgreSQL balance table: ${BOLD}£$BAL_CHECK${NC} (expected 875.5)"
 if [ "$BAL_CHECK" != "875.5" ]; then
