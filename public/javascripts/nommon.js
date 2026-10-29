@@ -12,6 +12,7 @@
     var isConfigured = container.getAttribute('data-configured') === 'true';
 
     var currentPlan = null;
+    var isPlanLocked = false;
     var checkedItems = new Set();
     var STORAGE_CHECKED_KEY = 'nommon_checked_items';
     var STORAGE_POSTCODE_KEY = 'nommon_user_postcode';
@@ -485,6 +486,8 @@
                 }
 
                 currentPlan = data.plan;
+                isPlanLocked = !!data.locked;
+                updateLockUI();
 
                 if (currentPlan.weeklyBudget) {
                     var planBudget = parseFloat(currentPlan.weeklyBudget);
@@ -566,6 +569,121 @@
             .replace(/'/g, '&#39;');
     }
 
+    // CSRF Token Helper
+    function getCsrfToken() {
+        var input = document.querySelector('#nommon-csrf-holder input[name="csrfToken"]') || document.querySelector('input[name="csrfToken"]');
+        return input ? input.value : '';
+    }
+
+    // Non-volatile Database Lock / Unlock UI & Actions
+    function updateLockUI() {
+        var wrapper = document.getElementById('nommon-lock-wrapper');
+        if (!wrapper) return;
+        if (!currentPlan) {
+            wrapper.style.display = 'none';
+            return;
+        }
+        wrapper.style.display = 'inline-flex';
+
+        if (isPlanLocked) {
+            wrapper.innerHTML =
+                '<span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.35); font-weight: 700; padding: 5px 10px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 5px;" title="This meal plan is locked and saved in your database (persists across server restarts)">' +
+                '  <i class="fas fa-lock"></i> Locked in DB' +
+                '</span>' +
+                '<button type="button" id="btn-unlock-nommon" class="w3-button w3-round w3-tiny" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 8px; font-size: 0.78rem;" title="Unlock meal plan to allow regenerating">' +
+                '  <i class="fas fa-unlock"></i> Unlock' +
+                '</button>';
+
+            var unlockBtn = document.getElementById('btn-unlock-nommon');
+            if (unlockBtn) {
+                unlockBtn.addEventListener('click', unlockCurrentPlan);
+            }
+        } else {
+            wrapper.innerHTML =
+                '<button type="button" id="btn-lock-nommon" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; padding: 5px 12px; font-size: 0.82rem; cursor: pointer;" title="Lock meal plan to database as a persistent non-volatile cache">' +
+                '  <i class="fas fa-lock" style="color: var(--primary); margin-right: 4px;"></i> Lock Plan' +
+                '</button>';
+
+            var lockBtn = document.getElementById('btn-lock-nommon');
+            if (lockBtn) {
+                lockBtn.addEventListener('click', lockCurrentPlan);
+            }
+        }
+    }
+
+    function lockCurrentPlan() {
+        if (!currentPlan) return;
+        var lockBtn = document.getElementById('btn-lock-nommon');
+        if (lockBtn) {
+            lockBtn.disabled = true;
+            lockBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Locking...';
+        }
+
+        var postcodeInput = document.getElementById('nommon-postcode-input');
+        var payload = {
+            plan: currentPlan,
+            budget: weeklyBudget,
+            people: peopleCount,
+            postcode: postcodeInput ? postcodeInput.value.trim() : null
+        };
+
+        fetch('/api/nommon/lock', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Csrf-Token': getCsrfToken()
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(function (data) {
+            if (data.success) {
+                isPlanLocked = true;
+                updateLockUI();
+            }
+        })
+        .catch(function (err) {
+            alert('Failed to lock meal plan: ' + err.message);
+            updateLockUI();
+        });
+    }
+
+    function unlockCurrentPlan() {
+        if (!confirm('Unlock this meal plan? It will no longer be stored as your permanent non-volatile cache in the database.')) {
+            return;
+        }
+
+        var unlockBtn = document.getElementById('btn-unlock-nommon');
+        if (unlockBtn) {
+            unlockBtn.disabled = true;
+            unlockBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Unlocking...';
+        }
+
+        fetch('/api/nommon/unlock', {
+            method: 'POST',
+            headers: {
+                'Csrf-Token': getCsrfToken()
+            }
+        })
+        .then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(function (data) {
+            if (data.success) {
+                isPlanLocked = false;
+                updateLockUI();
+            }
+        })
+        .catch(function (err) {
+            alert('Failed to unlock meal plan: ' + err.message);
+            updateLockUI();
+        });
+    }
+
     // DOM Ready Initialization
     document.addEventListener('DOMContentLoaded', function () {
         loadSavedChecks();
@@ -638,6 +756,11 @@
         var btnRegen = document.getElementById('btn-regenerate-nommon');
         if (btnRegen) {
             btnRegen.addEventListener('click', function () {
+                if (isPlanLocked) {
+                    if (!confirm('This meal plan is currently locked in your database. Regenerating will unlock and replace it with a fresh plan from Mistral. Proceed?')) {
+                        return;
+                    }
+                }
                 fetchPlan(true);
             });
         }

@@ -38,4 +38,12 @@ if [ ! -f "$ZIP_FILE" ] || [ ! -s "$ZIP_FILE" ]; then
 fi
 
 ZIP_SIZE=$(du -h "$ZIP_FILE" | cut -f1)
-echo -e "${GREEN}${BOLD}✅ Build successful!${NC} Created: ${ZIP_FILE} (${ZIP_SIZE})"
+echo -e "${GREEN}${BOLD}✅ Package ready:${NC} ${ZIP_FILE} (${ZIP_SIZE})"
+
+echo -e "${BLUE}${BOLD}==> [3/3] Building MonMon Docker image monmon:latest...${NC}"
+if ! docker build -t monmon:latest .; then
+    echo -e "${RED}${BOLD}❌ ERROR: Docker build failed!${NC}" >&2
+    exit 1
+fi
+
+echo -e "${GREEN}${BOLD}🎉 Build completed successfully! MonMon packaged and Docker image monmon:latest created.${NC}"

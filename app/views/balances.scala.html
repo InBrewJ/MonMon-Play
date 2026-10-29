@@ -23,6 +23,23 @@
 @partials.navbar()
 
 <div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
+
+    @if(request.flash().get("info").isPresent) {
+        <div class="w3-panel w3-blue w3-round" style="padding: 0.75rem 1rem; margin-top: 1rem; border: 1px solid rgba(59, 130, 246, 0.4);">
+            <i class="fas fa-info-circle" style="margin-right: 6px;"></i> @request.flash().get("info").get()
+        </div>
+    }
+    @if(request.flash().get("error").isPresent) {
+        <div class="w3-panel w3-red w3-round" style="padding: 0.75rem 1rem; margin-top: 1rem; border: 1px solid rgba(239, 68, 68, 0.4);">
+            <i class="fas fa-exclamation-circle" style="margin-right: 6px;"></i> @request.flash().get("error").get()
+        </div>
+    }
+    @if(request.flash().get("success").isPresent) {
+        <div class="w3-panel w3-green w3-round" style="padding: 0.75rem 1rem; margin-top: 1rem; border: 1px solid rgba(16, 185, 129, 0.4);">
+            <i class="fas fa-check-circle" style="margin-right: 6px;"></i> @request.flash().get("success").get()
+        </div>
+    }
+
     <div class="w3-row-padding">
         <!-- Add Balance Card -->
         <div class="w3-col l4 m5 s12">
@@ -139,16 +156,27 @@
                 </div>
             </div>
 
-            <!-- Balance History Table (Last 10 Days Verbatim) -->
+            <!-- Balance History Table & Search -->
             <div class="w3-card w3-padding">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                    <div style="font-weight: 800; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
-                        <i class="fas fa-history" style="color: var(--primary); margin-right: 6px;"></i> Recorded Log
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 0.85rem;">
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <div style="font-weight: 800; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                            <i class="fas fa-history" style="color: var(--primary); margin-right: 6px;"></i> Recorded Log
+                        </div>
+                        <button type="button" id="btn-erratic-balances" onclick="openErraticBalancesModal()" class="w3-button w3-round w3-small" style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #f59e0b; font-weight: 700; padding: 4px 10px; font-size: 0.78rem; cursor: pointer;" title="Detect massive jumps across consecutive balance entries">
+                            <i class="fas fa-bolt"></i> Find Erratic Balances
+                        </button>
                     </div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">
-                        (Last 10 days per account)
+
+                    <!-- Search across account and available balance value -->
+                    <div style="position: relative; min-width: 220px; max-width: 320px; flex: 1 1 200px;">
+                        <i class="fas fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem; pointer-events: none;"></i>
+                        <input type="text" id="balance-search-input" placeholder="Search account or amount (e.g. Monzo, 250)..." style="padding-left: 30px; padding-right: 28px; width: 100%; font-size: 0.82rem; margin: 0; background: var(--input-bg); color: var(--text-main); border: 1px solid var(--input-border); border-radius: 6px; height: 34px;" />
+                        <button type="button" id="balance-search-clear" style="display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; padding: 2px 6px;" title="Clear search">&times;</button>
                     </div>
                 </div>
+
+                <div id="balance-search-count" style="display: none; font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.5rem;"></div>
 
                 <div style="overflow-x: auto;">
                     <table class="w3-table w3-striped" id="balances-table">
@@ -157,25 +185,73 @@
                                 <th class="col-balance-date">Date &amp; Time</th>
                                 <th class="col-balance-account">Account</th>
                                 <th class="col-balance-avail">Available</th>
+                                <th style="text-align: right; width: 70px;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             @if(balances.isEmpty) {
-                            <tr>
-                                <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No balance entries recorded in the last 10 days.</td>
+                            <tr id="no-balances-row">
+                                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No balance entries recorded.</td>
                             </tr>
                             }
                             @for(b <- balances) {
-                            <tr data-account-id="@b.getAccount().getId()" data-timestamp="@b.getTimestamp()">
+                            <tr class="balance-data-row" data-account-id="@b.getAccount().getId()" data-account-name="@b.getAccount().getName().toLowerCase()" data-balance-val="@String.format(java.util.Locale.UK, "%.2f", b.getValue())" data-timestamp="@b.getTimestamp()">
                                 <td class="col-balance-date">@b.getTimestampHumanReadable</td>
                                 <td class="col-balance-account"><span class="account-tag">🏛️ @b.getAccount().getName()</span></td>
                                 <td class="col-balance-avail">£@String.format(java.util.Locale.UK, "%.2f", b.getValue())</td>
+                                <td style="text-align: right;">
+                                    <form action="/balance/@b.getId()/delete" method="POST" style="margin: 0; display: inline;" onsubmit="return confirm('Delete this balance record of £@String.format(java.util.Locale.UK, "%.2f", b.getValue()) for @b.getAccount().getName() on @b.getTimestampHumanReadable? This will remove the accidental entry from historic spending calculations.');">
+                                        @helper.CSRF.formField
+                                        <button type="submit" class="w3-button w3-round w3-tiny" style="background: var(--card-bg-subtle); color: var(--danger); border: 1px solid var(--border-color); padding: 4px 8px;" title="Delete balance record">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </form>
+                                </td>
                             </tr>
                             }
+                            <tr id="no-search-results-row" style="display: none;">
+                                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No balances matching your search.</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Erratic Balances Inspector -->
+<div id="erratic-balances-modal" class="w3-modal" style="display: none; background-color: rgba(0,0,0,0.6); z-index: 200;">
+    <div class="w3-modal-content w3-round w3-card-4" style="max-width: 780px; width: 92%; background: var(--card-bg); padding: 1.5rem; border: 1px solid var(--border-color); max-height: 85vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+            <div>
+                <h4 style="margin: 0; font-weight: 800; font-size: 1.15rem; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-bolt"></i> Erratic Balance Inspector
+                </h4>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+                    Detects massive jumps across consecutive balance entries for each account that can distort historic spending calculations.
+                </div>
+            </div>
+            <span onclick="closeErraticBalancesModal()" style="cursor: pointer; font-size: 1.4rem; color: var(--text-muted); line-height: 1;">&times;</span>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">Minimum jump (£):</label>
+                <input type="number" id="erratic-threshold-input" value="500" step="100" min="50" style="width: 100px; padding: 4px 8px; font-size: 0.85rem; height: 32px; margin: 0; background: var(--input-bg); color: var(--text-main); border: 1px solid var(--input-border); border-radius: 6px;" />
+                <button type="button" onclick="loadErraticBalances()" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); padding: 5px 12px; font-weight: 600;">
+                    <i class="fas fa-sync-alt"></i> Run Check
+                </button>
+            </div>
+            <span id="erratic-result-count" style="font-size: 0.82rem; color: var(--text-muted);"></span>
+        </div>
+
+        <div id="erratic-balances-container" style="overflow-y: auto; flex: 1; min-height: 180px;">
+            <!-- Populated via loadErraticBalances() -->
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+            <button type="button" onclick="closeErraticBalancesModal()" class="w3-button w3-round w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">Close</button>
         </div>
     </div>
 </div>
@@ -634,6 +710,179 @@ $(function() {
     $('.btn-time-filter[data-range="2m"]').trigger('click');
 
     $(window).on('resize', renderChart);
+
+    // --- Search Filter on Recorded Log Table ---
+    var searchInput = document.getElementById('balance-search-input');
+    var clearBtn = document.getElementById('balance-search-clear');
+    var countLabel = document.getElementById('balance-search-count');
+    var noSearchRow = document.getElementById('no-search-results-row');
+
+    function applyBalanceSearch() {
+        if (!searchInput) return;
+        var query = searchInput.value.toLowerCase().trim();
+        var rows = document.querySelectorAll('.balance-data-row');
+        if (rows.length === 0) return;
+
+        if (clearBtn) {
+            clearBtn.style.display = query ? 'block' : 'none';
+        }
+
+        var visibleCount = 0;
+        rows.forEach(function(row) {
+            var accName = (row.getAttribute('data-account-name') || '').toLowerCase();
+            var balVal = (row.getAttribute('data-balance-val') || '').toLowerCase();
+            var accId = row.getAttribute('data-account-id');
+
+            // Must match selected accounts filter in multiselect AND search query
+            var accountActive = selectedAccountIds.has(String(accId));
+            var matchesQuery = !query || accName.indexOf(query) !== -1 || balVal.indexOf(query) !== -1;
+
+            if (accountActive && matchesQuery) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        if (noSearchRow) {
+            noSearchRow.style.display = (visibleCount === 0 && rows.length > 0) ? '' : 'none';
+        }
+
+        if (countLabel) {
+            if (query) {
+                countLabel.style.display = 'block';
+                countLabel.textContent = 'Found ' + visibleCount + ' balance record' + (visibleCount !== 1 ? 's' : '') + ' matching "' + query + '"';
+            } else {
+                countLabel.style.display = 'none';
+            }
+        }
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener('input', applyBalanceSearch);
+    }
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            searchInput.value = '';
+            applyBalanceSearch();
+            searchInput.focus();
+        });
+    }
+
+    // Re-apply search filter whenever account checkboxes change
+    $('.account-filter-chk').on('change', applyBalanceSearch);
+    $('#select-all-btn, #select-none-btn, #select-pot-btn').on('click', function() {
+        setTimeout(applyBalanceSearch, 50);
+    });
+});
+
+// --- Erratic Balances Inspector ---
+function openErraticBalancesModal() {
+    var modal = document.getElementById('erratic-balances-modal');
+    if (modal) {
+        modal.style.display = 'block';
+        loadErraticBalances();
+    }
+}
+
+function closeErraticBalancesModal() {
+    var modal = document.getElementById('erratic-balances-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function loadErraticBalances() {
+    var container = document.getElementById('erratic-balances-container');
+    var countEl = document.getElementById('erratic-result-count');
+    var thresholdInput = document.getElementById('erratic-threshold-input');
+    var threshold = thresholdInput ? (thresholdInput.value || 500) : 500;
+
+    if (!container) return;
+    container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fas fa-spinner fa-spin fa-2x"></i><p style="margin-top: 8px;">Scanning balances for massive jumps &gt;= £' + threshold + '...</p></div>';
+
+    fetch('/api/balances/erratic?threshold=' + encodeURIComponent(threshold))
+        .then(function(res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(function(items) {
+            if (countEl) {
+                countEl.textContent = items.length + ' erratic jump' + (items.length !== 1 ? 's' : '') + ' found';
+            }
+
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); background: var(--card-bg-subtle); border-radius: 8px; border: 1px dashed var(--border-color);">' +
+                    '<i class="fas fa-check-circle" style="color: var(--success); font-size: 2rem; margin-bottom: 8px;"></i>' +
+                    '<h4 style="margin: 4px 0; font-weight: 700; color: var(--text-main);">No erratic balance jumps found!</h4>' +
+                    '<p style="margin: 0; font-size: 0.85rem;">All consecutive balance entries across your accounts are within the £' + threshold + ' threshold.</p>' +
+                    '</div>';
+                return;
+            }
+
+            // Get CSRF token from page
+            var csrfInput = document.querySelector('input[name="csrfToken"]');
+            var csrfToken = csrfInput ? csrfInput.value : '';
+
+            var html = '<table class="w3-table w3-striped" style="font-size: 0.85rem; width: 100%; border-collapse: collapse;">' +
+                '<thead>' +
+                '<tr style="border-bottom: 2px solid var(--border-color); color: var(--text-muted); text-align: left;">' +
+                '<th style="padding: 8px;">Account</th>' +
+                '<th style="padding: 8px;">Date Recorded</th>' +
+                '<th style="padding: 8px; text-align: right;">Previous</th>' +
+                '<th style="padding: 8px; text-align: right;">New Value</th>' +
+                '<th style="padding: 8px; text-align: right;">Jump Amount</th>' +
+                '<th style="padding: 8px; text-align: right; width: 80px;">Action</th>' +
+                '</tr>' +
+                '</thead>' +
+                '<tbody>';
+
+            items.forEach(function(item) {
+                var signed = (item.value - item.prevValue);
+                var isUp = signed > 0;
+                var signStr = isUp ? '+' : '';
+                var deltaColor = isUp ? 'var(--success)' : 'var(--danger)';
+
+                html += '<tr style="border-bottom: 1px solid var(--border-color);">' +
+                    '<td style="padding: 8px; font-weight: 700;">' + escapeHtml(item.accountName) + '</td>' +
+                    '<td style="padding: 8px; color: var(--text-muted);">' +
+                        escapeHtml(item.timestampHumanReadable) +
+                        (item.prevTimestampHumanReadable ? '<div style="font-size: 0.72rem; color: var(--text-muted);">prev: ' + escapeHtml(item.prevTimestampHumanReadable) + '</div>' : '') +
+                    '</td>' +
+                    '<td style="padding: 8px; text-align: right; color: var(--text-muted);">£' + Number(item.prevValue).toFixed(2) + '</td>' +
+                    '<td style="padding: 8px; text-align: right; font-weight: 800; color: var(--text-main);">£' + Number(item.value).toFixed(2) + '</td>' +
+                    '<td style="padding: 8px; text-align: right; font-weight: 700; color: ' + deltaColor + ';">' +
+                        signStr + '£' + Math.abs(signed).toFixed(2) +
+                    '</td>' +
+                    '<td style="padding: 8px; text-align: right;">' +
+                        '<form action="/balance/' + item.id + '/delete" method="POST" style="margin: 0;" onsubmit="return confirm(\'Delete this erratic balance of £' + Number(item.value).toFixed(2) + ' for ' + escapeHtml(item.accountName) + ' to restore correct balance history?\');">' +
+                            '<input type="hidden" name="csrfToken" value="' + csrfToken + '" />' +
+                            '<button type="submit" class="w3-button w3-round w3-tiny" style="background: var(--danger); color: #fff; padding: 4px 8px; font-weight: 600;" title="Delete accidental balance entry">' +
+                                '<i class="fas fa-trash"></i> Delete' +
+                            '</button>' +
+                        '</form>' +
+                    '</td>' +
+                    '</tr>';
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        })
+        .catch(function(err) {
+            container.innerHTML = '<div style="padding: 1.5rem; color: var(--danger); text-align: center;">Failed to check erratic balances: ' + escapeHtml(err.message) + '</div>';
+        });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+window.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeErraticBalancesModal();
+});
+window.addEventListener('click', function(e) {
+    var modal = document.getElementById('erratic-balances-modal');
+    if (e.target === modal) closeErraticBalancesModal();
 });
 </script>
 }

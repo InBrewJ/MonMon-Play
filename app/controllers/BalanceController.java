@@ -323,4 +323,43 @@ public class BalanceController extends Controller {
                 }, ec.current());
     }
 
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> deleteBalance(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden("Waiting list: Your account is pending administrator approval.")
+            );
+        }
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        return balanceRepository.delete(id, sup.getUserId())
+                .thenApplyAsync(success -> {
+                    if (success) {
+                        return redirect(routes.BalanceController.listBalances())
+                                .flashing("info", "Balance record deleted successfully.");
+                    } else {
+                        return redirect(routes.BalanceController.listBalances())
+                                .flashing("error", "Could not delete balance record (not found or unauthorized).");
+                    }
+                }, ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> getErraticBalances(final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Unauthorized")).as("application/json")
+            );
+        }
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        double threshold = 500.0;
+        String tParam = request.queryString("threshold").orElse(null);
+        if (tParam != null && !tParam.trim().isEmpty()) {
+            try {
+                threshold = Math.max(10.0, Double.parseDouble(tParam.trim()));
+            } catch (Exception ignored) {}
+        }
+        return balanceRepository.findErraticBalances(sup.getUserId(), threshold)
+                .thenApplyAsync(list -> ok(play.libs.Json.toJson(list)).as("application/json"), ec.current());
+    }
+
 }

@@ -12,5 +12,7 @@ target
 /db-data
 /dist
 secureProd.conf
-.env*
+.env
+.env.*
+!.env.template
 /db/backups/*

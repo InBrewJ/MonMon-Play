@@ -39,6 +39,7 @@
             </div>
 
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div id="nommon-lock-wrapper" style="display: none; align-items: center; gap: 6px;"></div>
                 <button type="button" id="btn-regenerate-nommon" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; font-weight: 600; cursor: pointer;">
                     <i class="fas fa-sync-alt" id="nommon-refresh-icon"></i> Regenerate Plan
                 </button>
@@ -46,6 +47,10 @@
                     <i class="fas fa-arrow-left"></i> Back to SPOG
                 </a>
             </div>
+        </div>
+
+        <div style="display: none;" id="nommon-csrf-holder">
+            @helper.CSRF.formField
         </div>
 
         <!-- Budget & Basket Metrics -->

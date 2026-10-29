@@ -18,4 +18,8 @@ public interface BalanceRepository {
     CompletionStage<Stream<Balance>> listSince(String userId, Long sinceTimestamp);
 
     CompletionStage<Integer> deleteForAccountBetween(Long accountId, String userId, Long startTimestamp, Long endTimestamp);
+
+    CompletionStage<Boolean> delete(Long id, String userId);
+
+    CompletionStage<java.util.List<ErraticBalance>> findErraticBalances(String userId, double threshold);
 }

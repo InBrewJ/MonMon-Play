@@ -38,8 +38,10 @@ GET     /myIncomings                  controllers.IncomingController.listIncomin
 # Balances (doesn't really need an 'archive for now')
 
 POST    /balance                     controllers.BalanceController.addBalance(req: Request)
+POST    /balance/:id/delete          controllers.BalanceController.deleteBalance(id: Long, req: Request)
 GET     /balances                    controllers.BalanceController.getBalances(req: Request)
 GET     /myBalances                  controllers.BalanceController.listBalances(req: Request)
+GET     /api/balances/erratic        controllers.BalanceController.getErraticBalances(req: Request)
 
 # SPOG ('Single Pane of Glass')
 GET     /spog                         controllers.SpogController.index(req: Request)
@@ -50,6 +52,8 @@ GET     /api/ed-says                  controllers.SpogController.edSays(req: Req
 # NomMon (Smart Grocery & Meal Planner)
 GET     /nommon                       controllers.NomMonController.index(req: Request)
 GET     /api/nommon/plan              controllers.NomMonController.getPlan(req: Request)
+POST    /api/nommon/lock              controllers.NomMonController.lockPlan(req: Request)
+POST    /api/nommon/unlock            controllers.NomMonController.unlockPlan(req: Request)
 
 # Net Worth Tracker
 GET     /netWorth                              controllers.NetWorthController.index(req: Request)

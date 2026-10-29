@@ -23,9 +23,15 @@ echo -e "${BLUE}${BOLD}==> [2/3] Transferring Docker image to ${REMOTE_USER_HOST
 docker save legmon:latest | gzip | ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" "gunzip | docker load"
 echo -e "${GREEN}✅ Docker image transferred and loaded on remote server.${NC}"
 
-# Sync local legmon/.env to remote if it exists
+# Sync local root .env or legmon/.env to remote if it exists
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/.env" ]; then
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$ROOT_DIR/.env" ]; then
+    echo -e "${BLUE}==> Transferring root .env to ${REMOTE_USER_HOST}:/home/circle/app/.env...${NC}"
+    scp -o StrictHostKeyChecking=no "$ROOT_DIR/.env" "${REMOTE_USER_HOST}:/home/circle/app/.env"
+    ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" "chmod 600 /home/circle/app/.env"
+    echo -e "${GREEN}✅ Unified root .env transferred to remote host.${NC}"
+elif [ -f "$SCRIPT_DIR/.env" ]; then
     echo -e "${BLUE}==> Transferring local legmon/.env to ${REMOTE_USER_HOST}:/home/circle/app/legmon/.env...${NC}"
     ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" "mkdir -p /home/circle/app/legmon"
     scp -o StrictHostKeyChecking=no "$SCRIPT_DIR/.env" "${REMOTE_USER_HOST}:/home/circle/app/legmon/.env"
@@ -38,9 +44,12 @@ set -euo pipefail
 
 mkdir -p /home/circle/app/legmon/logs
 
-# Check for .env file
+# Check for .env file (either root .env or legmon/.env)
 ENV_ARG=""
-if [ -f /home/circle/app/legmon/.env ]; then
+if [ -f /home/circle/app/.env ]; then
+    ENV_ARG="--env-file /home/circle/app/.env"
+    echo "Found /home/circle/app/.env - loading unified environment into LegMon container..."
+elif [ -f /home/circle/app/legmon/.env ]; then
     ENV_ARG="--env-file /home/circle/app/legmon/.env"
     echo "Found /home/circle/app/legmon/.env - loading environment into container..."
 fi
