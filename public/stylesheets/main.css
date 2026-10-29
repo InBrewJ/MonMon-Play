@@ -479,6 +479,10 @@ input[type="number"],
 input[type="email"],
 input[type="password"],
 input[type="date"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="datetime-local"],
 select,
 textarea,
 .w3-input,
@@ -492,10 +496,21 @@ textarea,
   border-radius: var(--border-radius-sm);
   background-color: var(--input-bg) !important;
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 1rem;
   color: var(--text-main) !important;
   box-sizing: border-box;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.2s ease;
+}
+
+/* Prevent iOS Safari from auto-zooming on focus: iOS automatically zooms on any form control with computed font-size < 16px */
+@media screen and (max-width: 768px) {
+  input,
+  select,
+  textarea,
+  .w3-input,
+  .w3-select {
+    font-size: 16px !important;
+  }
 }
 
 input:focus, select:focus, textarea:focus, .w3-input:focus, .w3-select:focus {

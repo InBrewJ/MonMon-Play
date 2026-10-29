@@ -90,9 +90,26 @@
             });
     };
 
+    function initTestIngestToggle() {
+        var toggleBtn = document.getElementById('toggle-test-btn');
+        var testPanel = document.getElementById('test-ingest-panel');
+        if (toggleBtn && testPanel) {
+            toggleBtn.addEventListener('click', function() {
+                var isHidden = testPanel.style.display === 'none' || testPanel.style.display === '';
+                testPanel.style.display = isHidden ? 'flex' : 'none';
+                toggleBtn.style.color = isHidden ? 'var(--primary)' : 'var(--text-muted)';
+                toggleBtn.style.borderColor = isHidden ? 'var(--primary)' : 'var(--border-color)';
+            });
+        }
+    }
+
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initLegmon);
+        document.addEventListener('DOMContentLoaded', function() {
+            initLegmon();
+            initTestIngestToggle();
+        });
     } else {
         initLegmon();
+        initTestIngestToggle();
     }
 })();

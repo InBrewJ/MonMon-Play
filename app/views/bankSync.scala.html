@@ -11,8 +11,10 @@
 
 @main("MonMon - Accurate Mode & Monzo Bank Sync") {
 
+@partials.header()
+@partials.navbar()
+
 <div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
-    @partials.navbar()
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
         <div>
@@ -276,16 +278,26 @@
                 </div>
             }
 
-            <!-- Test Ingest Button -->
-            <div style="margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <span style="font-size: 0.85rem; color: var(--text-muted);">Test the webhook ingestion pipeline locally or without waiting:</span>
-                <form action="/bank/sync/all" method="POST" style="margin: 0;">
-                    @helper.CSRF.formField
-                    <input type="hidden" name="provider" value="MOCK" />
-                    <button type="submit" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; padding: 6px 14px; font-size: 0.85rem;">
-                        <i class="fas fa-vial"></i> Test Ingest (Mock Provider)
+            <!-- Test Ingest Section (hidden unless 'Test' button is clicked) -->
+            <div style="margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <div style="display: flex; justify-content: flex-end; align-items: center;">
+                    <button type="button" id="toggle-test-btn" class="w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-flask"></i> <span>Test</span>
                     </button>
-                </form>
+                </div>
+                <div id="test-ingest-panel" style="display: none; margin-top: 10px; background: var(--card-bg-subtle); border: 1px dashed var(--border-color); border-radius: 8px; padding: 12px 16px; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="font-size: 0.88rem; color: var(--text-main); display: block;">Mock Webhook Ingestion</strong>
+                        <span style="font-size: 0.82rem; color: var(--text-muted);">Simulate incoming transactions without waiting for live Monzo events:</span>
+                    </div>
+                    <form action="/bank/sync/all" method="POST" style="margin: 0;">
+                        @helper.CSRF.formField
+                        <input type="hidden" name="provider" value="MOCK" />
+                        <button type="submit" id="btn-test-ingest" class="w3-button w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; padding: 6px 14px; font-size: 0.85rem;">
+                            <i class="fas fa-vial" style="color: var(--primary);"></i> Test Ingest (Mock Provider)
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
 

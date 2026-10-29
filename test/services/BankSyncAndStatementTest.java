@@ -528,6 +528,18 @@ public class BankSyncAndStatementTest {
                     && b.getTimestamp() <= endTimestamp);
             return CompletableFuture.completedFuture(before - balances.size());
         }
+
+        @Override
+        public CompletionStage<Boolean> delete(Long id, String userId) {
+            int before = balances.size();
+            balances.removeIf(b -> id.equals(b.getId()) && userId.equals(b.getUserId()));
+            return CompletableFuture.completedFuture(before > balances.size());
+        }
+
+        @Override
+        public CompletionStage<List<models.ErraticBalance>> findErraticBalances(String userId, double threshold) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
     }
 
     @Test

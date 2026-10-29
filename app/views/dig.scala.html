@@ -3,6 +3,9 @@
 
 @main("MonMon - Dig (Spending Heatmap & Histogram)") {
 
+@partials.header()
+@partials.navbar()
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 <style>
     .dig-stat-card {
@@ -108,7 +111,6 @@
 </style>
 
 <div class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
-    @partials.navbar()
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
         <div>
