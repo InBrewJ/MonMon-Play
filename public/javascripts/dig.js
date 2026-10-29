@@ -12,32 +12,149 @@
     var activeCategoryFilter = 'ALL';
     var sortMode = 'spend'; // 'spend' or 'count'
 
-    function initDig() {
-        var mapContainer = document.getElementById('dig-map');
-        if (!mapContainer) return;
+    // Cached live state for resetting from test mode
+    var liveTransactions = [];
+    var liveCategoryData = [];
+    var isTestMode = false;
+    var originalCategorySelectHtml = '';
+    var originalStatTotal = '';
+    var originalStatGeotagged = '';
+    var originalStatCategory = '';
+    var originalSpotsCount = '';
 
+    // Frontend-only test dataset:
+    // - Large amount of spending in London UK (£3,799.00 across 3 merchants)
+    // - Small amount of spending in Edinburgh UK (£4.20 coffee)
+    // - Very large spend in Vatican City (£18,500.00 archive & art restoration tour)
+    var TEST_DATASET = [
+        {
+            id: 9901,
+            lat: 51.4994,
+            lng: -0.1632,
+            amount: 1850.00,
+            merchant: "Harrods Knightsbridge",
+            category: "shopping",
+            emoji: "🛍️",
+            address: "87-135 Brompton Rd, Knightsbridge, London SW1X 7XL, UK",
+            date: "2026-10-18"
+        },
+        {
+            id: 9902,
+            lat: 51.5133,
+            lng: -0.1408,
+            amount: 1299.00,
+            merchant: "Apple Regent Street",
+            category: "shopping",
+            emoji: "💻",
+            address: "235 Regent St, Mayfair, London W1B 2EL, UK",
+            date: "2026-10-19"
+        },
+        {
+            id: 9903,
+            lat: 51.5070,
+            lng: -0.1416,
+            amount: 650.00,
+            merchant: "The Ritz Restaurant",
+            category: "eating_out",
+            emoji: "🍽️",
+            address: "150 Piccadilly, St. James's, London W1J 9BR, UK",
+            date: "2026-10-21"
+        },
+        {
+            id: 9904,
+            lat: 55.9508,
+            lng: -3.1895,
+            amount: 4.20,
+            merchant: "The Milkman Coffee",
+            category: "eating_out",
+            emoji: "☕",
+            address: "7 Cockburn St, Edinburgh EH1 1BP, Scotland, UK",
+            date: "2026-10-24"
+        },
+        {
+            id: 9905,
+            lat: 41.9029,
+            lng: 12.4534,
+            amount: 18500.00,
+            merchant: "Vatican Apostolic Archive & Sistine Tour",
+            category: "entertainment",
+            emoji: "🏛️",
+            address: "Cortile del Belvedere, 00120 Città del Vaticano, Vatican City",
+            date: "2026-10-26"
+        }
+    ];
+
+    function formatCategoryName(str) {
+        if (!str) return 'General';
+        var words = str.replace(/_/g, ' ').split(' ');
+        for (var i = 0; i < words.length; i++) {
+            words[i] = words[i].charAt(0).toUpperCase() + words[i].slice(1).toLowerCase();
+        }
+        return words.join(' ');
+    }
+
+    function buildCategoryHistogram(txs) {
+        var map = {};
+        var total = 0;
+        for (var i = 0; i < txs.length; i++) {
+            var raw = (txs[i].category || 'general').toLowerCase();
+            if (!map[raw]) {
+                map[raw] = {
+                    category: formatCategoryName(raw),
+                    rawCategory: raw,
+                    count: 0,
+                    total: 0
+                };
+            }
+            map[raw].count += 1;
+            map[raw].total += txs[i].amount;
+            total += txs[i].amount;
+        }
+        var list = [];
+        for (var k in map) {
+            if (map.hasOwnProperty(k)) {
+                var item = map[k];
+                item.average = item.count > 0 ? (item.total / item.count) : 0;
+                item.percentage = total > 0 ? (item.total / total) * 100 : 0;
+                list.push(item);
+            }
+        }
+        return list;
+    }
+
+    function initDig() {
         // Retrieve embedded JSON data from script tag
         var dataScript = document.getElementById('dig-data');
-        if (!dataScript) return;
-
         var rawPayload = {};
-        try {
-            rawPayload = JSON.parse(dataScript.textContent);
-        } catch (e) {
-            console.error('Failed to parse dig-data payload:', e);
-            return;
+        if (dataScript) {
+            try {
+                rawPayload = JSON.parse(dataScript.textContent);
+            } catch (e) {
+                console.error('Failed to parse dig-data payload:', e);
+            }
         }
 
         allTransactions = rawPayload.transactions || [];
         categoryData = rawPayload.histogram || [];
+        liveTransactions = allTransactions.slice(0);
+        liveCategoryData = categoryData.slice(0);
 
-        if (allTransactions.length === 0) {
-            // Nothing to render on map, empty state is displayed by template
-            initHistogram(categoryData);
-            return;
+        // Cache initial DOM values for resetting
+        var statTotal = document.getElementById('dig-stat-total');
+        var statGeotagged = document.getElementById('dig-stat-geotagged');
+        var statCategory = document.getElementById('dig-stat-category');
+        var spotsCount = document.getElementById('dig-spots-count');
+        var catSelect = document.getElementById('dig-category-select');
+
+        if (statTotal) originalStatTotal = statTotal.textContent;
+        if (statGeotagged) originalStatGeotagged = statGeotagged.textContent;
+        if (statCategory) originalStatCategory = statCategory.textContent;
+        if (spotsCount) originalSpotsCount = spotsCount.textContent;
+        if (catSelect) originalCategorySelectHtml = catSelect.innerHTML;
+
+        if (allTransactions.length > 0) {
+            setupMap(allTransactions);
         }
-
-        setupMap(allTransactions);
         initHistogram(categoryData);
         setupControls();
     }
@@ -45,10 +162,15 @@
     function setupMap(transactions) {
         var mapEl = document.getElementById('dig-map');
         if (!mapEl) return;
+        if (map !== null) {
+            renderHeatmapAndMarkers(transactions);
+            fitMapBounds(transactions);
+            return;
+        }
 
         // Determine center from first transaction or UK default
-        var initialLat = transactions[0].lat || 51.5074;
-        var initialLng = transactions[0].lng || -0.1278;
+        var initialLat = (transactions.length > 0 && transactions[0].lat) ? transactions[0].lat : 51.5074;
+        var initialLng = (transactions.length > 0 && transactions[0].lng) ? transactions[0].lng : -0.1278;
 
         map = L.map('dig-map', {
             zoomControl: true,
@@ -85,11 +207,12 @@
     }
 
     function getHeatColor(amount, maxAmount) {
-        var ratio = maxAmount > 0 ? Math.min(amount / maxAmount, 1.0) : 0.5;
-        if (ratio < 0.25) return '#10b981'; // Green
-        if (ratio < 0.5) return '#eab308';  // Yellow
-        if (ratio < 0.75) return '#f97316'; // Orange
-        return '#ef4444';                   // Red
+        // Clear tiering: small spend (<£25) green, large spend (£500-£2500) orange, huge spend (>=£5000) red
+        if (amount < 25) return '#10b981'; // Green
+        if (amount < 150) return '#84cc16'; // Lime
+        if (amount < 500) return '#eab308'; // Amber
+        if (amount < 2500) return '#f97316'; // Orange (Large amount)
+        return '#ef4444';                   // Red (Very large spend)
     }
 
     function renderHeatmapAndMarkers(transactions) {
@@ -122,30 +245,37 @@
         for (var j = 0; j < transactions.length; j++) {
             var tx = transactions[j];
             if (typeof tx.lat === 'number' && typeof tx.lng === 'number') {
-                // Non-linear weight so large purchases pop out as red, while small ones stay green
-                var normalizedWeight = Math.min(Math.max(tx.amount / maxAmount, 0.15), 1.0);
+                // Logarithmic intensity curve so £1k+ stands out prominently, while Vatican City maxes at 1.0
+                var normalizedWeight;
+                if (maxAmount > 50) {
+                    var logAmt = Math.log10(Math.max(tx.amount, 1));
+                    var logMax = Math.log10(Math.max(maxAmount, 1));
+                    normalizedWeight = Math.min(Math.max(logAmt / logMax, 0.18), 1.0);
+                } else {
+                    normalizedWeight = Math.min(Math.max(tx.amount / maxAmount, 0.18), 1.0);
+                }
                 heatPoints.push([tx.lat, tx.lng, normalizedWeight]);
 
-                // Also add an interactive circle marker with popup
+                // Interactive circle marker with popup
                 var markerColor = getHeatColor(tx.amount, maxAmount);
                 var circleMarker = L.circleMarker([tx.lat, tx.lng], {
-                    radius: 7,
+                    radius: tx.amount >= 5000 ? 10 : 7,
                     fillColor: markerColor,
                     color: '#ffffff',
-                    weight: 1.5,
-                    opacity: 0.9,
-                    fillOpacity: 0.8
+                    weight: 2,
+                    opacity: 0.95,
+                    fillOpacity: 0.85
                 });
 
                 var emojiHtml = tx.emoji ? '<span style="font-size: 1.3rem; margin-right: 6px;">' + tx.emoji + '</span>' : '';
                 var amountFormatted = '£' + parseFloat(tx.amount).toFixed(2);
-                var categoryFormatted = tx.category ? tx.category.replace('_', ' ') : 'General';
+                var categoryFormatted = tx.category ? formatCategoryName(tx.category) : 'General';
                 var addressHtml = tx.address ? '<div style="margin-top: 4px; color: #64748b; font-size: 0.8rem;"><i class="fas fa-map-marker-alt"></i> ' + tx.address + '</div>' : '';
 
                 var popupContent = '<div style="font-family: inherit; min-width: 180px; padding: 4px;">' +
                     '<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">' +
                     '<div style="font-weight: 700; font-size: 0.95rem; display: flex; align-items: center;">' + emojiHtml + (tx.merchant || 'Monzo Purchase') + '</div>' +
-                    '<span style="font-weight: 700; color: ' + markerColor + '; font-size: 1rem;">' + amountFormatted + '</span>' +
+                    '<span style="font-weight: 700; color: ' + markerColor + '; font-size: 1rem; margin-left: 8px;">' + amountFormatted + '</span>' +
                     '</div>' +
                     '<div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem; color: #475569;">' +
                     '<span style="background: rgba(99,102,241,0.1); color: #6366f1; padding: 2px 6px; border-radius: 4px; text-transform: capitalize;">' + categoryFormatted + '</span>' +
@@ -159,20 +289,131 @@
             }
         }
 
-        // Green -> Yellow -> Orange -> Red
+        // Green -> Lime -> Amber -> Orange -> Red
         heatLayer = L.heatLayer(heatPoints, {
             radius: 28,
             blur: 18,
             maxZoom: 16,
             minOpacity: 0.25,
             gradient: {
-                0.2: '#10b981', // green (good)
+                0.2: '#10b981', // green (good / low spend)
                 0.45: '#84cc16', // lime
                 0.65: '#f59e0b', // amber
-                0.85: '#f97316', // orange
-                1.0: '#ef4444'  // red (large sum)
+                0.85: '#f97316', // orange (large spend)
+                1.0: '#ef4444'  // red (very large spend)
             }
         }).addTo(map);
+    }
+
+    function toggleTestMode() {
+        var testBtn = document.getElementById('btn-dig-test');
+        var testBtnText = document.getElementById('dig-test-btn-text');
+        var emptyCard = document.getElementById('dig-empty-state-card');
+        var mapCard = document.getElementById('dig-map-card');
+        var statTotal = document.getElementById('dig-stat-total');
+        var statGeotagged = document.getElementById('dig-stat-geotagged');
+        var statCategory = document.getElementById('dig-stat-category');
+        var spotsCount = document.getElementById('dig-spots-count');
+        var catSelect = document.getElementById('dig-category-select');
+
+        isTestMode = !isTestMode;
+
+        if (isTestMode) {
+            // Activate Test Mode
+            if (testBtn) {
+                testBtn.style.background = 'var(--primary)';
+                testBtn.style.color = '#ffffff';
+                testBtn.style.borderColor = 'var(--primary)';
+            }
+            if (testBtnText) {
+                testBtnText.textContent = 'Exit Test Mode';
+            }
+
+            // Show map card, hide empty state
+            if (emptyCard) emptyCard.style.display = 'none';
+            if (mapCard) mapCard.style.display = 'block';
+
+            allTransactions = TEST_DATASET.slice(0);
+            categoryData = buildCategoryHistogram(allTransactions);
+            activeCategoryFilter = 'ALL';
+
+            // Update stats
+            var testTotal = 0;
+            for (var i = 0; i < allTransactions.length; i++) {
+                testTotal += allTransactions[i].amount;
+            }
+            if (statTotal) statTotal.textContent = '£' + testTotal.toFixed(2);
+            if (statGeotagged) statGeotagged.textContent = String(allTransactions.length);
+            if (statCategory) statCategory.textContent = 'Entertainment';
+            if (spotsCount) spotsCount.textContent = '(' + allTransactions.length + ' test spots)';
+
+            // Populate category select with test categories
+            if (catSelect) {
+                var optHtml = '<option value="ALL">All Categories (' + allTransactions.length + ')</option>';
+                for (var c = 0; c < categoryData.length; c++) {
+                    optHtml += '<option value="' + categoryData[c].rawCategory + '">' + categoryData[c].category + ' (' + categoryData[c].count + ')</option>';
+                }
+                catSelect.innerHTML = optHtml;
+                catSelect.value = 'ALL';
+            }
+
+            if (!map) {
+                setupMap(allTransactions);
+            } else {
+                map.invalidateSize();
+                renderHeatmapAndMarkers(allTransactions);
+                fitMapBounds(allTransactions);
+            }
+
+            renderHistogramBars(categoryData, sortMode);
+            setTimeout(function() {
+                if (map) {
+                    map.invalidateSize();
+                    fitMapBounds(allTransactions);
+                }
+            }, 150);
+        } else {
+            // Exit Test Mode - Restore Live Data
+            if (testBtn) {
+                testBtn.style.background = 'var(--card-bg)';
+                testBtn.style.color = 'var(--text-main)';
+                testBtn.style.borderColor = 'var(--border-color)';
+            }
+            if (testBtnText) {
+                testBtnText.textContent = 'Test';
+            }
+
+            allTransactions = liveTransactions.slice(0);
+            categoryData = liveCategoryData.slice(0);
+            activeCategoryFilter = 'ALL';
+
+            // Restore stat cards
+            if (statTotal) statTotal.textContent = originalStatTotal;
+            if (statGeotagged) statGeotagged.textContent = originalStatGeotagged;
+            if (statCategory) statCategory.textContent = originalStatCategory;
+            if (spotsCount) spotsCount.textContent = originalSpotsCount;
+
+            // Restore category select
+            if (catSelect) {
+                catSelect.innerHTML = originalCategorySelectHtml;
+                catSelect.value = 'ALL';
+            }
+
+            if (allTransactions.length === 0) {
+                if (mapCard) mapCard.style.display = 'none';
+                if (emptyCard) emptyCard.style.display = 'block';
+            } else {
+                if (emptyCard) emptyCard.style.display = 'none';
+                if (mapCard) mapCard.style.display = 'block';
+                if (map) {
+                    map.invalidateSize();
+                    renderHeatmapAndMarkers(allTransactions);
+                    fitMapBounds(allTransactions);
+                }
+            }
+
+            renderHistogramBars(categoryData, sortMode);
+        }
     }
 
     function setupControls() {
@@ -224,6 +465,16 @@
                 fitMapBounds(allTransactions);
                 updateHistogramActiveBar(null);
             });
+        }
+
+        // Test Data buttons
+        var btnTest = document.getElementById('btn-dig-test');
+        if (btnTest) {
+            btnTest.addEventListener('click', toggleTestMode);
+        }
+        var btnTestEmpty = document.getElementById('btn-dig-test-empty');
+        if (btnTestEmpty) {
+            btnTestEmpty.addEventListener('click', toggleTestMode);
         }
     }
 

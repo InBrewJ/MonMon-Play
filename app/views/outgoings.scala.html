@@ -51,7 +51,7 @@
         <!-- Filter Tabs: Monthly & Due vs Yearly vs Paused vs All -->
         <div class="outgoings-tabs-bar" style="display: flex; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; flex-wrap: wrap;">
           <button type="button" class="outgoings-tab-btn active" data-tab="active" style="background: none; border: none; border-bottom: 2px solid var(--primary); padding: 6px 12px; font-weight: 700; color: var(--primary); cursor: pointer; font-size: 0.85rem;">
-            <i class="fas fa-calendar-check" style="margin-right: 4px;"></i> Monthly & Due Now
+            <i class="fas fa-calendar-check" style="margin-right: 4px;"></i> Monthly and due now
           </button>
           <button type="button" class="outgoings-tab-btn" data-tab="yearly" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
             <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i> Yearly Bills
@@ -90,7 +90,7 @@
                       data-due-now="@o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))"
                       data-month="@o.getOutgoingMonth()"
                       data-is-paused="@o.isPaused()"
-                      style="@if(o.isPaused()){opacity: 0.75; background: rgba(245, 158, 11, 0.05);}">
+                      style="@if(o.isPaused()){opacity: 0.75; background: rgba(245, 158, 11, 0.05);}@if(o.isYearly() && !o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))){display: none;}">
                     <td class="col-day">
                       @if(o.isYearly()) {
                         <span style="font-weight: 700; color: var(--primary);">
@@ -184,7 +184,7 @@
                    data-due-now="@o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))"
                    data-month="@o.getOutgoingMonth()"
                    data-is-paused="@o.isPaused()"
-                   style="@if(o.isPaused()){opacity: 0.8; border-left: 3px solid #f59e0b;}">
+                   style="@if(o.isPaused()){opacity: 0.8; border-left: 3px solid #f59e0b;}@if(o.isYearly() && !o.isDueInMonth(helpers.BankHolidayHelper.nowInRegion("UK"))){display: none;}">
                 <div class="item-card-header">
                   <div class="item-card-title-group">
                     <div class="day-badge @if(o.isAdjustedForMonth()) {day-badge-adj}">

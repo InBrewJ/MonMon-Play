@@ -15,4 +15,6 @@ On mobile for mobile tables, the implementation on /myAccounts is the cleanest. 
 
 For mobile and desktop and for the swipe-able cards and desktop cards, we should make a decision up front on what the user needs to see 'at a glance', this should inform the order of the page
 
+--- the above was sent to agy ---
+
 App wide search should search all primitives (within reason and with proper indexes) and clicked results should route back to somewhere on the app where it lives, never in isolation

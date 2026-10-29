@@ -1,8 +1,11 @@
 package controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
+import helpers.TimeHelpers;
+import helpers.TransactionBalanceReconstructor;
 import helpers.UserHelpers;
 import models.*;
 import org.pac4j.core.context.session.SessionStore;
@@ -387,62 +390,7 @@ public class BankSyncController extends Controller {
                 Account targetAccount = matchedAccOpt.get();
 
                 // 1. Parse transactions from statement payload
-                List<BankTransaction> txsToSave = new ArrayList<>();
-                try {
-                    JsonNode payloadJson = Json.parse(stmt.getRawPayload());
-                    JsonNode txArray = payloadJson.path("transactions");
-                    if (txArray.isArray()) {
-                        for (JsonNode txItem : txArray) {
-                            JsonNode data = txItem.has("data") ? txItem.get("data") : txItem;
-                            String txId = data.path("id").asText("legmon_tx_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
-                            long pence = data.path("amount").asLong(0L);
-                            float amount = (data.has("amount") && data.get("amount").isFloatingPointNumber())
-                                    ? (float) data.get("amount").asDouble()
-                                    : (Math.abs(pence) / 100.0f * (pence > 0 ? -1.0f : 1.0f));
-
-                            String created = data.path("created").asText(LocalDate.now().toString());
-                            long epochSec = System.currentTimeMillis() / 1000L;
-                            String dateStr = stmt.getEndDate();
-                            try {
-                                if (created.contains("T")) {
-                                    Instant inst = Instant.parse(created);
-                                    epochSec = inst.getEpochSecond();
-                                    dateStr = inst.atZone(ZoneOffset.UTC).toLocalDate().toString();
-                                } else {
-                                    LocalDate ld = LocalDate.parse(created);
-                                    epochSec = ld.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
-                                    dateStr = ld.toString();
-                                }
-                            } catch (Exception ignored) {
-                            }
-
-                            String desc = data.path("description").asText("Statement item");
-                            String merchant = data.path("merchant").path("name").asText(desc);
-                            String category = data.path("category").asText("General");
-
-                            BankTransaction tx = new BankTransaction(
-                                    sup.getUserId(),
-                                    accountId,
-                                    txId,
-                                    epochSec,
-                                    dateStr,
-                                    amount,
-                                    desc,
-                                    merchant,
-                                    category,
-                                    "STATEMENT",
-                                    false
-                            );
-                            try {
-                                tx.setRawData(Json.stringify(data));
-                            } catch (Exception ignored) {
-                            }
-                            txsToSave.add(tx);
-                        }
-                    }
-                } catch (Exception e) {
-                    System.err.println("Could not parse transactions from statement: " + e.getMessage());
-                }
+                List<BankTransaction> txsToSave = parseTransactionsFromStatement(stmt, accountId, sup.getUserId());
 
                 // 2. Save all transactions
                 return bankTransactionRepository.saveAll(txsToSave).thenComposeAsync(savedCount -> {
@@ -454,12 +402,13 @@ public class BankSyncController extends Controller {
                         } catch (Exception ignored) {}
                     }
 
+                    List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
+                            helpers.TransactionBalanceReconstructor.fromBankTransactions(txsToSave);
+
                     if (userAnchorVal != null) {
                         long anchorTs = (anchorDateStr != null && !anchorDateStr.trim().isEmpty())
                                 ? parseEpochSeconds(anchorDateStr.trim(), false)
                                 : stmt.getEndTimestamp();
-                        List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
-                                helpers.TransactionBalanceReconstructor.fromBankTransactions(txsToSave);
                         helpers.TransactionBalanceReconstructor.ReconstructionResult rec =
                                 helpers.TransactionBalanceReconstructor.reconstruct(
                                         deltas, anchorTs, userAnchorVal, stmt.getStartTimestamp(), stmt.getEndTimestamp());
@@ -467,27 +416,27 @@ public class BankSyncController extends Controller {
                         stmt.setClosingBalance(rec.getClosingBalance());
 
                         return applyBalancesAndFinalize(stmt, targetAccount, accountId, sup.getUserId(), savedCount,
-                                "Transaction list matched to '" + targetAccount.getName() + "'. Reconstructed balances from anchor £" + String.format("%.2f", userAnchorVal) + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.");
+                                "Transaction list matched to '" + targetAccount.getName() + "'. Reconstructed balances from anchor £" + String.format("%.2f", userAnchorVal) + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.",
+                                rec.getRunningBalances());
                     } else if (isTxListOnly) {
                         // Check if existing balance can be discovered from balanceRepository
                         return balanceRepository.list(sup.getUserId()).thenComposeAsync(balancesStream -> {
                             List<Balance> existingAccBalances = balancesStream
-                                    .filter(b -> b.getAccount() != null && accountId.equals(b.getAccount().getId()))
+                                     .filter(b -> b.getAccount() != null && accountId.equals(b.getAccount().getId()))
                                     .collect(Collectors.toList());
                             Optional<Balance> autoAnchor = helpers.TransactionBalanceReconstructor.findAnchorBalance(
                                     existingAccBalances, stmt.getStartTimestamp(), stmt.getEndTimestamp());
 
                             if (autoAnchor.isPresent()) {
                                 Balance a = autoAnchor.get();
-                                List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
-                                        helpers.TransactionBalanceReconstructor.fromBankTransactions(txsToSave);
                                 helpers.TransactionBalanceReconstructor.ReconstructionResult rec =
                                         helpers.TransactionBalanceReconstructor.reconstruct(
                                                 deltas, a.getTimestamp(), a.getValue(), stmt.getStartTimestamp(), stmt.getEndTimestamp());
                                 stmt.setOpeningBalance(rec.getOpeningBalance());
                                 stmt.setClosingBalance(rec.getClosingBalance());
                                 return applyBalancesAndFinalize(stmt, targetAccount, accountId, sup.getUserId(), savedCount,
-                                        "Transaction list matched to '" + targetAccount.getName() + "'. Auto-reconstructed balances from existing anchor balance of £" + String.format("%.2f", a.getValue()) + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.");
+                                        "Transaction list matched to '" + targetAccount.getName() + "'. Auto-reconstructed balances from existing anchor balance of £" + String.format("%.2f", a.getValue()) + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.",
+                                        rec.getRunningBalances());
                             } else {
                                 // No anchor balance provided or found. Import transactions and steer user directly to /myBalances screen!
                                 stmt.setStatus("APPLIED");
@@ -500,42 +449,148 @@ public class BankSyncController extends Controller {
                             }
                         }, ec.current());
                     } else {
-                        // Standard statement with verified closing balance
+                        // Standard statement with verified closing balance: reconstruct running balances as well
+                        helpers.TransactionBalanceReconstructor.ReconstructionResult rec = null;
+                        if (stmt.getClosingBalance() != null) {
+                            rec = helpers.TransactionBalanceReconstructor.reconstruct(
+                                    deltas, stmt.getEndTimestamp(), stmt.getClosingBalance(), stmt.getStartTimestamp(), stmt.getEndTimestamp());
+                        }
                         return applyBalancesAndFinalize(stmt, targetAccount, accountId, sup.getUserId(), savedCount,
-                                "Statement matched to '" + targetAccount.getName() + "'! Dangerously overwritten ABL balances for " + stmt.getStartDate() + " to " + stmt.getEndDate() + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.");
+                                "Statement matched to '" + targetAccount.getName() + "'! Dangerously overwritten ABL balances for " + stmt.getStartDate() + " to " + stmt.getEndDate() + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.",
+                                rec != null ? rec.getRunningBalances() : null);
                     }
                 }, ec.current());
             }, ec.current());
         }, ec.current());
     }
 
-    private CompletionStage<Result> applyBalancesAndFinalize(PendingStatement stmt, Account targetAccount, Long accountId, String userId, int savedCount, String flashMessage) {
+    private List<BankTransaction> parseTransactionsFromStatement(PendingStatement stmt, Long accountId, String userId) {
+        List<BankTransaction> txsToSave = new ArrayList<>();
+        if (stmt == null || stmt.getRawPayload() == null) {
+            return txsToSave;
+        }
+        try {
+            JsonNode payloadJson = Json.parse(stmt.getRawPayload());
+            JsonNode txArray = payloadJson.path("transactions");
+            if (txArray.isArray()) {
+                for (JsonNode txItem : txArray) {
+                    JsonNode data = txItem.has("data") ? txItem.get("data") : txItem;
+                    String txId = data.path("id").asText("legmon_tx_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
+                    long pence = data.path("amount").asLong(0L);
+                    float amount = (data.has("amount") && data.get("amount").isFloatingPointNumber())
+                            ? (float) data.get("amount").asDouble()
+                            : (Math.abs(pence) / 100.0f * (pence > 0 ? -1.0f : 1.0f));
+
+                    String created = data.path("created").asText(LocalDate.now().toString());
+                    long epochSec = System.currentTimeMillis() / 1000L;
+                    String dateStr = stmt.getEndDate();
+                    try {
+                        if (created.contains("T")) {
+                            Instant inst = Instant.parse(created);
+                            epochSec = inst.getEpochSecond();
+                            dateStr = inst.atZone(ZoneOffset.UTC).toLocalDate().toString();
+                        } else {
+                            LocalDate ld = LocalDate.parse(created);
+                            epochSec = ld.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+                            dateStr = ld.toString();
+                        }
+                    } catch (Exception ignored) {
+                    }
+
+                    String desc = data.path("description").asText("Statement item");
+                    String merchant = data.path("merchant").path("name").asText(desc);
+                    String category = data.path("category").asText("General");
+
+                    BankTransaction tx = new BankTransaction(
+                            userId,
+                            accountId,
+                            txId,
+                            epochSec,
+                            dateStr,
+                            amount,
+                            desc,
+                            merchant,
+                            category,
+                            "STATEMENT",
+                            false
+                    );
+                    try {
+                        tx.setRawData(Json.stringify(data));
+                    } catch (Exception ignored) {
+                    }
+                    txsToSave.add(tx);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Could not parse transactions from statement: " + e.getMessage());
+        }
+        return txsToSave;
+    }
+
+    private CompletionStage<Result> applyBalancesAndFinalize(
+            PendingStatement stmt,
+            Account targetAccount,
+            Long accountId,
+            String userId,
+            int savedCount,
+            String flashMessage,
+            Map<Long, Float> runningBalances) {
+
         return balanceRepository.deleteForAccountBetween(accountId, userId, stmt.getStartTimestamp(), stmt.getEndTimestamp())
                 .thenComposeAsync(deletedBalancesCount -> {
+                    List<Balance> balancesToAdd = new ArrayList<>();
+
+                    // 1. Opening balance
+                    if (stmt.getOpeningBalance() != null && stmt.getStartTimestamp() < stmt.getEndTimestamp()) {
+                        Balance openBal = new Balance();
+                        openBal.setUserId(userId);
+                        openBal.setAccount(targetAccount);
+                        openBal.setValue(stmt.getOpeningBalance());
+                        openBal.setTimestamp(stmt.getStartTimestamp());
+                        balancesToAdd.add(openBal);
+                    }
+
+                    // 2. Intermediate daily balances from running balances (if available)
+                    if (runningBalances != null && !runningBalances.isEmpty()) {
+                        ZoneOffset utc = ZoneOffset.UTC;
+                        Map<LocalDate, Map.Entry<Long, Float>> dailyLatest = new TreeMap<>();
+                        for (Map.Entry<Long, Float> entry : runningBalances.entrySet()) {
+                            long ts = entry.getKey();
+                            if (ts > stmt.getStartTimestamp() && ts < stmt.getEndTimestamp()) {
+                                LocalDate date = Instant.ofEpochSecond(ts).atZone(utc).toLocalDate();
+                                dailyLatest.put(date, entry);
+                            }
+                        }
+
+                        for (Map.Entry<LocalDate, Map.Entry<Long, Float>> dayEntry : dailyLatest.entrySet()) {
+                            Balance midBal = new Balance();
+                            midBal.setUserId(userId);
+                            midBal.setAccount(targetAccount);
+                            midBal.setValue(dayEntry.getValue().getValue());
+                            midBal.setTimestamp(dayEntry.getValue().getKey());
+                            balancesToAdd.add(midBal);
+                        }
+                    }
+
+                    // 3. Closing balance
                     Balance closingBal = new Balance();
                     closingBal.setUserId(userId);
                     closingBal.setAccount(targetAccount);
                     closingBal.setValue(stmt.getClosingBalance());
                     closingBal.setTimestamp(stmt.getEndTimestamp());
+                    balancesToAdd.add(closingBal);
 
-                    return balanceRepository.add(closingBal).thenComposeAsync(addedClosing -> {
-                        CompletableFuture<Boolean> openFut = CompletableFuture.completedFuture(true);
-                        if (stmt.getOpeningBalance() != null && stmt.getStartTimestamp() < stmt.getEndTimestamp()) {
-                            Balance openBal = new Balance();
-                            openBal.setUserId(userId);
-                            openBal.setAccount(targetAccount);
-                            openBal.setValue(stmt.getOpeningBalance());
-                            openBal.setTimestamp(stmt.getStartTimestamp());
-                            openFut = balanceRepository.add(openBal).thenApply(b -> true).toCompletableFuture();
-                        }
+                    CompletableFuture<Void> allAdds = CompletableFuture.completedFuture(null);
+                    for (Balance b : balancesToAdd) {
+                        allAdds = allAdds.thenCompose(v -> balanceRepository.add(b).thenApply(res -> (Void) null).toCompletableFuture());
+                    }
 
-                        return openFut.thenComposeAsync(v -> {
-                            stmt.setStatus("APPLIED");
-                            stmt.setMatchedAccountId(accountId);
-                            stmt.setAppliedAt(System.currentTimeMillis() / 1000L);
-                            return pendingStatementRepository.save(stmt).thenApplyAsync(savedStmt -> {
-                                return redirect(routes.BankSyncController.index()).flashing("info", flashMessage);
-                            }, ec.current());
+                    return allAdds.thenComposeAsync(v -> {
+                        stmt.setStatus("APPLIED");
+                        stmt.setMatchedAccountId(accountId);
+                        stmt.setAppliedAt(System.currentTimeMillis() / 1000L);
+                        return pendingStatementRepository.save(stmt).thenApplyAsync(savedStmt -> {
+                            return redirect("/myBalances?accountId=" + accountId).flashing("info", flashMessage);
                         }, ec.current());
                     }, ec.current());
                 }, ec.current());
@@ -708,6 +763,167 @@ public class BankSyncController extends Controller {
             stmt.setStatus("DISCARDED");
             return pendingStatementRepository.save(stmt).thenApplyAsync(saved -> {
                 return redirect(routes.BankSyncController.index()).flashing("info", "Statement discarded.");
+            }, ec.current());
+        }, ec.current());
+    }
+
+    public CompletionStage<Result> apiPreviewStatement(Long id, final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        String userId = request.queryString("userId").orElse(null);
+        if (userId == null || userId.trim().isEmpty() || "guest".equals(userId)) {
+            userId = (sup != null && !"guest".equals(sup.getUserId())) ? sup.getUserId() : null;
+        }
+        if (userId == null) {
+            return CompletableFuture.completedFuture(forbidden(Json.newObject().put("error", "Unauthorized")));
+        }
+        final String effectiveUserId = userId;
+
+        String accountIdStr = request.queryString("accountId").orElse(null);
+        Long accountId = null;
+        if (accountIdStr != null && !accountIdStr.trim().isEmpty()) {
+            try { accountId = Long.parseLong(accountIdStr.trim()); } catch (Exception ignored) {}
+        }
+        final Long finalAccountId = accountId;
+        String anchorBalStr = request.queryString("anchorBalance").orElse(null);
+        String anchorDateStr = request.queryString("anchorDate").orElse(null);
+
+        return pendingStatementRepository.findById(id).thenComposeAsync(optStmt -> {
+            if (optStmt.isEmpty()) {
+                return CompletableFuture.completedFuture(notFound(Json.newObject().put("error", "Statement not found")));
+            }
+            PendingStatement stmt = optStmt.get();
+            if (!effectiveUserId.equals(stmt.getUserId())) {
+                return CompletableFuture.completedFuture(forbidden(Json.newObject().put("error", "Forbidden")));
+            }
+
+            List<BankTransaction> txs = parseTransactionsFromStatement(stmt, finalAccountId != null ? finalAccountId : 0L, effectiveUserId);
+            boolean isTxList = TransactionBalanceReconstructor.isTransactionListOnly(stmt);
+
+            return accountRepository.list(effectiveUserId).thenComposeAsync(accStream -> {
+                List<Account> accounts = accStream.collect(Collectors.toList());
+                Account targetAcc = null;
+                if (finalAccountId != null) {
+                    targetAcc = accounts.stream().filter(a -> a.getId().equals(finalAccountId)).findFirst().orElse(null);
+                }
+                if (targetAcc == null && stmt.getMatchedAccountId() != null) {
+                    targetAcc = accounts.stream().filter(a -> a.getId().equals(stmt.getMatchedAccountId())).findFirst().orElse(null);
+                }
+                final Account resolvedAcc = targetAcc;
+
+                CompletableFuture<List<Balance>> existingBalsFut;
+                if (resolvedAcc != null) {
+                    existingBalsFut = balanceRepository.list(effectiveUserId).thenApply(bStream ->
+                            bStream.filter(b -> b.getAccount() != null && resolvedAcc.getId().equals(b.getAccount().getId())
+                                            && b.getTimestamp() >= stmt.getStartTimestamp() && b.getTimestamp() <= stmt.getEndTimestamp())
+                                    .collect(Collectors.toList())
+                    ).toCompletableFuture();
+                } else {
+                    existingBalsFut = CompletableFuture.completedFuture(Collections.emptyList());
+                }
+
+                return existingBalsFut.thenApplyAsync(existingBals -> {
+                    Float anchorVal = null;
+                    if (anchorBalStr != null && !anchorBalStr.trim().isEmpty()) {
+                        try { anchorVal = Float.parseFloat(anchorBalStr.trim()); } catch (Exception ignored) {}
+                    }
+                    long anchorTs = (anchorDateStr != null && !anchorDateStr.trim().isEmpty())
+                            ? parseEpochSeconds(anchorDateStr.trim(), false)
+                            : stmt.getEndTimestamp();
+
+                    if (anchorVal == null && stmt.getClosingBalance() != null && Math.abs(stmt.getClosingBalance()) > 0.001f) {
+                        anchorVal = stmt.getClosingBalance();
+                        anchorTs = stmt.getEndTimestamp();
+                    }
+
+                    if (anchorVal == null && isTxList && resolvedAcc != null) {
+                        Optional<Balance> auto = TransactionBalanceReconstructor.findAnchorBalance(
+                                existingBals, stmt.getStartTimestamp(), stmt.getEndTimestamp());
+                        if (auto.isPresent()) {
+                            anchorVal = auto.get().getValue();
+                            anchorTs = auto.get().getTimestamp();
+                        }
+                    }
+
+                    List<TransactionBalanceReconstructor.TransactionDelta> deltas =
+                            TransactionBalanceReconstructor.fromBankTransactions(txs);
+
+                    TransactionBalanceReconstructor.ReconstructionResult rec = null;
+                    if (anchorVal != null) {
+                        rec = TransactionBalanceReconstructor.reconstruct(
+                                deltas, anchorTs, anchorVal, stmt.getStartTimestamp(), stmt.getEndTimestamp());
+                    }
+
+                    ObjectNode res = Json.newObject();
+                    res.put("status", "ok");
+                    res.put("statementId", stmt.getId());
+                    res.put("bankName", stmt.getBankName());
+                    res.put("startDate", stmt.getStartDate());
+                    res.put("endDate", stmt.getEndDate());
+                    res.put("startTimestamp", stmt.getStartTimestamp());
+                    res.put("endTimestamp", stmt.getEndTimestamp());
+                    res.put("isTxList", isTxList);
+                    res.put("transactionCount", txs.size());
+                    res.put("existingBalancesToOverwrite", existingBals.size());
+                    if (resolvedAcc != null) {
+                        res.put("accountId", resolvedAcc.getId());
+                        res.put("accountName", resolvedAcc.getName());
+                        res.put("accountType", resolvedAcc.getType().toString());
+                        res.put("ledgerMode", resolvedAcc.getLedgerMode().toString());
+                    }
+
+                    ArrayNode pointsArr = res.putArray("points");
+                    if (rec != null) {
+                        res.put("hasAnchor", true);
+                        res.put("anchorBalance", rec.getAnchorBalance());
+                        res.put("anchorTimestamp", rec.getAnchorTimestamp());
+                        res.put("anchorDateStr", TimeHelpers.unixTimestampToDisplayDate(rec.getAnchorTimestamp()));
+                        res.put("openingBalance", rec.getOpeningBalance());
+                        res.put("closingBalance", rec.getClosingBalance());
+                        res.put("netDelta", rec.getNetDelta());
+
+                        // Start point (opening balance)
+                        ObjectNode p0 = pointsArr.addObject();
+                        p0.put("timestamp", stmt.getStartTimestamp());
+                        p0.put("dateStr", stmt.getStartDate());
+                        p0.put("balance", rec.getOpeningBalance());
+                        p0.put("delta", 0.0);
+                        p0.put("description", "Opening Balance");
+                        p0.put("isAnchor", Math.abs(stmt.getStartTimestamp() - rec.getAnchorTimestamp()) < 86400);
+
+                        // Running points
+                        for (TransactionBalanceReconstructor.TransactionDelta d : deltas) {
+                            Float balAtTx = rec.getRunningBalances().get(d.getTimestamp());
+                            if (balAtTx == null) continue;
+                            ObjectNode p = pointsArr.addObject();
+                            p.put("timestamp", d.getTimestamp());
+                            p.put("dateStr", TimeHelpers.unixTimestampToDisplayDate(d.getTimestamp()));
+                            p.put("balance", balAtTx);
+                            p.put("delta", d.getDelta());
+                            p.put("description", d.getDescription());
+                            p.put("isAnchor", Math.abs(d.getTimestamp() - rec.getAnchorTimestamp()) < 86400);
+                        }
+
+                        // End point (closing balance)
+                        ObjectNode pEnd = pointsArr.addObject();
+                        pEnd.put("timestamp", stmt.getEndTimestamp());
+                        pEnd.put("dateStr", stmt.getEndDate());
+                        pEnd.put("balance", rec.getClosingBalance());
+                        pEnd.put("delta", 0.0);
+                        pEnd.put("description", "Closing Balance");
+                        pEnd.put("isAnchor", Math.abs(stmt.getEndTimestamp() - rec.getAnchorTimestamp()) < 86400);
+                    } else {
+                        res.put("hasAnchor", false);
+                        res.put("openingBalance", stmt.getOpeningBalance() != null ? stmt.getOpeningBalance() : 0.0f);
+                        res.put("closingBalance", stmt.getClosingBalance() != null ? stmt.getClosingBalance() : 0.0f);
+                        float net = 0.0f;
+                        for (TransactionBalanceReconstructor.TransactionDelta d : deltas) {
+                            net += d.getDelta();
+                        }
+                        res.put("netDelta", net);
+                    }
+
+                    return ok(res);
+                }, ec.current());
             }, ec.current());
         }, ec.current());
     }

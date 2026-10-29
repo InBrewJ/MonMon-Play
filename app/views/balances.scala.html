@@ -289,6 +289,21 @@ $(function() {
     if (preselectedAccountId) {
         selectedAccountIds.add(String(preselectedAccountId));
         $('#account').val(preselectedAccountId);
+
+        // If preselected account balances are older than 60 days, auto-expand range so line is immediately visible!
+        var accBals = rawBalances.filter(function(b) { return String(b.accountId) === String(preselectedAccountId); });
+        if (accBals.length > 0) {
+            var nowSec = Math.floor(Date.now() / 1000);
+            var sixtyDaysAgo = nowSec - (60 * 86400);
+            var hasRecent = accBals.some(function(b) { return b.timestamp >= sixtyDaysAgo; });
+            if (!hasRecent) {
+                selectedRange = 'all';
+                $('.chart-range-btn').removeClass('active');
+                $('#range-all').addClass('active');
+                $('#chart-range-label').text('Showing All History');
+            }
+        }
+
         setTimeout(function() {
             var valInput = document.getElementById('balance-value');
             if (valInput) {

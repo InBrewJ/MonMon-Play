@@ -129,6 +129,7 @@ POST    /api/bank/statement/:id/confirm             controllers.BankSyncControll
 POST    /bank/statement/upload                      controllers.BankSyncController.uploadStatement(req: Request)
 POST    /bank/statement/:id/confirm                 controllers.BankSyncController.confirmStatement(id: Long, req: Request)
 POST    /bank/statement/:id/discard                 controllers.BankSyncController.discardStatement(id: Long, req: Request)
+GET     /api/bank/statement/:id/preview             controllers.BankSyncController.apiPreviewStatement(id: Long, req: Request)
 GET     /api/legmon/status                          controllers.BankSyncController.legmonStatus(req: Request)
 GET     /api/legmon/logs                            controllers.BankSyncController.legmonLogs(req: Request)
 

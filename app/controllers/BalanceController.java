@@ -244,14 +244,41 @@ public class BalanceController extends Controller {
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> listBalances(Http.Request request) throws ExecutionException, InterruptedException {
         SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
-        long tenDaysAgoSec = java.time.Instant.now().minus(10, java.time.temporal.ChronoUnit.DAYS).getEpochSecond();
 
-        // 1. Query database directly for only last 10 days balances (table)
-        List<Balance> recentBalances = repoListToList(balanceRepository.listSince(sup.getUserId(), tenDaysAgoSec));
+        Long preselectedAccountId = request.queryString("accountId")
+                .map(s -> {
+                    try {
+                        return Long.parseLong(s);
+                    } catch (Exception e) {
+                        return null;
+                    }
+                }).orElse(null);
 
-        // 2. Query full list and condense on backend for fast chart
+        // 1. Query full list and condense on backend for fast chart
         List<Balance> allBalances = repoListToList(balanceRepository.list(sup.getUserId()));
         String chartBalancesJson = buildChartBalancesJson(allBalances);
+
+        // 2. Prepare balances for table display:
+        // Use filterLastTenDaysBalancesPerAccount to avoid cutting off older accounts at 10 days
+        List<Balance> recentBalances = new java.util.ArrayList<>(filterLastTenDaysBalancesPerAccount(allBalances));
+        if (preselectedAccountId != null) {
+            final Long targetAccId = preselectedAccountId;
+            List<Balance> accBals = allBalances.stream()
+                    .filter(b -> b.getAccount() != null && targetAccId.equals(b.getAccount().getId()))
+                    .sorted(java.util.Comparator.comparing(Balance::getTimestamp).reversed())
+                    .limit(30)
+                    .collect(Collectors.toList());
+            java.util.Set<Long> existingIds = recentBalances.stream()
+                    .map(Balance::getId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toSet());
+            for (Balance b : accBals) {
+                if (b.getId() != null && !existingIds.contains(b.getId())) {
+                    recentBalances.add(b);
+                }
+            }
+        }
+        recentBalances.sort(java.util.Comparator.comparing(Balance::getTimestamp).reversed());
 
         List<Account> accounts = repoListToList(accountRepository.list(sup.getUserId()));
 
@@ -290,15 +317,6 @@ public class BalanceController extends Controller {
             defaultAccountIds = accounts.stream().map(Account::getId).collect(Collectors.toList());
         }
         String defaultAccountIdsJson = play.libs.Json.stringify(play.libs.Json.toJson(defaultAccountIds));
-
-        Long preselectedAccountId = request.queryString("accountId")
-                .map(s -> {
-                    try {
-                        return Long.parseLong(s);
-                    } catch (Exception e) {
-                        return null;
-                    }
-                }).orElse(null);
 
         java.time.LocalDate oneYearAgo = nowLocalDate.minusYears(1);
 

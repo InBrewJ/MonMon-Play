@@ -5,6 +5,22 @@
 - **Use Plain JavaScript (`.js`)**: If something can be implemented in a plain `.js` file (e.g. in `public/javascripts/`), do so.
 - **Do Not Use CoffeeScript**: Do not lean back on CoffeeScript at all. Do not create new `.coffee` files or expand legacy CoffeeScript assets.
 
+## Mobile & Cross-Platform UX Primitives
+
+The following UX patterns have been established as core primitives and should be applied consistently across all views:
+
+- **Swipe-able Cards with Dot Headings (`spog-deck` / Swipe Deck Primitive)**:
+  - On mobile, dense data causes fatigue and visual clutter. Use horizontal swipe-able cards paired with card headings featuring an indicator dot (see `spog-deck.js` and `.spog-card`) for all data-heavy pages (e.g., Bank Sync, Savings Plan, Net Worth, Outgoings).
+- **Stacked Action Card Pattern for Mobile Tables (`/myAccounts` Primitive)**:
+  - On mobile viewports, the responsive table card implementation from `/myAccounts` is the cleanest and is our designated standard primitive:
+    1. Long text / account title on a single line on the left, status badge on the right.
+    2. Concise stat grid cells below the header line.
+    3. Action buttons (`btn-action`, e.g. Statement, Edit, Delete) placed on their own line underneath the content rather than crammed inline.
+  - Standard name: **"Stacked Action Card"**. Use this pattern for all responsive mobile tables.
+- **"At a Glance" Upfront Information Hierarchy (Mobile & Desktop)**:
+  - For both swipe-able mobile card decks and desktop card layouts, decide up front what the user needs to see **"at a glance"** (primary headline figure, urgent due item, or key balance).
+  - This decision directly informs the ordering of the page: critical overview information comes first, followed by granular breakdowns and secondary management tables.
+
 ## Data Processing & Time Series
 
 - **Prefer PostgreSQL (`psql`) over in-memory Java**: When performing medium to heavy data processing for time series data, favor doing aggregations, rollups, and transformations directly in PostgreSQL (e.g., repository queries, views, or migrations) rather than pulling raw records into Java and crunching them in-memory. PostgreSQL will likely be much quicker and more efficient.

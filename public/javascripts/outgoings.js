@@ -82,6 +82,9 @@
             });
         });
 
+        // Ensure default active filter ('Monthly and due now') is applied on initial load
+        applyTabFilter('active');
+
         // Form frequency toggle (Monthly vs Yearly)
         var freqSelect = document.getElementById('outgoing-frequency');
         var monthGroup = document.getElementById('yearly-month-group');
