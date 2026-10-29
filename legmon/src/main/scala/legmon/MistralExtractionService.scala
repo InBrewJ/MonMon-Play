@@ -165,7 +165,14 @@ object MistralExtractionService {
 
       val json = ujson.read(res.text())
       val contentStr = json("choices")(0)("message")("content").str
-      parseExtractedJson(contentStr)
+      try {
+        parseExtractedJson(contentStr)
+      } catch {
+        case ex: Throwable =>
+          logger.error(s"Failed to parse Mistral JSON output: ${ex.getMessage}. Raw content was: $contentStr")
+          LogBuffer.error(s"Failed to parse Mistral JSON output: ${ex.getMessage}")
+          throw ex
+      }
     }
 
     attemptTry match {
@@ -202,6 +209,24 @@ object MistralExtractionService {
     }
   }
 
+  private def extractString(v: Option[ujson.Value], default: String = ""): String = {
+    v match {
+      case Some(ujson.Str(s)) if s != null => s.trim
+      case Some(ujson.Num(n)) => if (n == n.toLong) n.toLong.toString else n.toString
+      case Some(ujson.Bool(b)) => b.toString
+      case _ => default
+    }
+  }
+
+  private def extractFloat(v: Option[ujson.Value], default: Float = 0.0f): Float = {
+    v match {
+      case Some(ujson.Num(n)) => n.toFloat
+      case Some(ujson.Str(s)) if s != null && s.trim.nonEmpty =>
+        Try(s.replaceAll("[^0-9.-]", "").toFloat).getOrElse(default)
+      case _ => default
+    }
+  }
+
   private def parseExtractedJson(rawContent: String): ExtractedStatement = {
     // Strip possible markdown fences
     val cleaned = rawContent.trim
@@ -211,39 +236,52 @@ object MistralExtractionService {
       .trim
 
     val json = ujson.read(cleaned)
-    val bank = json.obj.get("bank").map(_.str).getOrElse("Unknown Bank")
-    val startDate = json.obj.get("startDate").map(_.str).getOrElse(java.time.LocalDate.now().minusDays(30).toString)
-    val endDate = json.obj.get("endDate").map(_.str).getOrElse(java.time.LocalDate.now().toString)
-    val openingBalance = json.obj.get("openingBalance").map(_.num.toFloat).getOrElse(0.0f)
-    val closingBalance = json.obj.get("closingBalance").map(_.num.toFloat).getOrElse(0.0f)
+    val bank = extractString(json.obj.get("bank"), "Unknown Bank")
+    val defaultEndDate = java.time.LocalDate.now().toString
+    val defaultStartDate = java.time.LocalDate.now().minusDays(30).toString
+    val startDate = extractString(json.obj.get("startDate"), defaultStartDate)
+    val endDate = extractString(json.obj.get("endDate"), defaultEndDate)
+    val openingBalance = extractFloat(json.obj.get("openingBalance"), 0.0f)
+    val closingBalance = extractFloat(json.obj.get("closingBalance"), 0.0f)
 
-    val balances = json.obj.get("balances").map(_.arr.map { b =>
-      ExtractedBalance(
-        date = b.obj.get("date").map(_.str).getOrElse(endDate),
-        value = b.obj.get("value").map(_.num.toFloat).getOrElse(closingBalance)
-      )
-    }.toSeq).getOrElse(Seq(ExtractedBalance(endDate, closingBalance)))
+    val balances = json.obj.get("balances").flatMap {
+      case ujson.Arr(arr) =>
+        Some(arr.flatMap { b =>
+          Try {
+            val bDate = extractString(b.obj.get("date"), endDate)
+            val bVal = extractFloat(b.obj.get("value"), closingBalance)
+            ExtractedBalance(bDate, bVal)
+          }.toOption
+        }.toSeq)
+      case _ => None
+    }.getOrElse(Seq(ExtractedBalance(endDate, closingBalance)))
 
-    val transactions = json.obj.get("transactions").map(_.arr.zipWithIndex.map { case (t, idx) =>
-      val date = t.obj.get("date").map(_.str).getOrElse(endDate)
-      val desc = t.obj.get("description").map(_.str).getOrElse("Statement Transaction")
-      val merchant = t.obj.get("merchant").map(_.str).getOrElse(desc)
-      val amount = t.obj.get("amount").map(_.num.toFloat).getOrElse(0.0f)
-      val cat = t.obj.get("category").map(_.str).getOrElse("General")
-      val txId = s"legmon_tx_${System.currentTimeMillis()}_$idx"
+    val transactions = json.obj.get("transactions").flatMap {
+      case ujson.Arr(arr) =>
+        Some(arr.zipWithIndex.flatMap { case (t, idx) =>
+          Try {
+            val desc = extractString(t.obj.get("description"), "Statement Transaction")
+            val date = extractString(t.obj.get("date"), endDate)
+            val merchant = extractString(t.obj.get("merchant"), desc)
+            val amount = extractFloat(t.obj.get("amount"), 0.0f)
+            val cat = extractString(t.obj.get("category"), "General")
+            val txId = s"legmon_tx_${System.currentTimeMillis()}_$idx"
 
-      ExtractedTransaction(
-        id = txId,
-        date = date,
-        description = desc,
-        amount = amount,
-        merchant = merchant,
-        category = cat
-      )
-    }.toSeq).getOrElse(Seq.empty)
+            ExtractedTransaction(
+              id = txId,
+              date = date,
+              description = desc,
+              amount = amount,
+              merchant = if (merchant.nonEmpty) merchant else desc,
+              category = if (cat.nonEmpty) cat else "General"
+            )
+          }.toOption
+        }.toSeq)
+      case _ => None
+    }.getOrElse(Seq.empty)
 
     ExtractedStatement(
-      bank = bank,
+      bank = if (bank.nonEmpty) bank else "Unknown Bank",
       startDate = startDate,
       endDate = endDate,
       openingBalance = openingBalance,
