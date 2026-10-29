@@ -13,6 +13,7 @@ object OcrService {
 
   /**
    * Extracts text from a PDF file using a fault-tolerant multi-stage pipeline:
+   * 0. Mistral Document AI OCR (when MISTRAL_API_KEY is set; disable with MISTRAL_OCR_ENABLED=false)
    * 1. xberg / kreuzberg with Tesseract OCR plugin (fixed-cost OCR)
    * 2. Apache PDFBox in-JVM native stream parsing
    * 3. pdftotext CLI tool
@@ -29,6 +30,16 @@ object OcrService {
       val filePath = pdfFile.getAbsolutePath
       logger.info(s"Starting text extraction for PDF ($filePath, ${pdfFile.length()} bytes)")
       LogBuffer.info(s"Extracting text from PDF (${pdfFile.getName}, ${pdfFile.length() / 1024} KB)")
+
+      // Strategy 0: Mistral Document AI OCR (row-preserving markdown tables). See MistralOcrService for the benchmark.
+      if (MistralOcrService.isEnabled) {
+        val mistralMd = MistralOcrService.extractMarkdown(pdfFile)
+        if (mistralMd.exists(_.trim.length >= 80)) {
+          LogBuffer.info(s"OCR succeeded via Mistral OCR (${mistralMd.get.trim.length} chars)")
+          return mistralMd.get
+        }
+        LogBuffer.warn("Mistral OCR unavailable - falling back to local xberg/tesseract extraction")
+      }
 
       // Strategy 1: Try xberg / kreuzberg CLI with Tesseract OCR
       val xbergResult = tryXberg(filePath)
