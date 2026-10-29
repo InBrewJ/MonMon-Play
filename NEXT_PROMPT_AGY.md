@@ -2,15 +2,6 @@
 
 ------------THE ABOVE WAS SENT TO AGY -----------
 
-0. there's a problem with the search view on start:
-
-  2026-10-29 17:22:14.103 [[info]] [m.AppSearchMigration] [main] - [AppSearchMigration] Initializing app-wide search view & indexes...
-  2026-10-29 17:22:14.135 [[warn]] [o.h.e.j.s.SqlExceptionHelper] [main] - SQL Error: 0, SQLState: 42703
-  2026-10-29 17:22:14.135 [[error]] [o.h.e.j.s.SqlExceptionHelper] [main] - ERROR: column "userId" does not exist
-  [AppSearchMigration] Notice for statement: org.hibernate.exception.SQLGrammarException: could not execute statement
-
-  this means the view is never created and search doesn't work
-
 ---
 
 1. There's something off with the legmon/test_fixtures/TXN_22102026_29072026_29102026_NatWest.pdf example in the system tests, I think.
@@ -21,7 +12,7 @@
 
 A. run the existing system test with this PDF
 B. alongside a version of the pipeline that just sends the PDF to a mistral document API:
-   legmon/test_fixtures/TXN_22102026_29072026_29102026_NatWest.pdf, the sam API key should work
+legmon/test_fixtures/TXN_22102026_29072026_29102026_NatWest.pdf, the sam API key should work
 
 whichever version of A or B comes out being more accurate (to the penny), we'll build around that one.
 
