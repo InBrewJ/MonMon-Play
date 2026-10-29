@@ -1,0 +1,212 @@
+package legmon
+
+import org.slf4j.LoggerFactory
+import scala.annotation.tailrec
+import scala.util.{Failure, Success, Try}
+
+case class ExtractedTransaction(
+    id: String,
+    date: String,
+    description: String,
+    amount: Float, // Positive for spend, negative for credit/income
+    merchant: String,
+    category: String
+)
+
+case class ExtractedBalance(
+    date: String,
+    value: Float
+)
+
+case class ExtractedStatement(
+    bank: String,
+    startDate: String,
+    endDate: String,
+    openingBalance: Float,
+    closingBalance: Float,
+    balances: Seq[ExtractedBalance],
+    transactions: Seq[ExtractedTransaction]
+)
+
+object MistralExtractionService {
+  private val logger = LoggerFactory.getLogger(getClass)
+
+  def getApiKey: String = {
+    sys.env.get("MISTRAL_API_KEY")
+      .orElse(sys.props.get("MISTRAL_API_KEY"))
+      .getOrElse("")
+      .trim
+  }
+
+  def getModel: String = {
+    sys.env.getOrElse("MISTRAL_MODEL", "mistral-small-latest")
+  }
+
+  def extract(text: String): ExtractedStatement = {
+    val apiKey = getApiKey
+    if (apiKey.isEmpty) {
+      val err = "Mistral API key is not configured. Set MISTRAL_API_KEY environment variable."
+      logger.error(err)
+      LogBuffer.error(err)
+      throw new IllegalStateException(err)
+    }
+
+    val trimmedText = if (text.length > 50000) text.take(50000) else text
+    LogBuffer.info(s"Calling Mistral (${getModel}) to extract statement data (${trimmedText.length} chars of OCR text)")
+
+    val prompt =
+      """You are an expert UK banking document and financial statement parsing assistant.
+        |Analyze the raw OCR text of this bank statement and extract structured data in JSON format.
+        |
+        |You MUST return ONLY valid JSON matching this exact structure:
+        |{
+        |  "bank": "Name of the bank or institution (e.g. Lloyds Bank, Barclays, American Express, Nationwide, Chase, HSBC, Santander, NatWest, Monzo)",
+        |  "startDate": "YYYY-MM-DD",
+        |  "endDate": "YYYY-MM-DD",
+        |  "openingBalance": 123.45,
+        |  "closingBalance": 456.78,
+        |  "balances": [
+        |    { "date": "YYYY-MM-DD", "value": 456.78 }
+        |  ],
+        |  "transactions": [
+        |    {
+        |      "date": "YYYY-MM-DD",
+        |      "description": "Clean description of the transaction",
+        |      "merchant": "Identified merchant name or clean payee",
+        |      "amount": 12.50,
+        |      "category": "groceries | dining | shopping | bills | transport | entertainment | general"
+        |    }
+        |  ]
+        |}
+        |
+        |IMPORTANT AMOUNT CONVENTION RULES:
+        |- In MonMon, spending/expenses MUST be positive numbers (e.g. 15.00 for spending £15.00 at Tesco).
+        |- In MonMon, deposits, salary, refunds, or incoming credits MUST be negative numbers (e.g. -1500.00 for salary).
+        |- For balances: positive number indicates money in bank / credit available.
+        |
+        |Extract every valid transaction present in the statement text with the accurate date and amount.
+        |Do not wrap in markdown quotes if possible, output pure JSON.
+        |""".stripMargin
+
+    val payload = ujson.Obj(
+      "model" -> getModel,
+      "messages" -> ujson.Arr(
+        ujson.Obj("role" -> "system", "content" -> prompt),
+        ujson.Obj("role" -> "user", "content" -> s"Bank Statement Raw OCR Text:\n\n$trimmedText")
+      ),
+      "response_format" -> ujson.Obj("type" -> "json_object"),
+      "temperature" -> 0.1
+    )
+
+    executeWithRetry(payload, maxRetries = 4, currentAttempt = 1, delayMs = 2000)
+  }
+
+  @tailrec
+  private def executeWithRetry(payload: ujson.Obj, maxRetries: Int, currentAttempt: Int, delayMs: Long): ExtractedStatement = {
+    val apiKey = getApiKey
+    val attemptTry = Try {
+      val res = requests.post(
+        "https://api.mistral.ai/v1/chat/completions",
+        headers = Seq(
+          "Authorization" -> s"Bearer $apiKey",
+          "Content-Type" -> "application/json"
+        ),
+        data = ujson.write(payload),
+        readTimeout = 60000,
+        connectTimeout = 15000
+      )
+
+      if (res.statusCode != 200) {
+        throw new RuntimeException(s"Mistral API returned HTTP ${res.statusCode}: ${res.text()}")
+      }
+
+      val json = ujson.read(res.text())
+      val contentStr = json("choices")(0)("message")("content").str
+      parseExtractedJson(contentStr)
+    }
+
+    attemptTry match {
+      case Success(stmt) =>
+        logger.info(s"Mistral extraction succeeded! Bank='${stmt.bank}', Period=${stmt.startDate} to ${stmt.endDate}, Transactions=${stmt.transactions.size}")
+        LogBuffer.info(s"Mistral extracted Bank='${stmt.bank}', ${stmt.transactions.size} transactions, Closing Balance=£${stmt.closingBalance}")
+        stmt
+
+      case Failure(ex) =>
+        val isRetryable = currentAttempt < maxRetries && (
+          ex.getMessage.contains("429") ||
+          ex.getMessage.contains("500") ||
+          ex.getMessage.contains("502") ||
+          ex.getMessage.contains("503") ||
+          ex.getMessage.contains("504") ||
+          ex.getMessage.contains("Timeout") ||
+          ex.getMessage.contains("Connection")
+        )
+
+        val warnMsg = s"Mistral call attempt $currentAttempt/$maxRetries failed: ${ex.getMessage}"
+        logger.warn(warnMsg)
+        LogBuffer.warn(warnMsg)
+
+        if (isRetryable) {
+          LogBuffer.info(s"Retrying Mistral API call in ${delayMs / 1000}s (exponential backoff)...")
+          Thread.sleep(delayMs)
+          executeWithRetry(payload, maxRetries, currentAttempt + 1, delayMs * 2)
+        } else {
+          val errMsg = s"Mistral extraction failed after $currentAttempt attempts: ${ex.getMessage}"
+          logger.error(errMsg, ex)
+          LogBuffer.error(errMsg)
+          throw new RuntimeException(errMsg, ex)
+        }
+    }
+  }
+
+  private def parseExtractedJson(rawContent: String): ExtractedStatement = {
+    // Strip possible markdown fences
+    val cleaned = rawContent.trim
+      .stripPrefix("```json")
+      .stripPrefix("```")
+      .stripSuffix("```")
+      .trim
+
+    val json = ujson.read(cleaned)
+    val bank = json.obj.get("bank").map(_.str).getOrElse("Unknown Bank")
+    val startDate = json.obj.get("startDate").map(_.str).getOrElse(java.time.LocalDate.now().minusDays(30).toString)
+    val endDate = json.obj.get("endDate").map(_.str).getOrElse(java.time.LocalDate.now().toString)
+    val openingBalance = json.obj.get("openingBalance").map(_.num.toFloat).getOrElse(0.0f)
+    val closingBalance = json.obj.get("closingBalance").map(_.num.toFloat).getOrElse(0.0f)
+
+    val balances = json.obj.get("balances").map(_.arr.map { b =>
+      ExtractedBalance(
+        date = b.obj.get("date").map(_.str).getOrElse(endDate),
+        value = b.obj.get("value").map(_.num.toFloat).getOrElse(closingBalance)
+      )
+    }.toSeq).getOrElse(Seq(ExtractedBalance(endDate, closingBalance)))
+
+    val transactions = json.obj.get("transactions").map(_.arr.zipWithIndex.map { case (t, idx) =>
+      val date = t.obj.get("date").map(_.str).getOrElse(endDate)
+      val desc = t.obj.get("description").map(_.str).getOrElse("Statement Transaction")
+      val merchant = t.obj.get("merchant").map(_.str).getOrElse(desc)
+      val amount = t.obj.get("amount").map(_.num.toFloat).getOrElse(0.0f)
+      val cat = t.obj.get("category").map(_.str).getOrElse("General")
+      val txId = s"legmon_tx_${System.currentTimeMillis()}_$idx"
+
+      ExtractedTransaction(
+        id = txId,
+        date = date,
+        description = desc,
+        amount = amount,
+        merchant = merchant,
+        category = cat
+      )
+    }.toSeq).getOrElse(Seq.empty)
+
+    ExtractedStatement(
+      bank = bank,
+      startDate = startDate,
+      endDate = endDate,
+      openingBalance = openingBalance,
+      closingBalance = closingBalance,
+      balances = balances,
+      transactions = transactions
+    )
+  }
+}

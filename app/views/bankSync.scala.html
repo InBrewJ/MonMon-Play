@@ -6,7 +6,8 @@
   isMonzoConnected: Boolean,
   accountsSyncedCount: Int,
   totalTxCount: Int,
-  userProfile: viewModels.SimpleUserProfile)(implicit request: play.mvc.Http.Request, messages: play.i18n.Messages)
+  userProfile: viewModels.SimpleUserProfile,
+  pendingStatements: Seq[models.PendingStatement])(implicit request: play.mvc.Http.Request, messages: play.i18n.Messages)
 
 @main("MonMon - Accurate Mode & Monzo Bank Sync") {
 
@@ -147,6 +148,137 @@
                     <li><strong>Loans &amp; Mortgages:</strong> Tracked via balance amortization.</li>
                 </ul>
             </div>
+        </div>
+    </div>
+
+    <!-- Pending Statement Matching Action Card (if any pending statement extracted by LegMon) -->
+    @if(!pendingStatements.isEmpty) {
+        @for(stmt <- pendingStatements) {
+            <div data-has-pending-statement="true" style="background: #fffbeb; border: 2px solid #f59e0b; border-radius: 12px; padding: 22px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.12);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div style="display: inline-flex; align-items: center; gap: 6px; background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.8rem; text-transform: uppercase;">
+                            <i class="fas fa-file-invoice-dollar"></i> Statement Processed — Action Required
+                        </div>
+                        <h3 style="margin: 8px 0 4px 0; font-size: 1.35rem; font-weight: 800; color: #78350f;">
+                            Extracted Bank: <span style="color: #b45309; text-decoration: underline;">@stmt.getBankName()</span>
+                        </h3>
+                        <p style="margin: 0; color: #92400e; font-size: 0.95rem;">
+                            Period: <strong>@stmt.getStartDate()</strong> to <strong>@stmt.getEndDate()</strong> &bull;
+                            Transactions: <strong>@stmt.getTransactionCount()</strong> &bull;
+                            Closing Balance: <strong>£@String.format("%.2f", stmt.getClosingBalance())</strong>
+                            @if(stmt.getOpeningBalance() != null) {
+                                &bull; Opening Balance: <strong>£@String.format("%.2f", stmt.getOpeningBalance())</strong>
+                            }
+                        </p>
+                    </div>
+                </div>
+
+                <div style="margin-top: 16px; background: white; border: 1px solid #fde68a; border-radius: 8px; padding: 16px;">
+                    <form action="/bank/statement/@stmt.getId()/confirm" method="POST" style="margin: 0;">
+                        @helper.CSRF.formField
+                        <label style="display: block; font-weight: 700; font-size: 0.9rem; color: #374151; margin-bottom: 6px;">
+                            Match to MonMon Account:
+                        </label>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                            <select name="accountId" class="w3-select w3-border w3-round" style="flex: 1; min-width: 260px; padding: 8px 12px;" required>
+                                <option value="">-- Choose Account to Match --</option>
+                                @for(acc <- accounts) {
+                                    <option value="@acc.getId()" @if(stmt.getMatchedAccountId() != null && stmt.getMatchedAccountId() == acc.getId() || acc.getName().toLowerCase().contains(stmt.getBankName().toLowerCase()) || stmt.getBankName().toLowerCase().contains(acc.getName().toLowerCase())) { selected }>
+                                        @acc.getName() (@acc.getType() - @acc.getLedgerMode())
+                                    </option>
+                                }
+                            </select>
+
+                            <button type="submit" class="w3-button w3-round" style="background: #dc2626; color: white; font-weight: 700; padding: 8px 18px;"
+                                    onclick="return confirm('⚠️ DANGER: This will delete any existing balance entries for this account between @stmt.getStartDate() and @stmt.getEndDate() and dangerously overwrite them with the statement closing balance of £@stmt.getClosingBalance(). It will also import @stmt.getTransactionCount() transactions.\n\nProceed?');">
+                                <i class="fas fa-exclamation-triangle"></i> Dangerously Overwrite ABL Balances &amp; Import
+                            </button>
+                        </div>
+                    </form>
+
+                    <div style="margin-top: 12px; text-align: right;">
+                        <form action="/bank/statement/@stmt.getId()/discard" method="POST" style="display: inline;" onsubmit="return confirm('Discard this extracted statement?');">
+                            @helper.CSRF.formField
+                            <button type="submit" class="w3-button w3-small w3-text-grey w3-hover-text-red" style="background: none; border: none; padding: 0; text-decoration: underline; cursor: pointer;">
+                                <i class="fas fa-trash-alt"></i> Discard Statement
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    <!-- LegMon Statement Sync Pipeline Card -->
+    <div id="statement-upload" style="background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+            <div>
+                <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #0f172a;">
+                    <i class="fas fa-file-pdf" style="color: #ef4444; margin-right: 6px;"></i>
+                    LegMon Statement Pipeline (PDF &rarr; OCR &rarr; Mistral &rarr; Monzo Webhook)
+                </h3>
+                <p style="margin: 4px 0 0 0; color: #475569; font-size: 0.9rem;">
+                    Fills the public API gap for <strong>ABL accounts</strong>. Upload a bank statement PDF to extract bank name, balances, and transactions via fixed-cost OCR and Mistral AI.
+                </p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="legmon-status-badge" class="badge" style="background: #e2e8f0; color: #475569; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.8rem;">
+                    <i class="fas fa-circle-notch fa-spin"></i> Checking LegMon...
+                </span>
+                <button type="button" class="w3-button w3-small w3-round w3-light-grey" onclick="toggleLegmonLogs()" style="font-weight: 600;">
+                    <i class="fas fa-terminal"></i> Service Logs
+                </button>
+            </div>
+        </div>
+
+        <form action="/bank/statement/upload" method="POST" enctype="multipart/form-data" style="margin: 0; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px;">
+            @helper.CSRF.formField
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: end;">
+                <div>
+                    <label style="display: block; font-weight: 600; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">
+                        Select Bank Statement PDF:
+                    </label>
+                    <input type="file" name="pdfFile" accept=".pdf,application/pdf" class="w3-input w3-border w3-round" style="background: white;" required />
+                    <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">PDF is processed by LegMon and immediately deleted after text extraction.</small>
+                </div>
+                <div>
+                    <label style="display: block; font-weight: 600; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">
+                        Target Account (Optional Pre-match):
+                    </label>
+                    <select name="accountId" class="w3-select w3-border w3-round" style="background: white;">
+                        <option value="">-- Auto-detect / Match Later --</option>
+                        @for(acc <- accounts) {
+                            <option value="@acc.getId()">@acc.getName() (@acc.getType() - @acc.getLedgerMode())</option>
+                        }
+                    </select>
+                    <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">You can confirm or change this account after extraction.</small>
+                </div>
+                <div>
+                    <button type="submit" class="w3-button w3-round w3-block" style="background: #ef4444; color: white; font-weight: 700; padding: 9px 16px;">
+                        <i class="fas fa-upload"></i> Upload &amp; Run LegMon
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <!-- LegMon Live Logs Viewer Panel (Collapsible) -->
+        <div id="legmon-logs-container" style="display: none; margin-top: 16px; background: #0f172a; border-radius: 8px; padding: 14px; color: #f8fafc; font-family: monospace; font-size: 0.82rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 8px; margin-bottom: 10px;">
+                <span style="font-weight: 700; color: #38bdf8;"><i class="fas fa-terminal"></i> LegMon Service Logs &amp; Errors (Rotated)</span>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" onclick="fetchLegmonLogs()" class="w3-button w3-tiny w3-round w3-dark-grey" style="padding: 2px 8px;">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button type="button" onclick="toggleLegmonLogs()" class="w3-button w3-tiny w3-round w3-dark-grey" style="padding: 2px 8px;">
+                        Close
+                    </button>
+                </div>
+            </div>
+            <div id="legmon-error-banner" style="display: none; background: #7f1d1d; border: 1px solid #f87171; border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; color: #fee2e2;">
+                <strong><i class="fas fa-exclamation-triangle"></i> Flagged Error:</strong> <span id="legmon-error-text"></span>
+            </div>
+            <pre id="legmon-logs-output" style="margin: 0; max-height: 250px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #94a3b8; font-size: 0.8rem;"></pre>
         </div>
     </div>
 
@@ -310,4 +442,5 @@
         }
     </div>
 </div>
+<script src="/assets/javascripts/legmon.js"></script>
 }

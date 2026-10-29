@@ -25,9 +25,14 @@
           <div style="font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
             <i class="fas fa-university" style="color: var(--primary); margin-right: 6px;"></i> Your Bank Accounts (@accounts.size)
           </div>
-          <button type="button" class="btn-action" onclick="openAccountModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: var(--primary); color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
-            <i class="fas fa-plus"></i> Add Account
-          </button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <a href="/bank#statement-upload" class="btn-action" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: #ef4444; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem; text-decoration: none;">
+              <i class="fas fa-file-pdf"></i> Upload Statement
+            </a>
+            <button type="button" class="btn-action" onclick="openAccountModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: var(--primary); color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
+              <i class="fas fa-plus"></i> Add Account
+            </button>
+          </div>
         </div>
 
         <!-- Desktop Table View -->
@@ -43,11 +48,12 @@
                 <th>Interest</th>
                 <th></th>
                 <th></th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               @if(accounts.isEmpty) {
-                <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">No accounts found. Click <b>+ Add Account</b> above to get started.</td></tr>
+                <tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 2rem;">No accounts found. Click <b>+ Add Account</b> above to get started.</td></tr>
               } else {
                 @for(a <- accounts) {
                   <tr>
@@ -67,6 +73,11 @@
                       £@a.getLatestBalanceValue()
                     </td>
                     <td>@a.interestRate%</td>
+                    <td class="w3-center">
+                      <a href="/bank?uploadAccount=@a.id#statement-upload" title="Upload Statement PDF via LegMon" style="color: #ef4444;">
+                        <i class="fas fa-file-pdf"></i>
+                      </a>
+                    </td>
                     <td class="w3-center">
                       <a href="/editAccount/@a.id#edit-form" title="Edit">
                         <i class="fas fa-pen"></i>
@@ -127,6 +138,7 @@
                 </div>
 
                 <div class="item-card-actions">
+                  <a href="/bank?uploadAccount=@a.id#statement-upload" class="btn-action" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;"><i class="fas fa-file-pdf"></i> Statement</a>
                   <a href="/editAccount/@a.id#edit-form" class="btn-action btn-edit"><i class="fas fa-pen"></i> Edit</a>
                   <a href="/binAccount/@a.id" class="btn-action btn-delete" onclick="return confirm('Are you sure you want to delete this account?');"><i class="fas fa-trash-alt"></i> Delete</a>
                 </div>

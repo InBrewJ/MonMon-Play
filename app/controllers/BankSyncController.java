@@ -1,17 +1,16 @@
 package controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
 import helpers.UserHelpers;
-import models.Account;
-import models.AccountRepository;
-import models.BankTransaction;
-import models.BankTransactionRepository;
-import models.MonzoConnection;
-import models.MonzoConnectionRepository;
+import models.*;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
 import play.data.DynamicForm;
 import play.data.FormFactory;
 import play.i18n.MessagesApi;
+import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Controller;
 import play.mvc.Http;
@@ -23,6 +22,7 @@ import services.StatementParserService;
 import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
+import java.io.File;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -30,9 +30,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
@@ -51,6 +52,10 @@ public class BankSyncController extends Controller {
     private final FormFactory formFactory;
     private final MessagesApi messagesApi;
     private final HttpExecutionContext ec;
+    private final PendingStatementRepository pendingStatementRepository;
+    private final BalanceRepository balanceRepository;
+    private final Config config;
+    private final HttpClient httpClient;
 
     @Inject
     private SessionStore playSessionStore;
@@ -64,7 +69,10 @@ public class BankSyncController extends Controller {
                               StatementParserService statementParserService,
                               FormFactory formFactory,
                               MessagesApi messagesApi,
-                              HttpExecutionContext ec) {
+                              HttpExecutionContext ec,
+                              PendingStatementRepository pendingStatementRepository,
+                              BalanceRepository balanceRepository,
+                              Config config) {
         this.accountRepository = accountRepository;
         this.bankTransactionRepository = bankTransactionRepository;
         this.monzoConnectionRepository = monzoConnectionRepository;
@@ -74,6 +82,25 @@ public class BankSyncController extends Controller {
         this.formFactory = formFactory;
         this.messagesApi = messagesApi;
         this.ec = ec;
+        this.pendingStatementRepository = pendingStatementRepository;
+        this.balanceRepository = balanceRepository;
+        this.config = config;
+        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    }
+
+    // Overloaded constructor for backwards compatibility with tests
+    public BankSyncController(AccountRepository accountRepository,
+                              BankTransactionRepository bankTransactionRepository,
+                              MonzoConnectionRepository monzoConnectionRepository,
+                              MockBankSyncProvider mockBankSyncProvider,
+                              MonzoBankSyncProvider monzoBankSyncProvider,
+                              StatementParserService statementParserService,
+                              FormFactory formFactory,
+                              MessagesApi messagesApi,
+                              HttpExecutionContext ec) {
+        this(accountRepository, bankTransactionRepository, monzoConnectionRepository,
+                mockBankSyncProvider, monzoBankSyncProvider, statementParserService,
+                formFactory, messagesApi, ec, null, null, null);
     }
 
     private BankSyncService resolveProvider(String providerName) {
@@ -91,22 +118,29 @@ public class BankSyncController extends Controller {
             List<Account> accounts = accStream.collect(Collectors.toList());
             return bankTransactionRepository.listRecent(sup.getUserId(), 100).thenComposeAsync(txStream -> {
                 List<BankTransaction> txList = txStream.collect(Collectors.toList());
-                return monzoConnectionRepository.findByUserId(sup.getUserId()).thenApplyAsync(monzoConnOpt -> {
+                return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(monzoConnOpt -> {
                     boolean isMonzoConnected = monzoConnOpt.isPresent();
                     String providerName = isMonzoConnected ? "MONZO" : "MOCK";
 
-                    return ok(views.html.bankSync.render(
-                            asScala(accounts),
-                            asScala(txList),
-                            monzoConnOpt.orElse(null),
-                            providerName,
-                            isMonzoConnected,
-                            accounts.size(),
-                            txList.size(),
-                            sup,
-                            request,
-                            messagesApi.preferred(request)
-                    ));
+                    CompletionStage<List<PendingStatement>> pendingStage = (pendingStatementRepository != null)
+                            ? pendingStatementRepository.listPending(sup.getUserId())
+                            : CompletableFuture.completedFuture(Collections.emptyList());
+
+                    return pendingStage.thenApplyAsync(pendingStatements -> {
+                        return ok(views.html.bankSync.render(
+                                asScala(accounts),
+                                asScala(txList),
+                                monzoConnOpt.orElse(null),
+                                providerName,
+                                isMonzoConnected,
+                                accounts.size(),
+                                txList.size(),
+                                sup,
+                                asScala(pendingStatements),
+                                request,
+                                messagesApi.preferred(request)
+                        ));
+                    }, ec.current());
                 }, ec.current());
             }, ec.current());
         }, ec.current());
@@ -158,16 +192,376 @@ public class BankSyncController extends Controller {
 
     public CompletionStage<Result> handleMonzoWebhook(final Http.Request request) {
         String userId = request.queryString("userId").orElse(null);
-        com.fasterxml.jackson.databind.JsonNode json = request.body().asJson();
+        JsonNode json = request.body().asJson();
         if (json == null) {
-            return CompletableFuture.completedFuture(ok(play.libs.Json.newObject().put("status", "ok")));
+            return CompletableFuture.completedFuture(ok(Json.newObject().put("status", "ok")));
+        }
+
+        // Check if this is a statement payload from LegMon
+        boolean isStatement = request.queryString("statement").isPresent()
+                || json.has("statement")
+                || "statement.extracted".equalsIgnoreCase(json.path("type").asText());
+
+        if (isStatement) {
+            return processStatementWebhook(userId, json);
         }
 
         return monzoBankSyncProvider.handleWebhookEvent(userId, json)
-                .thenApplyAsync(success -> ok(play.libs.Json.newObject().put("status", "ok")), ec.current())
+                .thenApplyAsync(success -> ok(Json.newObject().put("status", "ok")), ec.current())
                 .exceptionally(err -> {
                     System.err.println("Webhook handling exception: " + err.getMessage());
-                    return ok(play.libs.Json.newObject().put("status", "ok"));
+                    return ok(Json.newObject().put("status", "ok"));
+                });
+    }
+
+    public CompletionStage<Result> handleStatementWebhook(final Http.Request request) {
+        String userId = request.queryString("userId").orElse(null);
+        JsonNode json = request.body().asJson();
+        if (json == null) {
+            return CompletableFuture.completedFuture(ok(Json.newObject().put("status", "ok")));
+        }
+        return processStatementWebhook(userId, json);
+    }
+
+    private CompletionStage<Result> processStatementWebhook(String queryUserId, JsonNode json) {
+        if (pendingStatementRepository == null) {
+            return CompletableFuture.completedFuture(ok(Json.newObject().put("status", "ok")));
+        }
+
+        String userId = (queryUserId != null && !queryUserId.trim().isEmpty())
+                ? queryUserId.trim()
+                : json.path("userId").asText("default-user");
+
+        String jobId = json.path("jobId").asText("stmt_" + System.currentTimeMillis());
+        String bank = json.path("bank").asText("Unknown Bank");
+        String startDate = json.path("startDate").asText(LocalDate.now().minusDays(30).toString());
+        String endDate = json.path("endDate").asText(LocalDate.now().toString());
+        float openingBalance = (float) json.path("openingBalance").asDouble(0.0);
+        float closingBalance = (float) json.path("closingBalance").asDouble(0.0);
+
+        Long targetAccountId = (json.has("targetAccountId") && !json.get("targetAccountId").isNull())
+                ? json.get("targetAccountId").asLong()
+                : null;
+
+        int txCount = json.path("transactions").isArray() ? json.path("transactions").size() : 0;
+
+        long startSec = parseEpochSeconds(startDate, true);
+        long endSec = parseEpochSeconds(endDate, false);
+
+        PendingStatement stmt = new PendingStatement(
+                userId, jobId, bank, startDate, endDate, startSec, endSec,
+                openingBalance, closingBalance, txCount, json.toString()
+        );
+        if (targetAccountId != null) {
+            stmt.setMatchedAccountId(targetAccountId);
+        }
+
+        return pendingStatementRepository.save(stmt).thenApplyAsync(saved -> {
+            ObjectNode res = Json.newObject();
+            res.put("status", "ok");
+            res.put("statementId", saved.getId());
+            res.put("jobId", jobId);
+            res.put("bank", bank);
+            return ok(res);
+        }, ec.current()).exceptionally(err -> {
+            System.err.println("Error saving pending statement from webhook: " + err.getMessage());
+            return ok(Json.newObject().put("status", "ok"));
+        });
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> uploadStatement(final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        Http.MultipartFormData<play.libs.Files.TemporaryFile> body = request.body().asMultipartFormData();
+        if (body == null) {
+            return CompletableFuture.completedFuture(
+                    redirect(routes.BankSyncController.index()).flashing("error", "No file uploaded. Please select a PDF statement."));
+        }
+
+        Http.MultipartFormData.FilePart<play.libs.Files.TemporaryFile> pdfPart = body.getFile("pdfFile");
+        if (pdfPart == null) {
+            return CompletableFuture.completedFuture(
+                    redirect(routes.BankSyncController.index()).flashing("error", "Missing 'pdfFile' in upload."));
+        }
+
+        play.libs.Files.TemporaryFile tempFile = pdfPart.getRef();
+        File file = tempFile.path().toFile();
+        String filename = pdfPart.getFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".pdf")) {
+            file.delete();
+            return CompletableFuture.completedFuture(
+                    redirect(routes.BankSyncController.index()).flashing("error", "Only PDF bank statement files are supported."));
+        }
+
+        String accountIdStr = null;
+        if (body.asFormUrlEncoded().containsKey("accountId")) {
+            String[] accVals = body.asFormUrlEncoded().get("accountId");
+            if (accVals.length > 0 && !accVals[0].trim().isEmpty()) {
+                accountIdStr = accVals[0].trim();
+            }
+        }
+
+        byte[] fileBytes;
+        try {
+            fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
+        } catch (Exception e) {
+            file.delete();
+            return CompletableFuture.completedFuture(
+                    redirect(routes.BankSyncController.index()).flashing("error", "Could not read uploaded PDF file: " + e.getMessage()));
+        } finally {
+            // Delete temporary upload file immediately as required
+            file.delete();
+        }
+
+        String legmonUrl = (config != null && config.hasPath("legmon.url"))
+                ? config.getString("legmon.url")
+                : "http://localhost:9005";
+
+        String hostHeader = request.host();
+        String scheme = request.secure() ? "https" : "http";
+        if (request.header("X-Forwarded-Proto").isPresent()) {
+            scheme = request.header("X-Forwarded-Proto").get();
+        }
+        String baseUrl = scheme + "://" + hostHeader;
+        String callbackUrl = baseUrl + "/api/monzo/webhook?statement=true&userId=" + URLEncoder.encode(sup.getUserId(), StandardCharsets.UTF_8);
+
+        StringBuilder processUri = new StringBuilder(legmonUrl + "/api/process?userId=" + URLEncoder.encode(sup.getUserId(), StandardCharsets.UTF_8));
+        processUri.append("&callbackUrl=").append(URLEncoder.encode(callbackUrl, StandardCharsets.UTF_8));
+        if (accountIdStr != null && !accountIdStr.isEmpty()) {
+            processUri.append("&accountId=").append(accountIdStr);
+        }
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(processUri.toString()))
+                .header("Content-Type", "application/pdf")
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(fileBytes))
+                .build();
+
+        return httpClient.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+                .thenApplyAsync(resp -> {
+                    if (resp.statusCode() == 200 || resp.statusCode() == 202) {
+                        return redirect(routes.BankSyncController.index())
+                                .flashing("info", "PDF statement '" + filename + "' uploaded to LegMon! OCR & Mistral extraction kicked off. Review extracted bank and match your account below.");
+                    } else {
+                        return redirect(routes.BankSyncController.index())
+                                .flashing("error", "LegMon service returned HTTP " + resp.statusCode() + ": " + resp.body());
+                    }
+                }, ec.current())
+                .exceptionally(err -> {
+                    return redirect(routes.BankSyncController.index())
+                            .flashing("error", "Failed to reach LegMon service at " + legmonUrl + ": " + err.getMessage() + ". Check that LegMon Docker container is running.");
+                });
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> confirmStatement(Long id, final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        DynamicForm form = formFactory.form().bindFromRequest(request);
+        String accountIdStr = form.get("accountId");
+        if (accountIdStr == null || accountIdStr.trim().isEmpty()) {
+            return CompletableFuture.completedFuture(
+                    redirect(routes.BankSyncController.index()).flashing("error", "Please select an account to match with this statement."));
+        }
+        final Long accountId = Long.parseLong(accountIdStr.trim());
+
+        return pendingStatementRepository.findById(id).thenComposeAsync(optStmt -> {
+            if (optStmt.isEmpty()) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index()).flashing("error", "Statement not found."));
+            }
+            PendingStatement stmt = optStmt.get();
+            if (!sup.getUserId().equals(stmt.getUserId())) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index()).flashing("error", "Unauthorized statement access."));
+            }
+
+            return accountRepository.list(sup.getUserId()).thenComposeAsync(accStream -> {
+                Optional<Account> matchedAccOpt = accStream.filter(a -> a.getId().equals(accountId)).findFirst();
+                if (matchedAccOpt.isEmpty()) {
+                    return CompletableFuture.completedFuture(
+                            redirect(routes.BankSyncController.index()).flashing("error", "Selected account not found."));
+                }
+                Account targetAccount = matchedAccOpt.get();
+
+                // 1. Parse transactions from statement payload
+                List<BankTransaction> txsToSave = new ArrayList<>();
+                try {
+                    JsonNode payloadJson = Json.parse(stmt.getRawPayload());
+                    JsonNode txArray = payloadJson.path("transactions");
+                    if (txArray.isArray()) {
+                        for (JsonNode txItem : txArray) {
+                            JsonNode data = txItem.has("data") ? txItem.get("data") : txItem;
+                            String txId = data.path("id").asText("legmon_tx_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
+                            long pence = data.path("amount").asLong(0L);
+                            float amount = (data.has("amount") && data.get("amount").isFloatingPointNumber())
+                                    ? (float) data.get("amount").asDouble()
+                                    : (Math.abs(pence) / 100.0f * (pence > 0 ? -1.0f : 1.0f));
+
+                            String created = data.path("created").asText(LocalDate.now().toString());
+                            long epochSec = System.currentTimeMillis() / 1000L;
+                            String dateStr = stmt.getEndDate();
+                            try {
+                                if (created.contains("T")) {
+                                    Instant inst = Instant.parse(created);
+                                    epochSec = inst.getEpochSecond();
+                                    dateStr = inst.atZone(ZoneOffset.UTC).toLocalDate().toString();
+                                } else {
+                                    LocalDate ld = LocalDate.parse(created);
+                                    epochSec = ld.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+                                    dateStr = ld.toString();
+                                }
+                            } catch (Exception ignored) {
+                            }
+
+                            String desc = data.path("description").asText("Statement item");
+                            String merchant = data.path("merchant").path("name").asText(desc);
+                            String category = data.path("category").asText("General");
+
+                            BankTransaction tx = new BankTransaction(
+                                    sup.getUserId(),
+                                    accountId,
+                                    txId,
+                                    epochSec,
+                                    dateStr,
+                                    amount,
+                                    desc,
+                                    merchant,
+                                    category,
+                                    "STATEMENT",
+                                    false
+                            );
+                            try {
+                                tx.setRawData(Json.stringify(data));
+                            } catch (Exception ignored) {
+                            }
+                            txsToSave.add(tx);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Could not parse transactions from statement: " + e.getMessage());
+                }
+
+                // 2. Save all transactions
+                return bankTransactionRepository.saveAll(txsToSave).thenComposeAsync(savedCount -> {
+                    // 3. Dangerously overwrite ABL balances for that period
+                    return balanceRepository.deleteForAccountBetween(accountId, sup.getUserId(), stmt.getStartTimestamp(), stmt.getEndTimestamp())
+                            .thenComposeAsync(deletedBalancesCount -> {
+                                // Add statement closing balance
+                                Balance closingBal = new Balance();
+                                closingBal.setUserId(sup.getUserId());
+                                closingBal.setAccount(targetAccount);
+                                closingBal.setValue(stmt.getClosingBalance());
+                                closingBal.setTimestamp(stmt.getEndTimestamp());
+
+                                return balanceRepository.add(closingBal).thenComposeAsync(addedClosing -> {
+                                    // Add opening balance if different and timestamps valid
+                                    CompletableFuture<Boolean> openFut = CompletableFuture.completedFuture(true);
+                                    if (stmt.getOpeningBalance() != null && stmt.getStartTimestamp() < stmt.getEndTimestamp()) {
+                                        Balance openBal = new Balance();
+                                        openBal.setUserId(sup.getUserId());
+                                        openBal.setAccount(targetAccount);
+                                        openBal.setValue(stmt.getOpeningBalance());
+                                        openBal.setTimestamp(stmt.getStartTimestamp());
+                                        openFut = balanceRepository.add(openBal).thenApply(b -> true).toCompletableFuture();
+                                    }
+
+                                    return openFut.thenComposeAsync(v -> {
+                                        stmt.setStatus("APPLIED");
+                                        stmt.setMatchedAccountId(accountId);
+                                        stmt.setAppliedAt(System.currentTimeMillis() / 1000L);
+                                        return pendingStatementRepository.save(stmt).thenApplyAsync(savedStmt -> {
+                                            return redirect(routes.BankSyncController.index())
+                                                    .flashing("info", "Statement matched to '" + targetAccount.getName() + "'! Dangerously overwritten ABL balances for " + stmt.getStartDate() + " to " + stmt.getEndDate() + " (closing: £" + stmt.getClosingBalance() + ") and imported " + savedCount + " transactions.");
+                                        }, ec.current());
+                                    }, ec.current());
+                                }, ec.current());
+                            }, ec.current());
+                }, ec.current());
+            }, ec.current());
+        }, ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> discardStatement(Long id, final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        return pendingStatementRepository.findById(id).thenComposeAsync(optStmt -> {
+            if (optStmt.isEmpty()) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index()).flashing("error", "Statement not found."));
+            }
+            PendingStatement stmt = optStmt.get();
+            if (!sup.getUserId().equals(stmt.getUserId())) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index()).flashing("error", "Unauthorized statement access."));
+            }
+            stmt.setStatus("DISCARDED");
+            return pendingStatementRepository.save(stmt).thenApplyAsync(saved -> {
+                return redirect(routes.BankSyncController.index()).flashing("info", "Statement discarded.");
+            }, ec.current());
+        }, ec.current());
+    }
+
+    public CompletionStage<Result> legmonStatus(final Http.Request request) {
+        String legmonUrl = (config != null && config.hasPath("legmon.url"))
+                ? config.getString("legmon.url")
+                : "http://localhost:9005";
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(legmonUrl + "/status"))
+                .timeout(Duration.ofSeconds(3))
+                .GET()
+                .build();
+
+        return httpClient.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+                .thenApplyAsync(resp -> {
+                    if (resp.statusCode() == 200) {
+                        return ok(Json.parse(resp.body()));
+                    } else {
+                        ObjectNode obj = Json.newObject();
+                        obj.put("status", "warning");
+                        obj.put("service", "LegMon");
+                        obj.put("error", "HTTP " + resp.statusCode());
+                        return ok(obj);
+                    }
+                }, ec.current())
+                .exceptionally(err -> {
+                    ObjectNode obj = Json.newObject();
+                    obj.put("status", "offline");
+                    obj.put("service", "LegMon");
+                    obj.put("error", err.getMessage());
+                    return ok(obj);
+                });
+    }
+
+    public CompletionStage<Result> legmonLogs(final Http.Request request) {
+        String legmonUrl = (config != null && config.hasPath("legmon.url"))
+                ? config.getString("legmon.url")
+                : "http://localhost:9005";
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(legmonUrl + "/api/logs"))
+                .timeout(Duration.ofSeconds(3))
+                .GET()
+                .build();
+
+        return httpClient.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+                .thenApplyAsync(resp -> {
+                    if (resp.statusCode() == 200) {
+                        return ok(Json.parse(resp.body()));
+                    } else {
+                        ObjectNode obj = Json.newObject();
+                        obj.put("status", "error");
+                        obj.put("error", "HTTP " + resp.statusCode());
+                        return ok(obj);
+                    }
+                }, ec.current())
+                .exceptionally(err -> {
+                    ObjectNode obj = Json.newObject();
+                    obj.put("status", "offline");
+                    obj.put("error", err.getMessage());
+                    obj.set("logs", Json.newArray());
+                    return ok(obj);
                 });
     }
 
@@ -183,14 +577,13 @@ public class BankSyncController extends Controller {
         }
         final String cleanToken = token.trim();
 
-        // Validate token by fetching Monzo accounts (supports Debit and Monzo Flex)
         return monzoBankSyncProvider.fetchAccounts(cleanToken).thenComposeAsync(monzoAccounts -> {
             MonzoConnection conn = new MonzoConnection(
                     sup.getUserId(),
                     cleanToken,
                     null,
                     "monzo-user",
-                    System.currentTimeMillis() + (86400L * 365L * 1000L) // Personal access token
+                    System.currentTimeMillis() + (86400L * 365L * 1000L)
             );
             return monzoConnectionRepository.save(conn).thenComposeAsync(saved -> {
                 String hostHeader = request.host();
@@ -267,7 +660,7 @@ public class BankSyncController extends Controller {
                         }
                         try {
                             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                            com.fasterxml.jackson.databind.JsonNode json = mapper.readTree(response.body());
+                            JsonNode json = mapper.readTree(response.body());
                             String accessToken = json.path("access_token").asText();
                             String refreshToken = json.path("refresh_token").asText(null);
                             String monzoUserId = json.path("user_id").asText("monzo-user");
@@ -331,5 +724,18 @@ public class BankSyncController extends Controller {
         return bankTransactionRepository.deleteForAccount(id)
                 .thenApplyAsync(deleted -> redirect(routes.BankSyncController.index())
                         .flashing("info", "Deleted " + deleted + " transactions for account."), ec.current());
+    }
+
+    private long parseEpochSeconds(String dateStr, boolean startOfDay) {
+        try {
+            LocalDate ld = LocalDate.parse(dateStr);
+            if (startOfDay) {
+                return ld.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+            } else {
+                return ld.atTime(23, 59, 59).toEpochSecond(ZoneOffset.UTC);
+            }
+        } catch (Exception e) {
+            return System.currentTimeMillis() / 1000L;
+        }
     }
 }

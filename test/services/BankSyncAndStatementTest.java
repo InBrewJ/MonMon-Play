@@ -517,5 +517,78 @@ public class BankSyncAndStatementTest {
         public CompletionStage<Stream<models.Balance>> listSince(String userId, Long sinceTimestamp) {
             return CompletableFuture.completedFuture(balances.stream().filter(b -> userId.equals(b.getUserId()) && b.getTimestamp() >= sinceTimestamp));
         }
+
+        @Override
+        public CompletionStage<Integer> deleteForAccountBetween(Long accountId, String userId, Long startTimestamp, Long endTimestamp) {
+            int before = balances.size();
+            balances.removeIf(b -> accountId.equals(b.getAccount() != null ? b.getAccount().getId() : null)
+                    && userId.equals(b.getUserId())
+                    && b.getTimestamp() != null
+                    && b.getTimestamp() >= startTimestamp
+                    && b.getTimestamp() <= endTimestamp);
+            return CompletableFuture.completedFuture(before - balances.size());
+        }
+    }
+
+    @Test
+    public void testLegMonStatementPendingAndDangerousBalanceOverwrite() {
+        InMemoryBalanceRepository balanceRepo = new InMemoryBalanceRepository();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+
+        Account acc = new Account();
+        acc.setId(88L);
+        acc.setName("Barclays Current");
+        acc.setType(Account.AccountType.DEBIT);
+        acc.setLedgerMode(Account.LedgerMode.ABL);
+
+        // Seed 3 existing balances in September 2026
+        long t1 = LocalDate.of(2026, 9, 5).atStartOfDay(ZoneId.of("UTC")).toEpochSecond();
+        long t2 = LocalDate.of(2026, 9, 15).atStartOfDay(ZoneId.of("UTC")).toEpochSecond();
+        long t3 = LocalDate.of(2026, 9, 25).atStartOfDay(ZoneId.of("UTC")).toEpochSecond();
+
+        models.Balance b1 = new models.Balance(); b1.setId(1L); b1.setUserId("user_stmt"); b1.setAccount(acc); b1.setValue(100.0f); b1.setTimestamp(t1);
+        models.Balance b2 = new models.Balance(); b2.setId(2L); b2.setUserId("user_stmt"); b2.setAccount(acc); b2.setValue(200.0f); b2.setTimestamp(t2);
+        models.Balance b3 = new models.Balance(); b3.setId(3L); b3.setUserId("user_stmt"); b3.setAccount(acc); b3.setValue(300.0f); b3.setTimestamp(t3);
+        balanceRepo.add(b1).toCompletableFuture().join();
+        balanceRepo.add(b2).toCompletableFuture().join();
+        balanceRepo.add(b3).toCompletableFuture().join();
+
+        assertThat(balanceRepo.list("user_stmt").toCompletableFuture().join().collect(Collectors.toList())).hasSize(3);
+
+        // Statement covers 2026-09-01 to 2026-09-30
+        long startSec = LocalDate.of(2026, 9, 1).atStartOfDay(ZoneId.of("UTC")).toEpochSecond();
+        long endSec = LocalDate.of(2026, 9, 30).atTime(23, 59, 59).atZone(ZoneId.of("UTC")).toEpochSecond();
+
+        models.PendingStatement stmt = new models.PendingStatement(
+                "user_stmt", "stmt_job_001", "Barclays", "2026-09-01", "2026-09-30",
+                startSec, endSec, 1500.00f, 1850.50f, 2, "{}"
+        );
+        assertThat(stmt.getBankName()).isEqualTo("Barclays");
+        assertThat(stmt.getStatus()).isEqualTo("PENDING");
+
+        // Dangerously overwrite ABL balances for that period
+        int deleted = balanceRepo.deleteForAccountBetween(acc.getId(), "user_stmt", startSec, endSec).toCompletableFuture().join();
+        assertThat(deleted).isEqualTo(3);
+
+        // Add statement closing balance
+        models.Balance newClosing = new models.Balance();
+        newClosing.setUserId("user_stmt");
+        newClosing.setAccount(acc);
+        newClosing.setValue(stmt.getClosingBalance());
+        newClosing.setTimestamp(stmt.getEndTimestamp());
+        balanceRepo.add(newClosing).toCompletableFuture().join();
+
+        // Verify existing balances wiped and replaced with verified statement closing balance
+        List<models.Balance> remaining = balanceRepo.list("user_stmt").toCompletableFuture().join().collect(Collectors.toList());
+        assertThat(remaining).hasSize(1);
+        assertThat(remaining.get(0).getValue()).isEqualTo(1850.50f);
+
+        // Import transactions
+        BankTransaction tx1 = new BankTransaction("user_stmt", acc.getId(), "legmon_tx_1", t2, "2026-09-15", 25.50f, "Sainsburys", "Sainsburys", "groceries", "STATEMENT", false);
+        BankTransaction tx2 = new BankTransaction("user_stmt", acc.getId(), "legmon_tx_2", t3, "2026-09-25", 50.00f, "Shell", "Shell", "transport", "STATEMENT", false);
+        txRepo.saveAll(Arrays.asList(tx1, tx2)).toCompletableFuture().join();
+
+        assertThat(txRepo.storage).hasSize(2);
+        assertThat(txRepo.storage.get(0).getSource()).isEqualTo("STATEMENT");
     }
 }

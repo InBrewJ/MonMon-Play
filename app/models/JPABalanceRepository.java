@@ -40,6 +40,18 @@ public class JPABalanceRepository implements BalanceRepository {
         return supplyAsync(() -> wrap(em -> listSince(em, userId, sinceTimestamp)), executionContext);
     }
 
+    @Override
+    public CompletionStage<Integer> deleteForAccountBetween(Long accountId, String userId, Long startTimestamp, Long endTimestamp) {
+        return supplyAsync(() -> wrap(em -> {
+            return em.createQuery("DELETE FROM Balance b WHERE b.account.id = :accountId AND b.userId = :userId AND b.timestamp >= :startTime AND b.timestamp <= :endTime")
+                    .setParameter("accountId", accountId)
+                    .setParameter("userId", userId)
+                    .setParameter("startTime", startTimestamp)
+                    .setParameter("endTime", endTimestamp)
+                    .executeUpdate();
+        }), executionContext);
+    }
+
     private <T> T wrap(Function<EntityManager, T> function) {
         return jpaApi.withTransaction(function);
     }

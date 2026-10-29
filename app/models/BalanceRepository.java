@@ -16,4 +16,6 @@ public interface BalanceRepository {
     CompletionStage<Stream<Balance>> list(String userId);
 
     CompletionStage<Stream<Balance>> listSince(String userId, Long sinceTimestamp);
+
+    CompletionStage<Integer> deleteForAccountBetween(Long accountId, String userId, Long startTimestamp, Long endTimestamp);
 }
