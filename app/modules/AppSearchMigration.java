@@ -1,11 +1,13 @@
 package modules;
 
+import org.hibernate.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.db.jpa.JPAApi;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.sql.Statement;
 
 /**
  * Startup migration to create and maintain the unified PostgreSQL search view ('app_search_view')
@@ -181,6 +183,16 @@ public class AppSearchMigration {
 
         // 2. Standardize user ID columns across ALL tables:
         // Ensure both user_id and "userId" columns exist, and backfill across user_id, "userId", and legacy userid.
+        String[] userTables = new String[]{
+                "account", "outgoing", "incoming", "balance", "pot",
+                "savings_plan", "locked_meal_plan", "net_worth_asset",
+                "plan", "bank_transaction", "pending_statement"
+        };
+        for (String tbl : userTables) {
+            runSingleStatement(jpaApi, "ALTER TABLE " + tbl + " ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)");
+            runSingleStatement(jpaApi, "ALTER TABLE " + tbl + " ADD COLUMN IF NOT EXISTS \"userId\" VARCHAR(255)");
+        }
+
         String standardizeUserColumnsSql =
                 "DO $$\n" +
                 "DECLARE\n" +
@@ -193,15 +205,15 @@ public class AppSearchMigration {
                 "            EXECUTE 'ALTER TABLE ' || tbl || ' ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)';\n" +
                 "            EXECUTE 'ALTER TABLE ' || tbl || ' ADD COLUMN IF NOT EXISTS \"userId\" VARCHAR(255)';\n" +
                 "\n" +
-                "            -- Bidirectional backfill between user_id and \"userId\"\n" +
-                "            EXECUTE 'UPDATE ' || tbl || ' SET user_id = \"userId\" WHERE user_id IS NULL AND \"userId\" IS NOT NULL';\n" +
-                "            EXECUTE 'UPDATE ' || tbl || ' SET \"userId\" = user_id WHERE \"userId\" IS NULL AND user_id IS NOT NULL';\n" +
-                "\n" +
                 "            -- Backfill from legacy unquoted lowercase 'userid' if present\n" +
                 "            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = tbl AND column_name = 'userid') THEN\n" +
                 "                EXECUTE 'UPDATE ' || tbl || ' SET user_id = userid WHERE user_id IS NULL AND userid IS NOT NULL';\n" +
                 "                EXECUTE 'UPDATE ' || tbl || ' SET \"userId\" = userid WHERE \"userId\" IS NULL AND userid IS NOT NULL';\n" +
                 "            END IF;\n" +
+                "\n" +
+                "            -- Bidirectional backfill between user_id and \"userId\"\n" +
+                "            EXECUTE 'UPDATE ' || tbl || ' SET user_id = \"userId\" WHERE user_id IS NULL AND \"userId\" IS NOT NULL';\n" +
+                "            EXECUTE 'UPDATE ' || tbl || ' SET \"userId\" = user_id WHERE \"userId\" IS NULL AND user_id IS NOT NULL';\n" +
                 "        END IF;\n" +
                 "    END LOOP;\n" +
                 "END $$;";
@@ -328,7 +340,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('account' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(a.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(a.user_id, a.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(a.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(a.name, 'Account') AS VARCHAR(255)) AS title, " +
                 "  CAST(COALESCE(a.type, 'Account') || CASE WHEN a.nickname IS NOT NULL AND a.nickname != '' THEN ' (' || a.nickname || ')' ELSE '' END AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/myAccounts?highlight=account-' || CAST(a.id AS VARCHAR) || '#account-' || CAST(a.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -345,7 +357,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('outgoing' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(o.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(o.user_id, o.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(o.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(o.name, 'Outgoing') AS VARCHAR(255)) AS title, " +
                 "  CAST('£' || TO_CHAR(COALESCE(o.cost, 0), 'FM999999990.00') || ' • Day ' || CAST(COALESCE(o.\"OUTGOINGDAY\", 1) AS VARCHAR) || CASE WHEN o.paused = true THEN ' (Paused)' ELSE '' END AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/myOutgoings?highlight=outgoing-' || CAST(o.id AS VARCHAR) || '#outgoing-' || CAST(o.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -362,7 +374,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('incoming' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(i.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(i.user_id, i.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(i.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(i.name, 'Incoming') AS VARCHAR(255)) AS title, " +
                 "  CAST('£' || TO_CHAR(COALESCE(i.netValue, 0), 'FM999999990.00') || ' • Day ' || CAST(COALESCE(i.incomingMonthDay, 1) AS VARCHAR) || CASE WHEN i.payDay = true THEN ' (Payday)' ELSE '' END AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/myIncomings?highlight=incoming-' || CAST(i.id AS VARCHAR) || '#incoming-' || CAST(i.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -379,7 +391,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('balance' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(b.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(b.user_id, b.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(b.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(acc.name, 'Account') || ' Balance' AS VARCHAR(255)) AS title, " +
                 "  CAST('£' || TO_CHAR(COALESCE(b.value, 0), 'FM999999990.00') || CASE WHEN b.timestamp IS NOT NULL AND b.timestamp > 0 THEN ' (' || TO_CHAR(TO_TIMESTAMP(b.timestamp / 1000), 'DD Mon YYYY') || ')' ELSE '' END AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/myBalances?highlight=balance-' || CAST(b.id AS VARCHAR) || '#balance-' || CAST(b.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -396,7 +408,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('pot' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(p.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(p.user_id, p.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(p.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(p.spending_plan_name, COALESCE(p.type, 'Monthly') || ' Pot') AS VARCHAR(255)) AS title, " +
                 "  CAST(COALESCE(p.type, 'Monthly') || ' Pot' || CASE WHEN p.spending_plan_food IS NOT NULL THEN ' • Food £' || CAST(p.spending_plan_food AS VARCHAR) ELSE '' END || CASE WHEN p.spending_plan_fun IS NOT NULL THEN ', Fun £' || CAST(p.spending_plan_fun AS VARCHAR) ELSE '' END AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/myMonthlyPot?highlight=pot-' || CAST(p.id AS VARCHAR) || '#pot-' || CAST(p.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -412,7 +424,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('savings_plan' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(sp.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(sp.user_id, sp.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(sp.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(sp.name, 'Monthly Savings Plan') AS VARCHAR(255)) AS title, " +
                 "  CAST(CAST(COALESCE(sp.savings_percentage, 0) AS VARCHAR) || '% of net income target pot' AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/savingsPlan?highlight=savings-plan-' || CAST(sp.id AS VARCHAR) || '#savings-plan-' || CAST(sp.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -429,7 +441,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('savings_plan_item' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(spi.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(sp.user_id, sp.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(sp.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(spi.name, 'Savings Target') AS VARCHAR(255)) AS title, " +
                 "  CAST(COALESCE(spi.type, 'SAVINGS') || ' • P' || CAST(COALESCE(spi.priority, 1) AS VARCHAR) || ' • £' || TO_CHAR(COALESCE(spi.monthly_amount, 0), 'FM999999990.00') || '/mo (Target £' || TO_CHAR(COALESCE(spi.target_amount, 0), 'FM999999990.00') || ')' AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/savingsPlan?highlight=savings-item-' || CAST(spi.id AS VARCHAR) || '#savings-item-' || CAST(spi.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -447,7 +459,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('meal_plan' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(mp.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(mp.user_id, mp.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(mp.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST('Weekly Meal Plan (NomMon)' AS VARCHAR(255)) AS title, " +
                 "  CAST('£' || TO_CHAR(COALESCE(mp.\"weeklyBudget\", 0), 'FM999999990.00') || ' budget • ' || CAST(COALESCE(mp.people, 1) AS VARCHAR) || ' people' || CASE WHEN mp.postcode IS NOT NULL AND mp.postcode != '' THEN ' • ' || mp.postcode ELSE '' END AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/nommon?highlight=nommon-content#nommon-content' AS VARCHAR(255)) AS target_url, " +
@@ -463,7 +475,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('net_worth_asset' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(nwa.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(nwa.user_id, nwa.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(nwa.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(nwa.name, 'Asset') AS VARCHAR(255)) AS title, " +
                 "  CAST(COALESCE(nwa.category, 'OTHER') || ' • £' || TO_CHAR(COALESCE(nwa.asset_value, 0), 'FM999999990.00') || CASE WHEN nwa.notes IS NOT NULL AND nwa.notes != '' THEN ' • ' || nwa.notes ELSE '' END AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/netWorth?highlight=asset-' || CAST(nwa.id AS VARCHAR) || '#asset-' || CAST(nwa.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -480,7 +492,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('plan' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(pl.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(pl.user_id, pl.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(pl.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(CASE WHEN pl.type = 'BILL_SHARE' THEN 'Bill Sharing Plan' WHEN pl.type = 'RENT_SHARE' THEN 'Rent Sharing Plan' ELSE COALESCE(pl.type, 'Sharing Plan') END AS VARCHAR(255)) AS title, " +
                 "  CAST('Split: ' || TO_CHAR(COALESCE(pl.split, 0) * 100, 'FM990.0') || '%' || CASE WHEN pl.notes IS NOT NULL AND pl.notes != '' THEN ' • ' || pl.notes ELSE '' END AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/myPlans?highlight=plan-' || CAST(pl.id AS VARCHAR) || '#plan-' || CAST(pl.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -497,7 +509,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('bank_transaction' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(bt.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(bt.user_id, bt.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(bt.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(bt.merchant_name, bt.description, 'Bank Transaction') AS VARCHAR(255)) AS title, " +
                 "  CAST('£' || TO_CHAR(COALESCE(bt.amount, 0), 'FM999999990.00') || ' • ' || COALESCE(bt.date, '') || ' • ' || COALESCE(bt.category, 'General') AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/bank?highlight=tx-' || CAST(bt.id AS VARCHAR) || '#tx-' || CAST(bt.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
@@ -513,7 +525,7 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('pending_statement' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(ps.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(ps.user_id, ps.\"userId\", '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(ps.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(ps.bank_name, 'Bank') || ' Statement' AS VARCHAR(255)) AS title, " +
                 "  CAST(COALESCE(ps.status, 'PENDING') || ' • ' || COALESCE(ps.start_date, '') || ' to ' || COALESCE(ps.end_date, '') AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/bank?highlight=card-bank-statements#card-bank-statements' AS VARCHAR(255)) AS target_url, " +
@@ -548,7 +560,12 @@ public class AppSearchMigration {
     private void runSingleStatement(JPAApi jpaApi, String sql) {
         try {
             jpaApi.withTransaction((java.util.function.Consumer<javax.persistence.EntityManager>) em -> {
-                em.createNativeQuery(sql).executeUpdate();
+                Session session = em.unwrap(Session.class);
+                session.doWork(connection -> {
+                    try (Statement stmt = connection.createStatement()) {
+                        stmt.execute(sql);
+                    }
+                });
             });
             logger.debug("[AppSearchMigration] Executed: {}", sql);
         } catch (Exception e) {

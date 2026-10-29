@@ -1,11 +1,13 @@
 package modules;
 
+import org.hibernate.Session;
 import play.db.jpa.JPAApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.sql.Statement;
 
 /**
  * Startup migration to ensure tables, indexes, and column types for BankTransaction exist.
@@ -41,12 +43,29 @@ public class BankTransactionMigration {
                         ")"
         );
 
-        // 2. Ensure indexes (Hibernate creates userId/accountId, legacy DDL used user_id)
+        // 2. Standardize column names (Hibernate entity uses "userId" and "accountId", legacy DDL uses user_id / userid / accountid)
+        runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)");
+        runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS \"userId\" VARCHAR(255)");
+        runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS account_id BIGINT");
+        runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS \"accountId\" BIGINT");
+
+        runSingleStatement(jpaApi,
+                "DO $$\n" +
+                "BEGIN\n" +
+                "    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'bank_transaction' AND column_name = 'accountid') THEN\n" +
+                "        UPDATE bank_transaction SET account_id = accountid WHERE account_id IS NULL AND accountid IS NOT NULL;\n" +
+                "        UPDATE bank_transaction SET \"accountId\" = accountid WHERE \"accountId\" IS NULL AND accountid IS NOT NULL;\n" +
+                "    END IF;\n" +
+                "    UPDATE bank_transaction SET account_id = \"accountId\" WHERE account_id IS NULL AND \"accountId\" IS NOT NULL;\n" +
+                "    UPDATE bank_transaction SET \"accountId\" = account_id WHERE \"accountId\" IS NULL AND account_id IS NOT NULL;\n" +
+                "END $$;");
+
+        // 3. Ensure indexes
         runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_uid ON bank_transaction (\"userId\")");
         runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_acc ON bank_transaction (\"accountId\")");
         runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_time ON bank_transaction (timestamp)");
 
-        // 3. Ensure columns exist
+        // 4. Ensure extra columns exist
         String[] columns = new String[]{
                 "merchant_address VARCHAR(500)",
                 "latitude DOUBLE PRECISION",
@@ -58,8 +77,7 @@ public class BankTransactionMigration {
             runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS " + colDef);
         }
 
-        // 4. Critically: Ensure raw_data is of type TEXT in case it was created as jsonb or varchar.
-        // Uses ANSI SQL CAST(raw_data AS TEXT) so Hibernate native query parser does NOT interpret '::' as a named parameter placeholder.
+        // 5. Critically: Ensure raw_data is of type TEXT in case it was created as jsonb or varchar.
         runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING CAST(raw_data AS TEXT)");
 
         System.out.println("[BankTransactionMigration] BankTransaction schema migration completed successfully.");
@@ -69,9 +87,13 @@ public class BankTransactionMigration {
     private void runSingleStatement(JPAApi jpaApi, String sql) {
         try {
             jpaApi.withTransaction((java.util.function.Consumer<javax.persistence.EntityManager>) em -> {
-                em.createNativeQuery(sql).executeUpdate();
+                Session session = em.unwrap(Session.class);
+                session.doWork(connection -> {
+                    try (Statement stmt = connection.createStatement()) {
+                        stmt.execute(sql);
+                    }
+                });
             });
-            System.out.println("[BankTransactionMigration] Executed: " + sql);
             logger.debug("[BankTransactionMigration] Executed: {}", sql);
         } catch (Exception e) {
             System.out.println("[BankTransactionMigration] Notice for statement '" + sql + "': " + e.getMessage());

@@ -46,6 +46,8 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                                         "pending BOOLEAN DEFAULT FALSE, " +
                                         "created_at BIGINT" +
                                         ")",
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)",
+                                "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS account_id BIGINT",
                                 "CREATE INDEX IF NOT EXISTS idx_bt_user ON bank_transaction (user_id)",
                                 "CREATE INDEX IF NOT EXISTS idx_bt_account ON bank_transaction (account_id)",
                                 "CREATE INDEX IF NOT EXISTS idx_bt_time ON bank_transaction (timestamp)",
@@ -59,7 +61,12 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                         for (String sql : statements) {
                             try {
                                 jpaApi.withTransaction(em -> {
-                                    em.createNativeQuery(sql).executeUpdate();
+                                    org.hibernate.Session session = em.unwrap(org.hibernate.Session.class);
+                                    session.doWork(connection -> {
+                                        try (java.sql.Statement stmt = connection.createStatement()) {
+                                            stmt.execute(sql);
+                                        }
+                                    });
                                 });
                             } catch (Exception e) {
                                 System.out.println("[JPABankTransactionRepository] Schema check notice for '" + sql + "': " + e.getMessage());
@@ -281,8 +288,8 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                         "CAST(COALESCE(AVG(t.amount), 0.0) AS DOUBLE PRECISION) as avg_spent, " +
                         "CAST(ROUND((COALESCE(SUM(t.amount), 0.0) / NULLIF(SUM(SUM(t.amount)) OVER (), 0) * 100)::numeric, 1) AS DOUBLE PRECISION) as pct " +
                         "FROM bank_transaction t " +
-                        "WHERE t.user_id = :userId AND t.amount > 0 " +
-                        "AND (t.source = 'MONZO' OR t.account_id IN (SELECT a.id FROM accounts a WHERE a.user_id = :userId AND LOWER(a.name) LIKE '%monzo%')) " +
+                        "WHERE (t.user_id = :userId OR t.\"userId\" = :userId) AND t.amount > 0 " +
+                        "AND (t.source = 'MONZO' OR t.account_id IN (SELECT a.id FROM account a WHERE (a.user_id = :userId OR a.\"userId\" = :userId) AND LOWER(a.name) LIKE '%monzo%')) " +
                         "GROUP BY COALESCE(NULLIF(TRIM(t.category), ''), 'General') " +
                         "ORDER BY total_spent DESC";
 
@@ -297,7 +304,7 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                             "CAST(COALESCE(AVG(t.amount), 0.0) AS DOUBLE PRECISION) as avg_spent, " +
                             "CAST(ROUND((COALESCE(SUM(t.amount), 0.0) / NULLIF(SUM(SUM(t.amount)) OVER (), 0) * 100)::numeric, 1) AS DOUBLE PRECISION) as pct " +
                             "FROM bank_transaction t " +
-                            "WHERE t.user_id = :userId AND t.amount > 0 " +
+                            "WHERE (t.user_id = :userId OR t.\"userId\" = :userId) AND t.amount > 0 " +
                             "GROUP BY COALESCE(NULLIF(TRIM(t.category), ''), 'General') " +
                             "ORDER BY total_spent DESC";
                     rows = em.createNativeQuery(fallbackSql)
