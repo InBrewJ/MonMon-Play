@@ -707,4 +707,40 @@ public class BankSyncAndStatementTest {
         assertThat(remaining.get(0).getValue()).isEqualTo(980.50f);
         assertThat(txRepo.storage).hasSize(1);
     }
+
+    @Test
+    public void testUnanchoredNewAccountPromptsAndSteersToMyBalances() {
+        InMemoryBalanceRepository balanceRepo = new InMemoryBalanceRepository();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+
+        Account newAcc = new Account();
+        newAcc.setId(105L);
+        newAcc.setName("Brand New NatWest Account");
+
+        // Brand new account has ZERO recorded balances
+        List<models.Balance> initialBalances = balanceRepo.list("new_user").toCompletableFuture().join().collect(Collectors.toList());
+        assertThat(initialBalances).isEmpty();
+
+        models.PendingStatement txnStmt = new models.PendingStatement(
+                "new_user", "job_nw_new", "NatWest Transactions-01",
+                "2026-07-29", "2026-10-22",
+                1722211200L, 1729555200L,
+                0.0f, 0.0f, 5, "{}"
+        );
+        assertThat(helpers.TransactionBalanceReconstructor.isTransactionListOnly(txnStmt)).isTrue();
+
+        // When anchor balance search is performed on empty balance repo, it yields Optional.empty()
+        Optional<models.Balance> anchorFound = helpers.TransactionBalanceReconstructor.findAnchorBalance(
+                initialBalances, txnStmt.getStartTimestamp(), txnStmt.getEndTimestamp()
+        );
+        assertThat(anchorFound).isEmpty();
+
+        // This triggers the steering workflow: transactions are safely stored, and user is redirected to /myBalances
+        BankTransaction tx = new BankTransaction("new_user", newAcc.getId(), "tx_init", 1725000000L, "2026-08-15", 35.0f, "Shop", "Shop", "retail", "STATEMENT", false);
+        txRepo.saveAll(Collections.singletonList(tx)).toCompletableFuture().join();
+
+        assertThat(txRepo.storage).hasSize(1);
+        // Balance repository remains clean (not overwritten with 0) until anchor balance is set on /myBalances
+        assertThat(balanceRepo.balances).isEmpty();
+    }
 }

@@ -489,13 +489,13 @@ public class BankSyncController extends Controller {
                                 return applyBalancesAndFinalize(stmt, targetAccount, accountId, sup.getUserId(), savedCount,
                                         "Transaction list matched to '" + targetAccount.getName() + "'. Auto-reconstructed balances from existing anchor balance of £" + String.format("%.2f", a.getValue()) + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.");
                             } else {
-                                // No anchor balance provided or found. Import transactions but do NOT dangerously overwrite balances with 0!
+                                // No anchor balance provided or found. Import transactions and steer user directly to /myBalances screen!
                                 stmt.setStatus("APPLIED");
                                 stmt.setMatchedAccountId(accountId);
                                 stmt.setAppliedAt(System.currentTimeMillis() / 1000L);
                                 return pendingStatementRepository.save(stmt).thenApplyAsync(savedStmt -> {
-                                    return redirect(routes.BankSyncController.index())
-                                            .flashing("info", "Transaction list matched to '" + targetAccount.getName() + "'! Imported " + savedCount + " transactions. No anchor balance was provided, so existing balances were preserved without overwrite. Enter an anchor balance at any date to reconstruct full balances.");
+                                    return redirect(routes.BalanceController.listBalances())
+                                            .flashing("warning", "⚠️ Anchor Balance Required: Imported " + savedCount + " transactions for '" + targetAccount.getName() + "'. Because this account has no recorded balance in this range (" + stmt.getStartDate() + " to " + stmt.getEndDate() + "), please record an anchor balance below so MonMon can calculate your accurate balance history.");
                                 }, ec.current());
                             }
                         }, ec.current());

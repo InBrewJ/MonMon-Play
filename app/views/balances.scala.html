@@ -29,6 +29,11 @@
             <i class="fas fa-info-circle" style="margin-right: 6px;"></i> @request.flash().get("info").get()
         </div>
     }
+    @if(request.flash().get("warning").isPresent) {
+        <div class="w3-panel w3-amber w3-round" style="padding: 0.75rem 1rem; margin-top: 1rem; border: 1px solid rgba(245, 158, 11, 0.4); color: #000; font-weight: 500;">
+            <i class="fas fa-exclamation-triangle" style="margin-right: 6px;"></i> @request.flash().get("warning").get()
+        </div>
+    }
     @if(request.flash().get("error").isPresent) {
         <div class="w3-panel w3-red w3-round" style="padding: 0.75rem 1rem; margin-top: 1rem; border: 1px solid rgba(239, 68, 68, 0.4);">
             <i class="fas fa-exclamation-circle" style="margin-right: 6px;"></i> @request.flash().get("error").get()
