@@ -25,12 +25,6 @@ RUN mkdir -p /app/logs
 # Copy assembly jar
 COPY target/scala-2.13/legmon-assembly-1.0.0.jar /app/legmon.jar
 
-# Bake Mistral API configuration into the Docker image from build args
-ARG MISTRAL_API_KEY=""
-ARG MISTRAL_MODEL="mistral-small-latest"
-ENV MISTRAL_API_KEY=${MISTRAL_API_KEY} \
-    MISTRAL_MODEL=${MISTRAL_MODEL}
-
 EXPOSE 9005
 
 CMD ["java", "-Duser.dir=/app", "-jar", "/app/legmon.jar"]

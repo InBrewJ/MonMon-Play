@@ -1,5 +1,11 @@
-0. For NomMon, let's add a lock button to the meal plan generated. The cache only lives as long as the server, which is fairly short time just now. Add a lock button to the /nommon page
-and save it to the database to act as a non-volatile cache
+DO NOT COMMIT ANYTHING A MISTRAL SECRET IS BAKED INTO CODE
+
+
+0. Are there any secrets exposed in this repo? If there are, let's work towards rotating them
+   and getting everything set from gitignored files and one single, root level .env file
+
+1. For NomMon, let's add a lock button to the meal plan generated. The cache only lives as long as the server, which is fairly short time just now. Add a lock button to the /nommon page
+   and save it to the database to act as a non-volatile cache
 
 ------------THE ABOVE WAS SENT TO AGY -----------
 

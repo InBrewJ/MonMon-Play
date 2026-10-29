@@ -23,11 +23,27 @@ echo -e "${BLUE}${BOLD}==> [2/3] Transferring Docker image to ${REMOTE_USER_HOST
 docker save legmon:latest | gzip | ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" "gunzip | docker load"
 echo -e "${GREEN}✅ Docker image transferred and loaded on remote server.${NC}"
 
+# Sync local legmon/.env to remote if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    echo -e "${BLUE}==> Transferring local legmon/.env to ${REMOTE_USER_HOST}:/home/circle/app/legmon/.env...${NC}"
+    ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" "mkdir -p /home/circle/app/legmon"
+    scp -o StrictHostKeyChecking=no "$SCRIPT_DIR/.env" "${REMOTE_USER_HOST}:/home/circle/app/legmon/.env"
+    echo -e "${GREEN}✅ .env transferred to remote host.${NC}"
+fi
+
 echo -e "${BLUE}${BOLD}==> [3/3] Launching LegMon container on ${REMOTE_USER_HOST}...${NC}"
 ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" 'bash -s' << 'REMOTE_SCRIPT'
 set -euo pipefail
 
 mkdir -p /home/circle/app/legmon/logs
+
+# Check for .env file
+ENV_ARG=""
+if [ -f /home/circle/app/legmon/.env ]; then
+    ENV_ARG="--env-file /home/circle/app/legmon/.env"
+    echo "Found /home/circle/app/legmon/.env - loading environment into container..."
+fi
 
 # Stop existing container if running
 if docker ps -q -f name=^legmon$ | grep -q .; then
@@ -41,12 +57,12 @@ if docker ps -a -q -f name=^legmon$ | grep -q .; then
 fi
 
 echo "Starting new LegMon container on port 9005..."
-# Note: MISTRAL_API_KEY & MISTRAL_MODEL are baked directly into the image from conf/secureProd.conf during ./build.sh
 docker run -d \
     --name legmon \
     --restart always \
     --network host \
     -v /home/circle/app/legmon/logs:/app/logs \
+    $ENV_ARG \
     -e PORT=9005 \
     -e MONMON_URL="http://127.0.0.1:9000" \
     legmon:latest
