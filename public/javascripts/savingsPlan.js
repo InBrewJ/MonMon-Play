@@ -92,7 +92,8 @@
                     item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + months + ' month' + (months === 1 ? '' : 's') + '</span>' +
                         '<div style="font-size: 0.75rem; color: var(--text-muted);">to clear £' + item.debt.toFixed(2) + ' at £' + monthlyVal.toFixed(2) + '/mo</div>';
                 } else {
-                    item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">No monthly payment</span>';
+                    item.durationEl.innerHTML = '<span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem;"><i class="fas fa-hourglass-start"></i> Future Payoff (£0/mo)</span>' +
+                        '<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Queued (funded when prior clear)</div>';
                 }
             } else {
                 if (item.target > 0 && item.remaining <= 0) {
@@ -101,6 +102,9 @@
                     var targetMonths = Math.ceil(item.remaining / monthlyVal);
                     item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + targetMonths + ' month' + (targetMonths === 1 ? '' : 's') + '</span>' +
                         '<div style="font-size: 0.75rem; color: var(--text-muted);">to reach £' + item.target.toFixed(2) + ' at £' + monthlyVal.toFixed(2) + '/mo</div>';
+                } else if (monthlyVal <= 0) {
+                    item.durationEl.innerHTML = '<span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem;"><i class="fas fa-hourglass-start"></i> Future Target (£0/mo)</span>' +
+                        '<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Queued (funded when prior clear)</div>';
                 } else if (monthlyVal > 0) {
                     item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings (£' + monthlyVal.toFixed(2) + '/mo)</span>';
                 } else {
@@ -490,7 +494,7 @@
                     }
                 } else if (monthly <= 0) {
                     var debtLabel = (accType === 'DEBIT' || accType === 'DEBIT_SHARED_BILLS') ? 'Current overdraft' : 'Current debt';
-                    previewBox.innerHTML = '<span style="color: var(--text-main);"><i class="fas fa-clock"></i> ' + debtLabel + ': <b>£' + debt.toFixed(2) + '</b>. Enter a monthly allocation to estimate payoff duration.</span>';
+                    previewBox.innerHTML = '<span style="color: var(--text-main);"><i class="fas fa-hourglass-start"></i> ' + debtLabel + ': <b>£' + debt.toFixed(2) + '</b>. <b>Future payoff (£0/mo)</b>: Sits in queue and will be funded once higher priority items finish.</span>';
                 } else {
                     var months = Math.ceil(debt / monthly);
                     previewBox.innerHTML = '<span style="color: var(--primary); font-weight: 600;"><i class="fas fa-calculator"></i> Roughly <b>' + months + ' month' + (months === 1 ? '' : 's') + '</b> to pay off £' + debt.toFixed(2) + ' debt at £' + monthly.toFixed(2) + '/month</span>';
@@ -510,7 +514,7 @@
                 } else if (remaining <= 0) {
                     previewBox.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> <b>Target achieved!</b> Current balance (£' + balance.toFixed(2) + ') meets or exceeds target (£' + target.toFixed(2) + ').</span>';
                 } else if (monthly <= 0) {
-                    previewBox.innerHTML = '<span style="color: var(--text-main);"><i class="fas fa-clock"></i> Remaining to target: <b>£' + remaining.toFixed(2) + '</b> (target £' + target.toFixed(2) + ', current £' + balance.toFixed(2) + '). Enter monthly allocation to estimate months.</span>';
+                    previewBox.innerHTML = '<span style="color: var(--text-main);"><i class="fas fa-hourglass-start"></i> Target: <b>£' + target.toFixed(2) + '</b> (£' + remaining.toFixed(2) + ' remaining). <b>Future target (£0/mo)</b>: Sits in queue and will be funded once higher priority items finish.</span>';
                 } else {
                     var targetMonths = Math.ceil(remaining / monthly);
                     previewBox.innerHTML = '<span style="color: var(--primary); font-weight: 600;"><i class="fas fa-calculator"></i> Roughly <b>' + targetMonths + ' month' + (targetMonths === 1 ? '' : 's') + '</b> to reach target (£' + remaining.toFixed(2) + ' remaining of £' + target.toFixed(2) + ' at £' + monthly.toFixed(2) + '/month)</span>';

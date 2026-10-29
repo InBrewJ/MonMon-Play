@@ -295,17 +295,29 @@
                                             <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-weight: 700; color: var(--primary); font-size: 0.78rem;">
                                                 P@item.getPriority()
                                             </span>
-                                            <div style="display: inline-flex; flex-direction: column; gap: 1px;">
+                                            <div style="display: inline-flex; align-items: center; gap: 1px;">
+                                                <form method="POST" action="/savingsPlan/moveToTop/@item.getId()" style="margin: 0; padding: 0; display: inline;">
+                                                    @helper.CSRF.formField
+                                                    <button type="submit" title="Send to top of queue (P1)" @if(itemIdx == 0){disabled} style="border: none; background: transparent; cursor: @if(itemIdx == 0){default}else{pointer}; padding: 1px 2px; font-size: 0.7rem; color: @if(itemIdx == 0){var(--border-color)}else{var(--primary)}; line-height: 1;">
+                                                        <i class="fas fa-angle-double-up"></i>
+                                                    </button>
+                                                </form>
                                                 <form method="POST" action="/savingsPlan/moveUp/@item.getId()" style="margin: 0; padding: 0; display: inline;">
                                                     @helper.CSRF.formField
-                                                    <button type="submit" title="Shunt item up in priority queue" @if(itemIdx == 0){disabled} style="border: none; background: transparent; cursor: @if(itemIdx == 0){default}else{pointer}; padding: 1px 3px; font-size: 0.75rem; color: @if(itemIdx == 0){var(--border-color)}else{var(--primary)}; line-height: 1;">
+                                                    <button type="submit" title="Shunt item up 1 position" @if(itemIdx == 0){disabled} style="border: none; background: transparent; cursor: @if(itemIdx == 0){default}else{pointer}; padding: 1px 2px; font-size: 0.72rem; color: @if(itemIdx == 0){var(--border-color)}else{var(--primary)}; line-height: 1;">
                                                         <i class="fas fa-chevron-up"></i>
                                                     </button>
                                                 </form>
                                                 <form method="POST" action="/savingsPlan/moveDown/@item.getId()" style="margin: 0; padding: 0; display: inline;">
                                                     @helper.CSRF.formField
-                                                    <button type="submit" title="Shunt item down in priority queue" @if(itemIdx >= activeItems.size() - 1){disabled} style="border: none; background: transparent; cursor: @if(itemIdx >= activeItems.size() - 1){default}else{pointer}; padding: 1px 3px; font-size: 0.75rem; color: @if(itemIdx >= activeItems.size() - 1){var(--border-color)}else{var(--primary)}; line-height: 1;">
+                                                    <button type="submit" title="Shunt item down 1 position" @if(itemIdx >= activeItems.size() - 1){disabled} style="border: none; background: transparent; cursor: @if(itemIdx >= activeItems.size() - 1){default}else{pointer}; padding: 1px 2px; font-size: 0.72rem; color: @if(itemIdx >= activeItems.size() - 1){var(--border-color)}else{var(--primary)}; line-height: 1;">
                                                         <i class="fas fa-chevron-down"></i>
+                                                    </button>
+                                                </form>
+                                                <form method="POST" action="/savingsPlan/moveToBottom/@item.getId()" style="margin: 0; padding: 0; display: inline;">
+                                                    @helper.CSRF.formField
+                                                    <button type="submit" title="Send to bottom of queue" @if(itemIdx >= activeItems.size() - 1){disabled} style="border: none; background: transparent; cursor: @if(itemIdx >= activeItems.size() - 1){default}else{pointer}; padding: 1px 2px; font-size: 0.7rem; color: @if(itemIdx >= activeItems.size() - 1){var(--border-color)}else{var(--primary)}; line-height: 1;">
+                                                        <i class="fas fa-angle-double-down"></i>
                                                     </button>
                                                 </form>
                                             </div>
@@ -387,6 +399,11 @@
                                                 <div style="font-size: 0.75rem; color: var(--text-muted);">
                                                     to clear £@item.getDebtOwed() at £@item.getMonthlyAmount()/mo
                                                 </div>
+                                            } else if(item.getMonthlyAmount() <= 0) {
+                                                <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem;">
+                                                    <i class="fas fa-hourglass-start"></i> Future Payoff (£0/mo)
+                                                </span>
+                                                <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Queued (funded when prior clear)</div>
                                             } else {
                                                 <span style="color: var(--text-muted); font-size: 0.8rem;">Allocate amount to estimate</span>
                                             }
@@ -400,6 +417,11 @@
                                                 <div style="font-size: 0.75rem; color: var(--text-muted);">
                                                     to reach £@item.getTargetAmount() at £@item.getMonthlyAmount()/mo
                                                 </div>
+                                            } else if(item.getMonthlyAmount() <= 0) {
+                                                <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem;">
+                                                    <i class="fas fa-hourglass-start"></i> Future Target (£0/mo)
+                                                </span>
+                                                <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Queued (funded when prior clear)</div>
                                             } else if(item.getMonthlyAmount() > 0) {
                                                 <span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings (£@item.getMonthlyAmount()/mo)</span>
                                             } else {
@@ -579,11 +601,12 @@
 
                     <div>
                         <label for="item-monthly-amount" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Monthly Sliced Amount (£)</label>
-                        <input type="number" step="0.01" min="0.01" id="item-monthly-amount" name="monthlyAmount" required
+                        <input type="number" step="0.01" min="0" id="item-monthly-amount" name="monthlyAmount" required
                                inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*"
                                value='@{if(editing && editingItem != null) String.valueOf(editingItem.getMonthlyAmount()) else ""}'
-                               placeholder="e.g. 150.00"
+                               placeholder="e.g. 150.00 or 0.00 for future plan"
                                style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);" />
+                        <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 2px;">Monthly allocation. Can be 0.00 for future targets waiting in queue.</small>
                     </div>
 
                     <div>

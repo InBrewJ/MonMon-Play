@@ -65,11 +65,14 @@ if docker ps -a -q -f name=^legmon$ | grep -q .; then
     docker rm legmon || true
 fi
 
-echo "Starting new LegMon container on port 9005..."
+echo "Starting new LegMon container on port 9005 with log rotation..."
 docker run -d \
     --name legmon \
     --restart always \
     --network host \
+    --log-driver json-file \
+    --log-opt max-size=10m \
+    --log-opt max-file=5 \
     -v /home/circle/app/legmon/logs:/app/logs \
     $ENV_ARG \
     -e PORT=9005 \

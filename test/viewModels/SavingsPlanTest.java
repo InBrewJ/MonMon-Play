@@ -634,4 +634,108 @@ public class SavingsPlanTest {
         // Cascaded monthly amount
         assertThat(active.get(0).getMonthlyAmount()).isEqualTo(100.0f);
     }
+
+    @Test
+    public void testMoveItemDownSequentiallyInTwelveItemQueue() {
+        SavingsPlan plan = new SavingsPlan("user123", "Twelve Item Plan", 20);
+
+        for (int i = 1; i <= 12; i++) {
+            SavingsPlanItem item = new SavingsPlanItem("Item " + i, SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 500f, 10f, i);
+            item.setId((long) i);
+            plan.addItem(item);
+        }
+
+        assertThat(plan.getItems()).hasSize(12);
+        assertThat(plan.getItems().get(3).getName()).isEqualTo("Item 4");
+        assertThat(plan.getItems().get(3).getPriority()).isEqualTo(4);
+
+        // Move item 4 down 8 times so it moves from position 4 to position 12 (bottom of queue)
+        for (int step = 0; step < 8; step++) {
+            boolean moved = plan.moveItemDown(4L);
+            assertThat(moved).isTrue();
+        }
+
+        List<SavingsPlanItem> itemsAfter = plan.getItems();
+        assertThat(itemsAfter.get(11).getId()).isEqualTo(4L);
+        assertThat(itemsAfter.get(11).getName()).isEqualTo("Item 4");
+        assertThat(itemsAfter.get(11).getPriority()).isEqualTo(12);
+
+        // Verify all 12 items maintain strict 1..12 priority sequence
+        for (int i = 0; i < 12; i++) {
+            assertThat(itemsAfter.get(i).getPriority()).isEqualTo(i + 1);
+        }
+    }
+
+    @Test
+    public void testMoveToBottomAndMoveToTopDirectly() {
+        SavingsPlan plan = new SavingsPlan("user123", "Extreme Move Plan", 20);
+
+        for (int i = 1; i <= 12; i++) {
+            SavingsPlanItem item = new SavingsPlanItem("Item " + i, SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 500f, 10f, i);
+            item.setId((long) i);
+            plan.addItem(item);
+        }
+
+        // Send P4 straight to the bottom
+        boolean movedBottom = plan.moveToBottom(4L);
+        assertThat(movedBottom).isTrue();
+
+        List<SavingsPlanItem> itemsAfterBottom = plan.getItems();
+        assertThat(itemsAfterBottom.get(11).getId()).isEqualTo(4L);
+        assertThat(itemsAfterBottom.get(11).getPriority()).isEqualTo(12);
+
+        // Item 5 should now be P4, Item 6 should be P5, etc.
+        assertThat(itemsAfterBottom.get(3).getId()).isEqualTo(5L);
+        assertThat(itemsAfterBottom.get(3).getPriority()).isEqualTo(4);
+
+        // Send Item 4 straight back to top (P1)
+        boolean movedTop = plan.moveToTop(4L);
+        assertThat(movedTop).isTrue();
+
+        List<SavingsPlanItem> itemsAfterTop = plan.getItems();
+        assertThat(itemsAfterTop.get(0).getId()).isEqualTo(4L);
+        assertThat(itemsAfterTop.get(0).getPriority()).isEqualTo(1);
+        assertThat(itemsAfterTop.get(1).getId()).isEqualTo(1L);
+        assertThat(itemsAfterTop.get(1).getPriority()).isEqualTo(2);
+
+        for (int i = 0; i < 12; i++) {
+            assertThat(itemsAfterTop.get(i).getPriority()).isEqualTo(i + 1);
+        }
+    }
+
+    @Test
+    public void testZeroMonthlyAmountForFutureTargetPreservedWhenLocked() {
+        SavingsPlan plan = new SavingsPlan("user123", "Future Target Plan", 20);
+        Float incomingTotal = 2000.0f; // Target pot: 400.00
+
+        // P1: active goal £100
+        SavingsPlanItem p1 = new SavingsPlanItem("Active Emergency", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 100f, 1);
+        p1.setId(1L);
+
+        // P2: future plan with zero monthly allocation, locked
+        SavingsPlanItem p2Future = new SavingsPlanItem("Future Washing Machine", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 500f, 0.0f, 2);
+        p2Future.setId(2L);
+        p2Future.setLocked(true);
+
+        // P3: active goal £100
+        SavingsPlanItem p3 = new SavingsPlanItem("Overdraft Clearout", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, null, 100f, 3);
+        p3.setId(3L);
+
+        plan.addItem(p1);
+        plan.addItem(p2Future);
+        plan.addItem(p3);
+
+        // Future target projection is null when monthly amount is 0 (handled gracefully as future plan)
+        assertThat(p2Future.getRoughMonthsToTarget()).isNull();
+        assertThat(p2Future.getMonthlyAmount()).isEqualTo(0.0f);
+
+        // Balance evenly across unlocked items: target pot is 400, locked p2 is 0.
+        // p1 and p3 should each get 200, while p2 stays at 0.00!
+        plan.balanceEvenly(incomingTotal);
+
+        assertThat(p2Future.getMonthlyAmount()).isEqualTo(0.0f);
+        assertThat(p1.getMonthlyAmount()).isEqualTo(200.0f);
+        assertThat(p3.getMonthlyAmount()).isEqualTo(200.0f);
+        assertThat(plan.getTotalAllocated()).isEqualTo(400.0f);
+    }
 }

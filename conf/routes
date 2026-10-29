@@ -71,6 +71,8 @@ GET     /plans/updateSavingsPayoffPercentage   controllers.PlanController.setBas
 
 # Savings Plan
 GET     /savingsPlan                           controllers.SavingsPlanController.index(req: Request)
+GET     /savingPlans                           controllers.SavingsPlanController.index(req: Request)
+GET     /savingsPlans                          controllers.SavingsPlanController.index(req: Request)
 GET     /mySavingsPlan                         controllers.SavingsPlanController.index(req: Request)
 POST    /savingsPlan                           controllers.SavingsPlanController.createOrUpdatePlan(req: Request)
 POST    /savingsPlan/updatePercentage          controllers.SavingsPlanController.updatePercentage(req: Request)
@@ -84,6 +86,8 @@ POST    /savingsPlan/addAllOverdrafts          controllers.SavingsPlanController
 POST    /savingsPlan/addAllCreditCards         controllers.SavingsPlanController.addAllCreditCards(req: Request)
 POST    /savingsPlan/moveUp/:id                controllers.SavingsPlanController.moveItemUp(id: Long, req: Request)
 POST    /savingsPlan/moveDown/:id              controllers.SavingsPlanController.moveItemDown(id: Long, req: Request)
+POST    /savingsPlan/moveToTop/:id             controllers.SavingsPlanController.moveToTop(id: Long, req: Request)
+POST    /savingsPlan/moveToBottom/:id          controllers.SavingsPlanController.moveToBottom(id: Long, req: Request)
 GET     /binSavingsPlanItem/:id                controllers.SavingsPlanController.archiveItem(id: Long, req: Request)
 GET     /binSavingsPlan/:id                    controllers.SavingsPlanController.archivePlan(id: Long, req: Request)
 

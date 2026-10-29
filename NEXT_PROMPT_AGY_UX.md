@@ -1,7 +1,14 @@
 next up:
 
-0. The Bank sync page is generally very busy. On mobile, a similar swiping card system like spog is likely in order. This swiping card system should also be applied to the savings plan page and the net worth page
+0. the default view on /myOutgoings should be 'Monthly and due now'
 
-1. the colours on bank sync don't work on dark mode at all - the cards all have a white background and individual form elements in the LegMon statement pipeline are washed out. coloured labels in tables on this page are illegible. Follow the colour scheme from spog and the other existing tables
+1. There should also be a 'test' button on /dig - this uses a small dataset that only lives 
+in the frontend to show a large amount of spending in London UK, a small amount of spending in Edinburgh UK and a very large spend in Vatican City
 
-2. Sort out padding / margin of buttons and circles on mobile. e.g. the 'dangerously overwrite...' button text goes outside the bounds of the button.
+------- general experimental UX shakeup -------
+
+0. a few UX patterns have emerged in development that should likely be used as primitives. Save a clearer version of the following in AGENTS.md:
+
+On mobile, a good way to reduce clutter is via the swipe-able cards and card headings with a dot. Use this for all data heavy pages
+
+On mobile for mobile tables, the implementation on /myAccounts is the cleanest. Long text on one line followed by action buttons below

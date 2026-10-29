@@ -49,12 +49,17 @@ else
     echo "⚠️ WARNING: No $ENV_FILE found at $APP_DIR/.env. Container will use internal defaults."
 fi
 
-# 4. Start new MonMon Docker container with host networking
-echo "Starting new MonMon container on host network (port 9000)..."
+# 4. Start new MonMon Docker container with host networking and log rotation
+mkdir -p "$APP_DIR/logs"
+echo "Starting new MonMon container on host network (port 9000) with log rotation..."
 docker run -d \
     --name monmon \
     --restart always \
     --network host \
+    --log-driver json-file \
+    --log-opt max-size=10m \
+    --log-opt max-file=5 \
+    -v "$APP_DIR/logs:/app/logs" \
     $ENV_ARG \
     monmon:latest
 

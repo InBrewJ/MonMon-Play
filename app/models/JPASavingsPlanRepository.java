@@ -1,11 +1,16 @@
 package models;
 
 import org.hibernate.annotations.QueryHints;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.db.jpa.JPAApi;
 
 import javax.inject.Inject;
 import javax.persistence.EntityManager;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -15,6 +20,24 @@ import static java.util.concurrent.CompletableFuture.supplyAsync;
 import static helpers.MathHelpers.round2;
 
 public class JPASavingsPlanRepository implements SavingsPlanRepository {
+
+    private static final Logger logger = LoggerFactory.getLogger(JPASavingsPlanRepository.class);
+    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
+
+    private static void log(String level, String msg) {
+        String timestamp = ISO_FORMATTER.format(Instant.now());
+        String formatted = String.format("[%s] [JPASavingsPlanRepository] [%s] %s", timestamp, level, msg);
+        if ("ERROR".equalsIgnoreCase(level)) {
+            logger.error(formatted);
+            System.err.println(formatted);
+        } else if ("WARN".equalsIgnoreCase(level)) {
+            logger.warn(formatted);
+            System.out.println(formatted);
+        } else {
+            logger.info(formatted);
+            System.out.println(formatted);
+        }
+    }
 
     private final JPAApi jpaApi;
     private final DatabaseExecutionContext executionContext;
@@ -134,6 +157,16 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     }
 
     @Override
+    public CompletionStage<Boolean> moveToTop(Long itemId) {
+        return supplyAsync(() -> wrap(em -> moveToExtreme(em, itemId, false)), executionContext);
+    }
+
+    @Override
+    public CompletionStage<Boolean> moveToBottom(Long itemId) {
+        return supplyAsync(() -> wrap(em -> moveToExtreme(em, itemId, true)), executionContext);
+    }
+
+    @Override
     public CompletionStage<SavingsPlan> updatePercentage(Long planId, int percent) {
         return supplyAsync(() -> wrap(em -> updatePercentage(em, planId, percent)), executionContext);
     }
@@ -205,11 +238,21 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
             }
         }
         if (needsRebalance) {
+            log("INFO", String.format("selfHealPlanPriorities: Rebalancing priorities for planId=%d (%d items)", plan.getId(), items.size()));
             plan.rebalancePriorities();
             for (SavingsPlanItem itm : items) {
+                em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
+                        .setParameter("pri", itm.getPriority())
+                        .setParameter("id", itm.getId())
+                        .executeUpdate();
                 em.merge(itm);
             }
+            if (plan.getAllItems() != null) {
+                plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+            }
             em.merge(plan);
+            em.flush();
         }
     }
 
@@ -305,8 +348,11 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     private SavingsPlanItem updateItem(EntityManager em, Long itemId, String name, SavingsPlanItem.ItemType type, Long accountId, Float targetAmount, Float monthlyAmount, Integer priority) {
         SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
         if (item == null) {
+            log("WARN", "updateItem failed: item not found for id=" + itemId);
             return null;
         }
+        log("INFO", String.format("updateItem itemId=%d name='%s' targetAmount=%.2f monthlyAmount=%.2f targetPriority=%s",
+                itemId, name, targetAmount != null ? targetAmount : 0f, monthlyAmount != null ? monthlyAmount : 0f, priority));
         item.setName(name);
         item.setType(type);
         if (accountId != null && accountId > 0) {
@@ -324,16 +370,29 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
             int targetIdx = (priority != null && priority > 0) ? Math.min(priority - 1, active.size()) : active.size();
             active.add(targetIdx, item);
             for (int i = 0; i < active.size(); i++) {
-                active.get(i).setPriority(i + 1);
-                em.merge(active.get(i));
+                SavingsPlanItem itm = active.get(i);
+                itm.setPriority(i + 1);
+                em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
+                        .setParameter("pri", i + 1)
+                        .setParameter("id", itm.getId())
+                        .executeUpdate();
+                em.merge(itm);
+            }
+            if (plan.getAllItems() != null) {
+                plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
             }
             plan.setLastUpdated(System.currentTimeMillis());
             em.merge(plan);
+            em.flush();
+            log("INFO", String.format("updateItem successfully saved itemId=%d with new priority=P%d and monthlyAmount=%.2f",
+                    itemId, item.getPriority(), item.getMonthlyAmount()));
         } else {
             if (priority != null && priority > 0) {
                 item.setPriority(priority);
             }
             em.merge(item);
+            em.flush();
         }
         return item;
     }
@@ -341,36 +400,95 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     private Boolean archiveItem(EntityManager em, Long itemId) {
         SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
         if (item != null) {
+            log("INFO", String.format("archiveItem: Archiving itemId=%d (%s)", itemId, item.getName()));
             SavingsPlan plan = item.getSavingsPlan();
             if (plan != null) {
                 plan.removeItemAndRebalanceQueue(item);
                 for (SavingsPlanItem itm : plan.getItems()) {
+                    em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
+                            .setParameter("pri", itm.getPriority())
+                            .setParameter("id", itm.getId())
+                            .executeUpdate();
                     em.merge(itm);
                 }
+                if (plan.getAllItems() != null) {
+                    plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                            .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+                }
                 em.merge(plan);
+                em.flush();
             } else {
                 item.setArchived(true);
                 item.setMonthlyAmount(0.0f);
+                em.merge(item);
+                em.flush();
             }
-            em.merge(item);
             return true;
         }
+        log("WARN", "archiveItem failed: item not found for itemId=" + itemId);
         return false;
     }
 
     private Boolean moveItem(EntityManager em, Long itemId, boolean up) {
         SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
         if (item == null || item.getSavingsPlan() == null) {
+            log("WARN", "moveItem failed: item or plan is null for itemId=" + itemId);
             return false;
         }
         SavingsPlan plan = item.getSavingsPlan();
+        int oldPriority = item.getPriority() != null ? item.getPriority() : 0;
         boolean moved = up ? plan.moveItemUp(itemId) : plan.moveItemDown(itemId);
+        log("INFO", String.format("moveItem: itemId=%d (%s) direction=%s oldPriority=P%d moved=%b",
+                itemId, item.getName(), up ? "UP" : "DOWN", oldPriority, moved));
         if (moved) {
             for (SavingsPlanItem itm : plan.getItems()) {
+                em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
+                        .setParameter("pri", itm.getPriority())
+                        .setParameter("id", itm.getId())
+                        .executeUpdate();
                 em.merge(itm);
+            }
+            if (plan.getAllItems() != null) {
+                plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
             }
             plan.setLastUpdated(System.currentTimeMillis());
             em.merge(plan);
+            em.flush();
+            log("INFO", String.format("moveItem: Successfully saved new priority order for planId=%d (item %s is now P%d)",
+                    plan.getId(), item.getName(), item.getPriority()));
+        }
+        return moved;
+    }
+
+    private Boolean moveToExtreme(EntityManager em, Long itemId, boolean toBottom) {
+        SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
+        if (item == null || item.getSavingsPlan() == null) {
+            log("WARN", "moveToExtreme failed: item or plan is null for itemId=" + itemId);
+            return false;
+        }
+        SavingsPlan plan = item.getSavingsPlan();
+        int oldPriority = item.getPriority() != null ? item.getPriority() : 0;
+        boolean moved = toBottom ? plan.moveToBottom(itemId) : plan.moveToTop(itemId);
+        log("INFO", String.format("moveToExtreme: itemId=%d (%s) target=%s oldPriority=P%d moved=%b",
+                itemId, item.getName(), toBottom ? "BOTTOM" : "TOP", oldPriority, moved));
+        if (moved) {
+            for (SavingsPlanItem itm : plan.getItems()) {
+                em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
+                        .setParameter("pri", itm.getPriority())
+                        .setParameter("id", itm.getId())
+                        .executeUpdate();
+                em.merge(itm);
+            }
+            if (plan.getAllItems() != null) {
+                plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+            }
+            plan.setLastUpdated(System.currentTimeMillis());
+            em.merge(plan);
+            em.flush();
+            log("INFO", String.format("moveToExtreme: Successfully saved new priority order for planId=%d (item %s is now P%d)",
+                    plan.getId(), item.getName(), item.getPriority()));
         }
         return moved;
     }

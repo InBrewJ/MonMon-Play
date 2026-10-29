@@ -13,6 +13,8 @@ import models.SavingsPlanItem;
 import models.SavingsPlanRepository;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.data.DynamicForm;
 import play.data.FormFactory;
 import play.libs.concurrent.HttpExecutionContext;
@@ -22,6 +24,8 @@ import play.mvc.Result;
 import viewModels.SimpleUserProfile;
 
 import javax.inject.Inject;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +42,24 @@ import static models.Outgoing.getTotalOutgoingsWithoutHidden;
 import static play.libs.Scala.asScala;
 
 public class SavingsPlanController extends Controller {
+
+    private static final Logger logger = LoggerFactory.getLogger(SavingsPlanController.class);
+    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
+
+    private static void log(String level, String msg) {
+        String timestamp = ISO_FORMATTER.format(Instant.now());
+        String formatted = String.format("[%s] [SavingsPlanController] [%s] %s", timestamp, level, msg);
+        if ("ERROR".equalsIgnoreCase(level)) {
+            logger.error(formatted);
+            System.err.println(formatted);
+        } else if ("WARN".equalsIgnoreCase(level)) {
+            logger.warn(formatted);
+            System.out.println(formatted);
+        } else {
+            logger.info(formatted);
+            System.out.println(formatted);
+        }
+    }
 
     private final FormFactory formFactory;
     private final HttpExecutionContext ec;
@@ -292,10 +314,15 @@ public class SavingsPlanController extends Controller {
             } catch (NumberFormatException ignored) {}
         }
 
+        log("INFO", String.format("addItem: planId=%d name='%s' type=%s monthlyAmount=%.2f targetAmount=%.2f priority=%s",
+                planId, name, type, monthlyAmount, targetAmount, priority));
         SavingsPlanItem item = new SavingsPlanItem(name, type, account, targetAmount, monthlyAmount, priority);
 
         return savingsPlanRepository.addItem(planId, item)
-                .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+                .thenApplyAsync(i -> {
+                    log("INFO", String.format("addItem: Successfully added item id=%d to planId=%d", i != null ? i.getId() : -1, planId));
+                    return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+                }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -347,8 +374,14 @@ public class SavingsPlanController extends Controller {
             } catch (NumberFormatException ignored) {}
         }
 
+        log("INFO", String.format("updateItem: User %s updating itemId=%d name='%s' monthlyAmount=%.2f targetPriority=%d",
+                sup.getUserId(), itemId, name, monthlyAmount, priority));
+
         return savingsPlanRepository.updateItem(itemId, name, type, accountId, targetAmount, monthlyAmount, priority)
-                .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+                .thenApplyAsync(i -> {
+                    log("INFO", String.format("updateItem: Completed update for itemId=%d, redirecting to savings plan", itemId));
+                    return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+                }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -468,8 +501,12 @@ public class SavingsPlanController extends Controller {
                             .as("application/json")
             );
         }
+        log("INFO", "archiveItem: request to archive itemId=" + id);
         return savingsPlanRepository.archiveItem(id)
-                .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+                .thenApplyAsync(b -> {
+                    log("INFO", "archiveItem: completed for itemId=" + id + ", success=" + b);
+                    return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+                }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -480,8 +517,12 @@ public class SavingsPlanController extends Controller {
                             .as("application/json")
             );
         }
+        log("INFO", "moveItemUp: Shunting up itemId=" + id);
         return savingsPlanRepository.moveItemUp(id)
-                .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+                .thenApplyAsync(b -> {
+                    log("INFO", "moveItemUp: completed for itemId=" + id + ", success=" + b);
+                    return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+                }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -492,8 +533,44 @@ public class SavingsPlanController extends Controller {
                             .as("application/json")
             );
         }
+        log("INFO", "moveItemDown: Shunting down itemId=" + id);
         return savingsPlanRepository.moveItemDown(id)
-                .thenApplyAsync(b -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+                .thenApplyAsync(b -> {
+                    log("INFO", "moveItemDown: completed for itemId=" + id + ", success=" + b);
+                    return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+                }, ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> moveToTop(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
+        log("INFO", "moveToTop: Sending itemId=" + id + " to head of queue (P1)");
+        return savingsPlanRepository.moveToTop(id)
+                .thenApplyAsync(b -> {
+                    log("INFO", "moveToTop: completed for itemId=" + id + ", success=" + b);
+                    return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+                }, ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> moveToBottom(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
+        log("INFO", "moveToBottom: Sending itemId=" + id + " to bottom of queue");
+        return savingsPlanRepository.moveToBottom(id)
+                .thenApplyAsync(b -> {
+                    log("INFO", "moveToBottom: completed for itemId=" + id + ", success=" + b);
+                    return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+                }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -504,8 +581,12 @@ public class SavingsPlanController extends Controller {
                             .as("application/json")
             );
         }
+        log("INFO", "toggleLock: Toggling lock for itemId=" + id);
         return savingsPlanRepository.toggleLock(id)
-                .thenApplyAsync(i -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+                .thenApplyAsync(i -> {
+                    log("INFO", "toggleLock: completed for itemId=" + id + ", locked=" + (i != null && i.isLocked()));
+                    return redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card");
+                }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")

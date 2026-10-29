@@ -1,10 +1,9 @@
-0. Are there any secrets exposed in this repo? If there are, let's work towards rotating them
-   and getting everything set from gitignored files and one single, root level .env file
-
-1. For NomMon, let's add a lock button to the meal plan generated. The cache only lives as long as the server, which is fairly short time just now. Add a lock button to the /nommon page
-   and save it to the database to act as a non-volatile cache
+0. 
 
 ------------THE ABOVE WAS SENT TO AGY -----------
+
+1. Let's add an expandable search bar to the header. make a huge postgres view (maybe materialized?) of everything in the user's account. I should be able to search for anything in the app, an account, an outgoing, a balance, a meal plan, a pot, a saving plan and so on. The list of results is simple and
+   when I click on a result it takes me to the relevant page and scrolls down to the result on the page in the given context and highlights the thing, briefly
 
 ------------DO NOT DO THIS, the below text, NOW, do it later------------
 

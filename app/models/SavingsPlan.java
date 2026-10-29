@@ -140,6 +140,11 @@ public class SavingsPlan {
         for (int i = 0; i < active.size(); i++) {
             active.get(i).setPriority(i + 1);
         }
+        if (this.items != null) {
+            this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        }
+        this.lastUpdated = System.currentTimeMillis();
     }
 
     /**
@@ -163,6 +168,10 @@ public class SavingsPlan {
             active.set(idx, prev);
             for (int i = 0; i < active.size(); i++) {
                 active.get(i).setPriority(i + 1);
+            }
+            if (this.items != null) {
+                this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
             }
             this.lastUpdated = System.currentTimeMillis();
             return true;
@@ -191,6 +200,68 @@ public class SavingsPlan {
             active.set(idx, next);
             for (int i = 0; i < active.size(); i++) {
                 active.get(i).setPriority(i + 1);
+            }
+            if (this.items != null) {
+                this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+            }
+            this.lastUpdated = System.currentTimeMillis();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Shifts an item straight to the very bottom of the active queue (lowest priority rank).
+     */
+    public boolean moveToBottom(Long itemId) {
+        if (itemId == null) return false;
+        List<SavingsPlanItem> active = getItems();
+        int idx = -1;
+        for (int i = 0; i < active.size(); i++) {
+            if (active.get(i) != null && itemId.equals(active.get(i).getId())) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx >= 0 && idx < active.size() - 1) {
+            SavingsPlanItem item = active.remove(idx);
+            active.add(item);
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).setPriority(i + 1);
+            }
+            if (this.items != null) {
+                this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+            }
+            this.lastUpdated = System.currentTimeMillis();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Shifts an item straight to the very top of the active queue (P1).
+     */
+    public boolean moveToTop(Long itemId) {
+        if (itemId == null) return false;
+        List<SavingsPlanItem> active = getItems();
+        int idx = -1;
+        for (int i = 0; i < active.size(); i++) {
+            if (active.get(i) != null && itemId.equals(active.get(i).getId())) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx > 0) {
+            SavingsPlanItem item = active.remove(idx);
+            active.add(0, item);
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).setPriority(i + 1);
+            }
+            if (this.items != null) {
+                this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
             }
             this.lastUpdated = System.currentTimeMillis();
             return true;

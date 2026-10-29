@@ -36,6 +36,10 @@ public interface SavingsPlanRepository {
 
     CompletionStage<Boolean> moveItemDown(Long itemId);
 
+    CompletionStage<Boolean> moveToTop(Long itemId);
+
+    CompletionStage<Boolean> moveToBottom(Long itemId);
+
     CompletionStage<SavingsPlan> updatePercentage(Long planId, int percent);
 
     CompletionStage<SavingsPlan> updatePercentageAndScaleItems(Long planId, int percent, Float incomingTotal);
