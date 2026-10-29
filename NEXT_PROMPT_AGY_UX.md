@@ -11,4 +11,8 @@ in the frontend to show a large amount of spending in London UK, a small amount 
 
 On mobile, a good way to reduce clutter is via the swipe-able cards and card headings with a dot. Use this for all data heavy pages
 
-On mobile for mobile tables, the implementation on /myAccounts is the cleanest. Long text on one line followed by action buttons below
+On mobile for mobile tables, the implementation on /myAccounts is the cleanest. Long text on one line followed by action buttons below, we should make this a named pattern and use it on all tables
+
+For mobile and desktop and for the swipe-able cards and desktop cards, we should make a decision up front on what the user needs to see 'at a glance', this should inform the order of the page
+
+App wide search should search all primitives (within reason and with proper indexes) and clicked results should route back to somewhere on the app where it lives, never in isolation

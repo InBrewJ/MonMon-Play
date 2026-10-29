@@ -603,4 +603,108 @@ public class BankSyncAndStatementTest {
         assertThat(txRepo.storage).hasSize(2);
         assertThat(txRepo.storage.get(0).getSource()).isEqualTo("STATEMENT");
     }
+
+    @Test
+    public void testTransactionListWithAnchorBalanceConfirmation() {
+        InMemoryBalanceRepository balanceRepo = new InMemoryBalanceRepository();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+
+        Account acc = new Account();
+        acc.setId(99L);
+        acc.setName("NatWest Reward");
+        acc.setType(Account.AccountType.DEBIT);
+        acc.setLedgerMode(Account.LedgerMode.ABL);
+
+        // Transaction list statement: 0 opening, 0 closing balance
+        long startSec = 1722211200L; // 2026-07-29
+        long endSec = 1729555200L;   // 2026-10-22
+
+        models.PendingStatement txnStmt = new models.PendingStatement(
+                "user_natwest", "job_nw_01", "NatWest Transactions-01",
+                "2026-07-29", "2026-10-22",
+                startSec, endSec,
+                0.0f, 0.0f, 3, "{}"
+        );
+        assertThat(helpers.TransactionBalanceReconstructor.isTransactionListOnly(txnStmt)).isTrue();
+
+        // 3 Transactions:
+        // Day 10: Inflow +£1000 (salary) -> MonMon amount = -1000
+        // Day 20: Outflow -£200 (rent) -> MonMon amount = +200
+        // Day 30: Outflow -£50 (groceries) -> MonMon amount = +50
+        BankTransaction t1 = new BankTransaction("user_natwest", acc.getId(), "tx_1", startSec + 10000, "2026-08-10", -1000.0f, "Salary", "Employer", "income", "STATEMENT", false);
+        BankTransaction t2 = new BankTransaction("user_natwest", acc.getId(), "tx_2", startSec + 20000, "2026-08-20", 200.0f, "Rent", "Landlord", "bills", "STATEMENT", false);
+        BankTransaction t3 = new BankTransaction("user_natwest", acc.getId(), "tx_3", startSec + 30000, "2026-08-30", 50.0f, "Groceries", "Tesco", "groceries", "STATEMENT", false);
+        t1.setRawData("{\"id\":\"tx_1\",\"amount\":100000}");
+        t2.setRawData("{\"id\":\"tx_2\",\"amount\":-20000}");
+        t3.setRawData("{\"id\":\"tx_3\",\"amount\":-5000}");
+
+        List<BankTransaction> txs = Arrays.asList(t1, t2, t3);
+        txRepo.saveAll(txs).toCompletableFuture().join();
+        assertThat(txRepo.storage).hasSize(3);
+        assertThat(txRepo.storage.get(0).getRawData()).contains("\"amount\":100000");
+
+        // User supplies Anchor Balance B(start) = £500.00
+        float anchorBal = 500.00f;
+        List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
+                helpers.TransactionBalanceReconstructor.fromBankTransactions(txs);
+        helpers.TransactionBalanceReconstructor.ReconstructionResult rec =
+                helpers.TransactionBalanceReconstructor.reconstruct(deltas, startSec, anchorBal, startSec, endSec);
+
+        // Forward: 500 + 1000 - 200 - 50 = 1250.00
+        assertThat(rec.getOpeningBalance()).isEqualTo(500.00f);
+        assertThat(rec.getClosingBalance()).isEqualTo(1250.00f);
+
+        // Overwrite balances with reconstructed closing balance
+        balanceRepo.deleteForAccountBetween(acc.getId(), "user_natwest", startSec, endSec).toCompletableFuture().join();
+        models.Balance closing = new models.Balance();
+        closing.setUserId("user_natwest");
+        closing.setAccount(acc);
+        closing.setValue(rec.getClosingBalance());
+        closing.setTimestamp(endSec);
+        balanceRepo.add(closing).toCompletableFuture().join();
+
+        List<models.Balance> savedBalances = balanceRepo.list("user_natwest").toCompletableFuture().join().collect(Collectors.toList());
+        assertThat(savedBalances).hasSize(1);
+        assertThat(savedBalances.get(0).getValue()).isEqualTo(1250.00f);
+    }
+
+    @Test
+    public void testTransactionListWithoutAnchorBalancePreservesExistingBalances() {
+        InMemoryBalanceRepository balanceRepo = new InMemoryBalanceRepository();
+        InMemoryBankTransactionRepository txRepo = new InMemoryBankTransactionRepository();
+
+        Account acc = new Account();
+        acc.setId(77L);
+        acc.setName("NatWest Reward");
+
+        // Existing balance in place
+        models.Balance prior = new models.Balance();
+        prior.setId(10L);
+        prior.setUserId("user_no_anchor");
+        prior.setAccount(acc);
+        prior.setValue(980.50f);
+        prior.setTimestamp(1725000000L);
+        balanceRepo.add(prior).toCompletableFuture().join();
+
+        // Transaction list without balances
+        models.PendingStatement txnStmt = new models.PendingStatement(
+                "user_no_anchor", "job_nw_02", "NatWest Transactions-01",
+                "2026-07-29", "2026-10-22",
+                1722211200L, 1729555200L,
+                0.0f, 0.0f, 1, "{}"
+        );
+        assertThat(helpers.TransactionBalanceReconstructor.isTransactionListOnly(txnStmt)).isTrue();
+
+        // If no anchor balance is provided, existing balance MUST NOT be deleted or overwritten with 0!
+        List<BankTransaction> txs = Collections.singletonList(
+                new BankTransaction("user_no_anchor", acc.getId(), "tx_no_anchor", 1725000000L, "2026-08-30", 15.0f, "Costa", "Costa", "food", "STATEMENT", false)
+        );
+        txRepo.saveAll(txs).toCompletableFuture().join();
+
+        // Check balances: unchanged
+        List<models.Balance> remaining = balanceRepo.list("user_no_anchor").toCompletableFuture().join().collect(Collectors.toList());
+        assertThat(remaining).hasSize(1);
+        assertThat(remaining.get(0).getValue()).isEqualTo(980.50f);
+        assertThat(txRepo.storage).hasSize(1);
+    }
 }

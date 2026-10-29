@@ -359,6 +359,8 @@ public class BankSyncController extends Controller {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
         DynamicForm form = formFactory.form().bindFromRequest(request);
         String accountIdStr = form.get("accountId");
+        String anchorBalanceStr = form.get("anchorBalance");
+        String anchorDateStr = form.get("anchorDate");
         if (accountIdStr == null || accountIdStr.trim().isEmpty()) {
             return CompletableFuture.completedFuture(
                     redirect(routes.BankSyncController.index()).flashing("error", "Please select an account to match with this statement."));
@@ -444,42 +446,99 @@ public class BankSyncController extends Controller {
 
                 // 2. Save all transactions
                 return bankTransactionRepository.saveAll(txsToSave).thenComposeAsync(savedCount -> {
-                    // 3. Dangerously overwrite ABL balances for that period
-                    return balanceRepository.deleteForAccountBetween(accountId, sup.getUserId(), stmt.getStartTimestamp(), stmt.getEndTimestamp())
-                            .thenComposeAsync(deletedBalancesCount -> {
-                                // Add statement closing balance
-                                Balance closingBal = new Balance();
-                                closingBal.setUserId(sup.getUserId());
-                                closingBal.setAccount(targetAccount);
-                                closingBal.setValue(stmt.getClosingBalance());
-                                closingBal.setTimestamp(stmt.getEndTimestamp());
+                    boolean isTxListOnly = helpers.TransactionBalanceReconstructor.isTransactionListOnly(stmt);
+                    Float userAnchorVal = null;
+                    if (anchorBalanceStr != null && !anchorBalanceStr.trim().isEmpty()) {
+                        try {
+                            userAnchorVal = Float.parseFloat(anchorBalanceStr.trim());
+                        } catch (Exception ignored) {}
+                    }
 
-                                return balanceRepository.add(closingBal).thenComposeAsync(addedClosing -> {
-                                    // Add opening balance if different and timestamps valid
-                                    CompletableFuture<Boolean> openFut = CompletableFuture.completedFuture(true);
-                                    if (stmt.getOpeningBalance() != null && stmt.getStartTimestamp() < stmt.getEndTimestamp()) {
-                                        Balance openBal = new Balance();
-                                        openBal.setUserId(sup.getUserId());
-                                        openBal.setAccount(targetAccount);
-                                        openBal.setValue(stmt.getOpeningBalance());
-                                        openBal.setTimestamp(stmt.getStartTimestamp());
-                                        openFut = balanceRepository.add(openBal).thenApply(b -> true).toCompletableFuture();
-                                    }
+                    if (userAnchorVal != null) {
+                        long anchorTs = (anchorDateStr != null && !anchorDateStr.trim().isEmpty())
+                                ? parseEpochSeconds(anchorDateStr.trim(), false)
+                                : stmt.getEndTimestamp();
+                        List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
+                                helpers.TransactionBalanceReconstructor.fromBankTransactions(txsToSave);
+                        helpers.TransactionBalanceReconstructor.ReconstructionResult rec =
+                                helpers.TransactionBalanceReconstructor.reconstruct(
+                                        deltas, anchorTs, userAnchorVal, stmt.getStartTimestamp(), stmt.getEndTimestamp());
+                        stmt.setOpeningBalance(rec.getOpeningBalance());
+                        stmt.setClosingBalance(rec.getClosingBalance());
 
-                                    return openFut.thenComposeAsync(v -> {
-                                        stmt.setStatus("APPLIED");
-                                        stmt.setMatchedAccountId(accountId);
-                                        stmt.setAppliedAt(System.currentTimeMillis() / 1000L);
-                                        return pendingStatementRepository.save(stmt).thenApplyAsync(savedStmt -> {
-                                            return redirect(routes.BankSyncController.index())
-                                                    .flashing("info", "Statement matched to '" + targetAccount.getName() + "'! Dangerously overwritten ABL balances for " + stmt.getStartDate() + " to " + stmt.getEndDate() + " (closing: £" + stmt.getClosingBalance() + ") and imported " + savedCount + " transactions.");
-                                        }, ec.current());
-                                    }, ec.current());
+                        return applyBalancesAndFinalize(stmt, targetAccount, accountId, sup.getUserId(), savedCount,
+                                "Transaction list matched to '" + targetAccount.getName() + "'. Reconstructed balances from anchor £" + String.format("%.2f", userAnchorVal) + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.");
+                    } else if (isTxListOnly) {
+                        // Check if existing balance can be discovered from balanceRepository
+                        return balanceRepository.list(sup.getUserId()).thenComposeAsync(balancesStream -> {
+                            List<Balance> existingAccBalances = balancesStream
+                                    .filter(b -> b.getAccount() != null && accountId.equals(b.getAccount().getId()))
+                                    .collect(Collectors.toList());
+                            Optional<Balance> autoAnchor = helpers.TransactionBalanceReconstructor.findAnchorBalance(
+                                    existingAccBalances, stmt.getStartTimestamp(), stmt.getEndTimestamp());
+
+                            if (autoAnchor.isPresent()) {
+                                Balance a = autoAnchor.get();
+                                List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
+                                        helpers.TransactionBalanceReconstructor.fromBankTransactions(txsToSave);
+                                helpers.TransactionBalanceReconstructor.ReconstructionResult rec =
+                                        helpers.TransactionBalanceReconstructor.reconstruct(
+                                                deltas, a.getTimestamp(), a.getValue(), stmt.getStartTimestamp(), stmt.getEndTimestamp());
+                                stmt.setOpeningBalance(rec.getOpeningBalance());
+                                stmt.setClosingBalance(rec.getClosingBalance());
+                                return applyBalancesAndFinalize(stmt, targetAccount, accountId, sup.getUserId(), savedCount,
+                                        "Transaction list matched to '" + targetAccount.getName() + "'. Auto-reconstructed balances from existing anchor balance of £" + String.format("%.2f", a.getValue()) + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.");
+                            } else {
+                                // No anchor balance provided or found. Import transactions but do NOT dangerously overwrite balances with 0!
+                                stmt.setStatus("APPLIED");
+                                stmt.setMatchedAccountId(accountId);
+                                stmt.setAppliedAt(System.currentTimeMillis() / 1000L);
+                                return pendingStatementRepository.save(stmt).thenApplyAsync(savedStmt -> {
+                                    return redirect(routes.BankSyncController.index())
+                                            .flashing("info", "Transaction list matched to '" + targetAccount.getName() + "'! Imported " + savedCount + " transactions. No anchor balance was provided, so existing balances were preserved without overwrite. Enter an anchor balance at any date to reconstruct full balances.");
                                 }, ec.current());
-                            }, ec.current());
+                            }
+                        }, ec.current());
+                    } else {
+                        // Standard statement with verified closing balance
+                        return applyBalancesAndFinalize(stmt, targetAccount, accountId, sup.getUserId(), savedCount,
+                                "Statement matched to '" + targetAccount.getName() + "'! Dangerously overwritten ABL balances for " + stmt.getStartDate() + " to " + stmt.getEndDate() + " (closing: £" + String.format("%.2f", stmt.getClosingBalance()) + ") and imported " + savedCount + " transactions.");
+                    }
                 }, ec.current());
             }, ec.current());
         }, ec.current());
+    }
+
+    private CompletionStage<Result> applyBalancesAndFinalize(PendingStatement stmt, Account targetAccount, Long accountId, String userId, int savedCount, String flashMessage) {
+        return balanceRepository.deleteForAccountBetween(accountId, userId, stmt.getStartTimestamp(), stmt.getEndTimestamp())
+                .thenComposeAsync(deletedBalancesCount -> {
+                    Balance closingBal = new Balance();
+                    closingBal.setUserId(userId);
+                    closingBal.setAccount(targetAccount);
+                    closingBal.setValue(stmt.getClosingBalance());
+                    closingBal.setTimestamp(stmt.getEndTimestamp());
+
+                    return balanceRepository.add(closingBal).thenComposeAsync(addedClosing -> {
+                        CompletableFuture<Boolean> openFut = CompletableFuture.completedFuture(true);
+                        if (stmt.getOpeningBalance() != null && stmt.getStartTimestamp() < stmt.getEndTimestamp()) {
+                            Balance openBal = new Balance();
+                            openBal.setUserId(userId);
+                            openBal.setAccount(targetAccount);
+                            openBal.setValue(stmt.getOpeningBalance());
+                            openBal.setTimestamp(stmt.getStartTimestamp());
+                            openFut = balanceRepository.add(openBal).thenApply(b -> true).toCompletableFuture();
+                        }
+
+                        return openFut.thenComposeAsync(v -> {
+                            stmt.setStatus("APPLIED");
+                            stmt.setMatchedAccountId(accountId);
+                            stmt.setAppliedAt(System.currentTimeMillis() / 1000L);
+                            return pendingStatementRepository.save(stmt).thenApplyAsync(savedStmt -> {
+                                return redirect(routes.BankSyncController.index()).flashing("info", flashMessage);
+                            }, ec.current());
+                        }, ec.current());
+                    }, ec.current());
+                }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")

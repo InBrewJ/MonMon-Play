@@ -56,14 +56,14 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS raw_data TEXT",
                                 "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING raw_data::text"
                         };
-                        jpaApi.withTransaction(em -> {
-                            for (String sql : statements) {
-                                try {
+                        for (String sql : statements) {
+                            try {
+                                jpaApi.withTransaction(em -> {
                                     em.createNativeQuery(sql).executeUpdate();
-                                } catch (Exception ignored) {
-                                }
+                                });
+                            } catch (Exception ignored) {
                             }
-                        });
+                        }
                         schemaEnsured = true;
                     } catch (Exception e) {
                         schemaEnsured = true;
