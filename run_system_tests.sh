@@ -43,12 +43,12 @@ docker exec -e PGPASSWORD=docker postgres psql -U postgres -c "CREATE DATABASE $
 # 3. RECREATE THE EXACT BUG STATE:
 # Table exists with raw_data column typed as JSONB (as it was in commit 88e9676)
 echo -e "${BLUE}==> [3/7] Re-creating legacy PostgreSQL schema bug: raw_data as JSONB...${NC}"
-docker exec -e PGPASSWORD=docker postgres psql -U postgres -d "$SYSTEST_DB" -c "
+docker exec -e PGPASSWORD=docker postgres psql -U postgres -d "$SYSTEST_DB" -c '
 CREATE TABLE bank_transaction (
     id BIGSERIAL PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
-    account_id BIGINT,
-    external_id VARCHAR(255) UNIQUE,
+    "userId" VARCHAR(255) NOT NULL,
+    "accountId" BIGINT,
+    "externalId" VARCHAR(255) UNIQUE,
     timestamp BIGINT,
     date VARCHAR(64),
     amount REAL DEFAULT 0,
@@ -59,7 +59,7 @@ CREATE TABLE bank_transaction (
     latitude DOUBLE PRECISION,
     longitude DOUBLE PRECISION,
     merchant_emoji VARCHAR(50),
-    source VARCHAR(64) DEFAULT 'MANUAL',
+    source VARCHAR(64) DEFAULT '\''MANUAL'\'',
     pending BOOLEAN DEFAULT FALSE,
     created_at BIGINT,
     raw_data JSONB
@@ -67,17 +67,17 @@ CREATE TABLE bank_transaction (
 
 CREATE TABLE account (
     id BIGSERIAL PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
+    "userId" VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(50) NOT NULL,
-    ledger_mode VARCHAR(50) DEFAULT 'ABL',
+    ledger_mode VARCHAR(50) DEFAULT '\''ABL'\'',
     available_limit REAL DEFAULT 0,
     archived BOOLEAN DEFAULT FALSE
 );
 
-INSERT INTO account (id, user_id, name, type, ledger_mode, available_limit, archived)
-VALUES (101, 'systest_user', 'NatWest Reward Platinum', 'DEBIT', 'ABL', 0, false);
-" >/dev/null
+INSERT INTO account (id, "userId", name, type, ledger_mode, available_limit, archived)
+VALUES (101, '\''systest_user'\'', '\''NatWest Reward Platinum'\'', '\''DEBIT'\'', '\''ABL'\'', 0, false);
+' >/dev/null
 
 # Assert that raw_data is currently jsonb in postgres
 PRE_TYPE=$(docker exec -e PGPASSWORD=docker postgres psql -U postgres -d "$SYSTEST_DB" -t -A -c "

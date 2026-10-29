@@ -54,7 +54,7 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION",
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS merchant_emoji VARCHAR(50)",
                                 "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS raw_data TEXT",
-                                "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING (raw_data::text)"
+                                "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING CAST(raw_data AS TEXT)"
                         };
                         for (String sql : statements) {
                             try {
@@ -90,7 +90,7 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
     public CompletionStage<Integer> saveAll(List<BankTransaction> transactions) {
         return supplyAsync(() -> wrap(em -> {
             try {
-                em.createNativeQuery("ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING (raw_data::text)").executeUpdate();
+                em.createNativeQuery("ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING CAST(raw_data AS TEXT)").executeUpdate();
             } catch (Exception ignored) {
             }
 

@@ -41,11 +41,10 @@ public class BankTransactionMigration {
                         ")"
         );
 
-        // 2. Ensure indexes
-        runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_user ON bank_transaction (user_id)");
-        runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_account ON bank_transaction (account_id)");
+        // 2. Ensure indexes (Hibernate creates userId/accountId, legacy DDL used user_id)
+        runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_uid ON bank_transaction (\"userId\")");
+        runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_acc ON bank_transaction (\"accountId\")");
         runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_time ON bank_transaction (timestamp)");
-        runSingleStatement(jpaApi, "CREATE INDEX IF NOT EXISTS idx_bt_extid ON bank_transaction (external_id)");
 
         // 3. Ensure columns exist
         String[] columns = new String[]{
@@ -59,9 +58,9 @@ public class BankTransactionMigration {
             runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS " + colDef);
         }
 
-        // 4. Critically: Ensure raw_data is of type TEXT in case it was created as jsonb or varchar
-        // In PostgreSQL: ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING (raw_data::text)
-        runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING (raw_data::text)");
+        // 4. Critically: Ensure raw_data is of type TEXT in case it was created as jsonb or varchar.
+        // Uses ANSI SQL CAST(raw_data AS TEXT) so Hibernate native query parser does NOT interpret '::' as a named parameter placeholder.
+        runSingleStatement(jpaApi, "ALTER TABLE bank_transaction ALTER COLUMN raw_data TYPE TEXT USING CAST(raw_data AS TEXT)");
 
         System.out.println("[BankTransactionMigration] BankTransaction schema migration completed successfully.");
         logger.info("[BankTransactionMigration] BankTransaction schema migration completed successfully.");
