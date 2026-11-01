@@ -232,6 +232,89 @@ public class TransactionBalanceReconstructionTest {
     }
 
     @Test
+    public void testPaydayIntradayOrderingAndPeakPreservation() {
+        // Payday scenario on 2026-09-30:
+        // Opening balance on 2026-09-29 is -£217.00
+        // Salary inflow: +£3,111.87
+        // Same-day pot transfers / spend: -£1,000.00, -£207.00, -£747.94, -£600.00, -£74.29, -£27.68 (-£2,656.91)
+        LocalDate payday = LocalDate.of(2026, 9, 30);
+        long rawSameDayTimestamp = payday.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+
+        BankTransaction salary = new BankTransaction();
+        salary.setAmount(-3111.87f); // Inflow
+        salary.setTimestamp(rawSameDayTimestamp);
+        salary.setDescription("OCCASIO INSIGHTS L Salary");
+
+        BankTransaction pot1 = new BankTransaction();
+        pot1.setAmount(1000.00f);
+        pot1.setTimestamp(rawSameDayTimestamp);
+        pot1.setDescription("OVERDRAFT YEARLY B");
+
+        BankTransaction pot2 = new BankTransaction();
+        pot2.setAmount(207.00f);
+        pot2.setTimestamp(rawSameDayTimestamp);
+        pot2.setDescription("OVERDRAFT YEARLY B 2");
+
+        BankTransaction pot3 = new BankTransaction();
+        pot3.setAmount(747.94f);
+        pot3.setTimestamp(rawSameDayTimestamp);
+        pot3.setDescription("JASON BREWER");
+
+        BankTransaction pot4 = new BankTransaction();
+        pot4.setAmount(600.00f);
+        pot4.setTimestamp(rawSameDayTimestamp);
+        pot4.setDescription("JASON BREWER FD");
+
+        BankTransaction spend = new BankTransaction();
+        spend.setAmount(101.97f);
+        spend.setTimestamp(rawSameDayTimestamp);
+        spend.setDescription("General Spend");
+
+        List<BankTransaction> txs = Arrays.asList(pot1, pot2, salary, pot3, pot4, spend);
+
+        // 1. Convert to deltas and verify normalized ordering
+        List<TransactionDelta> deltas = TransactionBalanceReconstructor.fromBankTransactions(txs);
+        assertThat(deltas).hasSize(6);
+
+        // Inflow must be ordered first at 09:00:00 UTC
+        TransactionDelta firstDelta = deltas.get(0);
+        assertThat(firstDelta.getDescription()).contains("Salary");
+        assertThat(firstDelta.getDelta()).isEqualTo(3111.87f);
+        assertThat(java.time.Instant.ofEpochSecond(firstDelta.getTimestamp()).atZone(ZoneOffset.UTC).getHour())
+                .isEqualTo(TransactionBalanceReconstructor.INFLOW_HOUR_UTC);
+
+        // Outflows must be ordered afterwards at 17:00:xx UTC
+        for (int i = 1; i < deltas.size(); i++) {
+            assertThat(deltas.get(i).getDelta()).isLessThan(0.0f);
+            assertThat(java.time.Instant.ofEpochSecond(deltas.get(i).getTimestamp()).atZone(ZoneOffset.UTC).getHour())
+                    .isEqualTo(TransactionBalanceReconstructor.OUTFLOW_HOUR_UTC);
+        }
+
+        // 2. Reconstruct balances from opening anchor of -£217.00
+        long startTs = payday.minusDays(1).atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+        long endTs = payday.plusDays(1).atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+        ReconstructionResult rec = TransactionBalanceReconstructor.reconstruct(
+                deltas, startTs, -217.00f, startTs, endTs
+        );
+
+        // Intraday peak balance right after salary: -217.00 + 3111.87 = +2894.87
+        Float peakBalance = rec.getRunningBalances().get(firstDelta.getTimestamp());
+        assertThat(peakBalance).isNotNull();
+        assertThat(peakBalance).isEqualTo(2894.87f);
+
+        // Net closing balance after all transfers: -217.00 + 3111.87 - 2656.91 = +237.96
+        assertThat(rec.getClosingBalance()).isEqualTo(237.96f);
+
+        // 3. Select daily balance points: BOTH peak and end-of-day balance are preserved!
+        Map<Long, Float> dailyPoints = TransactionBalanceReconstructor.selectDailyBalancePoints(
+                rec.getRunningBalances(), startTs, endTs, rec.getClosingBalance()
+        );
+
+        // Must have both morning peak (2894.87) and afternoon balance (237.96)
+        assertThat(dailyPoints.values()).contains(2894.87f, 237.96f);
+    }
+
+    @Test
     public void testSyntheticTransactionListFixtureHasNoBalances() throws Exception {
         File f = new File("legmon/test_fixtures/sample_natwest_transaction_list.pdf");
         assertThat(f).exists();

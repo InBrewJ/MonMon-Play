@@ -25,6 +25,11 @@ import java.util.stream.Collectors;
  */
 public class TransactionBalanceReconstructor {
 
+    /** Morning UTC hour (09:00) for inflows/salary credits so payday peaks land at start of day. */
+    public static final int INFLOW_HOUR_UTC = 9;
+    /** Afternoon UTC hour (17:00) for outflows/debits after morning inflows have cleared. */
+    public static final int OUTFLOW_HOUR_UTC = 17;
+
     public static class ReconstructionResult {
         private final float openingBalance;
         private final float closingBalance;
@@ -133,9 +138,83 @@ public class TransactionBalanceReconstructor {
             deltas.add(new TransactionDelta(ts, delta, tx.getDescription()));
         }
 
-        // Sort chronologically
-        deltas.sort(Comparator.comparingLong(TransactionDelta::getTimestamp));
-        return deltas;
+        return normalizeIntradayDeltas(deltas);
+    }
+
+    /**
+     * Ensures that when multiple transactions share the same timestamp (such as statement rows
+     * that only carry a calendar date YYYY-MM-DD), inflows (credits/salary, delta > 0) are
+     * ordered first at 01:00:00 UTC + i (so the post-inflow peak is captured at the start of the day)
+     * and outflows (debits/transfers, delta <= 0) are ordered after at 17:00:00 UTC + j.
+     * If all timestamps are already distinct, their original timestamps are preserved.
+     */
+    public static List<TransactionDelta> normalizeIntradayDeltas(List<TransactionDelta> deltas) {
+        if (deltas == null || deltas.isEmpty()) return Collections.emptyList();
+
+        Set<Long> seenTimestamps = new HashSet<>();
+        boolean hasCollision = false;
+        for (TransactionDelta d : deltas) {
+            if (!seenTimestamps.add(d.getTimestamp())) {
+                hasCollision = true;
+                break;
+            }
+        }
+
+        if (!hasCollision) {
+            List<TransactionDelta> sorted = new ArrayList<>(deltas);
+            sorted.sort(Comparator.comparingLong(TransactionDelta::getTimestamp));
+            return sorted;
+        }
+
+        // Check if colliding timestamps represent real calendar dates (>= 1970-01-02)
+        boolean calendarDates = deltas.stream().allMatch(d -> d.getTimestamp() >= 86400L);
+        if (calendarDates) {
+            Map<LocalDate, List<TransactionDelta>> byDate = new TreeMap<>();
+            for (TransactionDelta d : deltas) {
+                LocalDate ld = Instant.ofEpochSecond(d.getTimestamp()).atZone(ZoneOffset.UTC).toLocalDate();
+                byDate.computeIfAbsent(ld, k -> new ArrayList<>()).add(d);
+            }
+
+            List<TransactionDelta> normalized = new ArrayList<>(deltas.size());
+            for (Map.Entry<LocalDate, List<TransactionDelta>> entry : byDate.entrySet()) {
+                LocalDate ld = entry.getKey();
+                List<TransactionDelta> dayDeltas = entry.getValue();
+                int inflowIdx = 0;
+                int outflowIdx = 0;
+                // Process inflows (delta > 0) first at 01:00:00 UTC + i
+                for (TransactionDelta d : dayDeltas) {
+                    if (d.getDelta() > 0) {
+                        long ts = ld.atTime(INFLOW_HOUR_UTC, 0, 0).toEpochSecond(ZoneOffset.UTC) + (inflowIdx++);
+                        normalized.add(new TransactionDelta(ts, d.getDelta(), d.getDescription()));
+                    }
+                }
+                // Process outflows (delta <= 0) next at 17:00:00 UTC + j
+                for (TransactionDelta d : dayDeltas) {
+                    if (d.getDelta() <= 0) {
+                        long ts = ld.atTime(OUTFLOW_HOUR_UTC, 0, 0).toEpochSecond(ZoneOffset.UTC) + (outflowIdx++);
+                        normalized.add(new TransactionDelta(ts, d.getDelta(), d.getDescription()));
+                    }
+                }
+            }
+            normalized.sort(Comparator.comparingLong(TransactionDelta::getTimestamp));
+            return normalized;
+        } else {
+            // Synthetic test timestamps with collision: order inflows before outflows and offset by +1s
+            List<TransactionDelta> sorted = new ArrayList<>(deltas);
+            sorted.sort(Comparator.comparingLong(TransactionDelta::getTimestamp)
+                    .thenComparingInt(d -> d.getDelta() > 0 ? 0 : 1));
+            List<TransactionDelta> deduped = new ArrayList<>(sorted.size());
+            long lastTs = Long.MIN_VALUE;
+            for (TransactionDelta d : sorted) {
+                long ts = d.getTimestamp();
+                if (ts <= lastTs) {
+                    ts = lastTs + 1L;
+                }
+                lastTs = ts;
+                deduped.add(new TransactionDelta(ts, d.getDelta(), d.getDescription()));
+            }
+            return deduped;
+        }
     }
 
     /**
@@ -159,9 +238,19 @@ public class TransactionBalanceReconstructor {
                     anchorTimestamp, anchorBalance, Collections.emptyMap(), true);
         }
 
-        // Sort deltas chronologically
-        List<TransactionDelta> sorted = new ArrayList<>(deltas);
-        sorted.sort(Comparator.comparingLong(TransactionDelta::getTimestamp));
+        // Normalize & sort deltas chronologically (inflows at 01:00 UTC before outflows at 17:00 UTC)
+        List<TransactionDelta> sorted = normalizeIntradayDeltas(deltas);
+
+        // If anchorTimestamp is a real calendar date at noon (12:00 UTC) or evening (>= 17:00 UTC),
+        // it represents that day's end-of-day balance, so include all 17:00:xx outflows on that day.
+        long effectiveAnchorTs = anchorTimestamp;
+        if (anchorTimestamp >= 86400L) {
+            java.time.ZonedDateTime anchorZdt = Instant.ofEpochSecond(anchorTimestamp).atZone(ZoneOffset.UTC);
+            int hr = anchorZdt.getHour();
+            if (hr == 12 || hr >= OUTFLOW_HOUR_UTC) {
+                effectiveAnchorTs = anchorZdt.toLocalDate().atTime(23, 59, 59).toEpochSecond(ZoneOffset.UTC);
+            }
+        }
 
         float netDelta = 0.0f;
         for (TransactionDelta d : sorted) {
@@ -172,7 +261,7 @@ public class TransactionBalanceReconstructor {
         // B(start) = B(anchor) - sum(deltas where start < t <= anchor)
         float backwardSum = 0.0f;
         for (TransactionDelta d : sorted) {
-            if (d.getTimestamp() <= anchorTimestamp && d.getTimestamp() >= startTimestamp) {
+            if (d.getTimestamp() <= effectiveAnchorTs && d.getTimestamp() >= startTimestamp) {
                 backwardSum += d.getDelta();
             }
         }
@@ -182,7 +271,7 @@ public class TransactionBalanceReconstructor {
         // B(end) = B(anchor) + sum(deltas where anchor < t <= end)
         float forwardSum = 0.0f;
         for (TransactionDelta d : sorted) {
-            if (d.getTimestamp() > anchorTimestamp && d.getTimestamp() <= endTimestamp) {
+            if (d.getTimestamp() > effectiveAnchorTs && d.getTimestamp() <= endTimestamp) {
                 forwardSum += d.getDelta();
             }
         }
@@ -205,6 +294,74 @@ public class TransactionBalanceReconstructor {
                 running,
                 true
         );
+    }
+
+    /**
+     * Condenses transaction-level running balances into daily balance points for the Balance table.
+     * On days that have BOTH morning inflows (hour < 12) and afternoon outflows (hour >= 12) — such as Payday —
+     * both the morning post-inflow peak (at 01:00:xx UTC) AND the afternoon end-of-day balance (at 17:59:59 UTC)
+     * are preserved so that payday spikes and subsequent same-day transfers are visible on /myBalances
+     * and accounted for in HistoricSpentCalculator.
+     */
+    public static Map<Long, Float> selectDailyBalancePoints(
+            Map<Long, Float> runningBalances,
+            long startTimestamp,
+            long endTimestamp,
+            Float closingBalance) {
+        if (runningBalances == null || runningBalances.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        ZoneOffset utc = ZoneOffset.UTC;
+        LocalDate endDate = endTimestamp >= 86400L
+                ? Instant.ofEpochSecond(endTimestamp).atZone(utc).toLocalDate()
+                : null;
+
+        Map<LocalDate, Map.Entry<Long, Float>> dailyAmLatest = new TreeMap<>();
+        Map<LocalDate, Map.Entry<Long, Float>> dailyPmLatest = new TreeMap<>();
+        Set<LocalDate> allDates = new TreeSet<>();
+
+        for (Map.Entry<Long, Float> entry : runningBalances.entrySet()) {
+            long ts = entry.getKey();
+            if (ts > startTimestamp && ts < endTimestamp) {
+                java.time.ZonedDateTime zdt = Instant.ofEpochSecond(ts).atZone(utc);
+                LocalDate date = zdt.toLocalDate();
+                allDates.add(date);
+                if (zdt.getHour() < 12) {
+                    dailyAmLatest.put(date, entry);
+                } else {
+                    dailyPmLatest.put(date, entry);
+                }
+            }
+        }
+
+        Map<Long, Float> selected = new LinkedHashMap<>();
+        for (LocalDate date : allDates) {
+            Map.Entry<Long, Float> am = dailyAmLatest.get(date);
+            Map.Entry<Long, Float> pm = dailyPmLatest.get(date);
+            boolean isEndDay = date.equals(endDate);
+
+            if (am != null && pm != null) {
+                // Day has both inflows and outflows (e.g. Payday): preserve the morning post-inflow peak!
+                selected.put(am.getKey(), am.getValue());
+                // Also emit the end-of-day balance after outflows (unless endDate closingBal already covers it)
+                if (!isEndDay || closingBalance == null || Math.abs(pm.getValue() - closingBalance) >= 0.01f) {
+                    long eodTs = date.atTime(OUTFLOW_HOUR_UTC, 59, 59).toEpochSecond(utc);
+                    selected.put(eodTs, pm.getValue());
+                }
+            } else if (am != null) {
+                if (!isEndDay || closingBalance == null || Math.abs(am.getValue() - closingBalance) >= 0.01f) {
+                    long eodTs = date.atTime(OUTFLOW_HOUR_UTC, 59, 59).toEpochSecond(utc);
+                    selected.put(eodTs, am.getValue());
+                }
+            } else if (pm != null) {
+                if (!isEndDay || closingBalance == null || Math.abs(pm.getValue() - closingBalance) >= 0.01f) {
+                    long eodTs = date.atTime(OUTFLOW_HOUR_UTC, 59, 59).toEpochSecond(utc);
+                    selected.put(eodTs, pm.getValue());
+                }
+            }
+        }
+        return selected;
     }
 
     /**

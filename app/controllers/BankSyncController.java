@@ -528,15 +528,25 @@ public class BankSyncController extends Controller {
                     long epochSec = System.currentTimeMillis() / 1000L;
                     String dateStr = stmt.getEndDate();
                     try {
+                        LocalDate ld;
                         if (created.contains("T")) {
                             Instant inst = Instant.parse(created);
-                            epochSec = inst.getEpochSecond();
-                            dateStr = inst.atZone(ZoneOffset.UTC).toLocalDate().toString();
+                            ld = inst.atZone(ZoneOffset.UTC).toLocalDate();
+                            int hour = inst.atZone(ZoneOffset.UTC).getHour();
+                            int min = inst.atZone(ZoneOffset.UTC).getMinute();
+                            // If default midday or midnight placeholder timestamp, apply 09:00 for credits and 17:00 for debits
+                            if ((hour == 0 && min == 0) || (hour == 12 && min == 0)) {
+                                int hr = (amount < 0) ? helpers.TransactionBalanceReconstructor.INFLOW_HOUR_UTC : helpers.TransactionBalanceReconstructor.OUTFLOW_HOUR_UTC;
+                                epochSec = ld.atTime(hr, 0, 0).toEpochSecond(ZoneOffset.UTC);
+                            } else {
+                                epochSec = inst.getEpochSecond();
+                            }
                         } else {
-                            LocalDate ld = LocalDate.parse(created);
-                            epochSec = ld.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
-                            dateStr = ld.toString();
+                            ld = LocalDate.parse(created);
+                            int hr = (amount < 0) ? helpers.TransactionBalanceReconstructor.INFLOW_HOUR_UTC : helpers.TransactionBalanceReconstructor.OUTFLOW_HOUR_UTC;
+                            epochSec = ld.atTime(hr, 0, 0).toEpochSecond(ZoneOffset.UTC);
                         }
+                        dateStr = ld.toString();
                     } catch (Exception ignored) {
                     }
 
@@ -594,23 +604,16 @@ public class BankSyncController extends Controller {
                     }
 
                     // 2. Intermediate daily balances from running balances (if available)
+                    // Preserves morning payday peaks (09:00 UTC) as well as afternoon end-of-day balances (17:00 UTC)
                     if (runningBalances != null && !runningBalances.isEmpty()) {
-                        ZoneOffset utc = ZoneOffset.UTC;
-                        Map<LocalDate, Map.Entry<Long, Float>> dailyLatest = new TreeMap<>();
-                        for (Map.Entry<Long, Float> entry : runningBalances.entrySet()) {
-                            long ts = entry.getKey();
-                            if (ts > stmt.getStartTimestamp() && ts < stmt.getEndTimestamp()) {
-                                LocalDate date = Instant.ofEpochSecond(ts).atZone(utc).toLocalDate();
-                                dailyLatest.put(date, entry);
-                            }
-                        }
-
-                        for (Map.Entry<LocalDate, Map.Entry<Long, Float>> dayEntry : dailyLatest.entrySet()) {
+                        Map<Long, Float> dailyPoints = helpers.TransactionBalanceReconstructor.selectDailyBalancePoints(
+                                runningBalances, stmt.getStartTimestamp(), stmt.getEndTimestamp(), stmt.getClosingBalance());
+                        for (Map.Entry<Long, Float> pt : dailyPoints.entrySet()) {
                             Balance midBal = new Balance();
                             midBal.setUserId(userId);
                             midBal.setAccount(targetAccount);
-                            midBal.setValue(dayEntry.getValue().getValue());
-                            midBal.setTimestamp(dayEntry.getValue().getKey());
+                            midBal.setValue(pt.getValue());
+                            midBal.setTimestamp(pt.getKey());
                             balancesToAdd.add(midBal);
                         }
                     }
@@ -749,29 +752,69 @@ public class BankSyncController extends Controller {
                         } catch (Exception ignored) {}
                     }
 
+                    helpers.TransactionBalanceReconstructor.ReconstructionResult rec = null;
                     if (userAnchorVal != null) {
                         long anchorTs = (effAnchorDate != null && !effAnchorDate.trim().isEmpty())
                                 ? parseEpochSeconds(effAnchorDate.trim(), false)
                                 : stmt.getEndTimestamp();
                         List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
                                 helpers.TransactionBalanceReconstructor.fromBankTransactions(txsToSave);
-                        helpers.TransactionBalanceReconstructor.ReconstructionResult rec =
-                                helpers.TransactionBalanceReconstructor.reconstruct(
-                                        deltas, anchorTs, userAnchorVal, stmt.getStartTimestamp(), stmt.getEndTimestamp());
+                        rec = helpers.TransactionBalanceReconstructor.reconstruct(
+                                deltas, anchorTs, userAnchorVal, stmt.getStartTimestamp(), stmt.getEndTimestamp());
                         stmt.setOpeningBalance(rec.getOpeningBalance());
                         stmt.setClosingBalance(rec.getClosingBalance());
+                    } else if (stmt.getClosingBalance() != null) {
+                        List<helpers.TransactionBalanceReconstructor.TransactionDelta> deltas =
+                                helpers.TransactionBalanceReconstructor.fromBankTransactions(txsToSave);
+                        rec = helpers.TransactionBalanceReconstructor.reconstruct(
+                                deltas, stmt.getEndTimestamp(), stmt.getClosingBalance(), stmt.getStartTimestamp(), stmt.getEndTimestamp());
                     }
+
+                    final helpers.TransactionBalanceReconstructor.ReconstructionResult finalRec = rec;
 
                     // Apply balances
                     return balanceRepository.deleteForAccountBetween(accountId, stmtUserId, stmt.getStartTimestamp(), stmt.getEndTimestamp())
                             .thenComposeAsync(deletedCount -> {
+                                List<Balance> balancesToAdd = new ArrayList<>();
+
+                                // 1. Opening balance
+                                if (stmt.getOpeningBalance() != null && stmt.getStartTimestamp() < stmt.getEndTimestamp()) {
+                                    Balance openBal = new Balance();
+                                    openBal.setUserId(stmtUserId);
+                                    openBal.setAccount(targetAccount);
+                                    openBal.setValue(stmt.getOpeningBalance());
+                                    openBal.setTimestamp(stmt.getStartTimestamp());
+                                    balancesToAdd.add(openBal);
+                                }
+
+                                // 2. Intermediate daily balances (preserving payday peaks and end-of-day balances)
+                                if (finalRec != null && finalRec.getRunningBalances() != null && !finalRec.getRunningBalances().isEmpty()) {
+                                    Map<Long, Float> dailyPoints = helpers.TransactionBalanceReconstructor.selectDailyBalancePoints(
+                                            finalRec.getRunningBalances(), stmt.getStartTimestamp(), stmt.getEndTimestamp(), stmt.getClosingBalance());
+                                    for (Map.Entry<Long, Float> pt : dailyPoints.entrySet()) {
+                                        Balance midBal = new Balance();
+                                        midBal.setUserId(stmtUserId);
+                                        midBal.setAccount(targetAccount);
+                                        midBal.setValue(pt.getValue());
+                                        midBal.setTimestamp(pt.getKey());
+                                        balancesToAdd.add(midBal);
+                                    }
+                                }
+
+                                // 3. Closing balance
                                 Balance closingBal = new Balance();
                                 closingBal.setUserId(stmtUserId);
                                 closingBal.setAccount(targetAccount);
                                 closingBal.setValue(stmt.getClosingBalance());
                                 closingBal.setTimestamp(stmt.getEndTimestamp());
+                                balancesToAdd.add(closingBal);
 
-                                return balanceRepository.add(closingBal).thenComposeAsync(addedClosing -> {
+                                CompletableFuture<Void> allAdds = CompletableFuture.completedFuture(null);
+                                for (Balance b : balancesToAdd) {
+                                    allAdds = allAdds.thenCompose(v -> balanceRepository.add(b).thenApply(res -> (Void) null).toCompletableFuture());
+                                }
+
+                                return allAdds.thenComposeAsync(addedAll -> {
                                     stmt.setStatus("APPLIED");
                                     stmt.setMatchedAccountId(accountId);
                                     stmt.setAppliedAt(System.currentTimeMillis() / 1000L);

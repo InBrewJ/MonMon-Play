@@ -20,7 +20,12 @@ object MonzoWebhookSender {
     val monzoTransactions = statement.transactions.map { tx =>
       // Monzo webhook format: amount is in integer pence; negative for spend, positive for income
       val monzoPence = -(BigDecimal(tx.amount.toString) * 100).setScale(0, BigDecimal.RoundingMode.HALF_UP).toLong
-      val createdIso = if (tx.date.contains("T")) tx.date else s"${tx.date}T12:00:00Z"
+      val createdIso = if (tx.date.contains("T")) {
+        tx.date
+      } else {
+        // Morning 09:00 for credits/salary so payday spikes land before afternoon 17:00 spend/transfers
+        if (tx.amount < 0) s"${tx.date}T09:00:00Z" else s"${tx.date}T17:00:00Z"
+      }
 
       ujson.Obj(
         "type" -> "transaction.created",
