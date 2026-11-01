@@ -48,7 +48,7 @@
 
     <!-- Mobile Navigation Pills for Swipable Cards -->
     <div class="deck-nav" id="savings-plan-nav" role="tablist" aria-label="Savings Plan Sections">
-        <button type="button" class="deck-nav-pill active" data-target="savings-card-target" role="tab" aria-selected="true">
+        <button type="button" class="deck-nav-pill active" data-target="@if(activePlan != null){savings-plan-@activePlan.getId()}else{savings-card-target}" role="tab" aria-selected="true">
             <i class="fas fa-bullseye"></i> Target &amp; Pot
         </button>
         <button type="button" class="deck-nav-pill" data-target="sliced-items-card" role="tab" aria-selected="false">

@@ -1764,6 +1764,7 @@ body.modal-scroll-locked {
   .spog-layout-grid {
     display: flex !important;
     overflow-x: auto;
+    align-items: flex-start !important;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
@@ -1783,10 +1784,17 @@ body.modal-scroll-locked {
     min-width: 100% !important;
     max-width: 100% !important;
     flex: 0 0 100% !important;
+    align-self: flex-start !important;
+    height: auto !important;
     scroll-snap-align: start;
     scroll-snap-stop: always;
     box-sizing: border-box;
     margin-bottom: 0 !important;
+  }
+
+  .deck-card.deck-card-inactive,
+  .spog-deck-card.deck-card-inactive {
+    overflow: hidden !important;
   }
 
   /* Physical card swipe sequence matches tabs: 1. Daily Pot -> 2. Spent -> 3. Savings -> 4. Accounts */
