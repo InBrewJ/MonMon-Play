@@ -46,6 +46,8 @@ public class JPAPendingStatementRepository implements PendingStatementRepository
                                         "end_timestamp BIGINT, " +
                                         "opening_balance REAL, " +
                                         "closing_balance REAL, " +
+                                        "total_paid_in REAL DEFAULT 0, " +
+                                        "total_paid_out REAL DEFAULT 0, " +
                                         "transaction_count INT, " +
                                         "matched_account_id BIGINT, " +
                                         "status VARCHAR(32), " +
@@ -54,6 +56,8 @@ public class JPAPendingStatementRepository implements PendingStatementRepository
                                         "created_at BIGINT, " +
                                         "applied_at BIGINT" +
                                         ")",
+                                "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS total_paid_in REAL DEFAULT 0",
+                                "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS total_paid_out REAL DEFAULT 0",
                                 "CREATE INDEX IF NOT EXISTS idx_ps_user ON pending_statement (user_id)",
                                 "CREATE INDEX IF NOT EXISTS idx_ps_status ON pending_statement (status)",
                                 "CREATE INDEX IF NOT EXISTS idx_ps_job ON pending_statement (job_id)"

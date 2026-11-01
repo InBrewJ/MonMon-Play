@@ -1,0 +1,558 @@
+{
+  "summary": {
+    "transactionCount": 78,
+    "paidInCount": 10,
+    "paidOutCount": 68,
+    "totalPaidIn": "10432.05",
+    "totalPaidOut": "10399.08",
+    "net": "32.97"
+  },
+  "rows": [
+    {
+      "date": "22 Oct",
+      "description": "ACC-NWESTMSTR",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "33.00"
+    },
+    {
+      "date": "19 Oct",
+      "description": "28SEP A/C 81355343",
+      "type": "Charges",
+      "paidIn": null,
+      "paidOut": "22.00"
+    },
+    {
+      "date": "19 Oct",
+      "description": "28SEP A/C 81355343",
+      "type": "Interest",
+      "paidIn": null,
+      "paidOut": "1.41"
+    },
+    {
+      "date": "15 Oct",
+      "description": "JASON BREWER",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "25.00"
+    },
+    {
+      "date": "14 Oct",
+      "description": "BMACH 13OCT",
+      "type": "ATM Transaction",
+      "paidIn": null,
+      "paidOut": "100.00"
+    },
+    {
+      "date": "14 Oct",
+      "description": "WHSmith",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "5.09"
+    },
+    {
+      "date": "14 Oct",
+      "description": "WB CHARNOCK SOUTH",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.90"
+    },
+    {
+      "date": "12 Oct",
+      "description": "NATWEST",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "12.86"
+    },
+    {
+      "date": "08 Oct",
+      "description": "WLC COUNCIL TAX",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "149.00"
+    },
+    {
+      "date": "05 Oct",
+      "description": "Welcome Break",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.80"
+    },
+    {
+      "date": "01 Oct",
+      "description": "DVLA-NA15CKP",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "24.06"
+    },
+    {
+      "date": "01 Oct",
+      "description": "AVIVA",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "36.75"
+    },
+    {
+      "date": "01 Oct",
+      "description": "THAMESMEAD S/STN",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.05"
+    },
+    {
+      "date": "30 Sep",
+      "description": "KFC",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.79"
+    },
+    {
+      "date": "30 Sep",
+      "description": "Roadchef",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "4.65"
+    },
+    {
+      "date": "30 Sep",
+      "description": "Pret A Manger",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "10.25"
+    },
+    {
+      "date": "30 Sep",
+      "description": "Pret A Manger",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.99"
+    },
+    {
+      "date": "30 Sep",
+      "description": "Morrisons Daily",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.20"
+    },
+    {
+      "date": "30 Sep",
+      "description": "Transport For London (TFL)",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "4.80"
+    },
+    {
+      "date": "30 Sep",
+      "description": "ACC-NWESTMSTR",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "74.29"
+    },
+    {
+      "date": "30 Sep",
+      "description": "JASON BREWER",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "747.94"
+    },
+    {
+      "date": "30 Sep",
+      "description": "OVERDRAFT YEARLY B",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "1000.00"
+    },
+    {
+      "date": "30 Sep",
+      "description": "OVERDRAFT YEARLY B",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "207.00"
+    },
+    {
+      "date": "30 Sep",
+      "description": "JASON BREWER FD",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "600.00"
+    },
+    {
+      "date": "30 Sep",
+      "description": "OCCASIO INSIGHTS L",
+      "type": "Mobile/Online Transaction",
+      "paidIn": "3111.87",
+      "paidOut": null
+    },
+    {
+      "date": "29 Sep",
+      "description": "Morrisons Daily",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.20"
+    },
+    {
+      "date": "29 Sep",
+      "description": "TFL TRAVEL CH",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "10.65"
+    },
+    {
+      "date": "29 Sep",
+      "description": "SumUp",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "22.00"
+    },
+    {
+      "date": "29 Sep",
+      "description": "N TAYLOR",
+      "type": "Automated Credit",
+      "paidIn": "33.80",
+      "paidOut": null
+    },
+    {
+      "date": "28 Sep",
+      "description": "Abbey Arms",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "21.15"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Ben's Cookies",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.50"
+    },
+    {
+      "date": "28 Sep",
+      "description": "ABBEY WOOD VILLAGE STO",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "1.75"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Sainsbury's",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "3.55"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Greggs",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "5.25"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Transport For London (TFL)",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "8.40"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Subway",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "11.79"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Sainsbury's",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.49"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Morrisons Daily",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "2.45"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Transport For London (TFL)",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "8.45"
+    },
+    {
+      "date": "28 Sep",
+      "description": "RAFIK MINI MARKET",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "5.44"
+    },
+    {
+      "date": "28 Sep",
+      "description": "Asda",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "3.69"
+    },
+    {
+      "date": "24 Sep",
+      "description": "Lock",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "50.74"
+    },
+    {
+      "date": "23 Sep",
+      "description": "TESSA MOULT MILEWS",
+      "type": "Automated Credit",
+      "paidIn": "7.25",
+      "paidOut": null
+    },
+    {
+      "date": "18 Sep",
+      "description": "JASON BREWER FD",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "100.00"
+    },
+    {
+      "date": "18 Sep",
+      "description": "28AUG A/C 81355343",
+      "type": "Charges",
+      "paidIn": null,
+      "paidOut": "22.00"
+    },
+    {
+      "date": "18 Sep",
+      "description": "31AUG A/C 81355343",
+      "type": "Interest",
+      "paidIn": null,
+      "paidOut": "1.18"
+    },
+    {
+      "date": "08 Sep",
+      "description": "WLC COUNCIL TAX",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "149.00"
+    },
+    {
+      "date": "04 Sep",
+      "description": "JASON BREWER",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "309.43"
+    },
+    {
+      "date": "04 Sep",
+      "description": "EMERGENCY 1750",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "380.00"
+    },
+    {
+      "date": "04 Sep",
+      "description": "THE DISPUTE SERVIC",
+      "type": "Automated Credit",
+      "paidIn": "21.73",
+      "paidOut": null
+    },
+    {
+      "date": "04 Sep",
+      "description": "THE DISPUTE SERVIC",
+      "type": "Automated Credit",
+      "paidIn": "908.66",
+      "paidOut": null
+    },
+    {
+      "date": "01 Sep",
+      "description": "DVLA-NA15CKP",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "24.06"
+    },
+    {
+      "date": "01 Sep",
+      "description": "AVIVA",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "36.75"
+    },
+    {
+      "date": "28 Aug",
+      "description": "ASEES FOOD AND WINE",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "11.48"
+    },
+    {
+      "date": "28 Aug",
+      "description": "Transport For London (TFL)",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "3.30"
+    },
+    {
+      "date": "28 Aug",
+      "description": "OVERDRAFT YEARLY B",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "709.97"
+    },
+    {
+      "date": "28 Aug",
+      "description": "JASON BREWER FD",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "541.65"
+    },
+    {
+      "date": "28 Aug",
+      "description": "JASON BREWER",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "857.41"
+    },
+    {
+      "date": "28 Aug",
+      "description": "ACC-NWESTMSTR",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "777.34"
+    },
+    {
+      "date": "28 Aug",
+      "description": "OCCASIO INSIGHTS L",
+      "type": "Mobile/Online Transaction",
+      "paidIn": "3111.87",
+      "paidOut": null
+    },
+    {
+      "date": "26 Aug",
+      "description": "Trainline",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "145.69"
+    },
+    {
+      "date": "18 Aug",
+      "description": "JASON BREWER FD",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "80.70"
+    },
+    {
+      "date": "18 Aug",
+      "description": "28JUL A/C 81355343",
+      "type": "Charges",
+      "paidIn": null,
+      "paidOut": "22.00"
+    },
+    {
+      "date": "18 Aug",
+      "description": "28JUL A/C 81355343",
+      "type": "Interest",
+      "paidIn": null,
+      "paidOut": "3.82"
+    },
+    {
+      "date": "11 Aug",
+      "description": "NATWEST",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "30.66"
+    },
+    {
+      "date": "10 Aug",
+      "description": "WLC COUNCIL TAX",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "149.00"
+    },
+    {
+      "date": "03 Aug",
+      "description": "DVLA-NA15CKP",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "24.06"
+    },
+    {
+      "date": "03 Aug",
+      "description": "AVIVA",
+      "type": "Direct Debit",
+      "paidIn": null,
+      "paidOut": "35.22"
+    },
+    {
+      "date": "03 Aug",
+      "description": "Claude",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "18.00"
+    },
+    {
+      "date": "31 Jul",
+      "description": "Scotmid Coop",
+      "type": "Debit Card Transaction",
+      "paidIn": null,
+      "paidOut": "30.59"
+    },
+    {
+      "date": "31 Jul",
+      "description": "JASON BREWER",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "1144.37"
+    },
+    {
+      "date": "31 Jul",
+      "description": "EMERGENCY 1750",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "1003.66"
+    },
+    {
+      "date": "31 Jul",
+      "description": "ACC-NWESTMSTR",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "1.41"
+    },
+    {
+      "date": "31 Jul",
+      "description": "JASON BREWER FD",
+      "type": "Mobile/Online Transaction",
+      "paidIn": null,
+      "paidOut": "550.00"
+    },
+    {
+      "date": "31 Jul",
+      "description": "OCCASIO INSIGHTS L",
+      "type": "Mobile/Online Transaction",
+      "paidIn": "3111.87",
+      "paidOut": null
+    },
+    {
+      "date": "31 Jul",
+      "description": "J BREWER",
+      "type": "Automated Credit",
+      "paidIn": "50.00",
+      "paidOut": null
+    },
+    {
+      "date": "30 Jul",
+      "description": "HARRIET WOOD",
+      "type": "Automated Credit",
+      "paidIn": "17.00",
+      "paidOut": null
+    },
+    {
+      "date": "29 Jul",
+      "description": "CARAVAN CLUB LTD",
+      "type": "Debit Card Transaction",
+      "paidIn": "58.00",
+      "paidOut": null
+    }
+  ]
+}

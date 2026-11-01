@@ -300,7 +300,9 @@ public class AppSearchMigration {
                 "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255)",
                 "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS status VARCHAR(50)",
                 "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS start_date VARCHAR(64)",
-                "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS end_date VARCHAR(64)"
+                "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS end_date VARCHAR(64)",
+                "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS total_paid_in REAL DEFAULT 0",
+                "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS total_paid_out REAL DEFAULT 0"
         };
         for (String sql : alterColumns) {
             runSingleStatement(jpaApi, sql);

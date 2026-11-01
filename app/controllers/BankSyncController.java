@@ -277,12 +277,37 @@ public class BankSyncController extends Controller {
             stmt.setMatchedAccountId(targetAccountId);
         }
 
+        // Compute Paid In and Paid Out as separate pence-exact figures from the statement transactions
+        List<BankTransaction> parsedTxs = parseTransactionsFromStatement(stmt, targetAccountId != null ? targetAccountId : 0L, userId);
+        java.math.BigDecimal paidInBd = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal paidOutBd = java.math.BigDecimal.ZERO;
+        for (BankTransaction btx : parsedTxs) {
+            if (btx.getAmount() != null) {
+                java.math.BigDecimal amt = new java.math.BigDecimal(Float.toString(btx.getAmount())).setScale(2, java.math.RoundingMode.HALF_UP);
+                if (amt.compareTo(java.math.BigDecimal.ZERO) < 0) {
+                    paidInBd = paidInBd.add(amt.negate());
+                } else if (amt.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                    paidOutBd = paidOutBd.add(amt);
+                }
+            }
+        }
+        float totalPaidIn = json.has("totalPaidIn") && !json.get("totalPaidIn").isNull() && paidInBd.compareTo(java.math.BigDecimal.ZERO) == 0
+                ? (float) json.get("totalPaidIn").asDouble(0.0)
+                : paidInBd.floatValue();
+        float totalPaidOut = json.has("totalPaidOut") && !json.get("totalPaidOut").isNull() && paidOutBd.compareTo(java.math.BigDecimal.ZERO) == 0
+                ? (float) json.get("totalPaidOut").asDouble(0.0)
+                : paidOutBd.floatValue();
+        stmt.setTotalPaidIn(totalPaidIn);
+        stmt.setTotalPaidOut(totalPaidOut);
+
         return pendingStatementRepository.save(stmt).thenApplyAsync(saved -> {
             ObjectNode res = Json.newObject();
             res.put("status", "ok");
             res.put("statementId", saved.getId());
             res.put("jobId", jobId);
             res.put("bank", bank);
+            res.put("totalPaidIn", totalPaidIn);
+            res.put("totalPaidOut", totalPaidOut);
             return ok(res);
         }, ec.current()).exceptionally(err -> {
             System.err.println("Error saving pending statement from webhook: " + err.getMessage());
@@ -756,6 +781,8 @@ public class BankSyncController extends Controller {
                                         resp.put("statementId", stmt.getId());
                                         resp.put("importedTransactions", savedCount);
                                         resp.put("closingBalance", stmt.getClosingBalance());
+                                        resp.put("totalPaidIn", stmt.getTotalPaidIn() != null ? stmt.getTotalPaidIn() : 0.0f);
+                                        resp.put("totalPaidOut", stmt.getTotalPaidOut() != null ? stmt.getTotalPaidOut() : 0.0f);
                                         return ok(resp);
                                     }, ec.current());
                                 }, ec.current());
@@ -881,6 +908,8 @@ public class BankSyncController extends Controller {
                     res.put("endTimestamp", stmt.getEndTimestamp());
                     res.put("isTxList", isTxList);
                     res.put("transactionCount", txs.size());
+                    res.put("totalPaidIn", stmt.getTotalPaidIn() != null ? stmt.getTotalPaidIn() : 0.0f);
+                    res.put("totalPaidOut", stmt.getTotalPaidOut() != null ? stmt.getTotalPaidOut() : 0.0f);
                     res.put("existingBalancesToOverwrite", existingBals.size());
                     if (resolvedAcc != null) {
                         res.put("accountId", resolvedAcc.getId());

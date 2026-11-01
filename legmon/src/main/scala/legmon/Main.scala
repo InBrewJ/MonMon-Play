@@ -34,7 +34,9 @@ object Main {
         val summary = LogBuffer.getStatusSummary
         summary("uptimeSeconds") = Instant.now().getEpochSecond - startTime.getEpochSecond
         summary("mistralKeyConfigured") = MistralExtractionService.getApiKey.nonEmpty
-        summary("ocrTools") = ujson.Arr("xberg", "pdftotext", "pdfbox", "tesseract")
+        summary("mistralOcrEnabled") = MistralOcrService.isEnabled
+        summary("mistralOcrModel") = MistralOcrService.getOcrModel
+        summary("ocrTools") = ujson.Arr("mistral-ocr", "pdftotext", "xberg", "pdfbox", "tesseract")
         sendResponse(exchange, 200, ujson.write(summary, indent = 2), "application/json")
       }
     })

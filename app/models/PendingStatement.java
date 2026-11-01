@@ -40,6 +40,12 @@ public class PendingStatement {
     @Column(name = "closing_balance")
     private Float closingBalance;
 
+    @Column(name = "total_paid_in")
+    private Float totalPaidIn;
+
+    @Column(name = "total_paid_out")
+    private Float totalPaidOut;
+
     @Column(name = "transaction_count")
     private Integer transactionCount;
 
@@ -160,6 +166,22 @@ public class PendingStatement {
 
     public void setClosingBalance(Float closingBalance) {
         this.closingBalance = closingBalance;
+    }
+
+    public Float getTotalPaidIn() {
+        return totalPaidIn;
+    }
+
+    public void setTotalPaidIn(Float totalPaidIn) {
+        this.totalPaidIn = totalPaidIn;
+    }
+
+    public Float getTotalPaidOut() {
+        return totalPaidOut;
+    }
+
+    public void setTotalPaidOut(Float totalPaidOut) {
+        this.totalPaidOut = totalPaidOut;
     }
 
     public Integer getTransactionCount() {

@@ -88,6 +88,12 @@
                                 <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">
                                     Period: <strong style="color: var(--text-main);">@stmt.getStartDate()</strong> to <strong style="color: var(--text-main);">@stmt.getEndDate()</strong> &bull;
                                     Transactions: <strong style="color: var(--text-main);">@stmt.getTransactionCount()</strong>
+                                    @if(stmt.getTotalPaidIn() != null && stmt.getTotalPaidIn() > 0f) {
+                                        &bull; Paid In: <strong style="color: var(--success);">£@String.format("%.2f", stmt.getTotalPaidIn())</strong>
+                                    }
+                                    @if(stmt.getTotalPaidOut() != null && stmt.getTotalPaidOut() > 0f) {
+                                        &bull; Paid Out: <strong style="color: var(--danger);">£@String.format("%.2f", stmt.getTotalPaidOut())</strong>
+                                    }
                                     @if(!isTxList) {
                                         &bull; Closing Balance: <strong style="color: var(--text-main);">£@String.format("%.2f", stmt.getClosingBalance())</strong>
                                         @if(stmt.getOpeningBalance() != null) {

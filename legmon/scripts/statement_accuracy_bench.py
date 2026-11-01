@@ -119,6 +119,30 @@ def xberg_text(pdf):
     return out.stdout
 
 
+def xberg_pdfium_text(pdf):
+    d, name = os.path.split(os.path.abspath(pdf))
+    out = subprocess.run(
+        ["docker", "run", "--rm", "-v", f"{d}:{FIXTURES_DIR_IN_CONTAINER}:ro", "--entrypoint", "xberg",
+         "legmon:latest", "extract", f"{FIXTURES_DIR_IN_CONTAINER}/{name}", "--pdf-backend", "pdfium"],
+        capture_output=True, text=True, check=True,
+    )
+    return out.stdout
+
+
+def tesseract_psm6_spaces_text(pdf):
+    d, name = os.path.split(os.path.abspath(pdf))
+    cmd = (
+        f"mkdir -p /tmp/t && pdftoppm -png -r 300 '{FIXTURES_DIR_IN_CONTAINER}/{name}' /tmp/t/page && "
+        "for f in $(ls /tmp/t/page*.png | sort); do tesseract \"$f\" stdout -l eng --psm 6 -c preserve_interword_spaces=1 2>/dev/null; done"
+    )
+    out = subprocess.run(
+        ["docker", "run", "--rm", "-v", f"{d}:{FIXTURES_DIR_IN_CONTAINER}:ro", "--entrypoint", "sh",
+         "legmon:latest", "-c", cmd],
+        capture_output=True, text=True, check=True,
+    )
+    return out.stdout
+
+
 def layout_text(pdf):
     return subprocess.run(["pdftotext", "-layout", pdf, "-"], capture_output=True, text=True, check=True).stdout
 
@@ -243,6 +267,10 @@ def main():
         texts["A"] = xberg_text(args.pdf)
     if "A2" in pipelines:
         texts["A2"] = layout_text(args.pdf)
+    if "A_pdfium" in pipelines:
+        texts["A_pdfium"] = xberg_pdfium_text(args.pdf)
+    if "A_tess_psm6" in pipelines:
+        texts["A_tess_psm6"] = tesseract_psm6_spaces_text(args.pdf)
     if "B" in pipelines:
         texts["B"] = mistral_ocr_markdown(args.pdf)
     for k, v in texts.items():

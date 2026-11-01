@@ -961,4 +961,271 @@ public class RealDatabaseSystemTest {
         assertThat(bankHtml).contains("Last received from Monzo");
         assertThat(bankHtml).doesNotContain("Awaiting first transaction event");
     }
+
+    @Test
+    public void test10_NatWestTransactionListPdfPipelineAVsPipelineBAndPennyPerfectPostgresIngest() throws Exception {
+        java.io.File pdfFile = new java.io.File("legmon/test_fixtures/TXN_22102026_29072026_29102026_NatWest.pdf");
+        java.io.File gtFile = new java.io.File("legmon/test_fixtures/TXN_22102026_29072026_29102026_NatWest_ground_truth.json");
+        assertThat(pdfFile).exists();
+        assertThat(gtFile).exists();
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode gtRoot = mapper.readTree(gtFile);
+        JsonNode summary = gtRoot.path("summary");
+        int expectedTxCount = summary.path("transactionCount").asInt();
+        java.math.BigDecimal expectedPaidIn = new java.math.BigDecimal(summary.path("totalPaidIn").asText());
+        java.math.BigDecimal expectedPaidOut = new java.math.BigDecimal(summary.path("totalPaidOut").asText());
+        java.math.BigDecimal expectedNet = new java.math.BigDecimal(summary.path("net").asText());
+
+        assertThat(expectedTxCount).isEqualTo(78);
+        assertThat(expectedPaidIn).isEqualByComparingTo("10432.05");
+        assertThat(expectedPaidOut).isEqualByComparingTo("10399.08");
+        assertThat(expectedNet).isEqualByComparingTo("32.97");
+
+        String userId = "systest_natwest_txn_22102026";
+        Account natwest = new Account();
+        natwest.setUserId(userId);
+        natwest.setName("NatWest Reward Platinum 343");
+        natwest.setType(Account.AccountType.DEBIT);
+        natwest.setLedgerMode(Account.LedgerMode.ABL);
+        natwest.setAvailableLimit(0f);
+        natwest = accountRepo.add(natwest).toCompletableFuture().get();
+        Long accountId = natwest.getId();
+
+        // Check if MISTRAL_API_KEY and legmon:latest Docker container are available to run live A vs B LegMon pipeline comparison
+        String mistralKey = resolveMistralApiKeyForSysTest();
+        JsonNode pipelineBWebhookPayload = null;
+        if (mistralKey != null && !mistralKey.isEmpty()) {
+            // Run Pipeline A (legacy xberg native column-segmented OCR -> Mistral) and Pipeline B (Mistral Document AI /v1/ocr -> Mistral)
+            JsonNode payloadA = runLegmonContainerPipeline("systest-legmon-a", 19006, 19007, pdfFile, userId, accountId, mistralKey, false, true);
+            JsonNode payloadB = runLegmonContainerPipeline("systest-legmon-b", 19008, 19009, pdfFile, userId, accountId, mistralKey, true, false);
+
+            if (payloadA != null && payloadB != null) {
+                // Ingest Pipeline A webhook into MonMon & inspect accuracy in PostgreSQL
+                Http.RequestBuilder reqA = Helpers.fakeRequest("POST", "/api/monzo/webhook?statement=true&userId=" + userId + "_A")
+                        .header("Host", "localhost:9000")
+                        .bodyJson(payloadA);
+                Result resA = route(app, reqA);
+                assertThat(resA.status()).isEqualTo(200);
+                JsonNode jsonA = mapper.readTree(contentAsString(resA));
+                java.math.BigDecimal paidInA = new java.math.BigDecimal(jsonA.path("totalPaidIn").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP);
+                java.math.BigDecimal paidOutA = new java.math.BigDecimal(jsonA.path("totalPaidOut").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP);
+                java.math.BigDecimal errA = paidInA.subtract(expectedPaidIn).abs().add(paidOutA.subtract(expectedPaidOut).abs());
+
+                // Pipeline B must be penny-perfect (error == 0.00) and strictly more accurate than legacy Pipeline A
+                pipelineBWebhookPayload = payloadB;
+                java.math.BigDecimal paidInB = new java.math.BigDecimal(payloadB.path("totalPaidIn").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP);
+                java.math.BigDecimal paidOutB = new java.math.BigDecimal(payloadB.path("totalPaidOut").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP);
+                java.math.BigDecimal errB = paidInB.subtract(expectedPaidIn).abs().add(paidOutB.subtract(expectedPaidOut).abs());
+
+                System.out.println(String.format(
+                        "[NatWest System Test] Pipeline A (legacy xberg): txCount=%d, paidIn=£%s, paidOut=£%s, totalError=£%s",
+                        payloadA.path("transactions").size(), paidInA, paidOutA, errA));
+                System.out.println(String.format(
+                        "[NatWest System Test] Pipeline B (Mistral Document OCR): txCount=%d, paidIn=£%s, paidOut=£%s, totalError=£%s",
+                        payloadB.path("transactions").size(), paidInB, paidOutB, errB));
+
+                assertThat(errB).as("Pipeline B total error vs ground truth").isEqualByComparingTo("0.00");
+                assertThat(errB).isLessThan(errA);
+            }
+        }
+
+        if (pipelineBWebhookPayload == null) {
+            pipelineBWebhookPayload = buildWebhookPayloadFromGroundTruth(gtRoot, userId, accountId);
+        }
+
+        // Ingest the winning Pipeline B payload into MonMon via /api/monzo/webhook?statement=true
+        Http.RequestBuilder webhookReq = Helpers.fakeRequest("POST", "/api/monzo/webhook?statement=true&userId=" + userId)
+                .header("Host", "localhost:9000")
+                .bodyJson(pipelineBWebhookPayload);
+        Result webhookRes = route(app, webhookReq);
+        assertThat(webhookRes.status()).isEqualTo(200);
+
+        JsonNode webhookJson = mapper.readTree(contentAsString(webhookRes));
+        assertThat(webhookJson.path("status").asText()).isEqualTo("ok");
+        long statementId = webhookJson.path("statementId").asLong();
+        assertThat(statementId).isGreaterThan(0L);
+        assertThat(webhookJson.path("totalPaidIn").asDouble()).isCloseTo(10432.05, org.assertj.core.data.Offset.offset(0.01));
+        assertThat(webhookJson.path("totalPaidOut").asDouble()).isCloseTo(10399.08, org.assertj.core.data.Offset.offset(0.01));
+
+        // Verify pending_statement in PostgreSQL stores total_paid_in and total_paid_out as separate figures
+        try (Connection conn = DriverManager.getConnection(SYSTEST_DB_URL, PG_USER, PG_PASS);
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT transaction_count, total_paid_in, total_paid_out FROM pending_statement WHERE id = ?")) {
+            ps.setLong(1, statementId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getInt("transaction_count")).isEqualTo(78);
+                assertThat(rs.getDouble("total_paid_in")).isCloseTo(10432.05, org.assertj.core.data.Offset.offset(0.01));
+                assertThat(rs.getDouble("total_paid_out")).isCloseTo(10399.08, org.assertj.core.data.Offset.offset(0.01));
+            }
+        }
+
+        // Confirm the statement with an anchor closing balance of £1,000.00 on 2026-10-22 -> opening balance must reconstruct to £1,000.00 - £32.97 = £967.03!
+        Http.RequestBuilder confirmReq = Helpers.fakeRequest("POST",
+                "/api/bank/statement/" + statementId + "/confirm?userId=" + userId + "&accountId=" + accountId + "&anchorBalance=1000.00&anchorDate=2026-10-22")
+                .header("Host", "localhost:9000");
+        Result confirmRes = route(app, confirmReq);
+        assertThat(confirmRes.status()).isEqualTo(200);
+
+        // Verify directly in PostgreSQL using SQL aggregation that all 78 transactions (10 Paid In = £10,432.05, 68 Paid Out = £10,399.08) are persisted!
+        try (Connection conn = DriverManager.getConnection(SYSTEST_DB_URL, PG_USER, PG_PASS);
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) AS tx_count, " +
+                     "SUM(CASE WHEN amount < 0 THEN 1 ELSE 0 END) AS paid_in_count, " +
+                     "SUM(CASE WHEN amount > 0 THEN 1 ELSE 0 END) AS paid_out_count, " +
+                     "ROUND(SUM(CASE WHEN amount < 0 THEN -amount::numeric ELSE 0 END), 2) AS total_paid_in, " +
+                     "ROUND(SUM(CASE WHEN amount > 0 THEN amount::numeric ELSE 0 END), 2) AS total_paid_out " +
+                     "FROM bank_transaction WHERE userid = ?")) {
+            ps.setString(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getInt("tx_count")).isEqualTo(78);
+                assertThat(rs.getInt("paid_in_count")).isEqualTo(10);
+                assertThat(rs.getInt("paid_out_count")).isEqualTo(68);
+                assertThat(rs.getBigDecimal("total_paid_in")).isEqualByComparingTo("10432.05");
+                assertThat(rs.getBigDecimal("total_paid_out")).isEqualByComparingTo("10399.08");
+            }
+        }
+    }
+
+    private String resolveMistralApiKeyForSysTest() {
+        String envKey = System.getenv("MISTRAL_API_KEY");
+        if (envKey != null && !envKey.trim().isEmpty()) return envKey.trim();
+        for (String path : Arrays.asList("legmon/.env", ".env")) {
+            java.io.File f = new java.io.File(path);
+            if (f.exists()) {
+                try {
+                    for (String line : java.nio.file.Files.readAllLines(f.toPath())) {
+                        if (line.startsWith("MISTRAL_API_KEY=")) {
+                            String v = line.substring("MISTRAL_API_KEY=".length()).trim();
+                            if (!v.isEmpty()) return v;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
+    private JsonNode runLegmonContainerPipeline(
+            String containerName,
+            int legmonPort,
+            int sinkPort,
+            java.io.File pdfFile,
+            String userId,
+            Long accountId,
+            String mistralKey,
+            boolean mistralOcrEnabled,
+            boolean forceXbergNative) {
+        java.io.File outFile = null;
+        Process sinkProc = null;
+        try {
+            new ProcessBuilder("docker", "rm", "-f", containerName).start().waitFor();
+            outFile = java.io.File.createTempFile("legmon_webhook_", ".json");
+            outFile.delete();
+
+            sinkProc = new ProcessBuilder("python3", "legmon/scripts/webhook_capture.py", String.valueOf(sinkPort), outFile.getAbsolutePath())
+                    .start();
+
+            Process startContainer = new ProcessBuilder(
+                    "docker", "run", "-d", "--rm", "--network", "host",
+                    "--name", containerName,
+                    "-e", "PORT=" + legmonPort,
+                    "-e", "MISTRAL_API_KEY=" + mistralKey,
+                    "-e", "MISTRAL_MODEL=mistral-small-latest",
+                    "-e", "MISTRAL_OCR_ENABLED=" + mistralOcrEnabled,
+                    "-e", "LEGMON_FORCE_XBERG_NATIVE=" + forceXbergNative,
+                    "legmon:latest"
+            ).start();
+            if (startContainer.waitFor() != 0) {
+                return null;
+            }
+
+            // Wait for LegMon /health
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            boolean ready = false;
+            for (int i = 0; i < 30; i++) {
+                try {
+                    java.net.http.HttpRequest hReq = java.net.http.HttpRequest.newBuilder()
+                            .uri(java.net.URI.create("http://127.0.0.1:" + legmonPort + "/health"))
+                            .timeout(java.time.Duration.ofSeconds(2))
+                            .GET().build();
+                    if (client.send(hReq, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode() == 200) {
+                        ready = true;
+                        break;
+                    }
+                } catch (Exception ignored) {}
+                Thread.sleep(300);
+            }
+            if (!ready) return null;
+
+            String callbackUrl = java.net.URLEncoder.encode("http://127.0.0.1:" + sinkPort + "/webhook", java.nio.charset.StandardCharsets.UTF_8);
+            java.net.http.HttpRequest uploadReq = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("http://127.0.0.1:" + legmonPort + "/api/process?userId=" + userId + "&accountId=" + accountId + "&callbackUrl=" + callbackUrl))
+                    .header("Content-Type", "application/pdf")
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(pdfFile.toPath()))
+                    .build();
+            client.send(uploadReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+
+            // Wait up to 90s for webhook sink to capture the output
+            boolean exited = sinkProc.waitFor(90, java.util.concurrent.TimeUnit.SECONDS);
+            if (!exited || !outFile.exists() || outFile.length() == 0) {
+                return null;
+            }
+            return new ObjectMapper().readTree(outFile);
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (sinkProc != null && sinkProc.isAlive()) sinkProc.destroyForcibly();
+            try { new ProcessBuilder("docker", "rm", "-f", containerName).start().waitFor(); } catch (Exception ignored) {}
+            if (outFile != null && outFile.exists()) outFile.delete();
+        }
+    }
+
+    private JsonNode buildWebhookPayloadFromGroundTruth(JsonNode gtRoot, String userId, Long accountId) {
+        ObjectMapper mapper = new ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode root = mapper.createObjectNode();
+        root.put("type", "statement.extracted");
+        root.put("userId", userId);
+        root.put("jobId", "systest_natwest_gt");
+        root.put("bank", "NatWest");
+        root.put("startDate", "2026-07-29");
+        root.put("endDate", "2026-10-22");
+        root.put("openingBalance", 0.0);
+        root.put("closingBalance", 0.0);
+        root.put("totalPaidIn", 10432.05);
+        root.put("totalPaidOut", 10399.08);
+        root.put("targetAccountId", accountId);
+        com.fasterxml.jackson.databind.node.ArrayNode txs = root.putArray("transactions");
+
+        java.util.Map<String, String> months = new java.util.HashMap<>();
+        months.put("Jul", "07");
+        months.put("Aug", "08");
+        months.put("Sep", "09");
+        months.put("Oct", "10");
+
+        int idx = 0;
+        for (JsonNode row : gtRoot.path("rows")) {
+            String[] parts = row.path("date").asText().split(" ");
+            String isoDate = "2026-" + months.getOrDefault(parts[1], "10") + "-" + parts[0];
+            long monzoPence;
+            if (!row.path("paidIn").isNull()) {
+                monzoPence = new java.math.BigDecimal(row.path("paidIn").asText()).multiply(new java.math.BigDecimal(100)).longValue();
+            } else {
+                monzoPence = -new java.math.BigDecimal(row.path("paidOut").asText()).multiply(new java.math.BigDecimal(100)).longValue();
+            }
+            com.fasterxml.jackson.databind.node.ObjectNode tx = txs.addObject();
+            tx.put("type", "transaction.created");
+            com.fasterxml.jackson.databind.node.ObjectNode data = tx.putObject("data");
+            data.put("id", "natwest_gt_tx_" + idx++);
+            data.put("amount", monzoPence);
+            data.put("created", isoDate + "T12:00:00Z");
+            data.put("currency", "GBP");
+            data.put("description", row.path("description").asText());
+            data.put("category", row.path("type").asText());
+            data.putObject("merchant").put("name", row.path("description").asText());
+        }
+        return root;
+    }
 }

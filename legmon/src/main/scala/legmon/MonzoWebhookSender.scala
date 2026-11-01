@@ -19,7 +19,7 @@ object MonzoWebhookSender {
     // Convert transactions to Monzo webhook-compatible JSON
     val monzoTransactions = statement.transactions.map { tx =>
       // Monzo webhook format: amount is in integer pence; negative for spend, positive for income
-      val monzoPence = -Math.round(tx.amount * 100)
+      val monzoPence = -(BigDecimal(tx.amount.toString) * 100).setScale(0, BigDecimal.RoundingMode.HALF_UP).toLong
       val createdIso = if (tx.date.contains("T")) tx.date else s"${tx.date}T12:00:00Z"
 
       ujson.Obj(
@@ -57,6 +57,8 @@ object MonzoWebhookSender {
       "endDate" -> statement.endDate,
       "openingBalance" -> statement.openingBalance,
       "closingBalance" -> statement.closingBalance,
+      "totalPaidIn" -> statement.totalPaidIn,
+      "totalPaidOut" -> statement.totalPaidOut,
       "targetAccountId" -> targetAccountId.map(id => ujson.Num(id.toDouble)).getOrElse(ujson.Null),
       "balances" -> ujson.Arr(balancesArr: _*),
       "transactions" -> ujson.Arr(monzoTransactions: _*)

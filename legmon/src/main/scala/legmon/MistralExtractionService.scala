@@ -25,7 +25,9 @@ case class ExtractedStatement(
     openingBalance: Float,
     closingBalance: Float,
     balances: Seq[ExtractedBalance],
-    transactions: Seq[ExtractedTransaction]
+    transactions: Seq[ExtractedTransaction],
+    totalPaidIn: Float = 0.0f,
+    totalPaidOut: Float = 0.0f
 )
 
 object MistralExtractionService {
@@ -177,8 +179,8 @@ object MistralExtractionService {
 
     attemptTry match {
       case Success(stmt) =>
-        logger.info(s"Mistral extraction succeeded! Bank='${stmt.bank}', Period=${stmt.startDate} to ${stmt.endDate}, Transactions=${stmt.transactions.size}")
-        LogBuffer.info(s"Mistral extracted Bank='${stmt.bank}', ${stmt.transactions.size} transactions, Closing Balance=£${stmt.closingBalance}")
+        logger.info(s"Mistral extraction succeeded! Bank='${stmt.bank}', Period=${stmt.startDate} to ${stmt.endDate}, Transactions=${stmt.transactions.size}, PaidIn=£${stmt.totalPaidIn}, PaidOut=£${stmt.totalPaidOut}")
+        LogBuffer.info(s"Mistral extracted Bank='${stmt.bank}', ${stmt.transactions.size} transactions (Paid In: £${stmt.totalPaidIn}, Paid Out: £${stmt.totalPaidOut}), Closing Balance=£${stmt.closingBalance}")
         stmt
 
       case Failure(ex) =>
@@ -280,6 +282,16 @@ object MistralExtractionService {
       case _ => None
     }.getOrElse(Seq.empty)
 
+    val paidInBd = transactions.foldLeft(BigDecimal(0)) { (acc, tx) =>
+      val d = BigDecimal(tx.amount.toString).setScale(2, BigDecimal.RoundingMode.HALF_UP)
+      if (d < 0) acc + (-d) else acc
+    }.setScale(2, BigDecimal.RoundingMode.HALF_UP)
+
+    val paidOutBd = transactions.foldLeft(BigDecimal(0)) { (acc, tx) =>
+      val d = BigDecimal(tx.amount.toString).setScale(2, BigDecimal.RoundingMode.HALF_UP)
+      if (d > 0) acc + d else acc
+    }.setScale(2, BigDecimal.RoundingMode.HALF_UP)
+
     ExtractedStatement(
       bank = if (bank.nonEmpty) bank else "Unknown Bank",
       startDate = startDate,
@@ -287,7 +299,9 @@ object MistralExtractionService {
       openingBalance = openingBalance,
       closingBalance = closingBalance,
       balances = balances,
-      transactions = transactions
+      transactions = transactions,
+      totalPaidIn = paidInBd.toFloat,
+      totalPaidOut = paidOutBd.toFloat
     )
   }
 }
