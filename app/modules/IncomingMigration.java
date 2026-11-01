@@ -42,7 +42,8 @@ public class IncomingMigration {
         String[] cols = new String[]{
                 "account_id BIGINT",
                 "created_at BIGINT",
-                "archived_at BIGINT"
+                "archived_at BIGINT",
+                "history_json TEXT"
         };
         for (String colDef : cols) {
             try {
@@ -71,10 +72,37 @@ public class IncomingMigration {
         try {
             jpaApi.withTransaction((java.util.function.Consumer<javax.persistence.EntityManager>) em -> {
                 em.createNativeQuery("UPDATE incoming SET created_at = 0 WHERE created_at IS NULL").executeUpdate();
-                em.createNativeQuery("UPDATE incoming SET archived_at = " + System.currentTimeMillis() + " WHERE archived = TRUE AND archived_at IS NULL").executeUpdate();
+                em.createNativeQuery("UPDATE incoming SET archived_at = " + helpers.TimeHelpers.generateUnixTimestamp() + " WHERE archived = TRUE AND archived_at IS NULL").executeUpdate();
             });
         } catch (Exception e) {
             System.out.println("IncomingMigration :: backfill check: " + e.getMessage());
+        }
+
+        // 5. Backfill historical salary milestones (axiom: 4,168.00 salary ended before June 2025; 2,642.83 salary started June 2025 at 3,111.96 until Oct 2026)
+        try {
+            jpaApi.withTransaction((java.util.function.Consumer<javax.persistence.EntityManager>) em -> {
+                // June 1, 2025 00:00:00 UTC = 1748736000L
+                long june2025Sec = 1748736000L;
+                // October 29, 2026 12:00:00 UTC = 1793275200L
+                long oct2026Sec = 1793275200L;
+
+                // Old salary (4,168.00) was active before June 2025
+                em.createNativeQuery(
+                        "UPDATE incoming SET archived_at = " + june2025Sec + " " +
+                        "WHERE archived = TRUE AND (netvalue BETWEEN 4167.0 AND 4169.0) " +
+                        "AND (archived_at IS NULL OR archived_at > " + june2025Sec + ")"
+                ).executeUpdate();
+
+                // Occasio Insights (2,642.83) started in June 2025 at 3,111.96 until October 2026
+                String snapshotJson = "[{\"timestamp\":" + oct2026Sec + ",\"netValue\":3111.96,\"grossValue\":3111.96,\"name\":\"Occasio Insights\",\"incomingMonthDay\":30,\"payDay\":true}]";
+                em.createNativeQuery(
+                        "UPDATE incoming SET created_at = " + june2025Sec + ", history_json = '" + snapshotJson + "' " +
+                        "WHERE archived = FALSE AND (netvalue BETWEEN 2642.0 AND 2643.5) " +
+                        "AND (history_json IS NULL OR history_json = '[]' OR history_json = '')"
+                ).executeUpdate();
+            });
+        } catch (Exception e) {
+            System.out.println("IncomingMigration :: historical salary milestones backfill: " + e.getMessage());
         }
     }
 }

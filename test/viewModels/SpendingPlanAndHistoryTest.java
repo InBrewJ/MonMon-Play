@@ -1126,4 +1126,85 @@ public class SpendingPlanAndHistoryTest {
                 .findFirst().orElseThrow();
         assertThat(augCycle.getMonthlyIncome()).isEqualTo(4168.00);
     }
+
+    @Test
+    public void salaryTimelineAxiomHonorsHistoricEditAndPrecedingJobTransition() {
+        LocalDate today = LocalDate.of(2026, 10, 31);
+        int payday = 30;
+
+        Account current = debit(1L, "Main Current");
+        LocalDate aug28_26 = ModelHelpers.getActualPaydayDate(payday, 2026, 8); // 28 Aug 2026
+        LocalDate sep30_26 = ModelHelpers.getActualPaydayDate(payday, 2026, 9); // 30 Sep 2026
+        LocalDate oct30_26 = ModelHelpers.getActualPaydayDate(payday, 2026, 10); // 30 Oct 2026
+        LocalDate may30_25 = ModelHelpers.getActualPaydayDate(payday, 2025, 5); // 30 May 2025
+
+        current.balances.add(bal(current, 800f, may30_25, 9));
+        current.balances.add(bal(current, 1000f, aug28_26, 9));
+        current.balances.add(bal(current, 1200f, sep30_26, 9));
+        current.balances.add(bal(current, 1500f, oct30_26, 9));
+        current.balances.add(bal(current, 1400f, today, 9));
+
+        // Axiom: 4,168.00 salary ended before June 2025
+        long june2025Sec = LocalDate.of(2025, 6, 1).atStartOfDay(UK).toEpochSecond();
+        Incoming oldJob = new Incoming();
+        oldJob.setId(1L);
+        oldJob.setName("Old Job Salary");
+        oldJob.setNetValue(4168.00f);
+        oldJob.setPayDay(true);
+        oldJob.setIncomingMonthDay(30);
+        oldJob.setAccount(current);
+        oldJob.setArchived(true);
+        oldJob.setArchivedAt(june2025Sec);
+
+        // Axiom: Occasio Insights started in June 2025 at 3111.96 until October 2026, then 2642.83
+        long oct29_26Sec = LocalDate.of(2026, 10, 29).atTime(12, 0).atZone(UK).toEpochSecond();
+        Incoming occasioInsights = new Incoming();
+        occasioInsights.setId(2L);
+        occasioInsights.setName("Occasio Insights");
+        occasioInsights.setNetValue(2642.83f);
+        occasioInsights.setPayDay(true);
+        occasioInsights.setIncomingMonthDay(30);
+        occasioInsights.setAccount(current);
+        occasioInsights.setCreatedAt(june2025Sec);
+        occasioInsights.setArchived(false);
+
+        // Snapshot recorded when raising/editing to 2642.83 in October 2026
+        occasioInsights.setHistoryJson(
+                "[{\"timestamp\":" + oct29_26Sec + ",\"netValue\":3111.96,\"grossValue\":3111.96,\"name\":\"Occasio Insights\",\"incomingMonthDay\":30,\"payDay\":true}]"
+        );
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(),
+                List.of(current),
+                List.of(occasioInsights, oldJob),
+                payday,
+                today,
+                UK,
+                500f
+        );
+
+        // 1. Current cycle (30 Oct 2026 - 30 Nov 2026): £2,642.83
+        HistoricCycleSpent currentCycle = vm.getCurrentCycle();
+        assertThat(currentCycle).isNotNull();
+        assertThat(currentCycle.getCycleStartDate()).isEqualTo(oct30_26);
+        assertThat(currentCycle.getMonthlyIncome()).isEqualTo(2642.83);
+
+        // 2. September 2026 cycle (30 Sep 2026 - 30 Oct 2026): £3,111.96 (effective value before Oct 2026 edit)
+        HistoricCycleSpent sepCycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(sep30_26))
+                .findFirst().orElseThrow();
+        assertThat(sepCycle.getMonthlyIncome()).isEqualTo(3111.96);
+
+        // 3. August 2026 cycle (28 Aug 2026 - 30 Sep 2026): £3,111.96
+        HistoricCycleSpent augCycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(aug28_26))
+                .findFirst().orElseThrow();
+        assertThat(augCycle.getMonthlyIncome()).isEqualTo(3111.96);
+
+        // 4. Before June 2025 (30 May 2025 cycle): £4,168.00 (old salary before June 2025)
+        HistoricCycleSpent may25Cycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(may30_25))
+                .findFirst().orElseThrow();
+        assertThat(may25Cycle.getMonthlyIncome()).isEqualTo(4168.00);
+    }
 }
