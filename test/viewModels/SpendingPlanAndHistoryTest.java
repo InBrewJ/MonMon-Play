@@ -1,6 +1,7 @@
 package viewModels;
 
 import helpers.HistoricSpentCalculator;
+import helpers.ModelHelpers;
 import models.Account;
 import models.Balance;
 import models.Incoming;
@@ -889,5 +890,172 @@ public class SpendingPlanAndHistoryTest {
         assertThat(cycle.getStartingTotalBalance()).isEqualTo(1000.0);
         assertThat(cycle.getEndingTotalBalance()).isEqualTo(800.0);
         assertThat(cycle.getTotalSpent()).isEqualTo(200.0);
+    }
+
+    @Test
+    public void incomingRecordsEditHistoryInJsonStructure() {
+        Incoming inc = new Incoming();
+        inc.setId(10L);
+        inc.setName("Initial Contract");
+        inc.setNetValue(2000f);
+        inc.setGrossValue(2500f);
+        inc.setIncomingMonthDay(1);
+        inc.setPayDay(true);
+        inc.setType("CONTRACT");
+
+        // Record first edit snapshot
+        long t1 = LocalDate.of(2026, 8, 15).atStartOfDay(UK).toEpochSecond();
+        inc.recordEditHistorySnapshot(t1);
+
+        // Update fields
+        inc.setName("Contract Raise");
+        inc.setNetValue(2400f);
+        inc.setGrossValue(3000f);
+
+        // Record second edit snapshot
+        long t2 = LocalDate.of(2026, 9, 20).atStartOfDay(UK).toEpochSecond();
+        inc.recordEditHistorySnapshot(t2);
+
+        // Update to final values
+        inc.setName("Occasio Insights");
+        inc.setNetValue(2642.83f);
+        inc.setGrossValue(3300f);
+
+        // Verify JSON string is populated
+        assertThat(inc.getHistoryJson()).isNotNull();
+        assertThat(inc.getHistoryJson()).contains("Initial Contract");
+        assertThat(inc.getHistoryJson()).contains("2000.0");
+        assertThat(inc.getHistoryJson()).contains("Contract Raise");
+        assertThat(inc.getHistoryJson()).contains("2400.0");
+
+        // Verify deserialized history entries
+        List<Incoming.IncomingHistoryEntry> history = inc.getHistory();
+        assertThat(history).hasSize(2);
+
+        Incoming.IncomingHistoryEntry h1 = history.get(0);
+        assertThat(h1.getTimestamp()).isEqualTo(t1);
+        assertThat(h1.getName()).isEqualTo("Initial Contract");
+        assertThat(h1.getNetValue()).isEqualTo(2000f);
+
+        Incoming.IncomingHistoryEntry h2 = history.get(1);
+        assertThat(h2.getTimestamp()).isEqualTo(t2);
+        assertThat(h2.getName()).isEqualTo("Contract Raise");
+        assertThat(h2.getNetValue()).isEqualTo(2400f);
+
+        // Current values on the object
+        assertThat(inc.getName()).isEqualTo("Occasio Insights");
+        assertThat(inc.getNetValue()).isEqualTo(2642.83f);
+    }
+
+    @Test
+    public void singleIncomingEditHistoryHonoredAcrossHistoricCycles() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(1L, "Main Current");
+        // Start of Aug: 1000
+        current.balances.add(bal(current, 1000f, LocalDate.of(2026, 8, 1), 9));
+        // Start of Sept: 1200
+        current.balances.add(bal(current, 1200f, LocalDate.of(2026, 9, 1), 9));
+        // Start of Oct: 1500
+        current.balances.add(bal(current, 1500f, LocalDate.of(2026, 10, 1), 9));
+        // Oct 27: 1100
+        current.balances.add(bal(current, 1100f, LocalDate.of(2026, 10, 27), 9));
+
+        Incoming salary = new Incoming();
+        salary.setId(100L);
+        salary.setName("Initial Contract");
+        salary.setNetValue(2000f);
+        salary.setPayDay(true);
+        salary.setIncomingMonthDay(1);
+        salary.setAccount(current);
+        salary.setCreatedAt(LocalDate.of(2026, 7, 1).atStartOfDay(UK).toEpochSecond());
+
+        // Snapshot recorded on Aug 20 (raised from 2000 to 2400)
+        long aug20Sec = LocalDate.of(2026, 8, 20).atStartOfDay(UK).toEpochSecond();
+        salary.recordEditHistorySnapshot(aug20Sec);
+        salary.setName("Contract Raise");
+        salary.setNetValue(2400f);
+
+        // Snapshot recorded on Sept 25 (raised from 2400 to 2642.83)
+        long sep25Sec = LocalDate.of(2026, 9, 25).atStartOfDay(UK).toEpochSecond();
+        salary.recordEditHistorySnapshot(sep25Sec);
+        salary.setName("Occasio Insights");
+        salary.setNetValue(2642.83f);
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(),
+                List.of(current),
+                List.of(salary),
+                payday,
+                today,
+                UK,
+                500f
+        );
+
+        // 1. Current cycle (Oct 1 - Nov 1): uses latest edit value (£2642.83)
+        HistoricCycleSpent octCycle = vm.getCurrentCycle();
+        assertThat(octCycle.getMonthlyIncome()).isEqualTo(2642.83);
+
+        // 2. September cycle (Sept 1 - Oct 1): uses the value active during Sept (£2400.0)
+        HistoricCycleSpent sepCycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(LocalDate.of(2026, 9, 1)))
+                .findFirst().orElseThrow();
+        assertThat(sepCycle.getMonthlyIncome()).isEqualTo(2400.0);
+
+        // 3. August cycle (starts on last working day before Aug 1 -> 31 July 2026): uses the value active during Aug (£2000.0)
+        LocalDate augCycleStart = ModelHelpers.getActualPaydayDate(payday, 2026, 8);
+        HistoricCycleSpent augCycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(augCycleStart))
+                .findFirst().orElseThrow();
+        assertThat(augCycle.getMonthlyIncome()).isEqualTo(2000.0);
+    }
+
+    @Test
+    public void softDeletedIncomingsDoNotInflateCurrentCycleIncomeEvenWithMillisecondTimestamps() {
+        LocalDate today = LocalDate.of(2026, 10, 31);
+        int payday = 30; // 30 Oct 2026 cycle start
+
+        Account current = debit(1L, "Main Current");
+        current.balances.add(bal(current, 4000f, LocalDate.of(2026, 10, 30), 9));
+        current.balances.add(bal(current, 3850f, LocalDate.of(2026, 10, 31), 9));
+
+        // Active incoming
+        Incoming activeSalary = new Incoming();
+        activeSalary.setId(1L);
+        activeSalary.setName("Occasio Insights");
+        activeSalary.setNetValue(2642.83f);
+        activeSalary.setPayDay(true);
+        activeSalary.setIncomingMonthDay(30);
+        activeSalary.setAccount(current);
+        activeSalary.setArchived(false);
+
+        // Old soft-deleted incoming from previous job (£4,168) with 13-digit millisecond timestamp
+        Incoming oldJob = new Incoming();
+        oldJob.setId(2L);
+        oldJob.setName("Old Job Salary");
+        oldJob.setNetValue(4168.00f);
+        oldJob.setPayDay(true);
+        oldJob.setIncomingMonthDay(30);
+        oldJob.setAccount(current);
+        oldJob.setArchived(true);
+        // Stored as milliseconds (e.g. System.currentTimeMillis())
+        oldJob.setArchivedAt(System.currentTimeMillis());
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(),
+                List.of(current),
+                List.of(activeSalary, oldJob),
+                payday,
+                today,
+                UK,
+                500f
+        );
+
+        HistoricCycleSpent currentCycle = vm.getCurrentCycle();
+        assertThat(currentCycle).isNotNull();
+
+        // Income must strictly be £2,642.83 and NOT inflated to £6,810.83!
+        assertThat(currentCycle.getMonthlyIncome()).isEqualTo(2642.83);
     }
 }

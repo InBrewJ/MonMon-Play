@@ -38,6 +38,50 @@ public class Incoming {
     @Column(name = "archived_at")
     public Long archivedAt;
 
+    @Column(name = "history_json", columnDefinition = "TEXT")
+    public String historyJson;
+
+    public static class IncomingHistoryEntry {
+        private Long timestamp;
+        private Float netValue;
+        private Float grossValue;
+        private String name;
+        private Integer incomingMonthDay;
+        private Boolean payDay;
+        private String type;
+        private Long accountId;
+
+        public IncomingHistoryEntry() {}
+
+        public IncomingHistoryEntry(Long timestamp, Float netValue, Float grossValue, String name, Integer incomingMonthDay, Boolean payDay, String type, Long accountId) {
+            this.timestamp = timestamp;
+            this.netValue = netValue;
+            this.grossValue = grossValue;
+            this.name = name;
+            this.incomingMonthDay = incomingMonthDay;
+            this.payDay = payDay;
+            this.type = type;
+            this.accountId = accountId;
+        }
+
+        public Long getTimestamp() { return timestamp; }
+        public void setTimestamp(Long timestamp) { this.timestamp = timestamp; }
+        public Float getNetValue() { return netValue; }
+        public void setNetValue(Float netValue) { this.netValue = netValue; }
+        public Float getGrossValue() { return grossValue; }
+        public void setGrossValue(Float grossValue) { this.grossValue = grossValue; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public Integer getIncomingMonthDay() { return incomingMonthDay; }
+        public void setIncomingMonthDay(Integer incomingMonthDay) { this.incomingMonthDay = incomingMonthDay; }
+        public Boolean getPayDay() { return payDay; }
+        public void setPayDay(Boolean payDay) { this.payDay = payDay; }
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type; }
+        public Long getAccountId() { return accountId; }
+        public void setAccountId(Long accountId) { this.accountId = accountId; }
+    }
+
     public Account getAccount() {
         return account;
     }
@@ -60,6 +104,73 @@ public class Incoming {
 
     public void setArchivedAt(Long archivedAt) {
         this.archivedAt = archivedAt;
+    }
+
+    public String getHistoryJson() {
+        return historyJson;
+    }
+
+    public void setHistoryJson(String historyJson) {
+        this.historyJson = historyJson;
+    }
+
+    public List<IncomingHistoryEntry> getHistory() {
+        if (historyJson != null && !historyJson.trim().isEmpty()) {
+            try {
+                List<IncomingHistoryEntry> parsed = play.libs.Json.mapper().readValue(
+                        historyJson,
+                        new com.fasterxml.jackson.core.type.TypeReference<List<IncomingHistoryEntry>>() {}
+                );
+                if (parsed != null) {
+                    return parsed;
+                }
+            } catch (Exception ignored) {}
+        }
+        return new java.util.ArrayList<>();
+    }
+
+    public void setHistory(List<IncomingHistoryEntry> history) {
+        try {
+            this.historyJson = play.libs.Json.mapper().writeValueAsString(history != null ? history : new java.util.ArrayList<>());
+        } catch (Exception e) {
+            this.historyJson = "[]";
+        }
+    }
+
+    public void recordEditHistorySnapshot(Long replacedAtSec) {
+        if (this.netValue == null && this.grossValue == null && this.name == null) {
+            return;
+        }
+        List<IncomingHistoryEntry> history = getHistory();
+        Long accId = this.account != null ? this.account.getId() : null;
+        history.add(new IncomingHistoryEntry(
+                replacedAtSec,
+                this.netValue,
+                this.grossValue,
+                this.name,
+                this.incomingMonthDay,
+                this.payDay,
+                this.type,
+                accId
+        ));
+        setHistory(history);
+    }
+
+    public Float getEffectiveNetValueForCycle(long cycleStartSec, long cycleEndSec) {
+        List<IncomingHistoryEntry> history = getHistory();
+        if (history == null || history.isEmpty()) {
+            return this.netValue != null ? this.netValue : 0f;
+        }
+        for (IncomingHistoryEntry entry : history) {
+            Long entryTimestamp = entry.getTimestamp();
+            if (entryTimestamp != null) {
+                long tsSec = entryTimestamp > 100_000_000_000L ? entryTimestamp / 1000L : entryTimestamp;
+                if (tsSec >= cycleStartSec) {
+                    return entry.getNetValue() != null ? entry.getNetValue() : 0f;
+                }
+            }
+        }
+        return this.netValue != null ? this.netValue : 0f;
     }
 
     public Double getDailyRate() {

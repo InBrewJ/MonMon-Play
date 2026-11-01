@@ -32,17 +32,28 @@ public class HistoricSpentCalculator {
                 .collect(Collectors.toList());
     }
 
+    public static Long normalizeToEpochSec(Long ts) {
+        if (ts == null) return null;
+        if (ts > 100_000_000_000L) { // milliseconds (> year 2286 in seconds, definitely ms)
+            return ts / 1000L;
+        }
+        return ts;
+    }
+
     public static double getAccountPaydayInflow(Account acc, List<Incoming> cycleIncomings, LocalDate cycleStart) {
         if (acc == null || cycleIncomings == null || cycleIncomings.isEmpty()) {
             return 0.0;
         }
+        long cycleStartSec = cycleStart.atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
+        long cycleEndSec = cycleStart.plusMonths(1).atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
         double total = 0.0;
         for (Incoming inc : cycleIncomings) {
             if (inc != null && inc.getAccount() != null && inc.getAccount().getId() != null
                     && inc.getAccount().getId().equals(acc.getId())) {
                 if (inc.isPayDay() || inc.getEffectiveIncomingMonthDay(cycleStart) == cycleStart.getDayOfMonth()) {
-                    if (inc.getNetValue() != null && inc.getNetValue() > 0) {
-                        total += inc.getNetValue();
+                    Float val = inc.getEffectiveNetValueForCycle(cycleStartSec, cycleEndSec);
+                    if (val != null && val > 0) {
+                        total += val;
                     }
                 }
             }
@@ -171,14 +182,49 @@ public class HistoricSpentCalculator {
                     : findActivePotForCycle(monthlyPots, cycleStartSec, cycleEndSec);
 
             // Incomings active during this cycle (taking historic and soft-deleted into account)
-            List<Incoming> cycleIncomings = allIncomings != null ? allIncomings.stream()
-                    .filter(i -> i != null && (i.getCreatedAt() == null || i.getCreatedAt() <= cycleStartSec + 86400L))
-                    .filter(i -> !i.isArchived() || (i.getArchivedAt() != null && i.getArchivedAt() >= cycleStartSec))
-                    .collect(Collectors.toList()) : Collections.emptyList();
+            List<Incoming> cycleIncomings;
+            if (isCurrent) {
+                // For the current cycle, only currently active (not soft-deleted) incomings are valid
+                cycleIncomings = allIncomings != null ? allIncomings.stream()
+                        .filter(i -> i != null && !i.isArchived())
+                        .collect(Collectors.toList()) : Collections.emptyList();
+            } else {
+                cycleIncomings = allIncomings != null ? allIncomings.stream()
+                        .filter(i -> i != null)
+                        .filter(i -> {
+                            Long createdSec = normalizeToEpochSec(i.getCreatedAt());
+                            if (createdSec != null && createdSec > cycleStartSec + 86400L) {
+                                return false; // Created after cycle start / payday
+                            }
+                            if (i.isArchived()) {
+                                Long archSec = normalizeToEpochSec(i.getArchivedAt());
+                                if (archSec == null) {
+                                    return false; // Legacy archive with no date
+                                }
+                                return archSec >= cycleStartSec; // Active until archived on or after cycleStartSec
+                            }
+                            return true;
+                        })
+                        .collect(Collectors.toList()) : Collections.emptyList();
+            }
 
-            double monthlyIncome = Incoming.getTotalIncomings(cycleIncomings);
+            double monthlyIncome = 0.0;
+            for (Incoming inc : cycleIncomings) {
+                Float eff = inc.getEffectiveNetValueForCycle(cycleStartSec, cycleEndSec);
+                if (eff != null && eff > 0) {
+                    monthlyIncome += eff;
+                }
+            }
             if (monthlyIncome <= 0.0 && allIncomings != null && !allIncomings.isEmpty()) {
-                monthlyIncome = Incoming.getTotalIncomings(allIncomings);
+                // Fallback: only sum active non-archived incomings
+                for (Incoming inc : allIncomings) {
+                    if (inc != null && !inc.isArchived()) {
+                        Float eff = inc.getEffectiveNetValueForCycle(cycleStartSec, cycleEndSec);
+                        if (eff != null && eff > 0) {
+                            monthlyIncome += eff;
+                        }
+                    }
+                }
             }
             monthlyIncome = round2(monthlyIncome);
 
@@ -211,8 +257,11 @@ public class HistoricSpentCalculator {
             endingPotBudget = round2(endingPotBudget);
 
             // Calculate cycle pot allowance from monthly allowance (SPOG) or spending plan
+            List<Incoming> allowanceIncomings = !cycleIncomings.isEmpty()
+                    ? cycleIncomings
+                    : (allIncomings != null ? allIncomings.stream().filter(i -> i != null && !i.isArchived()).collect(Collectors.toList()) : Collections.emptyList());
             Float cycleAllowance = ModelHelpers.calculateMonthlyAllowance(
-                    cycleIncomings.isEmpty() ? allIncomings : cycleIncomings,
+                    allowanceIncomings,
                     allOutgoings,
                     allPlans,
                     currCycleStart
