@@ -236,33 +236,78 @@
                     </p>
                 </div>
                 @if(isMonzoConnected) {
-                    <form action="/bank/monzo/disconnect" method="POST" style="margin: 0;" onsubmit="return confirm('Disconnect Monzo integration?');">
-                        @helper.CSRF.formField
-                        <button type="submit" class="w3-button w3-small w3-round" style="background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger); font-weight: 600;">
-                            <i class="fas fa-unlink"></i> Disconnect Monzo
-                        </button>
-                    </form>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        @if(monzoConnection != null && monzoConnection.hasRefreshToken()) {
+                            <form action="/bank/monzo/refresh" method="POST" style="margin: 0;">
+                                @helper.CSRF.formField
+                                <button type="submit" class="w3-button w3-small w3-round" title="Manually rotate OAuth access_token & refresh_token now" style="background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 600;">
+                                    <i class="fas fa-key" style="color: var(--success);"></i> Refresh OAuth Token
+                                </button>
+                            </form>
+                        }
+                        <form action="/bank/monzo/disconnect" method="POST" style="margin: 0;" onsubmit="return confirm('Disconnect Monzo integration?');">
+                            @helper.CSRF.formField
+                            <button type="submit" class="w3-button w3-small w3-round" style="background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger); font-weight: 600;">
+                                <i class="fas fa-unlink"></i> Disconnect Monzo
+                            </button>
+                        </form>
+                    </div>
                 }
             </div>
 
             @if(!isMonzoConnected) {
+                <!-- Long-Term Confidential OAuth Client Setup (Recommended) -->
                 <div style="margin-top: 14px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px;">
-                    <p style="margin: 0 0 10px 0; font-size: 0.85rem; color: var(--text-main);">
-                        <strong>Quick Setup (Personal Access Token):</strong>
-                        <ol style="margin: 4px 0 0 0; padding-left: 20px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
-                            <li>Go to <a href="https://developers.monzo.com/" target="_blank" rel="noopener" style="color: var(--primary); font-weight: 600; text-decoration: underline;">developers.monzo.com</a> and sign in with your Monzo email.</li>
-                            <li>Click the magic link in your email and tap the notification prompt on your Monzo mobile app.</li>
-                            <li>Copy your <strong>Access Token</strong> (from the top-right menu or API Playground) and paste it below.</li>
+                    <div style="font-size: 0.88rem; color: var(--text-main); margin-bottom: 10px;">
+                        <strong><i class="fas fa-shield-alt" style="color: var(--success); margin-right: 4px;"></i> Recommended: Long-Term OAuth Client (Auto-Refreshing)</strong>
+                        <ol style="margin: 6px 0 0 0; padding-left: 20px; font-size: 0.84rem; color: var(--text-muted); line-height: 1.6;">
+                            <li>Sign in at <a href="https://developers.monzo.com/" target="_blank" rel="noopener" style="color: var(--primary); font-weight: 600; text-decoration: underline;">developers.monzo.com</a>, approve login in the Monzo app, and go to <strong>Clients &rarr; New OAuth Client</strong>.</li>
+                            <li>Set <strong>Confidentiality</strong> to <strong><code>Confidential</code></strong> (required so Monzo issues a long-lived <code>refresh_token</code>) and set <strong>Redirect URL</strong> to <code>https://@{request.host()}/bank/monzo/callback</code> (or <code>http://@{request.host()}/bank/monzo/callback</code> for local dev).</li>
+                            <li>Paste your <strong>Client ID</strong> and <strong>Client Secret</strong> below and click <strong>Authorize with Monzo OAuth</strong>. After completing the email link, tap <strong>Approve</strong> in the Monzo mobile app.</li>
                         </ol>
-                    </p>
+                    </div>
 
-                    <form action="/bank/monzo/token" method="POST" style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                    <form action="/bank/monzo/connect" method="POST" style="margin-top: 12px;">
                         @helper.CSRF.formField
-                        <input type="text" name="accessToken" class="w3-input w3-border w3-round" placeholder="eyJhbGciOiJFUzI1NiIs..." required style="flex: 1 1 260px; min-width: 220px; font-family: monospace; font-size: 0.85rem; background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);" />
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                            <div>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">OAuth Client ID</label>
+                                <input type="text" name="clientId" class="w3-input w3-border w3-round"
+                                       value='@{if(monzoConnection != null && monzoConnection.getClientId() != null) monzoConnection.getClientId() else Option(System.getenv("MONZO_CLIENT_ID")).getOrElse("")}'
+                                       placeholder="oauth2client_0000..."
+                                       style="font-family: monospace; font-size: 0.83rem; background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">OAuth Client Secret (Confidential)</label>
+                                <input type="password" name="clientSecret" class="w3-input w3-border w3-round"
+                                       value='@{if(monzoConnection != null && monzoConnection.getClientSecret() != null) monzoConnection.getClientSecret() else ""}'
+                                       placeholder="mnzconf..."
+                                       style="font-family: monospace; font-size: 0.83rem; background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">Redirect URI</label>
+                                <input type="text" name="redirectUri" class="w3-input w3-border w3-round"
+                                       value='@{if(monzoConnection != null && monzoConnection.getRedirectUri() != null && !monzoConnection.getRedirectUri().isEmpty()) monzoConnection.getRedirectUri() else Option(System.getenv("MONZO_REDIRECT_URI")).filter(_.nonEmpty).getOrElse((if(request.secure() || request.header("X-Forwarded-Proto").exists(_ == "https")) "https://" else "http://") + request.host() + "/bank/monzo/callback")}'
+                                       style="font-family: monospace; font-size: 0.83rem; background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);" />
+                            </div>
+                        </div>
                         <button type="submit" class="w3-button w3-round btn-mobile-full" style="background: #ea580c; color: white; font-weight: 700; padding: 10px 18px;">
-                            <i class="fas fa-plug"></i> Connect Monzo
+                            <i class="fas fa-key"></i> Authorize with Monzo OAuth (Long-Term)
                         </button>
                     </form>
+
+                    <details style="margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+                        <summary style="cursor: pointer; font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">
+                            Alternative: Short-Lived Personal Access Token (Playground — expires after ~1–2 days)
+                        </summary>
+                        <form action="/bank/monzo/token" method="POST" style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                            @helper.CSRF.formField
+                            <input type="text" name="accessToken" class="w3-input w3-border w3-round" placeholder="eyJhbGciOiJFUzI1NiIs..." required style="flex: 1 1 260px; min-width: 220px; font-family: monospace; font-size: 0.85rem; background: var(--input-bg); color: var(--text-main); border-color: var(--input-border);" />
+                            <button type="submit" class="w3-button w3-round btn-mobile-full" style="background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 700; padding: 10px 18px;">
+                                <i class="fas fa-plug"></i> Connect Personal Token
+                            </button>
+                        </form>
+                    </details>
                 </div>
             } else {
                 <div id="monzo-status-card" style="margin-top: 14px; background: var(--card-bg-subtle); border: 1px solid @if(monzoConnection.hasActiveWebhooks()){rgba(52, 211, 153, 0.3)}else{rgba(234, 179, 8, 0.4)}; border-radius: 8px; padding: 14px 16px;">
@@ -274,7 +319,16 @@
                                 <i class="fas fa-exclamation-triangle" style="margin-right: 4px;"></i> Webhook Inactive / Not Registered
                             }
                         </span>
-                        <div style="display: flex; gap: 8px; align-items: center;">
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            @if(monzoConnection.hasRefreshToken()) {
+                                <span style="background: var(--success-light); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 600;">
+                                    <i class="fas fa-infinity"></i> OAuth Auto-Refresh Active
+                                </span>
+                            } else {
+                                <span style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 600;" title="Personal Access Tokens expire after a couple of days. Reconnect via Confidential OAuth Client for permanent access.">
+                                    <i class="fas fa-hourglass-half"></i> Short-Lived Token (No Refresh Token)
+                                </span>
+                            }
                             <span id="monzo-received-pill" style="background: @if(monzoConnection.hasActiveWebhooks()){var(--success-light)}else{rgba(234, 179, 8, 0.15)}; color: @if(monzoConnection.hasActiveWebhooks()){var(--success)}else{#eab308}; border: 1px solid @if(monzoConnection.hasActiveWebhooks()){rgba(52, 211, 153, 0.3)}else{rgba(234, 179, 8, 0.3)}; padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
                                 @if(monzoConnection.getLastReceivedAt() != null) {
                                     <i class="fas fa-clock"></i> Last received from Monzo @helpers.TimeHelpers.timeAgo(monzoConnection.getLastReceivedAt())

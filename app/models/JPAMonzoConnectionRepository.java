@@ -16,7 +16,7 @@ public class JPAMonzoConnectionRepository implements MonzoConnectionRepository {
 
     private final JPAApi jpaApi;
     private final DatabaseExecutionContext executionContext;
-    private static volatile boolean schemaEnsured = false;
+    private volatile boolean schemaEnsured = false;
 
     @Inject
     public JPAMonzoConnectionRepository(JPAApi jpaApi, DatabaseExecutionContext executionContext) {
@@ -25,7 +25,7 @@ public class JPAMonzoConnectionRepository implements MonzoConnectionRepository {
         ensureSchema(jpaApi);
     }
 
-    private static void ensureSchema(JPAApi jpaApi) {
+    private void ensureSchema(JPAApi jpaApi) {
         if (!schemaEnsured) {
             synchronized (JPAMonzoConnectionRepository.class) {
                 if (!schemaEnsured) {
@@ -33,15 +33,37 @@ public class JPAMonzoConnectionRepository implements MonzoConnectionRepository {
                         String[] statements = new String[]{
                                 "CREATE TABLE IF NOT EXISTS monzo_connection (" +
                                         "id BIGSERIAL PRIMARY KEY, " +
-                                        "user_id VARCHAR(255) UNIQUE, " +
-                                        "access_token VARCHAR(1000) NOT NULL, " +
+                                        "userid VARCHAR(255) UNIQUE, " +
+                                        "user_id VARCHAR(255), " +
+                                        "accesstoken VARCHAR(1000), " +
+                                        "access_token VARCHAR(1000), " +
+                                        "refreshtoken VARCHAR(1000), " +
                                         "refresh_token VARCHAR(1000), " +
+                                        "monzouserid VARCHAR(255), " +
                                         "monzo_user_id VARCHAR(255), " +
+                                        "expiresat BIGINT, " +
                                         "expires_at BIGINT, " +
+                                        "createdat BIGINT, " +
                                         "created_at BIGINT, " +
+                                        "lastsyncedat BIGINT, " +
                                         "last_synced_at BIGINT" +
                                         ")",
-                                "CREATE INDEX IF NOT EXISTS idx_mc_user ON monzo_connection (user_id)",
+                                "CREATE INDEX IF NOT EXISTS idx_mc_user ON monzo_connection (userid)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS userid VARCHAR(255)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS accesstoken VARCHAR(1000)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS refreshtoken VARCHAR(1000)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS monzouserid VARCHAR(255)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS expiresat BIGINT",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS createdat BIGINT",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS lastsyncedat BIGINT",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhookdebitid VARCHAR(255)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhookflexid VARCHAR(255)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhookurl VARCHAR(500)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS lastreceivedat BIGINT",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS clientid VARCHAR(500)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS clientsecret VARCHAR(1000)",
+                                "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS redirecturi VARCHAR(500)",
+                                "ALTER TABLE monzo_connection ALTER COLUMN accesstoken DROP NOT NULL",
                                 "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhook_debit_id VARCHAR(255)",
                                 "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhook_flex_id VARCHAR(255)",
                                 "ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS webhook_url VARCHAR(500)",
@@ -74,10 +96,35 @@ public class JPAMonzoConnectionRepository implements MonzoConnectionRepository {
                         .getResultList();
                 if (!existing.isEmpty()) {
                     MonzoConnection prev = existing.get(0);
-                    prev.setAccessToken(connection.getAccessToken());
-                    prev.setRefreshToken(connection.getRefreshToken());
-                    prev.setMonzoUserId(connection.getMonzoUserId());
-                    prev.setExpiresAt(connection.getExpiresAt());
+                    if (connection.getAccessToken() != null) {
+                        prev.setAccessToken(connection.getAccessToken());
+                    }
+                    if (connection.getRefreshToken() != null) {
+                        prev.setRefreshToken(connection.getRefreshToken());
+                    }
+                    if (connection.getMonzoUserId() != null) {
+                        prev.setMonzoUserId(connection.getMonzoUserId());
+                    }
+                    if (connection.getExpiresAt() != null) {
+                        prev.setExpiresAt(connection.getExpiresAt());
+                    }
+                    prev.setWebhookDebitId(connection.getWebhookDebitId());
+                    prev.setWebhookFlexId(connection.getWebhookFlexId());
+                    if (connection.getWebhookUrl() != null) {
+                        prev.setWebhookUrl(connection.getWebhookUrl());
+                    }
+                    if (connection.getLastReceivedAt() != null) {
+                        prev.setLastReceivedAt(connection.getLastReceivedAt());
+                    }
+                    if (connection.getClientId() != null && !connection.getClientId().trim().isEmpty()) {
+                        prev.setClientId(connection.getClientId().trim());
+                    }
+                    if (connection.getClientSecret() != null && !connection.getClientSecret().trim().isEmpty()) {
+                        prev.setClientSecret(connection.getClientSecret().trim());
+                    }
+                    if (connection.getRedirectUri() != null && !connection.getRedirectUri().trim().isEmpty()) {
+                        prev.setRedirectUri(connection.getRedirectUri().trim());
+                    }
                     prev.setLastSyncedAt(System.currentTimeMillis());
                     return em.merge(prev);
                 }

@@ -41,7 +41,7 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
 
     private final JPAApi jpaApi;
     private final DatabaseExecutionContext executionContext;
-    private static volatile boolean schemaEnsured = false;
+    private volatile boolean schemaEnsured = false;
 
     @Inject
     public JPASavingsPlanRepository(JPAApi jpaApi, DatabaseExecutionContext executionContext) {
@@ -50,22 +50,33 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         ensureSchema(jpaApi);
     }
 
-    private static void ensureSchema(JPAApi jpaApi) {
+    private void ensureSchema(JPAApi jpaApi) {
         if (!schemaEnsured) {
             synchronized (JPASavingsPlanRepository.class) {
                 if (!schemaEnsured) {
                     try {
                         String[] statements = new String[]{
-                                "CREATE TABLE IF NOT EXISTS savings_plan (id BIGSERIAL PRIMARY KEY, user_id VARCHAR(255), savings_percentage REAL DEFAULT 0, archived BOOLEAN DEFAULT FALSE, last_updated BIGINT)",
+                                "CREATE TABLE IF NOT EXISTS savings_plan (id BIGSERIAL PRIMARY KEY, userid VARCHAR(255), user_id VARCHAR(255), \"userId\" VARCHAR(255), name VARCHAR(255), savingspercentage INTEGER DEFAULT 0, savings_percentage REAL DEFAULT 0, archived BOOLEAN DEFAULT FALSE, createdat BIGINT, lastupdated BIGINT, last_updated BIGINT)",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS userid VARCHAR(255)",
                                 "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS \"userId\" VARCHAR(255)",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS name VARCHAR(255)",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS savingspercentage INTEGER DEFAULT 0",
                                 "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS savings_percentage REAL DEFAULT 0",
                                 "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS createdat BIGINT",
+                                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS lastupdated BIGINT",
                                 "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS last_updated BIGINT",
-                                "CREATE TABLE IF NOT EXISTS savings_plan_item (id BIGSERIAL PRIMARY KEY, savings_plan_id BIGINT, name VARCHAR(255), type VARCHAR(50), account_id BIGINT, target_amount REAL DEFAULT 0, monthly_amount REAL DEFAULT 0, priority INTEGER DEFAULT 1, locked BOOLEAN DEFAULT FALSE, archived BOOLEAN DEFAULT FALSE)",
+                                "UPDATE savings_plan SET userid = COALESCE(userid, user_id, \"userId\") WHERE userid IS NULL",
+                                "UPDATE savings_plan SET user_id = COALESCE(user_id, userid, \"userId\") WHERE user_id IS NULL",
+                                "UPDATE savings_plan SET \"userId\" = COALESCE(\"userId\", userid, user_id) WHERE \"userId\" IS NULL",
+                                "CREATE TABLE IF NOT EXISTS savings_plan_item (id BIGSERIAL PRIMARY KEY, savings_plan_id BIGINT, name VARCHAR(255), type VARCHAR(50), account_id BIGINT, targetamount REAL DEFAULT 0, target_amount REAL DEFAULT 0, monthlyamount REAL DEFAULT 0, monthly_amount REAL DEFAULT 0, priority INTEGER DEFAULT 1, locked BOOLEAN DEFAULT FALSE, archived BOOLEAN DEFAULT FALSE)",
                                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 1",
                                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS locked BOOLEAN DEFAULT FALSE",
                                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS targetamount REAL DEFAULT 0",
                                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS target_amount REAL DEFAULT 0",
+                                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS monthlyamount REAL DEFAULT 0",
                                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS monthly_amount REAL DEFAULT 0",
                                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS account_id BIGINT",
                                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS type VARCHAR(50)",
@@ -227,6 +238,33 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         return plan;
     }
 
+    private SavingsPlan findPlanWithItems(EntityManager em, Long planId) {
+        if (planId == null) return null;
+        List<SavingsPlan> plans = em.createQuery(
+                "select distinct sp from SavingsPlan sp left join fetch sp.items where sp.id = :planId",
+                SavingsPlan.class)
+                .setParameter("planId", planId)
+                .setHint(QueryHints.PASS_DISTINCT_THROUGH, false)
+                .getResultList();
+        return plans.isEmpty() ? em.find(SavingsPlan.class, planId) : plans.get(0);
+    }
+
+    private void syncPlanState(EntityManager em, SavingsPlan plan) {
+        if (plan == null) return;
+        plan.setLastUpdated(System.currentTimeMillis());
+        if (plan.getAllItems() != null) {
+            for (SavingsPlanItem itm : plan.getAllItems()) {
+                if (itm != null && itm.getId() != null) {
+                    em.merge(itm);
+                }
+            }
+            plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        }
+        em.merge(plan);
+        em.flush();
+    }
+
     private void selfHealPlanPriorities(EntityManager em, SavingsPlan plan) {
         if (plan == null || plan.isArchived()) return;
         List<SavingsPlanItem> items = plan.getItems();
@@ -240,19 +278,7 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         if (needsRebalance) {
             log("INFO", String.format("selfHealPlanPriorities: Rebalancing priorities for planId=%d (%d items)", plan.getId(), items.size()));
             plan.rebalancePriorities();
-            for (SavingsPlanItem itm : items) {
-                em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
-                        .setParameter("pri", itm.getPriority())
-                        .setParameter("id", itm.getId())
-                        .executeUpdate();
-                em.merge(itm);
-            }
-            if (plan.getAllItems() != null) {
-                plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
-            }
-            em.merge(plan);
-            em.flush();
+            syncPlanState(em, plan);
         }
     }
 
@@ -287,20 +313,17 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     }
 
     private SavingsPlanItem addItem(EntityManager em, Long planId, SavingsPlanItem item) {
-        SavingsPlan plan = em.find(SavingsPlan.class, planId);
+        SavingsPlan plan = findPlanWithItems(em, planId);
         if (plan == null) {
             throw new IllegalArgumentException("Savings plan not found with id: " + planId);
         }
         item.setSavingsPlan(plan);
         item.setArchived(false);
         plan.addItem(item);
-        plan.rebalancePriorities();
         em.persist(item);
-        for (SavingsPlanItem itm : plan.getItems()) {
-            em.merge(itm);
-        }
-        plan.setLastUpdated(System.currentTimeMillis());
-        em.merge(plan);
+        em.flush();
+        plan.rebalancePriorities();
+        syncPlanState(em, plan);
         return item;
     }
 
@@ -317,30 +340,29 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
                 em.merge(item.getSavingsPlan());
             }
             em.merge(item);
+            em.flush();
         }
         return item;
     }
 
     private SavingsPlan balanceEvenly(EntityManager em, Long planId, Float incomingTotal) {
-        SavingsPlan plan = em.find(SavingsPlan.class, planId);
+        SavingsPlan plan = findPlanWithItems(em, planId);
         if (plan != null) {
             plan.balanceEvenly(incomingTotal);
-            em.merge(plan);
+            syncPlanState(em, plan);
         }
         return plan;
     }
 
     private SavingsPlan updateItemAmounts(EntityManager em, Long planId, java.util.Map<Long, Float> amounts) {
-        SavingsPlan plan = em.find(SavingsPlan.class, planId);
+        SavingsPlan plan = findPlanWithItems(em, planId);
         if (plan != null && amounts != null) {
             for (SavingsPlanItem item : plan.getItems()) {
                 if (amounts.containsKey(item.getId())) {
                     item.setMonthlyAmount(round2(amounts.get(item.getId())));
-                    em.merge(item);
                 }
             }
-            plan.setLastUpdated(System.currentTimeMillis());
-            em.merge(plan);
+            syncPlanState(em, plan);
         }
         return plan;
     }
@@ -353,70 +375,53 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         }
         log("INFO", String.format("updateItem itemId=%d name='%s' targetAmount=%.2f monthlyAmount=%.2f targetPriority=%s",
                 itemId, name, targetAmount != null ? targetAmount : 0f, monthlyAmount != null ? monthlyAmount : 0f, priority));
-        item.setName(name);
-        item.setType(type);
+        SavingsPlan plan = item.getSavingsPlan() != null ? findPlanWithItems(em, item.getSavingsPlan().getId()) : null;
+        SavingsPlanItem targetItem = item;
+        if (plan != null && plan.getAllItems() != null) {
+            for (SavingsPlanItem itm : plan.getAllItems()) {
+                if (itm != null && itemId.equals(itm.getId())) {
+                    targetItem = itm;
+                    break;
+                }
+            }
+        }
+        targetItem.setName(name);
+        targetItem.setType(type);
         if (accountId != null && accountId > 0) {
             Account acc = em.find(Account.class, accountId);
-            item.setAccount(acc);
+            targetItem.setAccount(acc);
         } else {
-            item.setAccount(null);
+            targetItem.setAccount(null);
         }
-        item.setTargetAmount(targetAmount != null ? targetAmount : 0.0f);
-        item.setMonthlyAmount(monthlyAmount != null ? monthlyAmount : 0.0f);
-        SavingsPlan plan = item.getSavingsPlan();
+        targetItem.setTargetAmount(targetAmount != null ? targetAmount : 0.0f);
+        targetItem.setMonthlyAmount(monthlyAmount != null ? monthlyAmount : 0.0f);
         if (plan != null) {
-            List<SavingsPlanItem> active = plan.getItems();
-            active.removeIf(i -> i.getId().equals(itemId));
-            int targetIdx = (priority != null && priority > 0) ? Math.min(priority - 1, active.size()) : active.size();
-            active.add(targetIdx, item);
-            for (int i = 0; i < active.size(); i++) {
-                SavingsPlanItem itm = active.get(i);
-                itm.setPriority(i + 1);
-                em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
-                        .setParameter("pri", i + 1)
-                        .setParameter("id", itm.getId())
-                        .executeUpdate();
-                em.merge(itm);
+            if (priority != null && priority > 0) {
+                plan.reassignItemPriority(itemId, priority);
+            } else {
+                plan.rebalancePriorities();
             }
-            if (plan.getAllItems() != null) {
-                plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
-            }
-            plan.setLastUpdated(System.currentTimeMillis());
-            em.merge(plan);
-            em.flush();
+            syncPlanState(em, plan);
             log("INFO", String.format("updateItem successfully saved itemId=%d with new priority=P%d and monthlyAmount=%.2f",
-                    itemId, item.getPriority(), item.getMonthlyAmount()));
+                    itemId, targetItem.getPriority(), targetItem.getMonthlyAmount()));
         } else {
             if (priority != null && priority > 0) {
-                item.setPriority(priority);
+                targetItem.setPriority(priority);
             }
-            em.merge(item);
+            em.merge(targetItem);
             em.flush();
         }
-        return item;
+        return targetItem;
     }
 
     private Boolean archiveItem(EntityManager em, Long itemId) {
         SavingsPlanItem item = em.find(SavingsPlanItem.class, itemId);
         if (item != null) {
             log("INFO", String.format("archiveItem: Archiving itemId=%d (%s)", itemId, item.getName()));
-            SavingsPlan plan = item.getSavingsPlan();
+            SavingsPlan plan = item.getSavingsPlan() != null ? findPlanWithItems(em, item.getSavingsPlan().getId()) : null;
             if (plan != null) {
                 plan.removeItemAndRebalanceQueue(item);
-                for (SavingsPlanItem itm : plan.getItems()) {
-                    em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
-                            .setParameter("pri", itm.getPriority())
-                            .setParameter("id", itm.getId())
-                            .executeUpdate();
-                    em.merge(itm);
-                }
-                if (plan.getAllItems() != null) {
-                    plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
-                            .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
-                }
-                em.merge(plan);
-                em.flush();
+                syncPlanState(em, plan);
             } else {
                 item.setArchived(true);
                 item.setMonthlyAmount(0.0f);
@@ -435,26 +440,13 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
             log("WARN", "moveItem failed: item or plan is null for itemId=" + itemId);
             return false;
         }
-        SavingsPlan plan = item.getSavingsPlan();
+        SavingsPlan plan = findPlanWithItems(em, item.getSavingsPlan().getId());
         int oldPriority = item.getPriority() != null ? item.getPriority() : 0;
         boolean moved = up ? plan.moveItemUp(itemId) : plan.moveItemDown(itemId);
         log("INFO", String.format("moveItem: itemId=%d (%s) direction=%s oldPriority=P%d moved=%b",
                 itemId, item.getName(), up ? "UP" : "DOWN", oldPriority, moved));
         if (moved) {
-            for (SavingsPlanItem itm : plan.getItems()) {
-                em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
-                        .setParameter("pri", itm.getPriority())
-                        .setParameter("id", itm.getId())
-                        .executeUpdate();
-                em.merge(itm);
-            }
-            if (plan.getAllItems() != null) {
-                plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
-            }
-            plan.setLastUpdated(System.currentTimeMillis());
-            em.merge(plan);
-            em.flush();
+            syncPlanState(em, plan);
             log("INFO", String.format("moveItem: Successfully saved new priority order for planId=%d (item %s is now P%d)",
                     plan.getId(), item.getName(), item.getPriority()));
         }
@@ -467,26 +459,13 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
             log("WARN", "moveToExtreme failed: item or plan is null for itemId=" + itemId);
             return false;
         }
-        SavingsPlan plan = item.getSavingsPlan();
+        SavingsPlan plan = findPlanWithItems(em, item.getSavingsPlan().getId());
         int oldPriority = item.getPriority() != null ? item.getPriority() : 0;
         boolean moved = toBottom ? plan.moveToBottom(itemId) : plan.moveToTop(itemId);
         log("INFO", String.format("moveToExtreme: itemId=%d (%s) target=%s oldPriority=P%d moved=%b",
                 itemId, item.getName(), toBottom ? "BOTTOM" : "TOP", oldPriority, moved));
         if (moved) {
-            for (SavingsPlanItem itm : plan.getItems()) {
-                em.createQuery("UPDATE SavingsPlanItem spi SET spi.priority = :pri WHERE spi.id = :id")
-                        .setParameter("pri", itm.getPriority())
-                        .setParameter("id", itm.getId())
-                        .executeUpdate();
-                em.merge(itm);
-            }
-            if (plan.getAllItems() != null) {
-                plan.getAllItems().sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
-            }
-            plan.setLastUpdated(System.currentTimeMillis());
-            em.merge(plan);
-            em.flush();
+            syncPlanState(em, plan);
             log("INFO", String.format("moveToExtreme: Successfully saved new priority order for planId=%d (item %s is now P%d)",
                     plan.getId(), item.getName(), item.getPriority()));
         }
@@ -494,20 +473,19 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     }
 
     private SavingsPlan updatePercentage(EntityManager em, Long planId, int percent) {
-        SavingsPlan plan = em.find(SavingsPlan.class, planId);
+        SavingsPlan plan = findPlanWithItems(em, planId);
         if (plan != null) {
             plan.setSavingsPercentage(percent);
-            plan.setLastUpdated(System.currentTimeMillis());
-            em.merge(plan);
+            syncPlanState(em, plan);
         }
         return plan;
     }
 
     private SavingsPlan updatePercentageAndScaleItems(EntityManager em, Long planId, int percent, Float incomingTotal) {
-        SavingsPlan plan = em.find(SavingsPlan.class, planId);
+        SavingsPlan plan = findPlanWithItems(em, planId);
         if (plan != null) {
             plan.scaleItemsProportionally(incomingTotal, percent);
-            em.merge(plan);
+            syncPlanState(em, plan);
         }
         return plan;
     }
@@ -525,6 +503,7 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
             }
             return plans.stream();
         } catch (Exception e) {
+            System.err.println("Error listing savings plans: " + e.getMessage());
             return Collections.<SavingsPlan>emptyList().stream();
         }
     }
@@ -542,6 +521,7 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
             }
             return plans.stream();
         } catch (Exception e) {
+            System.err.println("Error listing complete savings plans: " + e.getMessage());
             return Collections.<SavingsPlan>emptyList().stream();
         }
     }

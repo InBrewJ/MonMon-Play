@@ -122,14 +122,14 @@ public class BankSyncController extends Controller {
             return bankTransactionRepository.listRecent(sup.getUserId(), 100).thenComposeAsync(txStream -> {
                 List<BankTransaction> txList = txStream.collect(Collectors.toList());
                 return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(monzoConnOpt -> {
-                    boolean isMonzoConnected = monzoConnOpt.isPresent();
+                    boolean isMonzoConnected = monzoConnOpt.isPresent() && monzoConnOpt.get().hasAccessToken();
                     String providerName = isMonzoConnected ? "MONZO" : "MOCK";
 
                     CompletionStage<MonzoConnection> connStage = isMonzoConnected
                             ? monzoBankSyncProvider.discoverLiveWebhooks(monzoConnOpt.get())
                                     .thenApply(details -> monzoConnOpt.get())
                                     .exceptionally(err -> monzoConnOpt.get())
-                            : CompletableFuture.completedFuture(null);
+                            : CompletableFuture.completedFuture(monzoConnOpt.orElse(null));
 
                     return connStage.thenComposeAsync(freshConn -> {
                         CompletionStage<List<PendingStatement>> pendingStage = (pendingStatementRepository != null)
@@ -1047,16 +1047,61 @@ public class BankSyncController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
-    public Result connectMonzoOAuth(final Http.Request request) {
-        String clientId = monzoBankSyncProvider.getClientId();
-        if (clientId == null || clientId.trim().isEmpty()) {
-            return redirect(routes.BankSyncController.index())
-                    .flashing("error", "Monzo OAuth client ID is not configured. Use the Personal Access Token field below instead!");
+    public CompletionStage<Result> connectMonzoOAuth(final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        DynamicForm form = formFactory.form().bindFromRequest(request);
+        String formClientId = form.get("clientId");
+        String formClientSecret = form.get("clientSecret");
+        String formRedirectUri = form.get("redirectUri");
+
+        String hostHeader = request.host();
+        String scheme = request.secure() ? "https" : "http";
+        if (request.header("X-Forwarded-Proto").isPresent()) {
+            scheme = request.header("X-Forwarded-Proto").get();
         }
-        String redirectUri = URLEncoder.encode(monzoBankSyncProvider.getRedirectUri(), StandardCharsets.UTF_8);
-        String state = URLEncoder.encode(request.session().get("userId").orElse("user"), StandardCharsets.UTF_8);
-        String url = "https://auth.monzo.com/?client_id=" + clientId + "&redirect_uri=" + redirectUri + "&response_type=code&state=" + state;
-        return redirect(url);
+        final String baseUrl = scheme + "://" + hostHeader;
+
+        return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(connOpt -> {
+            MonzoConnection conn = connOpt.orElseGet(() -> {
+                MonzoConnection c = new MonzoConnection(sup.getUserId(), "", null, "monzo-user", 0L);
+                return c;
+            });
+
+            if (formClientId != null && !formClientId.trim().isEmpty()) {
+                conn.setClientId(formClientId.trim());
+            }
+            if (formClientSecret != null && !formClientSecret.trim().isEmpty()) {
+                conn.setClientSecret(formClientSecret.trim());
+            }
+            if (formRedirectUri != null && !formRedirectUri.trim().isEmpty()) {
+                conn.setRedirectUri(formRedirectUri.trim());
+            }
+
+            String effectiveClientId = monzoBankSyncProvider.resolveClientId(conn);
+            String effectiveSecret = monzoBankSyncProvider.resolveClientSecret(conn);
+            String effectiveRedirectUri = monzoBankSyncProvider.resolveRedirectUri(conn, baseUrl);
+            conn.setRedirectUri(effectiveRedirectUri);
+
+            if (effectiveClientId == null || effectiveClientId.trim().isEmpty()) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index())
+                                .flashing("error", "Monzo OAuth Client ID is required. Enter your Client ID & Client Secret from developers.monzo.com (Confidential OAuth Client) or set MONZO_CLIENT_ID in .env."));
+            }
+            if (effectiveSecret == null || effectiveSecret.trim().isEmpty()) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index())
+                                .flashing("error", "Monzo OAuth Client Secret is required for long-term refresh tokens. Make sure your OAuth Client is set to 'Confidential' on developers.monzo.com."));
+            }
+
+            return monzoConnectionRepository.save(conn).thenApplyAsync(saved -> {
+                String encodedRedirect = URLEncoder.encode(effectiveRedirectUri, StandardCharsets.UTF_8);
+                String state = URLEncoder.encode(sup.getUserId(), StandardCharsets.UTF_8);
+                String url = "https://auth.monzo.com/?client_id=" + URLEncoder.encode(effectiveClientId.trim(), StandardCharsets.UTF_8)
+                        + "&redirect_uri=" + encodedRedirect
+                        + "&response_type=code&state=" + state;
+                return redirect(url);
+            }, ec.current());
+        }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
@@ -1067,30 +1112,44 @@ public class BankSyncController extends Controller {
                     redirect(routes.BankSyncController.index()).flashing("error", "Missing OAuth authorization code from Monzo."));
         }
 
-        try {
-            String clientId = monzoBankSyncProvider.getClientId();
-            String clientSecret = monzoBankSyncProvider.getClientSecret();
-            String redirectUri = monzoBankSyncProvider.getRedirectUri();
+        String hostHeader = request.host();
+        String scheme = request.secure() ? "https" : "http";
+        if (request.header("X-Forwarded-Proto").isPresent()) {
+            scheme = request.header("X-Forwarded-Proto").get();
+        }
+        final String baseUrl = scheme + "://" + hostHeader;
+
+        return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(connOpt -> {
+            MonzoConnection existing = connOpt.orElse(null);
+            String clientId = monzoBankSyncProvider.resolveClientId(existing);
+            String clientSecret = monzoBankSyncProvider.resolveClientSecret(existing);
+            String redirectUri = monzoBankSyncProvider.resolveRedirectUri(existing, baseUrl);
+
+            if (clientId == null || clientId.isEmpty() || clientSecret == null || clientSecret.isEmpty()) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index())
+                                .flashing("error", "OAuth Client ID or Secret not found during callback. Please configure your Monzo OAuth Client credentials first."));
+            }
 
             String formBody = "grant_type=authorization_code" +
                     "&client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8) +
                     "&client_secret=" + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8) +
                     "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8) +
-                    "&code=" + URLEncoder.encode(code, StandardCharsets.UTF_8);
+                    "&code=" + URLEncoder.encode(code.trim(), StandardCharsets.UTF_8);
 
-            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.monzo.com/oauth2/token"))
                     .header("Content-Type", "application/x-www-form-urlencoded")
+                    .timeout(Duration.ofSeconds(10))
                     .POST(HttpRequest.BodyPublishers.ofString(formBody))
                     .build();
 
-            return client.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+            return httpClient.sendAsync(req, HttpResponse.BodyHandlers.ofString())
                     .thenComposeAsync(response -> {
                         if (response.statusCode() != 200) {
                             return CompletableFuture.completedFuture(
                                     redirect(routes.BankSyncController.index())
-                                            .flashing("error", "Monzo token exchange error: " + response.body()));
+                                            .flashing("error", "Monzo token exchange error (" + response.statusCode() + "): " + response.body()));
                         }
                         try {
                             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -1107,21 +1166,21 @@ public class BankSyncController extends Controller {
                                     monzoUserId,
                                     System.currentTimeMillis() + (expiresIn * 1000L)
                             );
+                            conn.setClientId(clientId);
+                            conn.setClientSecret(clientSecret);
+                            conn.setRedirectUri(redirectUri);
 
                             return monzoConnectionRepository.save(conn).thenComposeAsync(saved -> {
-                                String hostHeader = request.host();
-                                String scheme = request.secure() ? "https" : "http";
-                                if (request.header("X-Forwarded-Proto").isPresent()) {
-                                    scheme = request.header("X-Forwarded-Proto").get();
-                                }
-                                String baseUrl = scheme + "://" + hostHeader;
-
                                 return monzoBankSyncProvider.registerWebhooks(saved, baseUrl).thenApplyAsync(registeredConn -> {
+                                    boolean hasRefresh = saved.hasRefreshToken();
+                                    String refreshStatus = hasRefresh
+                                            ? " Long-term refresh token active (auto-renews indefinitely)."
+                                            : " Warning: No refresh_token returned — ensure your OAuth client on developers.monzo.com has Confidentiality set to 'Confidential'.";
                                     String webhookMsg = registeredConn.hasActiveWebhooks()
-                                            ? " Real-time webhooks registered successfully!"
-                                            : " Approve data access on your Monzo mobile app if prompted.";
+                                            ? " Real-time webhooks registered!"
+                                            : " Now open your Monzo mobile app and tap 'Approve' to grant API access, then click 'Sync Webhooks' below.";
                                     return redirect(routes.BankSyncController.index())
-                                            .flashing("info", "Monzo connected via OAuth!" + webhookMsg);
+                                            .flashing("info", "Monzo OAuth connected!" + refreshStatus + webhookMsg);
                                 }, ec.current());
                             }, ec.current());
                         } catch (Exception e) {
@@ -1130,10 +1189,33 @@ public class BankSyncController extends Controller {
                                             .flashing("error", "Failed to parse Monzo OAuth response: " + e.getMessage()));
                         }
                     }, ec.current());
-        } catch (Exception e) {
-            return CompletableFuture.completedFuture(
-                    redirect(routes.BankSyncController.index()).flashing("error", "OAuth failure: " + e.getMessage()));
-        }
+        }, ec.current()).exceptionally(err ->
+                redirect(routes.BankSyncController.index()).flashing("error", "OAuth failure: " + err.getMessage())
+        );
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> refreshMonzoToken(final Http.Request request) {
+        SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(connOpt -> {
+            if (connOpt.isEmpty()) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index()).flashing("error", "No Monzo connection found."));
+            }
+            MonzoConnection conn = connOpt.get();
+            if (!conn.hasRefreshToken()) {
+                return CompletableFuture.completedFuture(
+                        redirect(routes.BankSyncController.index())
+                                .flashing("error", "This Monzo connection uses a Personal Access Token without a refresh_token. Reconnect using a Confidential OAuth Client for automatic long-term token renewal."));
+            }
+            return monzoBankSyncProvider.refreshAccessToken(conn).thenApplyAsync(refreshed -> {
+                return redirect(routes.BankSyncController.index())
+                        .flashing("info", "Monzo OAuth access token & refresh token rotated successfully!");
+            }, ec.current());
+        }, ec.current()).exceptionally(err ->
+                redirect(routes.BankSyncController.index())
+                        .flashing("error", "Failed to refresh Monzo OAuth token: " + err.getMessage())
+        );
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")

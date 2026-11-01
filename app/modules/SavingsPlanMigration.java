@@ -20,9 +20,15 @@ public class SavingsPlanMigration {
                 em.createNativeQuery(
                         "CREATE TABLE IF NOT EXISTS savings_plan (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
+                        "\"userId\" VARCHAR(255), " +
+                        "name VARCHAR(255), " +
+                        "savingspercentage INTEGER DEFAULT 0, " +
                         "savings_percentage REAL DEFAULT 0, " +
                         "archived BOOLEAN DEFAULT FALSE, " +
+                        "createdat BIGINT, " +
+                        "lastupdated BIGINT, " +
                         "last_updated BIGINT" +
                         ")"
                 ).executeUpdate();
@@ -33,9 +39,15 @@ public class SavingsPlanMigration {
 
         // 2. Ensure columns on savings_plan exist
         String[] planCols = new String[]{
+                "userid VARCHAR(255)",
                 "user_id VARCHAR(255)",
+                "\"userId\" VARCHAR(255)",
+                "name VARCHAR(255)",
+                "savingspercentage INTEGER DEFAULT 0",
                 "savings_percentage REAL DEFAULT 0",
                 "archived BOOLEAN DEFAULT FALSE",
+                "createdat BIGINT",
+                "lastupdated BIGINT",
                 "last_updated BIGINT"
         };
         for (String colDef : planCols) {
@@ -56,7 +68,9 @@ public class SavingsPlanMigration {
                         "name VARCHAR(255), " +
                         "type VARCHAR(50), " +
                         "account_id BIGINT, " +
+                        "targetamount REAL DEFAULT 0, " +
                         "target_amount REAL DEFAULT 0, " +
+                        "monthlyamount REAL DEFAULT 0, " +
                         "monthly_amount REAL DEFAULT 0, " +
                         "priority INTEGER DEFAULT 1, " +
                         "locked BOOLEAN DEFAULT FALSE, " +
@@ -74,7 +88,9 @@ public class SavingsPlanMigration {
                 "name VARCHAR(255)",
                 "type VARCHAR(50)",
                 "account_id BIGINT",
+                "targetamount REAL DEFAULT 0",
                 "target_amount REAL DEFAULT 0",
+                "monthlyamount REAL DEFAULT 0",
                 "monthly_amount REAL DEFAULT 0",
                 "priority INTEGER DEFAULT 1",
                 "locked BOOLEAN DEFAULT FALSE",
@@ -90,8 +106,9 @@ public class SavingsPlanMigration {
             }
         }
 
-        // 5. Ensure outgoing table has outgoingmonth, yearinterval, startingyear, paused, pause_reason, and paused_at columns
+        // 5. Ensure outgoing table has outgoingday, outgoingmonth, yearinterval, startingyear, paused, pause_reason, and paused_at columns
         String[] outgoingCols = new String[]{
+                "outgoingday INTEGER",
                 "outgoingmonth INTEGER",
                 "yearinterval INTEGER DEFAULT 1",
                 "startingyear INTEGER",

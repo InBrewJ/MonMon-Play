@@ -45,6 +45,8 @@ public class MonzoBankSyncProvider implements BankSyncService {
     private final models.AccountRepository accountRepository;
     private final HttpClient httpClient;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final java.util.concurrent.ConcurrentHashMap<String, CompletableFuture<MonzoConnection>> inFlightRefreshes =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public static class MonzoAccountInfo {
         public final String id;
@@ -127,27 +129,172 @@ public class MonzoBankSyncProvider implements BankSyncService {
     }
 
     public String getClientId() {
-        if (config.hasPath("monzo.clientId")) {
-            return config.getString("monzo.clientId");
+        if (config != null && config.hasPath("monzo.clientId")) {
+            String val = config.getString("monzo.clientId");
+            if (val != null && !val.trim().isEmpty()) {
+                return val.trim();
+            }
         }
         String env = System.getenv("MONZO_CLIENT_ID");
-        return env != null ? env : "";
+        return env != null ? env.trim() : "";
     }
 
     public String getClientSecret() {
-        if (config.hasPath("monzo.clientSecret")) {
-            return config.getString("monzo.clientSecret");
+        if (config != null && config.hasPath("monzo.clientSecret")) {
+            String val = config.getString("monzo.clientSecret");
+            if (val != null && !val.trim().isEmpty()) {
+                return val.trim();
+            }
         }
         String env = System.getenv("MONZO_CLIENT_SECRET");
-        return env != null ? env : "";
+        return env != null ? env.trim() : "";
     }
 
     public String getRedirectUri() {
-        if (config.hasPath("monzo.redirectUri")) {
-            return config.getString("monzo.redirectUri");
+        if (config != null && config.hasPath("monzo.redirectUri")) {
+            String val = config.getString("monzo.redirectUri");
+            if (val != null && !val.trim().isEmpty()) {
+                return val.trim();
+            }
         }
         String env = System.getenv("MONZO_REDIRECT_URI");
-        return env != null ? env : "https://boom.dryark.uk/bank/monzo/callback";
+        return (env != null && !env.trim().isEmpty()) ? env.trim() : "https://boom.dryark.uk/bank/monzo/callback";
+    }
+
+    public String resolveClientId(MonzoConnection conn) {
+        if (conn != null && conn.getClientId() != null && !conn.getClientId().trim().isEmpty()) {
+            return conn.getClientId().trim();
+        }
+        return getClientId();
+    }
+
+    public String resolveClientSecret(MonzoConnection conn) {
+        if (conn != null && conn.getClientSecret() != null && !conn.getClientSecret().trim().isEmpty()) {
+            return conn.getClientSecret().trim();
+        }
+        return getClientSecret();
+    }
+
+    public String resolveRedirectUri(MonzoConnection conn, String fallbackBaseUrl) {
+        if (conn != null && conn.getRedirectUri() != null && !conn.getRedirectUri().trim().isEmpty()) {
+            return conn.getRedirectUri().trim();
+        }
+        String configured = getRedirectUri();
+        if (configured != null && !configured.trim().isEmpty() && !configured.equals("https://boom.dryark.uk/bank/monzo/callback")) {
+            return configured.trim();
+        }
+        if (fallbackBaseUrl != null && !fallbackBaseUrl.trim().isEmpty()) {
+            return fallbackBaseUrl.replaceAll("/+$", "") + "/bank/monzo/callback";
+        }
+        return configured;
+    }
+
+    /**
+     * Exchanges the current single-use refresh_token at POST /oauth2/token for a new
+     * access_token and rotated refresh_token, persisting both to MonzoConnectionRepository.
+     * Deduplicates concurrent refresh requests for the same user.
+     */
+    public CompletionStage<MonzoConnection> refreshAccessToken(MonzoConnection conn) {
+        if (conn == null || !conn.hasRefreshToken()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("No Monzo refresh token available. Please authorize via Confidential OAuth Client."));
+        }
+        String clientId = resolveClientId(conn);
+        String clientSecret = resolveClientSecret(conn);
+        if (clientId == null || clientId.isEmpty() || clientSecret == null || clientSecret.isEmpty()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Monzo OAuth Client ID or Client Secret is missing; cannot refresh token."));
+        }
+
+        String userKey = conn.getUserId() != null ? conn.getUserId() : "default";
+        return inFlightRefreshes.computeIfAbsent(userKey, k -> {
+            String formBody = "grant_type=refresh_token" +
+                    "&client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8) +
+                    "&client_secret=" + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8) +
+                    "&refresh_token=" + URLEncoder.encode(conn.getRefreshToken().trim(), StandardCharsets.UTF_8);
+
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(MONZO_API_BASE + "/oauth2/token"))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .timeout(Duration.ofSeconds(10))
+                    .POST(HttpRequest.BodyPublishers.ofString(formBody))
+                    .build();
+
+            return httpClient.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+                    .thenCompose(resp -> {
+                        if (resp.statusCode() != 200) {
+                            throw new RuntimeException("Monzo OAuth token refresh failed (" + resp.statusCode() + "): " + resp.body());
+                        }
+                        try {
+                            JsonNode json = mapper.readTree(resp.body());
+                            String newAccessToken = json.path("access_token").asText(null);
+                            String newRefreshToken = json.path("refresh_token").asText(conn.getRefreshToken());
+                            long expiresIn = json.path("expires_in").asLong(21600L);
+                            String monzoUserId = json.path("user_id").asText(conn.getMonzoUserId());
+
+                            if (newAccessToken == null || newAccessToken.isEmpty()) {
+                                throw new RuntimeException("Monzo token refresh response missing access_token");
+                            }
+
+                            conn.setAccessToken(newAccessToken);
+                            conn.setRefreshToken(newRefreshToken);
+                            if (monzoUserId != null && !monzoUserId.isEmpty()) {
+                                conn.setMonzoUserId(monzoUserId);
+                            }
+                            conn.setExpiresAt(System.currentTimeMillis() + (expiresIn * 1000L));
+                            conn.setLastSyncedAt(System.currentTimeMillis());
+
+                            logger.info("[MonzoBankSyncProvider] Refreshed Monzo OAuth token for userId={} (expiresIn={}s)", userKey, expiresIn);
+                            return monzoConnectionRepository.save(conn);
+                        } catch (Exception e) {
+                            throw new RuntimeException("Failed to parse Monzo token refresh response: " + e.getMessage(), e);
+                        }
+                    })
+                    .whenComplete((res, ex) -> inFlightRefreshes.remove(userKey))
+                    .toCompletableFuture();
+        });
+    }
+
+    /**
+     * Proactively refreshes the Monzo access token if it is expired (or within 5 minutes of expiry)
+     * and a refresh_token is available.
+     */
+    public CompletionStage<MonzoConnection> ensureValidConnection(MonzoConnection conn) {
+        if (conn == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (conn.isTokenExpired() && conn.hasRefreshToken()) {
+            return refreshAccessToken(conn).exceptionally(err -> {
+                logger.warn("[MonzoBankSyncProvider] Proactive token refresh failed for user {}: {}", conn.getUserId(), err.getMessage());
+                return conn;
+            });
+        }
+        return CompletableFuture.completedFuture(conn);
+    }
+
+    /**
+     * Fetches Monzo accounts using the connection's access token, automatically refreshing
+     * and retrying once if the token is expired or Monzo returns 401 Unauthorized.
+     */
+    public CompletionStage<List<MonzoAccountInfo>> fetchAccountsWithRefresh(MonzoConnection conn) {
+        return ensureValidConnection(conn).thenCompose(validConn ->
+                fetchAccounts(validConn.getAccessToken())
+                        .handle((accounts, err) -> {
+                            if (err == null) {
+                                return CompletableFuture.completedFuture(accounts);
+                            }
+                            String msg = err.getMessage() != null ? err.getMessage() : "";
+                            if (validConn.hasRefreshToken() && (msg.contains("401") || msg.toLowerCase().contains("expired") || msg.toLowerCase().contains("unauthorized"))) {
+                                return refreshAccessToken(validConn)
+                                        .thenCompose(refreshed -> fetchAccounts(refreshed.getAccessToken()))
+                                        .toCompletableFuture();
+                            }
+                            CompletableFuture<List<MonzoAccountInfo>> failed = new CompletableFuture<>();
+                            failed.completeExceptionally(err);
+                            return failed;
+                        })
+                        .thenCompose(f -> f)
+        );
     }
 
     public CompletionStage<List<MonzoAccountInfo>> fetchAccounts(String accessToken) {
@@ -296,7 +443,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
             return CompletableFuture.completedFuture(Collections.emptyList());
         }
 
-        return fetchAccounts(conn.getAccessToken()).thenCompose(accounts -> {
+        return fetchAccountsWithRefresh(conn).thenCompose(accounts -> {
             MonzoAccountInfo debitAcc = accounts.stream().filter(MonzoAccountInfo::isDebit).findFirst().orElse(null);
             MonzoAccountInfo flexAcc = accounts.stream().filter(MonzoAccountInfo::isFlexCreditCard).findFirst().orElse(null);
 
@@ -389,7 +536,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
         String webhookCallbackUrl = trimmedBaseUrl + "/api/monzo/webhook?userId=" +
                 URLEncoder.encode(conn.getUserId(), StandardCharsets.UTF_8);
 
-        return fetchAccounts(conn.getAccessToken()).thenCompose(accounts -> {
+        return fetchAccountsWithRefresh(conn).thenCompose(accounts -> {
             MonzoAccountInfo debitAcc = accounts.stream().filter(MonzoAccountInfo::isDebit).findFirst().orElse(null);
             MonzoAccountInfo flexAcc = accounts.stream().filter(MonzoAccountInfo::isFlexCreditCard).findFirst().orElse(null);
 
@@ -754,18 +901,20 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 return bankTransactionRepository.save(tx).thenCompose(savedTx -> {
                     // Refresh balance immediately for ABL/TBL balance tracking
                     if (balanceRepository != null && targetAccount != null && monzoAccId != null && !monzoAccId.isEmpty()) {
-                        return fetchBalance(conn.getAccessToken(), monzoAccId).thenCompose(balVal -> {
-                            if (balVal != null) {
-                                float availableVal = convertToAvailableBalance(targetAccount, balVal);
-                                Balance bal = new Balance();
-                                bal.setUserId(effectiveUserId);
-                                bal.setValue(availableVal);
-                                bal.setAccount(targetAccount);
-                                bal.setTimestamp(Instant.now().getEpochSecond());
-                                return balanceRepository.add(bal).thenApply(b -> true);
-                            }
-                            return CompletableFuture.completedFuture(true);
-                        });
+                        return ensureValidConnection(conn).thenCompose(validConn ->
+                                fetchBalance(validConn.getAccessToken(), monzoAccId).thenCompose(balVal -> {
+                                    if (balVal != null) {
+                                        float availableVal = convertToAvailableBalance(targetAccount, balVal);
+                                        Balance bal = new Balance();
+                                        bal.setUserId(effectiveUserId);
+                                        bal.setValue(availableVal);
+                                        bal.setAccount(targetAccount);
+                                        bal.setTimestamp(Instant.now().getEpochSecond());
+                                        return balanceRepository.add(bal).thenApply(b -> true);
+                                    }
+                                    return CompletableFuture.completedFuture(true);
+                                })
+                        );
                     }
                     return CompletableFuture.completedFuture(true);
                 }).thenCompose(v -> {
@@ -964,7 +1113,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 return CompletableFuture.completedFuture(SyncResult.error("No Monzo connection found. Enter your Personal Access Token."));
             }
             MonzoConnection conn = connOpt.get();
-            return fetchAccounts(conn.getAccessToken()).thenCompose(monzoAccounts -> {
+            return fetchAccountsWithRefresh(conn).thenCompose(monzoAccounts -> {
                 if (monzoAccounts.isEmpty()) {
                     return CompletableFuture.completedFuture(SyncResult.error("No active accounts found on your Monzo profile."));
                 }
@@ -1009,7 +1158,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
             }
             MonzoConnection conn = connOpt.get();
 
-            return fetchAccounts(conn.getAccessToken()).thenCompose(monzoAccounts -> {
+            return fetchAccountsWithRefresh(conn).thenCompose(monzoAccounts -> {
                 if (monzoAccounts.isEmpty()) {
                     return CompletableFuture.completedFuture(SyncResult.ok(0, "No Monzo accounts found."));
                 }

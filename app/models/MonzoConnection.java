@@ -15,7 +15,7 @@ public class MonzoConnection {
     @Column(name = "userId", unique = true, nullable = false)
     private String userId;
 
-    @Column(name = "accessToken", length = 1000, nullable = false)
+    @Column(name = "accessToken", length = 1000)
     private String accessToken;
 
     @Column(length = 1000)
@@ -37,6 +37,15 @@ public class MonzoConnection {
     private String webhookUrl;
 
     private Long lastReceivedAt;
+
+    @Column(length = 500)
+    private String clientId;
+
+    @Column(length = 1000)
+    private String clientSecret;
+
+    @Column(length = 500)
+    private String redirectUri;
 
     public MonzoConnection() {
     }
@@ -145,6 +154,54 @@ public class MonzoConnection {
 
     public void setLastReceivedAt(Long lastReceivedAt) {
         this.lastReceivedAt = lastReceivedAt;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(String clientId) {
+        this.clientId = clientId;
+    }
+
+    public String getClientSecret() {
+        return clientSecret;
+    }
+
+    public void setClientSecret(String clientSecret) {
+        this.clientSecret = clientSecret;
+    }
+
+    public String getRedirectUri() {
+        return redirectUri;
+    }
+
+    public void setRedirectUri(String redirectUri) {
+        this.redirectUri = redirectUri;
+    }
+
+    public boolean hasAccessToken() {
+        return accessToken != null && !accessToken.trim().isEmpty();
+    }
+
+    public boolean hasRefreshToken() {
+        return refreshToken != null && !refreshToken.trim().isEmpty();
+    }
+
+    public boolean isLongTermOAuth() {
+        return hasRefreshToken();
+    }
+
+    /**
+     * Returns true if expiresAt is set and the token is either already expired
+     * or within 5 minutes (300,000 ms) of expiring.
+     */
+    public boolean isTokenExpired() {
+        if (expiresAt == null || expiresAt <= 0L) {
+            return false;
+        }
+        long expiresAtMs = expiresAt < 100_000_000_000L ? expiresAt * 1000L : expiresAt;
+        return System.currentTimeMillis() >= (expiresAtMs - 300_000L);
     }
 
     public boolean hasActiveWebhooks() {

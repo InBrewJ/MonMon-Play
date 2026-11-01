@@ -30,6 +30,7 @@ public class SavingsPlanItem {
     private ItemType type = ItemType.SAVINGS_TARGET;
 
     @ManyToOne(fetch = FetchType.EAGER)
+    @org.hibernate.annotations.Fetch(org.hibernate.annotations.FetchMode.SELECT)
     @JoinColumn(name = "account_id", nullable = true)
     private Account account;
 
@@ -39,6 +40,9 @@ public class SavingsPlanItem {
 
     private Integer priority = 1;
 
+    @Transient
+    private boolean priorityExplicitlySet = false;
+
     private boolean locked = false;
 
     private boolean archived = false;
@@ -47,7 +51,7 @@ public class SavingsPlanItem {
     }
 
     public SavingsPlanItem(String name, ItemType type, Account account, Float targetAmount, Float monthlyAmount) {
-        this(name, type, account, targetAmount, monthlyAmount, 1);
+        this(name, type, account, targetAmount, monthlyAmount, null);
     }
 
     public SavingsPlanItem(String name, ItemType type, Account account, Float targetAmount, Float monthlyAmount, Integer priority) {
@@ -56,7 +60,13 @@ public class SavingsPlanItem {
         this.account = account;
         this.targetAmount = targetAmount != null ? targetAmount : 0.0f;
         this.monthlyAmount = monthlyAmount != null ? monthlyAmount : 0.0f;
-        this.priority = priority != null && priority > 0 ? priority : 1;
+        if (priority != null && priority > 0) {
+            this.priority = priority;
+            this.priorityExplicitlySet = true;
+        } else {
+            this.priority = 1;
+            this.priorityExplicitlySet = false;
+        }
         this.archived = false;
     }
 
@@ -137,7 +147,17 @@ public class SavingsPlanItem {
     }
 
     public void setPriority(Integer priority) {
-        this.priority = priority != null && priority > 0 ? priority : 1;
+        if (priority != null && priority > 0) {
+            this.priority = priority;
+            this.priorityExplicitlySet = true;
+        } else {
+            this.priority = 1;
+            this.priorityExplicitlySet = false;
+        }
+    }
+
+    public boolean isPriorityExplicitlySet() {
+        return priorityExplicitlySet;
     }
 
     public boolean isLocked() {

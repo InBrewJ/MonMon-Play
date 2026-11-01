@@ -33,6 +33,7 @@ public class AppSearchMigration {
         String[] tableDDLs = new String[]{
                 "CREATE TABLE IF NOT EXISTS account (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "name VARCHAR(255), " +
@@ -45,10 +46,13 @@ public class AppSearchMigration {
                         ")",
                 "CREATE TABLE IF NOT EXISTS outgoing (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "name VARCHAR(255), " +
                         "cost REAL, " +
+                        "outgoingday INT, " +
+                        "outgoingmonth INT, " +
                         "\"OUTGOINGDAY\" INT, " +
                         "\"OUTGOINGMONTH\" INT, " +
                         "\"YEARINTERVAL\" INT DEFAULT 1, " +
@@ -62,6 +66,7 @@ public class AppSearchMigration {
                         ")",
                 "CREATE TABLE IF NOT EXISTS incoming (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "name VARCHAR(255), " +
@@ -77,6 +82,7 @@ public class AppSearchMigration {
                         ")",
                 "CREATE TABLE IF NOT EXISTS balance (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "value REAL, " +
@@ -85,6 +91,7 @@ public class AppSearchMigration {
                         ")",
                 "CREATE TABLE IF NOT EXISTS pot (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "type VARCHAR(50), " +
@@ -99,11 +106,15 @@ public class AppSearchMigration {
                         ")",
                 "CREATE TABLE IF NOT EXISTS savings_plan (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "name VARCHAR(255), " +
+                        "savingspercentage INT DEFAULT 0, " +
                         "savings_percentage REAL DEFAULT 0, " +
                         "archived BOOLEAN DEFAULT FALSE, " +
+                        "createdat BIGINT, " +
+                        "lastupdated BIGINT, " +
                         "last_updated BIGINT" +
                         ")",
                 "CREATE TABLE IF NOT EXISTS savings_plan_item (" +
@@ -112,7 +123,9 @@ public class AppSearchMigration {
                         "name VARCHAR(255), " +
                         "type VARCHAR(50), " +
                         "account_id BIGINT, " +
+                        "targetamount REAL DEFAULT 0, " +
                         "target_amount REAL DEFAULT 0, " +
+                        "monthlyamount REAL DEFAULT 0, " +
                         "monthly_amount REAL DEFAULT 0, " +
                         "priority INT DEFAULT 1, " +
                         "locked BOOLEAN DEFAULT FALSE, " +
@@ -120,16 +133,21 @@ public class AppSearchMigration {
                         ")",
                 "CREATE TABLE IF NOT EXISTS locked_meal_plan (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
+                        "weeklybudget REAL, " +
                         "\"weeklyBudget\" REAL, " +
                         "people INT, " +
                         "postcode VARCHAR(50), " +
+                        "planjson TEXT, " +
                         "\"planJson\" TEXT, " +
+                        "lockedat BIGINT, " +
                         "\"lockedAt\" BIGINT" +
                         ")",
                 "CREATE TABLE IF NOT EXISTS net_worth_asset (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "name VARCHAR(255), " +
@@ -143,6 +161,7 @@ public class AppSearchMigration {
                         ")",
                 "CREATE TABLE IF NOT EXISTS plan (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "type VARCHAR(50), " +
@@ -167,6 +186,7 @@ public class AppSearchMigration {
                         ")",
                 "CREATE TABLE IF NOT EXISTS pending_statement (" +
                         "id BIGSERIAL PRIMARY KEY, " +
+                        "userid VARCHAR(255), " +
                         "user_id VARCHAR(255), " +
                         "\"userId\" VARCHAR(255), " +
                         "bank_name VARCHAR(255), " +
@@ -182,13 +202,14 @@ public class AppSearchMigration {
         }
 
         // 2. Standardize user ID columns across ALL tables:
-        // Ensure both user_id and "userId" columns exist, and backfill across user_id, "userId", and legacy userid.
+        // Ensure userid, user_id, and "userId" columns exist, and backfill across all three.
         String[] userTables = new String[]{
                 "account", "outgoing", "incoming", "balance", "pot",
                 "savings_plan", "locked_meal_plan", "net_worth_asset",
                 "plan", "bank_transaction", "pending_statement"
         };
         for (String tbl : userTables) {
+            runSingleStatement(jpaApi, "ALTER TABLE " + tbl + " ADD COLUMN IF NOT EXISTS userid VARCHAR(255)");
             runSingleStatement(jpaApi, "ALTER TABLE " + tbl + " ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)");
             runSingleStatement(jpaApi, "ALTER TABLE " + tbl + " ADD COLUMN IF NOT EXISTS \"userId\" VARCHAR(255)");
         }
@@ -201,19 +222,13 @@ public class AppSearchMigration {
                 "BEGIN\n" +
                 "    FOREACH tbl IN ARRAY tables LOOP\n" +
                 "        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = tbl) THEN\n" +
-                "            -- Ensure both user_id and \"userId\" columns exist\n" +
+                "            EXECUTE 'ALTER TABLE ' || tbl || ' ADD COLUMN IF NOT EXISTS userid VARCHAR(255)';\n" +
                 "            EXECUTE 'ALTER TABLE ' || tbl || ' ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)';\n" +
                 "            EXECUTE 'ALTER TABLE ' || tbl || ' ADD COLUMN IF NOT EXISTS \"userId\" VARCHAR(255)';\n" +
                 "\n" +
-                "            -- Backfill from legacy unquoted lowercase 'userid' if present\n" +
-                "            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = tbl AND column_name = 'userid') THEN\n" +
-                "                EXECUTE 'UPDATE ' || tbl || ' SET user_id = userid WHERE user_id IS NULL AND userid IS NOT NULL';\n" +
-                "                EXECUTE 'UPDATE ' || tbl || ' SET \"userId\" = userid WHERE \"userId\" IS NULL AND userid IS NOT NULL';\n" +
-                "            END IF;\n" +
-                "\n" +
-                "            -- Bidirectional backfill between user_id and \"userId\"\n" +
-                "            EXECUTE 'UPDATE ' || tbl || ' SET user_id = \"userId\" WHERE user_id IS NULL AND \"userId\" IS NOT NULL';\n" +
-                "            EXECUTE 'UPDATE ' || tbl || ' SET \"userId\" = user_id WHERE \"userId\" IS NULL AND user_id IS NOT NULL';\n" +
+                "            EXECUTE 'UPDATE ' || tbl || ' SET userid = COALESCE(userid, user_id, \"userId\") WHERE userid IS NULL';\n" +
+                "            EXECUTE 'UPDATE ' || tbl || ' SET user_id = COALESCE(user_id, userid, \"userId\") WHERE user_id IS NULL';\n" +
+                "            EXECUTE 'UPDATE ' || tbl || ' SET \"userId\" = COALESCE(\"userId\", userid, user_id) WHERE \"userId\" IS NULL';\n" +
                 "        END IF;\n" +
                 "    END LOOP;\n" +
                 "END $$;";
@@ -227,6 +242,8 @@ public class AppSearchMigration {
                 "ALTER TABLE account ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS name VARCHAR(255)",
                 "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS cost REAL DEFAULT 0",
+                "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS outgoingday INT",
+                "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS outgoingmonth INT",
                 "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS \"OUTGOINGDAY\" INT",
                 "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS \"OUTGOINGMONTH\" INT",
                 "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS paused BOOLEAN DEFAULT FALSE",
@@ -244,18 +261,28 @@ public class AppSearchMigration {
                 "ALTER TABLE pot ADD COLUMN IF NOT EXISTS spending_plan_food REAL",
                 "ALTER TABLE pot ADD COLUMN IF NOT EXISTS spending_plan_fun REAL",
                 "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS name VARCHAR(255)",
+                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS savingspercentage INT DEFAULT 0",
                 "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS savings_percentage REAL DEFAULT 0",
+                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS createdat BIGINT",
+                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS lastupdated BIGINT",
+                "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS last_updated BIGINT",
                 "ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS name VARCHAR(255)",
                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS type VARCHAR(50)",
+                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS targetamount REAL DEFAULT 0",
                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS target_amount REAL DEFAULT 0",
+                "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS monthlyamount REAL DEFAULT 0",
                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS monthly_amount REAL DEFAULT 0",
                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS priority INT DEFAULT 1",
                 "ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS weeklybudget REAL",
                 "ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS \"weeklyBudget\" REAL",
                 "ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS people INT",
                 "ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS postcode VARCHAR(50)",
+                "ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS planjson TEXT",
                 "ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS \"planJson\" TEXT",
+                "ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS lockedat BIGINT",
+                "ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS \"lockedAt\" BIGINT",
                 "ALTER TABLE net_worth_asset ADD COLUMN IF NOT EXISTS name VARCHAR(255)",
                 "ALTER TABLE net_worth_asset ADD COLUMN IF NOT EXISTS category VARCHAR(50)",
                 "ALTER TABLE net_worth_asset ADD COLUMN IF NOT EXISTS asset_value DOUBLE PRECISION DEFAULT 0",
@@ -279,16 +306,17 @@ public class AppSearchMigration {
             runSingleStatement(jpaApi, sql);
         }
 
-        // 4. Create trigger to automatically keep user_id and "userId" synchronized upon INSERT/UPDATE
+        // 4. Create trigger to automatically keep userid, user_id, and "userId" synchronized upon INSERT/UPDATE
         String createSyncTriggerSql =
                 "CREATE OR REPLACE FUNCTION sync_user_id_columns()\n" +
                 "RETURNS TRIGGER AS $$\n" +
+                "DECLARE\n" +
+                "    resolved_uid VARCHAR(255);\n" +
                 "BEGIN\n" +
-                "    IF NEW.user_id IS NULL AND NEW.\"userId\" IS NOT NULL THEN\n" +
-                "        NEW.user_id := NEW.\"userId\";\n" +
-                "    ELSIF NEW.\"userId\" IS NULL AND NEW.user_id IS NOT NULL THEN\n" +
-                "        NEW.\"userId\" := NEW.user_id;\n" +
-                "    END IF;\n" +
+                "    resolved_uid := COALESCE(NEW.userid, NEW.user_id, NEW.\"userId\");\n" +
+                "    NEW.userid := resolved_uid;\n" +
+                "    NEW.user_id := resolved_uid;\n" +
+                "    NEW.\"userId\" := resolved_uid;\n" +
                 "    RETURN NEW;\n" +
                 "END;\n" +
                 "$$ LANGUAGE plpgsql;\n" +
@@ -424,14 +452,14 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('savings_plan' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(sp.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(sp.user_id, '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(sp.userid, sp.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(sp.name, 'Monthly Savings Plan') AS VARCHAR(255)) AS title, " +
-                "  CAST(CAST(COALESCE(sp.savings_percentage, 0) AS VARCHAR) || '% of net income target pot' AS VARCHAR(255)) AS subtitle, " +
+                "  CAST(CAST(COALESCE(sp.savingspercentage, sp.savings_percentage, 0) AS VARCHAR) || '% of net income target pot' AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/savingsPlan?highlight=savings-plan-' || CAST(sp.id AS VARCHAR) || '#savings-plan-' || CAST(sp.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
                 "  CAST('savings-plan-' || CAST(sp.id AS VARCHAR) AS VARCHAR(100)) AS dom_id, " +
                 "  CAST('fa-piggy-bank' AS VARCHAR(50)) AS icon, " +
                 "  CAST('Savings Plan' AS VARCHAR(50)) AS badge, " +
-                "  LOWER(COALESCE(sp.name, '') || ' savings plan ' || CAST(COALESCE(sp.savings_percentage, 0) AS VARCHAR) || '%') AS search_text " +
+                "  LOWER(COALESCE(sp.name, '') || ' savings plan ' || CAST(COALESCE(sp.savingspercentage, sp.savings_percentage, 0) AS VARCHAR) || '%') AS search_text " +
                 "FROM savings_plan sp " +
                 "WHERE sp.archived = false OR sp.archived IS NULL " +
 
@@ -441,14 +469,14 @@ public class AppSearchMigration {
                 "SELECT " +
                 "  CAST('savings_plan_item' AS VARCHAR(50)) AS entity_type, " +
                 "  CAST(spi.id AS VARCHAR) AS entity_id, " +
-                "  CAST(COALESCE(sp.user_id, '') AS VARCHAR(255)) AS user_id, " +
+                "  CAST(COALESCE(sp.userid, sp.user_id, '') AS VARCHAR(255)) AS user_id, " +
                 "  CAST(COALESCE(spi.name, 'Savings Target') AS VARCHAR(255)) AS title, " +
-                "  CAST(COALESCE(spi.type, 'SAVINGS') || ' • P' || CAST(COALESCE(spi.priority, 1) AS VARCHAR) || ' • £' || TO_CHAR(COALESCE(spi.monthly_amount, 0), 'FM999999990.00') || '/mo (Target £' || TO_CHAR(COALESCE(spi.target_amount, 0), 'FM999999990.00') || ')' AS VARCHAR(255)) AS subtitle, " +
+                "  CAST(COALESCE(spi.type, 'SAVINGS') || ' • P' || CAST(COALESCE(spi.priority, 1) AS VARCHAR) || ' • £' || TO_CHAR(COALESCE(spi.monthlyamount, spi.monthly_amount, 0), 'FM999999990.00') || '/mo (Target £' || TO_CHAR(COALESCE(spi.targetamount, spi.target_amount, 0), 'FM999999990.00') || ')' AS VARCHAR(255)) AS subtitle, " +
                 "  CAST('/savingsPlan?highlight=savings-item-' || CAST(spi.id AS VARCHAR) || '#savings-item-' || CAST(spi.id AS VARCHAR) AS VARCHAR(255)) AS target_url, " +
                 "  CAST('savings-item-' || CAST(spi.id AS VARCHAR) AS VARCHAR(100)) AS dom_id, " +
                 "  CAST('fa-bullseye' AS VARCHAR(50)) AS icon, " +
                 "  CAST('Savings Item' AS VARCHAR(50)) AS badge, " +
-                "  LOWER(COALESCE(spi.name, '') || ' ' || COALESCE(spi.type, '') || ' savings debt payoff target priority ' || CAST(COALESCE(spi.monthly_amount, 0) AS VARCHAR)) AS search_text " +
+                "  LOWER(COALESCE(spi.name, '') || ' ' || COALESCE(spi.type, '') || ' savings debt payoff target priority ' || CAST(COALESCE(spi.monthlyamount, spi.monthly_amount, 0) AS VARCHAR)) AS search_text " +
                 "FROM savings_plan_item spi " +
                 "JOIN savings_plan sp ON spi.savings_plan_id = sp.id " +
                 "WHERE (spi.archived = false OR spi.archived IS NULL) AND (sp.archived = false OR sp.archived IS NULL) " +

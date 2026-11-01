@@ -16,7 +16,7 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
 
     private final JPAApi jpaApi;
     private final DatabaseExecutionContext executionContext;
-    private static volatile boolean schemaEnsured = false;
+    private volatile boolean schemaEnsured = false;
 
     @Inject
     public JPABankTransactionRepository(JPAApi jpaApi, DatabaseExecutionContext executionContext) {
@@ -25,7 +25,7 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
         ensureSchema(jpaApi);
     }
 
-    private static void ensureSchema(JPAApi jpaApi) {
+    private void ensureSchema(JPAApi jpaApi) {
         if (!schemaEnsured) {
             synchronized (JPABankTransactionRepository.class) {
                 if (!schemaEnsured) {

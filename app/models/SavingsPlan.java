@@ -30,6 +30,7 @@ public class SavingsPlan {
     private Long lastUpdated;
 
     @OneToMany(mappedBy = "savingsPlan", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
+    @org.hibernate.annotations.Fetch(org.hibernate.annotations.FetchMode.SELECT)
     private List<SavingsPlanItem> items = new ArrayList<>();
 
     public SavingsPlan() {
@@ -107,6 +108,7 @@ public class SavingsPlan {
         }
         return items.stream()
                 .filter(i -> i != null && !i.isArchived())
+                .distinct()
                 .sorted(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.toList());
@@ -125,10 +127,56 @@ public class SavingsPlan {
             this.items = new ArrayList<>();
         }
         item.setSavingsPlan(this);
-        if (item.getPriority() == null || item.getPriority() <= 0) {
-            item.setPriority(getItems().size() + 1);
+        List<SavingsPlanItem> active = getItems();
+        if (!item.isPriorityExplicitlySet() || item.getPriority() == null || item.getPriority() <= 0) {
+            int maxPriority = active.stream()
+                    .mapToInt(i -> i.getPriority() != null ? i.getPriority() : 0)
+                    .max()
+                    .orElse(0);
+            item.setPriority(Math.max(active.size() + 1, maxPriority + 1));
+        } else {
+            int requestedPri = item.getPriority();
+            boolean collision = active.stream()
+                    .anyMatch(existing -> existing.getPriority() != null && existing.getPriority() == requestedPri);
+            if (collision) {
+                for (SavingsPlanItem existing : active) {
+                    if (existing.getPriority() != null && existing.getPriority() >= requestedPri) {
+                        existing.setPriority(existing.getPriority() + 1);
+                    }
+                }
+            }
         }
         this.items.add(item);
+    }
+
+    /**
+     * Reassigns an item to a target 1-based priority position (e.g. P7 reassigned as P5),
+     * shifting intermediate items cleanly (old P5 becomes P6, old P6 becomes P7, etc.)
+     * and re-indexing all active items to a contiguous 1..N sequence.
+     */
+    public boolean reassignItemPriority(Long itemId, int newPriority) {
+        if (itemId == null) return false;
+        List<SavingsPlanItem> active = getItems();
+        int idx = -1;
+        for (int i = 0; i < active.size(); i++) {
+            if (active.get(i) != null && itemId.equals(active.get(i).getId())) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) return false;
+        SavingsPlanItem item = active.remove(idx);
+        int targetIdx = Math.max(0, Math.min(newPriority - 1, active.size()));
+        active.add(targetIdx, item);
+        for (int i = 0; i < active.size(); i++) {
+            active.get(i).setPriority(i + 1);
+        }
+        if (this.items != null) {
+            this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        }
+        this.lastUpdated = System.currentTimeMillis();
+        return true;
     }
 
     /**

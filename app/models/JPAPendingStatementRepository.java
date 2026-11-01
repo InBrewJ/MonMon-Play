@@ -17,7 +17,7 @@ import static java.util.concurrent.CompletableFuture.supplyAsync;
 @Singleton
 public class JPAPendingStatementRepository implements PendingStatementRepository {
     private static final org.slf4j.Logger logger = LoggerFactory.getLogger(JPAPendingStatementRepository.class);
-    private static volatile boolean schemaEnsured = false;
+    private volatile boolean schemaEnsured = false;
 
     private final JPAApi jpaApi;
     private final DatabaseExecutionContext executionContext;
