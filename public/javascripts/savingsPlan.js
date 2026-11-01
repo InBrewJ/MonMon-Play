@@ -34,41 +34,63 @@
         }
 
         // Initialize item rows for real-time proportional scaling & self-balancing
-        var itemRows = document.querySelectorAll('.savings-item-row');
+        // Supports both desktop table view and mobile stacked action cards view simultaneously
+        var allItemContainers = document.querySelectorAll('.savings-item-row');
+        var itemsMap = {};
         var itemsData = [];
         var initialTotalAllocated = 0;
 
-        for (var i = 0; i < itemRows.length; i++) {
-            var row = itemRows[i];
-            var id = row.getAttribute('data-id');
-            var name = row.getAttribute('data-name') || ('Item ' + (i + 1));
-            var priority = parseInt(row.getAttribute('data-priority'), 10) || (i + 1);
-            var isLocked = row.getAttribute('data-locked') === 'true';
-            var baseMonthly = parseFloat(row.getAttribute('data-base-monthly')) || 0;
-            var debt = parseFloat(row.getAttribute('data-debt')) || 0;
-            var target = parseFloat(row.getAttribute('data-target')) || 0;
-            var remaining = parseFloat(row.getAttribute('data-remaining')) || 0;
-            var type = row.getAttribute('data-type') || 'SAVINGS_TARGET';
-            var color = SLICE_COLORS[i % SLICE_COLORS.length];
+        for (var i = 0; i < allItemContainers.length; i++) {
+            var container = allItemContainers[i];
+            var id = container.getAttribute('data-id');
+            if (!id) continue;
 
-            initialTotalAllocated += baseMonthly;
-            itemsData.push({
-                id: id,
-                row: row,
-                name: name,
-                priority: priority,
-                isLocked: isLocked,
-                currentMonthly: baseMonthly,
-                baseMonthly: baseMonthly,
-                debt: debt,
-                target: target,
-                remaining: remaining,
-                type: type,
-                color: color,
-                monthlyEl: row.querySelector('.item-monthly-val'),
-                durationEl: row.querySelector('.item-duration-cell') || row.querySelector('.item-duration-val'),
-                sliceSlider: row.querySelector('.item-slice-slider')
-            });
+            if (!itemsMap[id]) {
+                var name = container.getAttribute('data-name') || ('Item ' + (itemsData.length + 1));
+                var priority = parseInt(container.getAttribute('data-priority'), 10) || (itemsData.length + 1);
+                var isLocked = container.getAttribute('data-locked') === 'true';
+                var baseMonthly = parseFloat(container.getAttribute('data-base-monthly')) || 0;
+                var debt = parseFloat(container.getAttribute('data-debt')) || 0;
+                var target = parseFloat(container.getAttribute('data-target')) || 0;
+                var remaining = parseFloat(container.getAttribute('data-remaining')) || 0;
+                var type = container.getAttribute('data-type') || 'SAVINGS_TARGET';
+                var color = SLICE_COLORS[itemsData.length % SLICE_COLORS.length];
+
+                initialTotalAllocated += baseMonthly;
+
+                itemsMap[id] = {
+                    id: id,
+                    name: name,
+                    priority: priority,
+                    isLocked: isLocked,
+                    currentMonthly: baseMonthly,
+                    baseMonthly: baseMonthly,
+                    debt: debt,
+                    target: target,
+                    remaining: remaining,
+                    type: type,
+                    color: color,
+                    monthlyEls: [],
+                    durationEls: [],
+                    sliceSliders: []
+                };
+                itemsData.push(itemsMap[id]);
+            }
+
+            var mEls = container.querySelectorAll('.item-monthly-val, .item-monthly-val-label');
+            for (var m = 0; m < mEls.length; m++) {
+                itemsMap[id].monthlyEls.push(mEls[m]);
+            }
+
+            var dEls = container.querySelectorAll('.item-duration-cell, .item-duration-val');
+            for (var d = 0; d < dEls.length; d++) {
+                itemsMap[id].durationEls.push(dEls[d]);
+            }
+
+            var sEls = container.querySelectorAll('.item-slice-slider');
+            for (var s = 0; s < sEls.length; s++) {
+                itemsMap[id].sliceSliders.push(sEls[s]);
+            }
         }
 
         // Initial target pot
@@ -81,35 +103,78 @@
         var saveAllocationsForm = document.getElementById('save-allocations-form');
         var btnSaveAllocations = document.getElementById('btn-save-allocations');
 
-        function updateDurationProjection(item, monthlyVal) {
-            if (!item.durationEl) return;
+        function updateItemDisplay(item, monthlyVal) {
+            if (item.monthlyEls) {
+                for (var m = 0; m < item.monthlyEls.length; m++) {
+                    item.monthlyEls[m].textContent = '£' + monthlyVal.toFixed(2);
+                }
+            }
+            if (item.sliceSliders) {
+                for (var s = 0; s < item.sliceSliders.length; s++) {
+                    item.sliceSliders[s].value = monthlyVal;
+                }
+            }
+            updateDurationProjection(item, monthlyVal);
+        }
 
+        function setItemSliderMax(item, maxVal) {
+            if (item.sliceSliders) {
+                for (var s = 0; s < item.sliceSliders.length; s++) {
+                    item.sliceSliders[s].max = maxVal;
+                }
+            }
+        }
+
+        function updateFooterTotals(newAllocated, newTargetPot) {
+            var totalAllocatedEl = document.getElementById('total-allocated-val');
+            var footerTotalEl = document.getElementById('footer-total-allocated');
+            var footerTargetPotEl = document.getElementById('footer-target-pot');
+            var mobileFooterEls = document.querySelectorAll('.mobile-footer-total-allocated');
+
+            if (totalAllocatedEl) totalAllocatedEl.textContent = '£' + newAllocated.toFixed(2);
+            if (footerTotalEl) footerTotalEl.textContent = '£' + newAllocated.toFixed(2);
+            if (footerTargetPotEl && newTargetPot !== undefined) {
+                footerTargetPotEl.textContent = 'Target Pot: £' + newTargetPot.toFixed(2);
+            }
+            for (var mf = 0; mf < mobileFooterEls.length; mf++) {
+                mobileFooterEls[mf].textContent = '£' + newAllocated.toFixed(2);
+            }
+        }
+
+        function updateDurationProjection(item, monthlyVal) {
+            if (!item.durationEls || item.durationEls.length === 0) return;
+
+            var html = '';
             if (item.type === 'DEBT_PAYOFF') {
                 if (item.debt <= 0) {
-                    item.durationEl.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Paid off (£0 debt)</span>';
+                    html = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Paid off (£0 debt)</span>';
                 } else if (monthlyVal > 0) {
                     var months = Math.ceil(item.debt / monthlyVal);
-                    item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + months + ' month' + (months === 1 ? '' : 's') + '</span>' +
+                    html = '<span style="font-weight: 700; color: var(--text-main);">~' + months + ' month' + (months === 1 ? '' : 's') + '</span>' +
                         '<div style="font-size: 0.75rem; color: var(--text-muted);">to clear £' + item.debt.toFixed(2) + ' at £' + monthlyVal.toFixed(2) + '/mo</div>';
                 } else {
-                    item.durationEl.innerHTML = '<span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem;"><i class="fas fa-hourglass-start"></i> Future Payoff (£0/mo)</span>' +
+                    html = '<span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem;"><i class="fas fa-hourglass-start"></i> Future Payoff (£0/mo)</span>' +
                         '<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Queued (funded when prior clear)</div>';
                 }
             } else {
                 if (item.target > 0 && item.remaining <= 0) {
-                    item.durationEl.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Target reached</span>';
+                    html = '<span class="badge-pill badge-success" style="font-size: 0.78rem;"><i class="fas fa-check"></i> Target reached</span>';
                 } else if (monthlyVal > 0 && item.target > 0) {
                     var targetMonths = Math.ceil(item.remaining / monthlyVal);
-                    item.durationEl.innerHTML = '<span style="font-weight: 700; color: var(--text-main);">~' + targetMonths + ' month' + (targetMonths === 1 ? '' : 's') + '</span>' +
+                    html = '<span style="font-weight: 700; color: var(--text-main);">~' + targetMonths + ' month' + (targetMonths === 1 ? '' : 's') + '</span>' +
                         '<div style="font-size: 0.75rem; color: var(--text-muted);">to reach £' + item.target.toFixed(2) + ' at £' + monthlyVal.toFixed(2) + '/mo</div>';
                 } else if (monthlyVal <= 0) {
-                    item.durationEl.innerHTML = '<span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem;"><i class="fas fa-hourglass-start"></i> Future Target (£0/mo)</span>' +
+                    html = '<span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem;"><i class="fas fa-hourglass-start"></i> Future Target (£0/mo)</span>' +
                         '<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">Queued (funded when prior clear)</div>';
                 } else if (monthlyVal > 0) {
-                    item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings (£' + monthlyVal.toFixed(2) + '/mo)</span>';
+                    html = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings (£' + monthlyVal.toFixed(2) + '/mo)</span>';
                 } else {
-                    item.durationEl.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings</span>';
+                    html = '<span style="color: var(--text-muted); font-size: 0.8rem;">Ongoing savings</span>';
                 }
+            }
+
+            for (var d = 0; d < item.durationEls.length; d++) {
+                item.durationEls[d].innerHTML = html;
             }
         }
 
@@ -210,8 +275,7 @@
             var targetPot = currentTargetPot;
             if (targetPot <= 0 || itemsData.length <= 1) {
                 changedItem.currentMonthly = newVal;
-                if (changedItem.monthlyEl) changedItem.monthlyEl.textContent = '£' + newVal.toFixed(2);
-                updateDurationProjection(changedItem, newVal);
+                updateItemDisplay(changedItem, newVal);
                 renderPotBar(targetPot);
                 markAllocationsChanged();
                 return;
@@ -233,14 +297,12 @@
             var maxAllowedForChanged = Math.max(0, targetPot - lockedTotal);
             if (newVal > maxAllowedForChanged) {
                 newVal = maxAllowedForChanged;
-                if (changedItem.sliceSlider) changedItem.sliceSlider.value = newVal;
             }
 
             var oldVal = changedItem.currentMonthly;
             var delta = newVal - oldVal;
             changedItem.currentMonthly = Math.round(newVal * 100) / 100;
-            if (changedItem.monthlyEl) changedItem.monthlyEl.textContent = '£' + changedItem.currentMonthly.toFixed(2);
-            updateDurationProjection(changedItem, changedItem.currentMonthly);
+            updateItemDisplay(changedItem, changedItem.currentMonthly);
 
             if (otherUnlocked.length > 0) {
                 var otherTotal = 0;
@@ -267,9 +329,7 @@
                         runningSum += other.currentMonthly;
                     }
 
-                    if (other.monthlyEl) other.monthlyEl.textContent = '£' + other.currentMonthly.toFixed(2);
-                    if (other.sliceSlider) other.sliceSlider.value = other.currentMonthly;
-                    updateDurationProjection(other, other.currentMonthly);
+                    updateItemDisplay(other, other.currentMonthly);
                 }
             }
 
@@ -278,22 +338,23 @@
             for (var m = 0; m < itemsData.length; m++) {
                 newAllocated += itemsData[m].currentMonthly;
             }
-            var totalAllocatedEl = document.getElementById('total-allocated-val');
-            var footerTotalEl = document.getElementById('footer-total-allocated');
-            if (totalAllocatedEl) totalAllocatedEl.textContent = '£' + newAllocated.toFixed(2);
-            if (footerTotalEl) footerTotalEl.textContent = '£' + newAllocated.toFixed(2);
+            updateFooterTotals(newAllocated);
 
             renderPotBar(targetPot);
             markAllocationsChanged();
         }
 
-        // Attach listeners to item sliders
+        // Attach listeners to item sliders across both desktop table and mobile cards
         for (var s = 0; s < itemsData.length; s++) {
             (function (itm) {
-                if (itm.sliceSlider) {
-                    itm.sliceSlider.addEventListener('input', function () {
-                        handleItemSliderChange(itm, parseFloat(itm.sliceSlider.value) || 0);
-                    });
+                if (itm.sliceSliders && itm.sliceSliders.length > 0) {
+                    for (var sl = 0; sl < itm.sliceSliders.length; sl++) {
+                        (function (sliderInput) {
+                            sliderInput.addEventListener('input', function () {
+                                handleItemSliderChange(itm, parseFloat(sliderInput.value) || 0);
+                            });
+                        })(itm.sliceSliders[sl]);
+                    }
                 }
             })(itemsData[s]);
         }
@@ -350,18 +411,14 @@
                     runningSum += item.currentMonthly;
                 }
 
-                if (item.monthlyEl) item.monthlyEl.textContent = '£' + item.currentMonthly.toFixed(2);
-                if (item.sliceSlider) {
-                    item.sliceSlider.max = newTargetPot;
-                    item.sliceSlider.value = item.currentMonthly;
-                }
-                updateDurationProjection(item, item.currentMonthly);
+                setItemSliderMax(item, newTargetPot);
+                updateItemDisplay(item, item.currentMonthly);
             }
 
             // Locked items sliders max updated
             for (var l = 0; l < itemsData.length; l++) {
-                if (itemsData[l].isLocked && itemsData[l].sliceSlider) {
-                    itemsData[l].sliceSlider.max = newTargetPot;
+                if (itemsData[l].isLocked) {
+                    setItemSliderMax(itemsData[l], newTargetPot);
                 }
             }
 
@@ -369,6 +426,8 @@
             for (var j = 0; j < itemsData.length; j++) {
                 newTotalAllocated += itemsData[j].currentMonthly;
             }
+
+            updateFooterTotals(newTotalAllocated, newTargetPot);
 
             // Update summary metric boxes and footer in real-time
             var totalAllocatedEl = document.getElementById('total-allocated-val');

@@ -41,23 +41,25 @@
 <div id="ticker"></div>
 
 <header class="app-header">
-    <h1>
-        <a href="/spog" title="MonMon">
-            <img src='@routes.Assets.versioned("images/monmon-monster.svg")' alt="MonMon Monster" class="monmon-logo-icon" width="38" height="38" />
-            <span>MonMon</span>
-        </a>
-    </h1>
+    <div class="header-brand-group">
+        <h1>
+            <a href="/spog" title="MonMon">
+                <img src='@routes.Assets.versioned("images/monmon-monster.svg")' alt="MonMon Monster" class="monmon-logo-icon" width="38" height="38" />
+                <span>MonMon</span>
+            </a>
+        </h1>
 
-    <!-- Spinning Disco Ball (appears on payday in the middle between MONMON and Light Mode) -->
-    <div id="disco-header-slot" class="disco-header-slot" data-is-payday="@isDiscoDay" data-danger-day="@resolvedDangerDay" style="display: none;" role="button" aria-label="Disco mode toggle" title="🎉 Payday Disco Mode! (Click to toggle sparkles)">
-        <div class="disco-hanger"></div>
-        <div class="disco-ball-wrapper">
-            <div class="disco-ball" id="disco-ball"></div>
+        <!-- Spinning Disco Ball (appears on payday in the middle between MONMON and Light Mode) -->
+        <div id="disco-header-slot" class="disco-header-slot" data-is-payday="@isDiscoDay" data-danger-day="@resolvedDangerDay" style="display: none;" role="button" aria-label="Disco mode toggle" title="🎉 Payday Disco Mode! (Click to toggle sparkles)">
+            <div class="disco-hanger"></div>
+            <div class="disco-ball-wrapper">
+                <div class="disco-ball" id="disco-ball"></div>
+            </div>
+            <span class="disco-badge">PAYDAY!</span>
         </div>
-        <span class="disco-badge">PAYDAY!</span>
     </div>
 
-    <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <div class="header-actions-group">
         <!-- Global Expandable Search Bar -->
         <div class="header-search-container" id="header-search-container">
             <div class="header-search-input-wrap">

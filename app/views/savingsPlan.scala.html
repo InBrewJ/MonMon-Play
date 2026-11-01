@@ -262,7 +262,7 @@
                     </ul>
                 </div>
 
-                <div style="overflow-x: auto;">
+                <div class="desktop-view" style="overflow-x: auto;">
                     <table class="w3-table w3-striped savings-plan-table" style="width: 100%; font-size: 0.9rem;">
                         <thead>
                             <tr style="border-bottom: 2px solid var(--border-color); text-align: left;">
@@ -470,6 +470,186 @@
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+
+                <!-- Mobile Stacked Action Cards View (Thumb-Friendly Queue) -->
+                <div class="mobile-cards-view savings-plan-mobile-cards">
+                    @defining(activePlan.getItems()) { activeItems =>
+                    @for((item, itemIdx) <- activeItems.zipWithIndex) {
+                        <div class="item-card savings-plan-item-card savings-item-row"
+                             id="savings-card-@item.getId()"
+                             data-entity-id="savings-item-@item.getId()"
+                             data-id="@item.getId()"
+                             data-name="@item.getName()"
+                             data-priority="@item.getPriority()"
+                             data-locked="@item.isLocked()"
+                             data-type="@item.getType()"
+                             data-debt="@item.getDebtOwed()"
+                             data-target="@item.getTargetAmount()"
+                             data-remaining="@item.getRemainingToTarget()"
+                             data-base-monthly="@item.getMonthlyAmount()">
+
+                            <!-- Header: Priority pill, Title, Account info, Badges -->
+                            <div class="item-card-header">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                                    <span class="badge-pill" style="background: var(--primary); color: #fff; font-weight: 800; font-size: 0.85rem; padding: 3px 8px; border-radius: 6px; flex-shrink: 0;">
+                                        P@item.getPriority()
+                                    </span>
+                                    <div style="min-width: 0;">
+                                        <div class="item-card-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@item.getName()</div>
+                                        @if(item.getAccount() != null) {
+                                            <div class="item-card-subtitle" style="font-size: 0.75rem;">
+                                                <i class="fas fa-university" style="color: var(--primary); margin-right: 3px;"></i>@item.getAccount().getName()
+                                                <span style="opacity: 0.7;">(@item.getAccount().getType())</span>
+                                            </div>
+                                        } else {
+                                            <div class="item-card-subtitle" style="font-size: 0.75rem; font-style: italic;">No linked account</div>
+                                        }
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                                    @if(item.isLocked()) {
+                                        <span class="badge-pill" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #f59e0b; font-size: 0.72rem;">
+                                            <i class="fas fa-lock"></i> Fixed
+                                        </span>
+                                    }
+                                    @if(item.getType() == SavingsPlanItem.ItemType.DEBT_PAYOFF) {
+                                        <span class="badge-pill badge-danger" style="font-size: 0.75rem;"><i class="fas fa-credit-card"></i> Debt</span>
+                                    } else {
+                                        <span class="badge-pill badge-primary" style="font-size: 0.75rem;"><i class="fas fa-piggy-bank"></i> Savings</span>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- Stat Grid Cells: Debt/Target, Monthly Slice, Duration -->
+                            <div class="item-card-stats-grid" style="grid-template-columns: repeat(3, 1fr); padding: 0.6rem 0.5rem; gap: 0.35rem;">
+                                <div class="stat-cell">
+                                    <div class="stat-cell-label">@if(item.getType() == SavingsPlanItem.ItemType.DEBT_PAYOFF) {Debt Owed} else {Target}</div>
+                                    <div class="stat-cell-val" style="font-size: 0.88rem; color: @if(item.getType() == SavingsPlanItem.ItemType.DEBT_PAYOFF) {var(--danger)} else {var(--text-main)};">
+                                        @if(item.getType() == SavingsPlanItem.ItemType.DEBT_PAYOFF) {
+                                            £@item.getDebtOwed()
+                                        } else {
+                                            @if(item.getTargetAmount() > 0) {£@item.getTargetAmount()} else {Ongoing}
+                                        }
+                                    </div>
+                                    @if(item.getAccount() != null && item.getType() == SavingsPlanItem.ItemType.DEBT_PAYOFF && item.getAccount().getType() == Account.AccountType.CREDIT) {
+                                        <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 1px;">Limit £@item.getAccountLimit()</div>
+                                    }
+                                </div>
+
+                                <div class="stat-cell">
+                                    <div class="stat-cell-label">Monthly Slice</div>
+                                    <div class="stat-cell-val item-monthly-val" style="font-size: 0.88rem; color: var(--primary);">
+                                        £@item.getMonthlyAmount()
+                                    </div>
+                                    <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 1px;">/ month</div>
+                                </div>
+
+                                <div class="stat-cell">
+                                    <div class="stat-cell-label">Duration</div>
+                                    <div class="stat-cell-val item-duration-cell" style="font-size: 0.82rem; font-weight: 600;">
+                                        @if(item.getType() == SavingsPlanItem.ItemType.DEBT_PAYOFF) {
+                                            @if(item.getDebtOwed() <= 0) {
+                                                <span class="badge-pill badge-success" style="font-size: 0.72rem;">Paid off</span>
+                                            } else if(item.getRoughMonthsToPayoff() != null) {
+                                                <span>~@item.getRoughMonthsToPayoff() @if(item.getRoughMonthsToPayoff() == 1) {mo} else {mos}</span>
+                                            } else if(item.getMonthlyAmount() <= 0) {
+                                                <span class="badge-pill" style="font-size: 0.7rem; background: var(--card-bg-subtle); color: var(--text-muted);">Queued</span>
+                                            } else {
+                                                <span style="font-size: 0.75rem; color: var(--text-muted);">-</span>
+                                            }
+                                        } else {
+                                            @if(item.getRemainingToTarget() <= 0 && item.getTargetAmount() > 0) {
+                                                <span class="badge-pill badge-success" style="font-size: 0.72rem;">Reached</span>
+                                            } else if(item.getRoughMonthsToTarget() != null) {
+                                                <span>~@item.getRoughMonthsToTarget() @if(item.getRoughMonthsToTarget() == 1) {mo} else {mos}</span>
+                                            } else if(item.getMonthlyAmount() <= 0) {
+                                                <span class="badge-pill" style="font-size: 0.7rem; background: var(--card-bg-subtle); color: var(--text-muted);">Queued</span>
+                                            } else {
+                                                <span style="font-size: 0.75rem; color: var(--text-muted);">Ongoing</span>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Interactive Slice Slider on Mobile -->
+                            <div style="margin: 0.25rem 0 0.15rem 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">
+                                    <span>Adjust Monthly Slice:</span>
+                                    <span style="font-weight: 700; color: var(--primary);"><span class="item-monthly-val-label">£@item.getMonthlyAmount()</span> / mo</span>
+                                </div>
+                                <input type="range"
+                                       min="0"
+                                       max="@activePlan.getTargetAmount(incomingTotal)"
+                                       step="1"
+                                       value="@item.getMonthlyAmount()"
+                                       class="item-slice-slider"
+                                       data-id="@item.getId()"
+                                       @if(item.isLocked()){disabled title="Item is locked (fixed amount)"}
+                                       style="width: 100%; height: 32px;">
+                            </div>
+
+                            <!-- Thumb-Friendly Priority Queue Shunt Bar -->
+                            <div class="priority-queue-bar" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 0.35rem;">
+                                <form method="POST" action="/savingsPlan/moveToTop/@item.getId()" style="margin: 0;">
+                                    @helper.CSRF.formField
+                                    <button type="submit" class="thumb-btn @if(itemIdx == 0){thumb-btn-disabled}" @if(itemIdx == 0){disabled} title="Send to Top (P1)">
+                                        <i class="fas fa-angle-double-up"></i> Top
+                                    </button>
+                                </form>
+                                <form method="POST" action="/savingsPlan/moveUp/@item.getId()" style="margin: 0;">
+                                    @helper.CSRF.formField
+                                    <button type="submit" class="thumb-btn @if(itemIdx == 0){thumb-btn-disabled}" @if(itemIdx == 0){disabled} title="Move Up (P@{item.getPriority() - 1})">
+                                        <i class="fas fa-chevron-up"></i> Up
+                                    </button>
+                                </form>
+                                <form method="POST" action="/savingsPlan/moveDown/@item.getId()" style="margin: 0;">
+                                    @helper.CSRF.formField
+                                    <button type="submit" class="thumb-btn @if(itemIdx >= activeItems.size() - 1){thumb-btn-disabled}" @if(itemIdx >= activeItems.size() - 1){disabled} title="Move Down (P@{item.getPriority() + 1})">
+                                        <i class="fas fa-chevron-down"></i> Down
+                                    </button>
+                                </form>
+                                <form method="POST" action="/savingsPlan/moveToBottom/@item.getId()" style="margin: 0;">
+                                    @helper.CSRF.formField
+                                    <button type="submit" class="thumb-btn @if(itemIdx >= activeItems.size() - 1){thumb-btn-disabled}" @if(itemIdx >= activeItems.size() - 1){disabled} title="Send to Bottom (P@{activeItems.size()})">
+                                        <i class="fas fa-angle-double-down"></i> Bottom
+                                    </button>
+                                </form>
+                            </div>
+
+                            <!-- Item Management Actions (Lock, Edit, Delete) -->
+                            <div class="item-card-actions" style="margin-top: 0.25rem;">
+                                <form method="POST" action="/savingsPlan/toggleLock/@item.getId()" style="margin: 0; display: inline;">
+                                    @helper.CSRF.formField
+                                    <button type="submit"
+                                            class="btn-action @if(item.isLocked()){btn-locked}"
+                                            title="@if(item.isLocked()){Locked: amount is fixed during rebalancing. Click to unlock.}else{Unlocked: amount adjusts dynamically. Click to lock.}">
+                                        <i class="fas @if(item.isLocked()){fa-lock}else{fa-lock-open}"></i>
+                                        @if(item.isLocked()){Locked}else{Lock}
+                                    </button>
+                                </form>
+                                <a href="/editSavingsPlanItem/@item.getId()#edit-form"
+                                   class="btn-action btn-edit"
+                                   title="Edit item details">
+                                    <i class="fas fa-pen"></i> Edit
+                                </a>
+                                <a href="/binSavingsPlanItem/@item.getId()"
+                                   class="btn-action btn-delete"
+                                   onclick="return confirm('Are you sure you want to remove this item? Its monthly amount will roll into the queue head.');"
+                                   title="Remove item">
+                                    <i class="fas fa-trash-alt"></i> Delete
+                                </a>
+                            </div>
+                        </div>
+                    }
+                    }
+
+                    <div class="item-card" style="background: var(--card-bg-subtle); border: 1px dashed var(--border-color); text-align: center; padding: 0.75rem;">
+                        <div style="font-size: 0.82rem; color: var(--text-muted);">
+                            Total Monthly Sliced: <b style="color: var(--primary);" class="mobile-footer-total-allocated">£@activePlan.getTotalAllocated()</b> &bull; Target: <b>£@activePlan.getTargetAmount(incomingTotal)</b>
+                        </div>
+                    </div>
                 </div>
             }
         </div>
