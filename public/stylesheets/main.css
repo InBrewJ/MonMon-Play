@@ -2409,13 +2409,17 @@ input[type="text"].header-search-input:focus,
   border: 1px solid var(--border-color);
   color: var(--text-main);
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
   padding: 0 4px;
   transition: all 0.15s ease;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+
+.thumb-btn i {
+  font-size: 0.95rem;
 }
 
 .thumb-btn:not(:disabled):hover,

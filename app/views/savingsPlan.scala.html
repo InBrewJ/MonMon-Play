@@ -594,26 +594,26 @@
                             <div class="priority-queue-bar" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 0.35rem;">
                                 <form method="POST" action="/savingsPlan/moveToTop/@item.getId()" style="margin: 0;">
                                     @helper.CSRF.formField
-                                    <button type="submit" class="thumb-btn @if(itemIdx == 0){thumb-btn-disabled}" @if(itemIdx == 0){disabled} title="Send to Top (P1)">
-                                        <i class="fas fa-angle-double-up"></i> Top
+                                    <button type="submit" class="thumb-btn @if(itemIdx == 0){thumb-btn-disabled}" @if(itemIdx == 0){disabled} title="Send to Top (P1)" aria-label="Send to Top (P1)">
+                                        <i class="fas fa-angle-double-up"></i>
                                     </button>
                                 </form>
                                 <form method="POST" action="/savingsPlan/moveUp/@item.getId()" style="margin: 0;">
                                     @helper.CSRF.formField
-                                    <button type="submit" class="thumb-btn @if(itemIdx == 0){thumb-btn-disabled}" @if(itemIdx == 0){disabled} title="Move Up (P@{item.getPriority() - 1})">
-                                        <i class="fas fa-chevron-up"></i> Up
+                                    <button type="submit" class="thumb-btn @if(itemIdx == 0){thumb-btn-disabled}" @if(itemIdx == 0){disabled} title="Move Up (P@{item.getPriority() - 1})" aria-label="Move Up">
+                                        <i class="fas fa-chevron-up"></i>
                                     </button>
                                 </form>
                                 <form method="POST" action="/savingsPlan/moveDown/@item.getId()" style="margin: 0;">
                                     @helper.CSRF.formField
-                                    <button type="submit" class="thumb-btn @if(itemIdx >= activeItems.size() - 1){thumb-btn-disabled}" @if(itemIdx >= activeItems.size() - 1){disabled} title="Move Down (P@{item.getPriority() + 1})">
-                                        <i class="fas fa-chevron-down"></i> Down
+                                    <button type="submit" class="thumb-btn @if(itemIdx >= activeItems.size() - 1){thumb-btn-disabled}" @if(itemIdx >= activeItems.size() - 1){disabled} title="Move Down (P@{item.getPriority() + 1})" aria-label="Move Down">
+                                        <i class="fas fa-chevron-down"></i>
                                     </button>
                                 </form>
                                 <form method="POST" action="/savingsPlan/moveToBottom/@item.getId()" style="margin: 0;">
                                     @helper.CSRF.formField
-                                    <button type="submit" class="thumb-btn @if(itemIdx >= activeItems.size() - 1){thumb-btn-disabled}" @if(itemIdx >= activeItems.size() - 1){disabled} title="Send to Bottom (P@{activeItems.size()})">
-                                        <i class="fas fa-angle-double-down"></i> Bottom
+                                    <button type="submit" class="thumb-btn @if(itemIdx >= activeItems.size() - 1){thumb-btn-disabled}" @if(itemIdx >= activeItems.size() - 1){disabled} title="Send to Bottom (P@{activeItems.size()})" aria-label="Send to Bottom">
+                                        <i class="fas fa-angle-double-down"></i>
                                     </button>
                                 </form>
                             </div>
