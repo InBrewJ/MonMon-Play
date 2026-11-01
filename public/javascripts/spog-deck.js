@@ -5,6 +5,48 @@
     if (window.__monmonDeckInitialized) return;
     window.__monmonDeckInitialized = true;
 
+    // Dynamically calculate the navigation metrics across mobile viewports
+    function getDynamicNavMetrics() {
+        var ticker = document.getElementById('ticker');
+        var header = document.querySelector('header.app-header');
+        var mainNav = document.getElementById('main-nav') || document.querySelector('nav.crumbs');
+
+        var tickerHeight = (ticker && ticker.offsetHeight > 0) ? ticker.offsetHeight : 0;
+        var headerHeight = (header && header.offsetHeight > 0) ? header.offsetHeight : 0;
+        var mainNavHeight = (mainNav && mainNav.offsetHeight > 0) ? mainNav.offsetHeight : 0;
+        var totalNavHeight = tickerHeight + headerHeight + mainNavHeight;
+
+        // Sticky offset: #ticker is position: sticky; top: 0
+        var stickyTopOffset = tickerHeight;
+
+        return {
+            tickerHeight: tickerHeight,
+            headerHeight: headerHeight,
+            mainNavHeight: mainNavHeight,
+            totalNavHeight: totalNavHeight,
+            stickyTopOffset: stickyTopOffset
+        };
+    }
+
+    function updateNavCssVariables() {
+        var m = getDynamicNavMetrics();
+        var root = document.documentElement;
+        root.style.setProperty('--ticker-height', m.tickerHeight + 'px');
+        root.style.setProperty('--header-height', m.headerHeight + 'px');
+        root.style.setProperty('--main-nav-height', m.mainNavHeight + 'px');
+        root.style.setProperty('--total-nav-height', m.totalNavHeight + 'px');
+        root.style.setProperty('--deck-nav-sticky-top', m.stickyTopOffset + 'px');
+    }
+
+    function getElementDocTop(el) {
+        var top = 0;
+        while (el) {
+            top += el.offsetTop;
+            el = el.offsetParent;
+        }
+        return top;
+    }
+
     function setupSingleDeck(nav, grid) {
         if (!nav || !grid) return;
 
@@ -15,25 +57,21 @@
         var currentActiveCard = null;
         var isClickScrolling = false;
         var clickScrollTimeout = null;
+        var isTouchActive = false;
+        var scrollDebounceTimeout = null;
 
-        // Calculate the top offset for sticky nav (below 54px main navbar)
-        function getDeckNavTop() {
-            var el = nav;
-            var top = 0;
-            while (el) {
-                top += el.offsetTop;
-                el = el.offsetParent;
-            }
-            var stickyOffset = 54; // MonMon top fixed navbar height
-            return Math.max(0, top - stickyOffset);
-        }
-
-        // Snap window scroll up to the top of the view if scrolled down into content
+        // Snap window scroll up to the top of the view if scrolled down into content,
+        // dynamically taking into account the dynamic height of sticky nav elements
         function snapToTopIfNeeded() {
             if (window.innerWidth > 768) return;
-            var navTop = getDeckNavTop();
-            if ((window.pageYOffset || document.documentElement.scrollTop) > navTop) {
-                window.scrollTo(0, navTop);
+            var metrics = getDynamicNavMetrics();
+            var navTop = Math.max(0, getElementDocTop(nav) - metrics.stickyTopOffset);
+            var currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+            if (currentScroll > navTop) {
+                window.scrollTo({
+                    top: navTop,
+                    behavior: 'smooth'
+                });
             }
         }
 
@@ -74,20 +112,9 @@
             });
         }
 
-        function setActiveCard(targetCard, snapTop, scrollNavPill) {
+        // Update pills visual state during scroll without causing mid-gesture layout thrashing
+        function updatePillVisuals(targetCard, scrollNavPill) {
             if (!targetCard) return;
-
-            var isChange = currentActiveCard !== targetCard;
-            if (isChange && snapTop) {
-                snapToTopIfNeeded();
-            }
-
-            currentActiveCard = targetCard;
-
-            // Adjust card heights to fit active card content
-            syncCardHeights(targetCard);
-
-            // Synchronize pill states
             var targetId = targetCard.id;
             var targetIndex = cards.indexOf(targetCard);
 
@@ -96,13 +123,28 @@
                 var isMatch = (pillTarget && pillTarget === targetId) || (pIdx === targetIndex);
                 pill.classList.toggle('active', isMatch);
                 pill.setAttribute('aria-selected', isMatch ? 'true' : 'false');
-                if (isMatch && scrollNavPill !== false && window.innerWidth <= 768) {
+                if (isMatch && scrollNavPill && window.innerWidth <= 768) {
                     pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
                 }
             });
         }
 
-        // Click on a navigation pill -> switch card, snap up if needed, scroll horizontally
+        // Fully activate card when stationary (click or settled swipe)
+        function setActiveCard(targetCard, snapTop, scrollNavPill) {
+            if (!targetCard) return;
+
+            var isChange = currentActiveCard !== targetCard;
+            currentActiveCard = targetCard;
+
+            updatePillVisuals(targetCard, scrollNavPill);
+            syncCardHeights(targetCard);
+
+            if (isChange && snapTop) {
+                snapToTopIfNeeded();
+            }
+        }
+
+        // Click on a navigation pill -> switch card, snap up if needed, smoothly scroll to card
         pills.forEach(function(pill, index) {
             pill.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -116,15 +158,13 @@
                     clearTimeout(clickScrollTimeout);
                     clickScrollTimeout = setTimeout(function() {
                         isClickScrolling = false;
-                    }, 650);
+                    }, 500);
                 }
             });
         });
 
         // Determine which card is centered horizontally during swipe
-        function updateActiveOnScroll() {
-            if (isClickScrolling) return;
-
+        function getClosestCard() {
             var gridRect = grid.getBoundingClientRect();
             var gridCenter = gridRect.left + gridRect.width / 2;
 
@@ -142,61 +182,78 @@
                 }
             });
 
-            if (bestCard && bestCard !== currentActiveCard) {
-                setActiveCard(bestCard, true, true);
+            return bestCard;
+        }
+
+        // On horizontal scroll while gesture is active: ONLY update pill indicator, NEVER snap vertical scroll or mutate card heights
+        function onScrollProgress() {
+            if (isClickScrolling) return;
+            var closest = getClosestCard();
+            if (closest) {
+                updatePillVisuals(closest, false);
             }
         }
 
-        // High performance scroll listener with requestAnimationFrame
+        // When swipe scroll completes and settles: finalize card activation, sync height, and snap scroll up if needed
+        function onScrollSettled() {
+            if (isClickScrolling) return;
+            var closest = getClosestCard();
+            if (closest) {
+                setActiveCard(closest, true, true);
+            }
+        }
+
+        // Touch tracking to distinguish mid-drag from settling
+        grid.addEventListener('touchstart', function() {
+            isTouchActive = true;
+        }, { passive: true });
+
+        grid.addEventListener('touchend', function() {
+            isTouchActive = false;
+            clearTimeout(scrollDebounceTimeout);
+            scrollDebounceTimeout = setTimeout(function() {
+                onScrollSettled();
+            }, 100);
+        }, { passive: true });
+
+        grid.addEventListener('touchcancel', function() {
+            isTouchActive = false;
+            clearTimeout(scrollDebounceTimeout);
+            scrollDebounceTimeout = setTimeout(function() {
+                onScrollSettled();
+            }, 100);
+        }, { passive: true });
+
+        // Scroll listener with RAF throttling for responsive pill progress
         var ticking = false;
         grid.addEventListener('scroll', function() {
             if (!ticking) {
                 window.requestAnimationFrame(function() {
-                    updateActiveOnScroll();
+                    onScrollProgress();
                     ticking = false;
                 });
                 ticking = true;
             }
+
+            clearTimeout(scrollDebounceTimeout);
+            scrollDebounceTimeout = setTimeout(function() {
+                if (!isTouchActive) {
+                    onScrollSettled();
+                }
+            }, 140);
         }, { passive: true });
 
-        // Scrollend event or debounced fallback to guarantee settling
         if ('onscrollend' in window) {
             grid.addEventListener('scrollend', function() {
-                updateActiveOnScroll();
-            });
-        } else {
-            var scrollDebounce = null;
-            grid.addEventListener('scroll', function() {
-                clearTimeout(scrollDebounce);
-                scrollDebounce = setTimeout(function() {
-                    updateActiveOnScroll();
-                }, 120);
-            }, { passive: true });
-        }
-
-        // IntersectionObserver fallback for horizontal snapping
-        if ('IntersectionObserver' in window) {
-            var observer = new IntersectionObserver(function(entries) {
-                if (isClickScrolling) return;
-                entries.forEach(function(entry) {
-                    if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-                        if (entry.target !== currentActiveCard) {
-                            setActiveCard(entry.target, true, true);
-                        }
-                    }
-                });
-            }, {
-                root: window.innerWidth <= 768 ? grid : null,
-                threshold: [0.5]
-            });
-
-            cards.forEach(function(card) {
-                observer.observe(card);
+                if (!isTouchActive) {
+                    onScrollSettled();
+                }
             });
         }
 
         // Responsive resize and content change handling
         window.addEventListener('resize', function() {
+            updateNavCssVariables();
             if (window.innerWidth <= 768) {
                 if (currentActiveCard) {
                     syncCardHeights(currentActiveCard);
@@ -207,6 +264,7 @@
         });
 
         window.addEventListener('load', function() {
+            updateNavCssVariables();
             if (currentActiveCard && window.innerWidth <= 768) {
                 syncCardHeights(currentActiveCard);
             }
@@ -251,6 +309,8 @@
     }
 
     function initAllDecks() {
+        updateNavCssVariables();
+
         // 1. SPOG Deck
         var spogNav = document.getElementById('spog-nav');
         var spogGrid = document.querySelector('.spog-layout-grid');
