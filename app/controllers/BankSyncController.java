@@ -132,6 +132,16 @@ public class BankSyncController extends Controller {
                             : CompletableFuture.completedFuture(monzoConnOpt.orElse(null));
 
                     return connStage.thenComposeAsync(freshConn -> {
+                        if (freshConn != null && freshConn.getLastReceivedAt() == null && !txList.isEmpty()) {
+                            Optional<BankTransaction> latestMonzoTx = txList.stream()
+                                    .filter(t -> "MONZO".equalsIgnoreCase(t.getSource()) && t.getTimestamp() != null)
+                                    .findFirst();
+                            if (latestMonzoTx.isPresent()) {
+                                freshConn.setLastReceivedAt(latestMonzoTx.get().getTimestamp());
+                                monzoConnectionRepository.save(freshConn);
+                            }
+                        }
+
                         CompletionStage<List<PendingStatement>> pendingStage = (pendingStatementRepository != null)
                                 ? pendingStatementRepository.listPending(sup.getUserId())
                                 : CompletableFuture.completedFuture(Collections.emptyList());
@@ -1301,29 +1311,47 @@ public class BankSyncController extends Controller {
                 return CompletableFuture.completedFuture(ok(res));
             }
             MonzoConnection conn = connOpt.get();
-            return monzoBankSyncProvider.discoverLiveWebhooks(conn).thenApplyAsync(details -> {
-                com.fasterxml.jackson.databind.node.ObjectNode res = play.libs.Json.newObject();
-                res.put("connected", true);
-                res.put("hasActiveWebhooks", conn.hasActiveWebhooks() || !details.isEmpty());
-                res.put("webhookUrl", conn.getWebhookUrl());
-                res.put("webhookDebitId", conn.getWebhookDebitId());
-                res.put("webhookFlexId", conn.getWebhookFlexId());
-                if (conn.getLastReceivedAt() != null) {
-                    res.put("lastReceivedAt", conn.getLastReceivedAt());
-                    res.put("lastReceivedText", "Last received from Monzo " + helpers.TimeHelpers.timeAgo(conn.getLastReceivedAt()));
+            return monzoBankSyncProvider.discoverLiveWebhooks(conn).thenComposeAsync(details -> {
+                CompletionStage<MonzoConnection> connWithTxStage;
+                if (conn.getLastReceivedAt() == null) {
+                    connWithTxStage = bankTransactionRepository.listRecent(sup.getUserId(), 50).thenComposeAsync(txStream -> {
+                        Optional<BankTransaction> latestMonzo = txStream
+                                .filter(t -> "MONZO".equalsIgnoreCase(t.getSource()) && t.getTimestamp() != null)
+                                .findFirst();
+                        if (latestMonzo.isPresent()) {
+                            conn.setLastReceivedAt(latestMonzo.get().getTimestamp());
+                            return monzoConnectionRepository.save(conn);
+                        }
+                        return CompletableFuture.completedFuture(conn);
+                    }, ec.current());
                 } else {
-                    res.putNull("lastReceivedAt");
-                    res.put("lastReceivedText", "Awaiting first transaction event");
+                    connWithTxStage = CompletableFuture.completedFuture(conn);
                 }
-                com.fasterxml.jackson.databind.node.ArrayNode arr = res.putArray("webhooks");
-                for (MonzoBankSyncProvider.LiveWebhookDetail d : details) {
-                    com.fasterxml.jackson.databind.node.ObjectNode item = arr.addObject();
-                    item.put("accountId", d.accountId);
-                    item.put("accountLabel", d.accountLabel);
-                    item.put("webhookId", d.webhookId);
-                    item.put("url", d.url);
-                }
-                return ok(res);
+
+                return connWithTxStage.thenApplyAsync(updatedConn -> {
+                    com.fasterxml.jackson.databind.node.ObjectNode res = play.libs.Json.newObject();
+                    res.put("connected", true);
+                    res.put("hasActiveWebhooks", updatedConn.hasActiveWebhooks() || !details.isEmpty());
+                    res.put("webhookUrl", updatedConn.getWebhookUrl());
+                    res.put("webhookDebitId", updatedConn.getWebhookDebitId());
+                    res.put("webhookFlexId", updatedConn.getWebhookFlexId());
+                    if (updatedConn.getLastReceivedAt() != null) {
+                        res.put("lastReceivedAt", updatedConn.getLastReceivedAt());
+                        res.put("lastReceivedText", "Last received from Monzo " + helpers.TimeHelpers.timeAgo(updatedConn.getLastReceivedAt()));
+                    } else {
+                        res.putNull("lastReceivedAt");
+                        res.put("lastReceivedText", "Awaiting first transaction event");
+                    }
+                    com.fasterxml.jackson.databind.node.ArrayNode arr = res.putArray("webhooks");
+                    for (MonzoBankSyncProvider.LiveWebhookDetail d : details) {
+                        com.fasterxml.jackson.databind.node.ObjectNode item = arr.addObject();
+                        item.put("accountId", d.accountId);
+                        item.put("accountLabel", d.accountLabel);
+                        item.put("webhookId", d.webhookId);
+                        item.put("url", d.url);
+                    }
+                    return ok(res);
+                }, ec.current());
             }, ec.current());
         }, ec.current()).exceptionally(err -> {
             com.fasterxml.jackson.databind.node.ObjectNode res = play.libs.Json.newObject();

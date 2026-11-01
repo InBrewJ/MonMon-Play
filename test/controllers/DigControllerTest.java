@@ -91,14 +91,14 @@ public class DigControllerTest {
         DigController controller = new DigController(txRepo, connRepo, messagesApi, ec);
         injectSessionStore(controller, sessionStore);
 
-        Http.Request request = Helpers.fakeRequest("GET", "/dig").build();
+        Http.Request request = Helpers.fakeRequest("GET", "/monzo-dig").build();
         Result result = controller.index(request).toCompletableFuture().join();
 
         assertThat(result.status()).isEqualTo(200);
         String body = contentAsString(result);
-        assertThat(body).contains("Dig — Spending Heatmap");
-        assertThat(body).contains("Where You've Spent Your Money");
-        assertThat(body).contains("How You've Spent Your Money");
+        assertThat(body).contains("Monzo Dig — Monzo Spending Heatmap");
+        assertThat(body).contains("Where You've Spent on Monzo");
+        assertThat(body).contains("How You've Spent on Monzo");
         assertThat(body).contains("Monzo Connected");
         assertThat(body).contains("Tesco");
         assertThat(body).contains("Groceries");

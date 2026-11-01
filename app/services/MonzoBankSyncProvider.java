@@ -778,6 +778,30 @@ public class MonzoBankSyncProvider implements BankSyncService {
                                 b.setTimestamp(Instant.now().getEpochSecond());
                                 balanceSaves.add(balanceRepository.add(b).thenAccept(saved -> {}).toCompletableFuture());
                             }
+                            if (bankTransactionRepository != null) {
+                                final MonzoAccountInfo targetMonzo = matchedMonzo;
+                                final Account targetAcc = acc;
+                                balanceSaves.add(
+                                        fetchTransactions(conn.getUserId(), targetAcc.getId(), conn.getAccessToken(), targetMonzo.id, 89)
+                                                .exceptionally(txErr -> Collections.emptyList())
+                                                .thenCompose(txs -> {
+                                                    if (txs != null && !txs.isEmpty()) {
+                                                        long maxEpoch = txs.stream()
+                                                                .filter(t -> t.getTimestamp() != null)
+                                                                .mapToLong(BankTransaction::getTimestamp)
+                                                                .max()
+                                                                .orElse(Instant.now().getEpochSecond());
+                                                        if (conn.getLastReceivedAt() == null || maxEpoch > conn.getLastReceivedAt()) {
+                                                            conn.setLastReceivedAt(maxEpoch);
+                                                        }
+                                                        return bankTransactionRepository.saveAll(txs)
+                                                                .thenCompose(cnt -> monzoConnectionRepository.save(conn))
+                                                                .thenAccept(savedConn -> {});
+                                                    }
+                                                    return CompletableFuture.completedFuture((Void) null);
+                                                }).toCompletableFuture()
+                                );
+                            }
                             boolean whActive = webhookId != null && !webhookId.isEmpty();
                             boolean isTbl = acc.getLedgerMode() == Account.LedgerMode.TBL;
                             boolean working = rawBal != null && isTbl;
@@ -1395,25 +1419,48 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 }
                 final MonzoAccountInfo target = targetCandidate;
 
+                CompletableFuture<Integer> txSyncFuture = (bankTransactionRepository != null)
+                        ? fetchTransactions(account.getUserId(), account.getId(), conn.getAccessToken(), target.id, daysBack > 0 ? Math.min(daysBack, 89) : 89)
+                                .exceptionally(txErr -> Collections.emptyList())
+                                .thenCompose(txs -> {
+                                    if (txs != null && !txs.isEmpty()) {
+                                        long maxEpoch = txs.stream()
+                                                .filter(t -> t.getTimestamp() != null)
+                                                .mapToLong(BankTransaction::getTimestamp)
+                                                .max()
+                                                .orElse(Instant.now().getEpochSecond());
+                                        if (conn.getLastReceivedAt() == null || maxEpoch > conn.getLastReceivedAt()) {
+                                            conn.setLastReceivedAt(maxEpoch);
+                                        }
+                                        return bankTransactionRepository.saveAll(txs)
+                                                .thenCompose(cnt -> monzoConnectionRepository.save(conn).thenApply(c -> cnt));
+                                    }
+                                    return CompletableFuture.completedFuture(0);
+                                }).toCompletableFuture()
+                        : CompletableFuture.completedFuture(0);
+
                 if (balanceRepository != null) {
-                    return fetchBalance(conn.getAccessToken(), target.id).thenCompose(balVal -> {
-                        if (balVal != null) {
-                            float availableVal = convertToAvailableBalance(account, balVal);
-                            Balance bal = new Balance();
-                            bal.setUserId(account.getUserId());
-                            bal.setValue(availableVal);
-                            bal.setAccount(account);
-                            bal.setTimestamp(Instant.now().getEpochSecond());
-                            String msg = (account.getType() == Account.AccountType.CREDIT)
-                                    ? "Available balance updated (£" + String.format("%.2f", availableVal) + " available from limit £" + String.format("%.2f", account.getAvailableLimit()) + ") for " + account.getName() + "."
-                                    : "Balance refreshed (£" + String.format("%.2f", availableVal) + ") for " + account.getName() + ".";
-                            return balanceRepository.add(bal).thenApply(b ->
-                                    SyncResult.ok(1, msg + " Webhooks stream transactions automatically in real time."));
-                        }
-                        return CompletableFuture.completedFuture(SyncResult.ok(0, "Monzo connected. Transactions stream automatically via webhooks."));
-                    });
+                    return txSyncFuture.thenCompose(syncedTxCount ->
+                            fetchBalance(conn.getAccessToken(), target.id).thenCompose(balVal -> {
+                                if (balVal != null) {
+                                    float availableVal = convertToAvailableBalance(account, balVal);
+                                    Balance bal = new Balance();
+                                    bal.setUserId(account.getUserId());
+                                    bal.setValue(availableVal);
+                                    bal.setAccount(account);
+                                    bal.setTimestamp(Instant.now().getEpochSecond());
+                                    String msg = (account.getType() == Account.AccountType.CREDIT)
+                                            ? "Available balance updated (£" + String.format("%.2f", availableVal) + " available from limit £" + String.format("%.2f", account.getAvailableLimit()) + ") for " + account.getName() + "."
+                                            : "Balance refreshed (£" + String.format("%.2f", availableVal) + ") for " + account.getName() + ".";
+                                    return balanceRepository.add(bal).thenApply(b ->
+                                            SyncResult.ok(Math.max(1, syncedTxCount), msg + " Webhooks stream transactions automatically in real time."));
+                                }
+                                return CompletableFuture.completedFuture(SyncResult.ok(syncedTxCount, "Monzo connected. Transactions stream automatically via webhooks."));
+                            })
+                    );
                 }
-                return CompletableFuture.completedFuture(SyncResult.ok(0, "Monzo connected. Transactions stream automatically via webhooks."));
+                return txSyncFuture.thenApply(syncedTxCount ->
+                        SyncResult.ok(syncedTxCount, "Monzo connected. Transactions stream automatically via webhooks."));
             });
         }).exceptionally(err -> SyncResult.error(formatFriendlyMonzoError("Monzo error: " + err.getMessage(), null)));
     }
@@ -1444,20 +1491,42 @@ public class MonzoBankSyncProvider implements BankSyncService {
                                     a.getName().toLowerCase().contains("monzo")).findFirst().orElse(null);
                         }
                     }
-                    if (balanceRepository != null && matched != null) {
+                    if (matched != null) {
                         final Account targetAcc = matched;
-                        balFutures.add(fetchBalance(conn.getAccessToken(), mAcc.id).thenCompose(balVal -> {
-                            if (balVal != null) {
-                                float availableVal = convertToAvailableBalance(targetAcc, balVal);
-                                Balance bal = new Balance();
-                                bal.setUserId(userId);
-                                bal.setValue(availableVal);
-                                bal.setAccount(targetAcc);
-                                bal.setTimestamp(Instant.now().getEpochSecond());
-                                return balanceRepository.add(bal).thenAccept(b -> {});
-                            }
-                            return CompletableFuture.completedFuture((Void) null);
-                        }).toCompletableFuture());
+                        if (balanceRepository != null) {
+                            balFutures.add(fetchBalance(conn.getAccessToken(), mAcc.id).thenCompose(balVal -> {
+                                if (balVal != null) {
+                                    float availableVal = convertToAvailableBalance(targetAcc, balVal);
+                                    Balance bal = new Balance();
+                                    bal.setUserId(userId);
+                                    bal.setValue(availableVal);
+                                    bal.setAccount(targetAcc);
+                                    bal.setTimestamp(Instant.now().getEpochSecond());
+                                    return balanceRepository.add(bal).thenAccept(b -> {});
+                                }
+                                return CompletableFuture.completedFuture((Void) null);
+                            }).toCompletableFuture());
+                        }
+                        if (bankTransactionRepository != null) {
+                            balFutures.add(fetchTransactions(userId, targetAcc.getId(), conn.getAccessToken(), mAcc.id, daysBack > 0 ? Math.min(daysBack, 89) : 89)
+                                    .exceptionally(txErr -> Collections.emptyList())
+                                    .thenCompose(txs -> {
+                                        if (txs != null && !txs.isEmpty()) {
+                                            long maxEpoch = txs.stream()
+                                                    .filter(t -> t.getTimestamp() != null)
+                                                    .mapToLong(BankTransaction::getTimestamp)
+                                                    .max()
+                                                    .orElse(Instant.now().getEpochSecond());
+                                            if (conn.getLastReceivedAt() == null || maxEpoch > conn.getLastReceivedAt()) {
+                                                conn.setLastReceivedAt(maxEpoch);
+                                            }
+                                            return bankTransactionRepository.saveAll(txs)
+                                                    .thenCompose(cnt -> monzoConnectionRepository.save(conn))
+                                                    .thenAccept(c -> {});
+                                        }
+                                        return CompletableFuture.completedFuture((Void) null);
+                                    }).toCompletableFuture());
+                        }
                     }
                 }
 

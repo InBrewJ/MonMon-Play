@@ -137,7 +137,9 @@ GET     /api/bank/statement/:id/preview             controllers.BankSyncControll
 GET     /api/legmon/status                          controllers.BankSyncController.legmonStatus(req: Request)
 GET     /api/legmon/logs                            controllers.BankSyncController.legmonLogs(req: Request)
 
-# Dig (Monzo Geotagged Spending Heatmap & Histogram)
+# Monzo Dig (Monzo Geotagged Spending Heatmap & Histogram)
+GET     /monzo-dig                                  controllers.DigController.index(req: Request)
+GET     /api/monzo-dig/data                         controllers.DigController.apiData(req: Request)
 GET     /dig                                        controllers.DigController.index(req: Request)
 GET     /api/dig/data                               controllers.DigController.apiData(req: Request)
 

@@ -14,7 +14,7 @@
     else if (target == "networth" && path.startsWith("/netWorth")) "active"
     else if (target == "nommon" && path.startsWith("/nommon")) "active"
     else if (target == "bank" && path.startsWith("/bank")) "active"
-    else if (target == "dig" && path.startsWith("/dig")) "active"
+    else if (target == "dig" && (path.startsWith("/monzo-dig") || path.startsWith("/dig"))) "active"
     else if (target == "settings" && path.startsWith("/settings")) "active"
     else ""
 }
@@ -30,7 +30,7 @@
     else if (isActive("networth") != "") ("Net Worth", "fas fa-landmark", "/netWorth")
     else if (isActive("nommon") != "") ("NomMon", "fas fa-utensils", "/nommon")
     else if (isActive("bank") != "") ("Bank Sync", "fas fa-exchange-alt", "/bank")
-    else if (isActive("dig") != "") ("Dig", "fas fa-map-marked-alt", "/dig")
+    else if (isActive("dig") != "") ("Monzo Dig", "fas fa-map-marked-alt", "/monzo-dig")
     else if (isActive("settings") != "") ("Settings", "fas fa-cog", "/settings")
     else ("Menu", "fas fa-compass", "/spog")
 }
@@ -69,7 +69,7 @@
             <li class="drawer-crumb @isActive("networth")"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
             <li class="drawer-crumb @isActive("nommon")"><a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a></li>
             <li class="drawer-crumb @isActive("bank")"><a href="/bank"><i class="fas fa-exchange-alt"></i> Bank Sync</a></li>
-            <li class="drawer-crumb @isActive("dig")"><a href="/dig"><i class="fas fa-map-marked-alt"></i> Dig</a></li>
+            <li class="drawer-crumb @isActive("dig")"><a href="/monzo-dig"><i class="fas fa-map-marked-alt"></i> Monzo Dig</a></li>
             <li class="drawer-crumb @isActive("settings")"><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
             <li class="drawer-divider"></li>
             <li class="drawer-crumb drawer-logout"><a href="/centralLogout"><i class="fas fa-sign-out-alt"></i> Logout</a></li>

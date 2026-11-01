@@ -819,4 +819,146 @@ public class RealDatabaseSystemTest {
         assertPositionsInPostgres(userId, planId,
                 "Goal 1", "Goal 2", "Urgent P3 Goal", "Goal 3", "Goal 4", "Goal 5", "Goal 6", "Appended Tail Goal");
     }
+
+    @Test
+    public void test09_MonzoTransactionsPopulateDigHistogramAndBankSyncStatusInPostgres() throws Exception {
+        String userId = "systest_monzo_dig_and_bank_user";
+
+        // 1. Create Monzo Debit and Monzo Flex TBL accounts in real PostgreSQL
+        Account monzoDebit = new Account();
+        monzoDebit.setUserId(userId);
+        monzoDebit.setName("Monzo Current Account");
+        monzoDebit.setType(Account.AccountType.DEBIT);
+        monzoDebit.setLedgerMode(Account.LedgerMode.TBL);
+        monzoDebit.setAvailableLimit(0f);
+        monzoDebit = accountRepo.add(monzoDebit).toCompletableFuture().get();
+
+        Account monzoFlex = new Account();
+        monzoFlex.setUserId(userId);
+        monzoFlex.setName("Monzo Flex Credit Card");
+        monzoFlex.setType(Account.AccountType.CREDIT);
+        monzoFlex.setLedgerMode(Account.LedgerMode.TBL);
+        monzoFlex.setAvailableLimit(2000f);
+        monzoFlex = accountRepo.add(monzoFlex).toCompletableFuture().get();
+
+        // 2. Create a newly authorized OAuth MonzoConnection (with lastReceivedAt initially null)
+        MonzoConnection conn = new MonzoConnection(
+                userId,
+                "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.live_oauth_token",
+                "monzo_refresh_token_live",
+                "user_0000B8tCnLud8KMMK4JwYr",
+                System.currentTimeMillis() + 21600_000L
+        );
+        conn.setClientId("oauth2client_0000BC0ggM7gRqWQBcKk1k");
+        conn.setClientSecret("mnzconf.W4NDYFrM/v72s7LBDN8p9Gdv3gqVtDgTBND66fIym8Y=");
+        conn.setWebhookDebitId("webhook_0000debit");
+        conn.setWebhookFlexId("webhook_0000flex");
+        conn.setWebhookUrl("https://monmon.dryark.uk/api/monzo/webhook?userId=" + userId);
+        monzoConnRepo.save(conn).toCompletableFuture().get();
+
+        // 3. Save geotagged Monzo transactions into real PostgreSQL (including Electric Tobacconist £24.99)
+        BankTransactionRepository txRepo = app.injector().instanceOf(BankTransactionRepository.class);
+        long nowSec = System.currentTimeMillis() / 1000L;
+
+        BankTransaction tx1 = new BankTransaction(
+                userId, monzoDebit.getId(), "tx_monzo_et_01", nowSec - 3600, "2026-10-31",
+                24.99f, "Electric Tobacconist", "Electric Tobacconist", "shopping", "MONZO", false);
+        tx1.setLatitude(51.7527);
+        tx1.setLongitude(-0.4722);
+        tx1.setMerchantAddress("Hemel Hempstead HP2 7UE, United Kingdom");
+        tx1.setMerchantEmoji("🔌");
+
+        BankTransaction tx2 = new BankTransaction(
+                userId, monzoFlex.getId(), "tx_monzo_apple_02", nowSec - 7200, "2026-10-30",
+                175.01f, "Apple Store", "Apple Store", "shopping", "MONZO", false);
+        tx2.setLatitude(55.9533);
+        tx2.setLongitude(-3.1883);
+        tx2.setMerchantAddress("Princes St, Edinburgh EH2 2AN, United Kingdom");
+        tx2.setMerchantEmoji("💻");
+
+        BankTransaction tx3 = new BankTransaction(
+                userId, monzoDebit.getId(), "tx_monzo_milkman_03", nowSec - 10800, "2026-10-29",
+                4.20f, "The Milkman Coffee", "The Milkman Coffee", "eating_out", "MONZO", false);
+        tx3.setLatitude(55.9508);
+        tx3.setLongitude(-3.1895);
+        tx3.setMerchantAddress("7 Cockburn St, Edinburgh EH1 1BP, United Kingdom");
+        tx3.setMerchantEmoji("☕");
+
+        BankTransaction tx4 = new BankTransaction(
+                userId, monzoDebit.getId(), "tx_monzo_dishoom_04", nowSec - 14400, "2026-10-28",
+                45.80f, "Dishoom Edinburgh", "Dishoom Edinburgh", "eating_out", "MONZO", false);
+        tx4.setLatitude(55.9542);
+        tx4.setLongitude(-3.1918);
+        tx4.setMerchantAddress("3a St Andrew Square, Edinburgh EH2 2BD, United Kingdom");
+        tx4.setMerchantEmoji("🍛");
+
+        BankTransaction tx5 = new BankTransaction(
+                userId, monzoDebit.getId(), "tx_monzo_waitrose_05", nowSec - 18000, "2026-10-27",
+                50.00f, "Waitrose & Partners", "Waitrose & Partners", "groceries", "MONZO", false);
+        tx5.setLatitude(55.9585);
+        tx5.setLongitude(-3.2102);
+        tx5.setMerchantAddress("Comely Bank Rd, Edinburgh EH4 1AW, United Kingdom");
+        tx5.setMerchantEmoji("🛒");
+
+        Integer savedCount = txRepo.saveAll(Arrays.asList(tx1, tx2, tx3, tx4, tx5)).toCompletableFuture().get();
+        assertThat(savedCount).isEqualTo(5);
+
+        // 4. Verify /dig PostgreSQL queries: findGeotaggedTransactions & getCategorySpendingHistogram
+        List<BankTransaction> geoTxs = txRepo.findGeotaggedTransactions(userId, 2000).toCompletableFuture().get();
+        assertThat(geoTxs).hasSize(5);
+
+        List<viewModels.CategorySpend> histogram = txRepo.getCategorySpendingHistogram(userId).toCompletableFuture().get();
+        assertThat(histogram).isNotEmpty();
+        assertThat(histogram).hasSize(3);
+
+        // Shopping = 24.99 + 175.01 = 200.00 (66.7%), Eating Out = 4.20 + 45.80 = 50.00 (16.7%), Groceries = 50.00 (16.7%)
+        assertThat(histogram.get(0).getFormattedCategory()).isEqualTo("Shopping");
+        assertThat(histogram.get(0).getCount()).isEqualTo(2L);
+        assertThat(histogram.get(0).getTotalSpent()).isCloseTo(200.00, org.assertj.core.data.Offset.offset(0.05));
+        assertThat(histogram.get(0).getPercentage()).isCloseTo(66.7, org.assertj.core.data.Offset.offset(0.2));
+
+        // 5. Verify DigViewModel and rendered /dig page have non-zero Total Monzo Spent (£300.00) and Top Category "Shopping"
+        viewModels.DigViewModel digVm = new viewModels.DigViewModel(geoTxs, histogram, true, false, 2000);
+        assertThat(digVm.getTotalGeotagged()).isEqualTo(5);
+        assertThat(digVm.getTotalSpent()).isCloseTo(300.00, org.assertj.core.data.Offset.offset(0.05));
+        assertThat(digVm.getHistogram().get(0).getFormattedCategory()).isEqualTo("Shopping");
+
+        controllers.DigController digController = app.injector().instanceOf(controllers.DigController.class);
+        SessionStore mockSessionStore = mock(SessionStore.class);
+        CommonProfile profile = new CommonProfile();
+        profile.setId(userId);
+        profile.addAttribute("preferred_username", userId);
+        LinkedHashMap<String, UserProfile> profiles = new LinkedHashMap<>();
+        profiles.put("OidcClient", profile);
+        when(mockSessionStore.get(any(), eq("pac4jUserProfiles"))).thenReturn(Optional.of(profiles));
+        when(mockSessionStore.get(any(), eq("user_access_status"))).thenReturn(Optional.of(UserAccess.AccessStatus.APPROVED));
+
+        Field digSessionField = controllers.DigController.class.getDeclaredField("playSessionStore");
+        digSessionField.setAccessible(true);
+        digSessionField.set(digController, mockSessionStore);
+
+        Http.Request digReq = Helpers.fakeRequest("GET", "/monzo-dig").build();
+        Result digRes = digController.index(digReq).toCompletableFuture().get();
+        assertThat(digRes.status()).isEqualTo(200);
+        String digHtml = contentAsString(digRes);
+        assertThat(digHtml).contains("Monzo Dig — Monzo Spending Heatmap");
+        assertThat(digHtml).contains("Where You've Spent on Monzo");
+        assertThat(digHtml).contains("How You've Spent on Monzo");
+        assertThat(digHtml).contains("£300.00");
+        assertThat(digHtml).contains("Shopping");
+        assertThat(digHtml).contains("Electric Tobacconist");
+
+        // 6. Verify /bank controller populates lastReceivedAt from existing Monzo transactions so it does NOT say "Awaiting first transaction event"
+        controllers.BankSyncController bankController = app.injector().instanceOf(controllers.BankSyncController.class);
+        Field bankSessionField = controllers.BankSyncController.class.getDeclaredField("playSessionStore");
+        bankSessionField.setAccessible(true);
+        bankSessionField.set(bankController, mockSessionStore);
+
+        Http.Request bankReq = play.api.test.CSRFTokenHelper.addCSRFToken(Helpers.fakeRequest("GET", "/bank")).build();
+        Result bankRes = bankController.index(bankReq).toCompletableFuture().get();
+        assertThat(bankRes.status()).isEqualTo(200);
+        String bankHtml = contentAsString(bankRes);
+        assertThat(bankHtml).contains("Last received from Monzo");
+        assertThat(bankHtml).doesNotContain("Awaiting first transaction event");
+    }
 }

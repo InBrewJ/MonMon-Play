@@ -136,6 +136,10 @@
 
         allTransactions = rawPayload.transactions || [];
         categoryData = rawPayload.histogram || [];
+        if (categoryData.length === 0 && allTransactions.length > 0) {
+            categoryData = buildCategoryHistogram(allTransactions);
+            categoryData.sort(function(a, b) { return b.total - a.total; });
+        }
         liveTransactions = allTransactions.slice(0);
         liveCategoryData = categoryData.slice(0);
 
@@ -145,6 +149,24 @@
         var statCategory = document.getElementById('dig-stat-category');
         var spotsCount = document.getElementById('dig-spots-count');
         var catSelect = document.getElementById('dig-category-select');
+
+        if (statTotal && statTotal.textContent.trim() === '£0.00' && categoryData.length > 0) {
+            var computedTotal = 0;
+            for (var tIdx = 0; tIdx < categoryData.length; tIdx++) {
+                computedTotal += categoryData[tIdx].total;
+            }
+            statTotal.textContent = '£' + computedTotal.toFixed(2);
+        }
+        if (statCategory && statCategory.textContent.trim() === 'None' && categoryData.length > 0) {
+            statCategory.textContent = categoryData[0].category;
+        }
+        if (catSelect && catSelect.options.length <= 1 && categoryData.length > 0) {
+            var optHtml = '<option value="ALL">All Categories</option>';
+            for (var cIdx = 0; cIdx < categoryData.length; cIdx++) {
+                optHtml += '<option value="' + categoryData[cIdx].rawCategory + '">' + categoryData[cIdx].category + ' (' + categoryData[cIdx].count + ')</option>';
+            }
+            catSelect.innerHTML = optHtml;
+        }
 
         if (statTotal) originalStatTotal = statTotal.textContent;
         if (statGeotagged) originalStatGeotagged = statGeotagged.textContent;

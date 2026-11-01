@@ -1,7 +1,7 @@
 @import helper._
 @(vm: viewModels.DigViewModel)(implicit request: play.mvc.Http.Request, messages: play.i18n.Messages)
 
-@main("MonMon - Dig (Spending Heatmap & Histogram)") {
+@main("MonMon - Monzo Dig (Monzo Spending Heatmap & Histogram)") {
 
 @partials.header()
 @partials.navbar()
@@ -116,10 +116,10 @@
         <div>
             <h1 style="margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-primary, #1e293b);">
                 <i class="fas fa-search-location" style="color: var(--primary); margin-right: 8px;"></i>
-                Dig — Spending Heatmap &amp; Breakdown
+                Monzo Dig — Monzo Spending Heatmap &amp; Breakdown
             </h1>
             <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.95rem;">
-                Visualise <strong>WHERE</strong> and <strong>HOW</strong> you have spent your money across your Monzo accounts.
+                Exclusively for your <strong>Monzo</strong> accounts (Current &amp; Monzo Flex) — visualise <strong>WHERE</strong> and <strong>HOW</strong> you have spent your money on Monzo.
             </p>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
@@ -199,7 +199,7 @@
             <div style="display: flex; align-items: center; gap: 10px;">
                 <h2 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
                     <i class="fas fa-fire-alt" style="color: #ef4444; margin-right: 6px;"></i>
-                    Where You've Spent Your Money
+                    Where You've Spent on Monzo
                 </h2>
                 <span id="dig-spots-count" style="font-size: 0.8rem; color: var(--text-muted);">
                     (@vm.getTotalGeotagged geotagged spots)
@@ -255,10 +255,10 @@
             <div>
                 <h2 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
                     <i class="fas fa-chart-bar" style="color: var(--primary); margin-right: 6px;"></i>
-                    How You've Spent Your Money — Transaction Types
+                    How You've Spent on Monzo — Transaction Categories
                 </h2>
                 <p style="margin: 2px 0 0 0; color: var(--text-muted); font-size: 0.85rem;">
-                    Categorical breakdown from your Monzo accounts. Click any category row to filter and focus the heatmap above.
+                    Categorical breakdown exclusively from your Monzo accounts. Click any category row to filter and focus the Monzo heatmap above.
                 </p>
             </div>
             <div class="hist-btn-group">

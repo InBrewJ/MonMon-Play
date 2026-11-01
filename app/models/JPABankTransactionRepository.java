@@ -251,7 +251,7 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                 List<BankTransaction> list = em.createQuery(
                         "select t from BankTransaction t where t.userId = :userId " +
                                 "and t.latitude is not null and t.longitude is not null and t.amount > 0 " +
-                                "and (t.source = 'MONZO' or t.accountId in (select a.id from Account a where a.userId = :userId and lower(a.name) like '%monzo%')) " +
+                                "and (t.source = 'MONZO' or t.accountId in (select a.id from Account a where a.userId = :userId and (lower(a.name) like '%monzo%' or lower(a.name) like '%flex%'))) " +
                                 "order by t.timestamp desc",
                         BankTransaction.class)
                         .setParameter("userId", userId)
@@ -281,15 +281,17 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
         return supplyAsync(() -> wrap(em -> {
             List<viewModels.CategorySpend> results = new ArrayList<>();
             try {
-                // Heavy aggregation preferred in PostgreSQL: native window function for percentage and totals
-                String sql = "SELECT COALESCE(NULLIF(TRIM(t.category), ''), 'General') as cat, " +
-                        "COUNT(*) as cnt, " +
-                        "CAST(COALESCE(SUM(t.amount), 0.0) AS DOUBLE PRECISION) as total_spent, " +
-                        "CAST(COALESCE(AVG(t.amount), 0.0) AS DOUBLE PRECISION) as avg_spent, " +
-                        "CAST(ROUND((COALESCE(SUM(t.amount), 0.0) / NULLIF(SUM(SUM(t.amount)) OVER (), 0) * 100)::numeric, 1) AS DOUBLE PRECISION) as pct " +
+                // Heavy aggregation in PostgreSQL: native window function for percentage and totals.
+                // Note: Avoid PostgreSQL '::numeric' shorthand inside Hibernate createNativeQuery because Hibernate parses ':numeric' as a named parameter.
+                // Also use exact Hibernate-mapped PostgreSQL column names: bank_transaction.userid, bank_transaction.accountid, and account.userid.
+                String sql = "SELECT COALESCE(NULLIF(TRIM(t.category), ''), 'General') AS cat, " +
+                        "COUNT(*) AS cnt, " +
+                        "CAST(COALESCE(SUM(t.amount), 0.0) AS DOUBLE PRECISION) AS total_spent, " +
+                        "CAST(COALESCE(AVG(t.amount), 0.0) AS DOUBLE PRECISION) AS avg_spent, " +
+                        "CAST(ROUND(CAST(COALESCE(SUM(t.amount), 0.0) / NULLIF(SUM(SUM(t.amount)) OVER (), 0) * 100 AS NUMERIC), 1) AS DOUBLE PRECISION) AS pct " +
                         "FROM bank_transaction t " +
-                        "WHERE (t.user_id = :userId OR t.\"userId\" = :userId) AND t.amount > 0 " +
-                        "AND (t.source = 'MONZO' OR t.account_id IN (SELECT a.id FROM account a WHERE (a.user_id = :userId OR a.\"userId\" = :userId) AND LOWER(a.name) LIKE '%monzo%')) " +
+                        "WHERE t.userid = :userId AND t.amount > 0 " +
+                        "AND (t.source = 'MONZO' OR t.accountid IN (SELECT a.id FROM account a WHERE a.userid = :userId AND (LOWER(a.name) LIKE '%monzo%' OR LOWER(a.name) LIKE '%flex%'))) " +
                         "GROUP BY COALESCE(NULLIF(TRIM(t.category), ''), 'General') " +
                         "ORDER BY total_spent DESC";
 
@@ -298,13 +300,13 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
                         .getResultList();
 
                 if (rows.isEmpty()) {
-                    String fallbackSql = "SELECT COALESCE(NULLIF(TRIM(t.category), ''), 'General') as cat, " +
-                            "COUNT(*) as cnt, " +
-                            "CAST(COALESCE(SUM(t.amount), 0.0) AS DOUBLE PRECISION) as total_spent, " +
-                            "CAST(COALESCE(AVG(t.amount), 0.0) AS DOUBLE PRECISION) as avg_spent, " +
-                            "CAST(ROUND((COALESCE(SUM(t.amount), 0.0) / NULLIF(SUM(SUM(t.amount)) OVER (), 0) * 100)::numeric, 1) AS DOUBLE PRECISION) as pct " +
+                    String fallbackSql = "SELECT COALESCE(NULLIF(TRIM(t.category), ''), 'General') AS cat, " +
+                            "COUNT(*) AS cnt, " +
+                            "CAST(COALESCE(SUM(t.amount), 0.0) AS DOUBLE PRECISION) AS total_spent, " +
+                            "CAST(COALESCE(AVG(t.amount), 0.0) AS DOUBLE PRECISION) AS avg_spent, " +
+                            "CAST(ROUND(CAST(COALESCE(SUM(t.amount), 0.0) / NULLIF(SUM(SUM(t.amount)) OVER (), 0) * 100 AS NUMERIC), 1) AS DOUBLE PRECISION) AS pct " +
                             "FROM bank_transaction t " +
-                            "WHERE (t.user_id = :userId OR t.\"userId\" = :userId) AND t.amount > 0 " +
+                            "WHERE t.userid = :userId AND t.amount > 0 " +
                             "GROUP BY COALESCE(NULLIF(TRIM(t.category), ''), 'General') " +
                             "ORDER BY total_spent DESC";
                     rows = em.createNativeQuery(fallbackSql)
@@ -323,24 +325,39 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
             } catch (Exception e) {
                 try {
                     List<Object[]> jpqlRows = em.createQuery(
-                            "select coalesce(nullif(trim(t.category), ''), 'General'), count(t), coalesce(sum(t.amount), 0.0), coalesce(avg(t.amount), 0.0) " +
+                            "select t.category, count(t), coalesce(sum(t.amount), 0.0) " +
                                     "from BankTransaction t where t.userId = :userId and t.amount > 0 " +
-                                    "group by coalesce(nullif(trim(t.category), ''), 'General') " +
-                                    "order by coalesce(sum(t.amount), 0.0) desc")
+                                    "and (t.source = 'MONZO' or t.accountId in (select a.id from Account a where a.userId = :userId and (lower(a.name) like '%monzo%' or lower(a.name) like '%flex%'))) " +
+                                    "group by t.category")
                             .setParameter("userId", userId)
                             .getResultList();
+                    if (jpqlRows.isEmpty()) {
+                        jpqlRows = em.createQuery(
+                                "select t.category, count(t), coalesce(sum(t.amount), 0.0) " +
+                                        "from BankTransaction t where t.userId = :userId and t.amount > 0 " +
+                                        "group by t.category")
+                                .setParameter("userId", userId)
+                                .getResultList();
+                    }
+                    Map<String, long[]> counts = new LinkedHashMap<>();
+                    Map<String, double[]> totals = new LinkedHashMap<>();
                     double grandTotal = 0.0;
                     for (Object[] r : jpqlRows) {
-                        grandTotal += r[2] != null ? ((Number) r[2]).doubleValue() : 0.0;
+                        String rawCat = (r[0] != null && !r[0].toString().trim().isEmpty()) ? r[0].toString().trim() : "General";
+                        long c = r[1] != null ? ((Number) r[1]).longValue() : 0L;
+                        double tot = r[2] != null ? ((Number) r[2]).doubleValue() : 0.0;
+                        counts.computeIfAbsent(rawCat, k -> new long[1])[0] += c;
+                        totals.computeIfAbsent(rawCat, k -> new double[1])[0] += tot;
+                        grandTotal += tot;
                     }
-                    for (Object[] r : jpqlRows) {
-                        String cat = r[0] != null ? r[0].toString() : "General";
-                        long cnt = r[1] != null ? ((Number) r[1]).longValue() : 0L;
-                        double total = r[2] != null ? ((Number) r[2]).doubleValue() : 0.0;
-                        double avg = r[3] != null ? ((Number) r[3]).doubleValue() : 0.0;
+                    for (String cat : totals.keySet()) {
+                        long cnt = counts.get(cat)[0];
+                        double total = totals.get(cat)[0];
+                        double avg = cnt > 0 ? total / cnt : 0.0;
                         double pct = grandTotal > 0 ? (Math.round((total / grandTotal * 100.0) * 10.0) / 10.0) : 0.0;
                         results.add(new viewModels.CategorySpend(cat, cnt, total, avg, pct));
                     }
+                    results.sort((a, b) -> Double.compare(b.getTotalSpent(), a.getTotalSpent()));
                 } catch (Exception ignored) {
                 }
             }
