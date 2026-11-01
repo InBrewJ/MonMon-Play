@@ -28,7 +28,7 @@ public class HistoricSpentCalculator {
             return Collections.emptyList();
         }
         return allAccounts.stream()
-                .filter(a -> a != null && a.getType() != Account.AccountType.PENSION && a.getType() != Account.AccountType.LOAN)
+                .filter(a -> a != null && !a.isArchived() && a.getType() != Account.AccountType.PENSION && a.getType() != Account.AccountType.LOAN)
                 .collect(Collectors.toList());
     }
 
@@ -245,6 +245,9 @@ public class HistoricSpentCalculator {
             List<AccountSpentItem> accountItems = new ArrayList<>();
 
             for (Account acc : ledgerAccounts) {
+                if (acc == null || acc.isArchived()) {
+                    continue;
+                }
                 List<Balance> valid = getValidBalances(acc);
                 if (valid.isEmpty()) {
                     continue;
@@ -268,10 +271,6 @@ public class HistoricSpentCalculator {
                     accSpent = round2(tblSpentByAccount.get(acc.getId()));
                 } else {
                     accSpent = calculateAccountNetSpent(acc, cycleStartSec, effectiveEndSec, startBal, endBal);
-                }
-
-                if (acc.isArchived() && startBal == 0.0 && endBal == 0.0 && accSpent == 0.0) {
-                    continue;
                 }
 
                 boolean isSavings = acc.getType() == Account.AccountType.SHORT_TERM_SAVINGS
@@ -692,7 +691,7 @@ public class HistoricSpentCalculator {
         if (pot == null || pot.accounts == null || pot.accounts.isEmpty()) {
             if (allAccounts != null) {
                 return allAccounts.stream()
-                        .filter(a -> a.getType() == Account.AccountType.DEBIT)
+                        .filter(a -> a != null && !a.isArchived() && a.getType() == Account.AccountType.DEBIT)
                         .collect(Collectors.toList());
             }
             return Collections.emptyList();
@@ -711,10 +710,9 @@ public class HistoricSpentCalculator {
         for (Account pa : pot.accounts) {
             if (pa != null) {
                 Long id = pa.getId();
-                if (id != null && accountById.containsKey(id)) {
-                    resolved.add(accountById.get(id));
-                } else {
-                    resolved.add(pa);
+                Account target = (id != null && accountById.containsKey(id)) ? accountById.get(id) : pa;
+                if (target != null && !target.isArchived()) {
+                    resolved.add(target);
                 }
             }
         }

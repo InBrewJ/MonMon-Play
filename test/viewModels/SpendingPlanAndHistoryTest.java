@@ -849,4 +849,45 @@ public class SpendingPlanAndHistoryTest {
         assertThat(sepSnaps.get(0).isLastPot()).isTrue();
         assertThat(sepSnaps.get(0).isIntermediaryPot()).isFalse();
     }
+
+    @Test
+    public void softDeletedAccountsAreExcludedFromAccountListUnderEachHeadingOnHistoricSpent() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account activeAcc = debit(1L, "Active Current");
+        activeAcc.balances.add(bal(activeAcc, 1000f, LocalDate.of(2026, 10, 1), 9));
+        activeAcc.balances.add(bal(activeAcc, 800f, LocalDate.of(2026, 10, 15), 9)); // Spent 200
+
+        Account archivedAcc = debit(2L, "Closed Old Account");
+        archivedAcc.setArchived(true);
+        archivedAcc.balances.add(bal(archivedAcc, 500f, LocalDate.of(2026, 10, 1), 9));
+        archivedAcc.balances.add(bal(archivedAcc, 500f, LocalDate.of(2026, 10, 15), 9));
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(),
+                List.of(activeAcc, archivedAcc),
+                Collections.emptyList(),
+                payday,
+                today,
+                UK,
+                500f
+        );
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        assertThat(cycle).isNotNull();
+
+        // In the Account list under this heading, only non-soft-deleted accounts are shown
+        List<AccountSpentItem> breakdowns = cycle.getAccountBreakdowns();
+        assertThat(breakdowns).hasSize(1);
+        assertThat(breakdowns.get(0).getAccountName()).isEqualTo("Active Current");
+
+        // The soft-deleted account must NOT be present
+        assertThat(breakdowns.stream().noneMatch(b -> "Closed Old Account".equals(b.getAccountName()))).isTrue();
+
+        // Total balances and spend reflect only the non-soft-deleted accounts
+        assertThat(cycle.getStartingTotalBalance()).isEqualTo(1000.0);
+        assertThat(cycle.getEndingTotalBalance()).isEqualTo(800.0);
+        assertThat(cycle.getTotalSpent()).isEqualTo(200.0);
+    }
 }
