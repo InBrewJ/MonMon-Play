@@ -108,6 +108,113 @@
         cursor: pointer;
         user-select: none;
     }
+    .dig-timeslice-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 14px 18px;
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 20px;
+    }
+    .dig-timeslice-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    .dig-timeslice-title {
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: var(--text-main);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .dig-timeslice-dates {
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--card-bg-subtle);
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+    }
+    .dig-timeslice-group {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    @@media (min-width: 768px) {
+        .dig-timeslice-group {
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+    }
+    .dig-timeslice-btn {
+        background: var(--card-bg-subtle);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius-sm);
+        padding: 10px 14px;
+        color: var(--text-main);
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: relative;
+        text-align: left;
+        min-height: 52px;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .dig-timeslice-btn:hover {
+        background: var(--table-hover);
+        border-color: var(--primary);
+    }
+    .dig-timeslice-btn.active {
+        background: var(--primary);
+        color: #ffffff !important;
+        border-color: var(--primary);
+        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+    }
+    .dig-timeslice-btn .dig-btn-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .dig-timeslice-btn .dig-btn-label {
+        font-weight: 700;
+        font-size: 0.88rem;
+        line-height: 1.2;
+    }
+    .dig-timeslice-btn .dig-btn-sub {
+        font-size: 0.72rem;
+        opacity: 0.75;
+    }
+    .dig-timeslice-btn.active .dig-btn-sub {
+        color: rgba(255, 255, 255, 0.85);
+    }
+    .dig-timeslice-btn .dig-btn-count {
+        background: var(--card-bg);
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        margin-left: 8px;
+        white-space: nowrap;
+    }
+    .dig-timeslice-btn.active .dig-btn-count {
+        background: rgba(255, 255, 255, 0.22);
+        color: #ffffff;
+        border-color: transparent;
+    }
 </style>
 
 <div class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
@@ -147,7 +254,9 @@
     <!-- Quick Stat Cards -->
     <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
         <div class="dig-stat-card">
-            <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Total Monzo Spent</span>
+            <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">
+                Total Monzo Spent <span id="dig-stat-period-badge" style="text-transform: none; font-size: 0.75rem; color: var(--primary); font-weight: 700;">(This Month)</span>
+            </span>
             <span id="dig-stat-total" style="font-size: 1.6rem; font-weight: 800; color: var(--text-main); font-family: 'Plus Jakarta Sans', sans-serif;">
                 £@String.format("%.2f", vm.getTotalSpent)
             </span>
@@ -193,6 +302,50 @@
         </div>
     </div>
 
+    <!-- Time Slicing Filter Bar (Above Map) -->
+    <div id="dig-timeslice-card" class="dig-timeslice-card" style="@if(!vm.hasData || vm.getTotalGeotagged == 0){display: none;}">
+        <div class="dig-timeslice-header">
+            <div class="dig-timeslice-title">
+                <i class="fas fa-history" style="color: var(--primary);"></i>
+                <span>Spending Time Slice</span>
+            </div>
+            <div id="dig-active-period-dates" class="dig-timeslice-dates">
+                <i class="far fa-calendar-alt"></i>
+                <span id="dig-period-dates-text">Showing: @vm.getThisMonthDateRangeLabel</span>
+            </div>
+        </div>
+        <div class="dig-timeslice-group" role="group" aria-label="Transaction Time Slicing">
+            <button type="button" class="dig-timeslice-btn active" data-slice="this_month" id="btn-slice-this-month" title="Since last payday (@vm.getThisMonthStartDate) up to today">
+                <div class="dig-btn-content">
+                    <span class="dig-btn-label">This Month</span>
+                    <span class="dig-btn-sub">Since Payday</span>
+                </div>
+                <span class="dig-btn-count" id="count-slice-this-month">0</span>
+            </button>
+            <button type="button" class="dig-timeslice-btn" data-slice="last_2_cycles" id="btn-slice-last-2" title="Last 2 pay cycles (@vm.getLast2CyclesDateRangeLabel)">
+                <div class="dig-btn-content">
+                    <span class="dig-btn-label">Last 2 Pay Cycles</span>
+                    <span class="dig-btn-sub">2 Cycles</span>
+                </div>
+                <span class="dig-btn-count" id="count-slice-last-2">0</span>
+            </button>
+            <button type="button" class="dig-timeslice-btn" data-slice="last_6_cycles" id="btn-slice-last-6" title="Last 6 pay cycles (@vm.getLast6CyclesDateRangeLabel)">
+                <div class="dig-btn-content">
+                    <span class="dig-btn-label">Last 6 Pay Cycles</span>
+                    <span class="dig-btn-sub">6 Cycles</span>
+                </div>
+                <span class="dig-btn-count" id="count-slice-last-6">0</span>
+            </button>
+            <button type="button" class="dig-timeslice-btn" data-slice="all" id="btn-slice-all" title="All Monzo transactions ever recorded">
+                <div class="dig-btn-content">
+                    <span class="dig-btn-label">All</span>
+                    <span class="dig-btn-sub">All-Time</span>
+                </div>
+                <span class="dig-btn-count" id="count-slice-all">@vm.getTotalGeotagged</span>
+            </button>
+        </div>
+    </div>
+
     <!-- Map Card (WHERE you spent your money) -->
     <div id="dig-map-card" class="dig-map-card" style="@if(!vm.hasData || vm.getTotalGeotagged == 0){display: none;}">
         <div class="dig-map-header">
@@ -230,6 +383,27 @@
 
                 <button id="btn-reset-view" type="button" class="w3-button w3-round w3-small" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; padding: 4px 10px;">
                     <i class="fas fa-compress-arrows-alt"></i> Reset View
+                </button>
+            </div>
+        </div>
+
+        <!-- Empty time slice notice (when active slice has 0 transactions) -->
+        <div id="dig-timeslice-empty-banner" style="display: none; padding: 28px 20px; text-align: center; background: var(--card-bg-subtle); border-bottom: 1px solid var(--border-color);">
+            <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: var(--primary-light); color: var(--primary); font-size: 1.2rem; margin-bottom: 10px;">
+                <i class="fas fa-calendar-times"></i>
+            </div>
+            <h3 style="margin: 0 0 6px 0; font-size: 1.05rem; font-weight: 700; color: var(--text-main);">
+                No Monzo Transactions in <span id="dig-empty-slice-name">This Month</span>
+            </h3>
+            <p id="dig-empty-slice-desc" style="margin: 0 0 14px 0; font-size: 0.88rem; color: var(--text-muted); max-width: 520px; margin-left: auto; margin-right: auto;">
+                No spending with merchant locations was recorded for this period. Try expanding the time slice.
+            </p>
+            <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+                <button type="button" class="w3-button w3-round w3-small" onclick="document.getElementById('btn-slice-last-2').click()" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; padding: 6px 14px; cursor: pointer;">
+                    <i class="fas fa-history" style="color: var(--primary); margin-right: 4px;"></i> View Last 2 Pay Cycles
+                </button>
+                <button type="button" class="w3-button w3-round w3-small" onclick="document.getElementById('btn-slice-all').click()" style="background: var(--primary); color: #ffffff; font-weight: 600; padding: 6px 14px; cursor: pointer;">
+                    <i class="fas fa-globe" style="margin-right: 4px;"></i> View All
                 </button>
             </div>
         </div>
@@ -280,6 +454,24 @@
 <!-- Embedded JSON Data for Leaflet and Histogram -->
 <script id="dig-data" type="application/json">
 {
+  "cycles": {
+    "nominalPayday": @vm.getNominalPayday,
+    "thisMonth": {
+      "startDate": "@vm.getThisMonthStartDate",
+      "endDate": "@vm.getThisMonthEndDate",
+      "label": "@vm.getThisMonthDateRangeLabel"
+    },
+    "last2Cycles": {
+      "startDate": "@vm.getLast2CyclesStartDate",
+      "endDate": "@vm.getLast2CyclesEndDate",
+      "label": "@vm.getLast2CyclesDateRangeLabel"
+    },
+    "last6Cycles": {
+      "startDate": "@vm.getLast6CyclesStartDate",
+      "endDate": "@vm.getLast6CyclesEndDate",
+      "label": "@vm.getLast6CyclesDateRangeLabel"
+    }
+  },
   "transactions": [
     @for((t, idx) <- vm.getGeotaggedTransactions.zipWithIndex) {
       {
@@ -291,7 +483,8 @@
         "category": "@escapeJson(t.getCategory)",
         "emoji": "@escapeJson(if (t.getMerchantEmoji != null) t.getMerchantEmoji else "")",
         "address": "@escapeJson(if (t.getMerchantAddress != null) t.getMerchantAddress else "")",
-        "date": "@escapeJson(if (t.getDate != null) t.getDate else "")"
+        "date": "@escapeJson(if (t.getDate != null) t.getDate else "")",
+        "timestamp": @(if (t.getTimestamp != null) t.getTimestamp else 0L)
       }@if(idx < vm.getGeotaggedTransactions.size - 1){,}
     }
   ],

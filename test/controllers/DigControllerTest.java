@@ -102,6 +102,18 @@ public class DigControllerTest {
         assertThat(body).contains("Monzo Connected");
         assertThat(body).contains("Tesco");
         assertThat(body).contains("Groceries");
+        assertThat(body).contains("Spending Time Slice");
+        assertThat(body).contains("This Month");
+        assertThat(body).contains("Last 2 Pay Cycles");
+        assertThat(body).contains("Last 6 Pay Cycles");
+        assertThat(body).contains("btn-slice-this-month");
+        assertThat(body).contains("btn-slice-last-2");
+        assertThat(body).contains("btn-slice-last-6");
+        assertThat(body).contains("btn-slice-all");
+        assertThat(body).contains("\"cycles\"");
+        assertThat(body).contains("\"thisMonth\"");
+        assertThat(body).contains("\"last2Cycles\"");
+        assertThat(body).contains("\"last6Cycles\"");
         assertThat(body).contains("leaflet-heat.js");
         assertThat(body).contains("dig.js");
     }
@@ -186,5 +198,55 @@ public class DigControllerTest {
         assertThat(json.get("histogram").get(0).get("category").asText()).isEqualTo("Fuel");
         assertThat(json.get("histogram").get(0).get("total").asDouble()).isEqualTo(45.00);
         assertThat(json.get("limit").asInt()).isEqualTo(2000);
+
+        assertThat(json.has("cycles")).isTrue();
+        assertThat(json.get("cycles").has("thisMonth")).isTrue();
+        assertThat(json.get("cycles").has("last2Cycles")).isTrue();
+        assertThat(json.get("cycles").has("last6Cycles")).isTrue();
+        assertThat(json.get("cycles").get("thisMonth").has("startDate")).isTrue();
+        assertThat(json.get("cycles").get("thisMonth").has("endDate")).isTrue();
+    }
+
+    @Test
+    public void testDigTimeSlicingWithConfiguredPayday() throws Exception {
+        BankTransactionRepository txRepo = mock(BankTransactionRepository.class);
+        MonzoConnectionRepository connRepo = mock(MonzoConnectionRepository.class);
+        models.IncomingRepository incomingRepo = mock(models.IncomingRepository.class);
+        MessagesApi messagesApi = mock(MessagesApi.class);
+        Messages messages = mock(Messages.class);
+        when(messagesApi.preferred(any(Http.Request.class))).thenReturn(messages);
+        HttpExecutionContext ec = new HttpExecutionContext(ForkJoinPool.commonPool());
+        SessionStore sessionStore = mock(SessionStore.class);
+
+        mockUserProfile(sessionStore, "user_payday25");
+        when(incomingRepo.getNextPayDay(eq("user_payday25"))).thenReturn(25);
+
+        when(txRepo.findGeotaggedTransactions(eq("user_payday25"), anyInt()))
+                .thenReturn(CompletableFuture.completedFuture(Collections.emptyList()));
+        when(txRepo.getCategorySpendingHistogram(eq("user_payday25")))
+                .thenReturn(CompletableFuture.completedFuture(Collections.emptyList()));
+        when(connRepo.findByUserId(eq("user_payday25")))
+                .thenReturn(CompletableFuture.completedFuture(Optional.empty()));
+
+        DigController controller = new DigController(txRepo, connRepo, incomingRepo, messagesApi, ec);
+        injectSessionStore(controller, sessionStore);
+
+        Http.Request request = Helpers.fakeRequest("GET", "/api/monzo-dig/data").build();
+        Result result = controller.apiData(request).toCompletableFuture().join();
+
+        assertThat(result.status()).isEqualTo(200);
+        String body = contentAsString(result);
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode json = mapper.readTree(body);
+
+        assertThat(json.has("cycles")).isTrue();
+        assertThat(json.get("cycles").get("nominalPayday").asInt()).isEqualTo(25);
+        String thisMonthStart = json.get("cycles").get("thisMonth").get("startDate").asText();
+        String last2Start = json.get("cycles").get("last2Cycles").get("startDate").asText();
+        String last6Start = json.get("cycles").get("last6Cycles").get("startDate").asText();
+
+        // 6 cycles start date should be earlier than 2 cycles, which is earlier than this month start
+        assertThat(last6Start.compareTo(last2Start)).isLessThan(0);
+        assertThat(last2Start.compareTo(thisMonthStart)).isLessThan(0);
     }
 }

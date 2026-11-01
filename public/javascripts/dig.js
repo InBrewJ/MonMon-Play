@@ -11,6 +11,14 @@
     var categoryData = [];
     var activeCategoryFilter = 'ALL';
     var sortMode = 'spend'; // 'spend' or 'count'
+    var activeTimeSlice = 'this_month'; // 'this_month' | 'last_2_cycles' | 'last_6_cycles' | 'all'
+
+    var cycleRanges = {
+        nominalPayday: 1,
+        thisMonth: null,
+        last2Cycles: null,
+        last6Cycles: null
+    };
 
     // Cached live state for resetting from test mode
     var liveTransactions = [];
@@ -21,68 +29,6 @@
     var originalStatGeotagged = '';
     var originalStatCategory = '';
     var originalSpotsCount = '';
-
-    // Frontend-only test dataset:
-    // - Large amount of spending in London UK (£3,799.00 across 3 merchants)
-    // - Small amount of spending in Edinburgh UK (£4.20 coffee)
-    // - Very large spend in Vatican City (£18,500.00 archive & art restoration tour)
-    var TEST_DATASET = [
-        {
-            id: 9901,
-            lat: 51.4994,
-            lng: -0.1632,
-            amount: 1850.00,
-            merchant: "Harrods Knightsbridge",
-            category: "shopping",
-            emoji: "🛍️",
-            address: "87-135 Brompton Rd, Knightsbridge, London SW1X 7XL, UK",
-            date: "2026-10-18"
-        },
-        {
-            id: 9902,
-            lat: 51.5133,
-            lng: -0.1408,
-            amount: 1299.00,
-            merchant: "Apple Regent Street",
-            category: "shopping",
-            emoji: "💻",
-            address: "235 Regent St, Mayfair, London W1B 2EL, UK",
-            date: "2026-10-19"
-        },
-        {
-            id: 9903,
-            lat: 51.5070,
-            lng: -0.1416,
-            amount: 650.00,
-            merchant: "The Ritz Restaurant",
-            category: "eating_out",
-            emoji: "🍽️",
-            address: "150 Piccadilly, St. James's, London W1J 9BR, UK",
-            date: "2026-10-21"
-        },
-        {
-            id: 9904,
-            lat: 55.9508,
-            lng: -3.1895,
-            amount: 4.20,
-            merchant: "The Milkman Coffee",
-            category: "eating_out",
-            emoji: "☕",
-            address: "7 Cockburn St, Edinburgh EH1 1BP, Scotland, UK",
-            date: "2026-10-24"
-        },
-        {
-            id: 9905,
-            lat: 41.9029,
-            lng: 12.4534,
-            amount: 18500.00,
-            merchant: "Vatican Apostolic Archive & Sistine Tour",
-            category: "entertainment",
-            emoji: "🏛️",
-            address: "Cortile del Belvedere, 00120 Città del Vaticano, Vatican City",
-            date: "2026-10-26"
-        }
-    ];
 
     function formatCategoryName(str) {
         if (!str) return 'General';
@@ -122,6 +68,285 @@
         return list;
     }
 
+    function buildFallbackCycleRanges(payday) {
+        var now = new Date();
+        var y = now.getFullYear();
+        var m = now.getMonth(); // 0-indexed
+        var d = now.getDate();
+
+        function pad(n) { return n < 10 ? '0' + n : String(n); }
+        function fmt(year, month, day) { return year + '-' + pad(month + 1) + '-' + pad(day); }
+
+        var todayStr = fmt(y, m, d);
+        var pDay = (payday && payday >= 1 && payday <= 31) ? payday : 1;
+
+        var lastPayMonth = (d >= pDay) ? m : m - 1;
+        var lastPayYear = y;
+        if (lastPayMonth < 0) {
+            lastPayMonth += 12;
+            lastPayYear -= 1;
+        }
+        var thisMonthStart = fmt(lastPayYear, lastPayMonth, pDay);
+
+        var l2Month = lastPayMonth - 1;
+        var l2Year = lastPayYear;
+        if (l2Month < 0) {
+            l2Month += 12;
+            l2Year -= 1;
+        }
+        var last2Start = fmt(l2Year, l2Month, pDay);
+
+        var l6Month = lastPayMonth - 5;
+        var l6Year = lastPayYear;
+        while (l6Month < 0) {
+            l6Month += 12;
+            l6Year -= 1;
+        }
+        var last6Start = fmt(l6Year, l6Month, pDay);
+
+        return {
+            nominalPayday: pDay,
+            thisMonth: { startDate: thisMonthStart, endDate: todayStr, label: thisMonthStart + ' – ' + todayStr },
+            last2Cycles: { startDate: last2Start, endDate: todayStr, label: last2Start + ' – ' + todayStr },
+            last6Cycles: { startDate: last6Start, endDate: todayStr, label: last6Start + ' – ' + todayStr }
+        };
+    }
+
+    function isTransactionInSlice(tx, slice) {
+        if (!slice || slice === 'all') return true;
+        if (!tx || !tx.date) return true;
+
+        var txDateStr = String(tx.date).substring(0, 10);
+        var range = null;
+        if (slice === 'this_month') range = cycleRanges.thisMonth;
+        else if (slice === 'last_2_cycles') range = cycleRanges.last2Cycles;
+        else if (slice === 'last_6_cycles') range = cycleRanges.last6Cycles;
+
+        if (!range || !range.startDate || !range.endDate) return true;
+
+        return txDateStr >= range.startDate && txDateStr <= range.endDate;
+    }
+
+    function getSlicedTransactions(txs, slice) {
+        if (!txs || txs.length === 0) return [];
+        if (!slice || slice === 'all') return txs.slice(0);
+        return txs.filter(function(t) {
+            return isTransactionInSlice(t, slice);
+        });
+    }
+
+    function updateSliceButtonCounts(txs) {
+        var countThisMonth = getSlicedTransactions(txs, 'this_month').length;
+        var countLast2 = getSlicedTransactions(txs, 'last_2_cycles').length;
+        var countLast6 = getSlicedTransactions(txs, 'last_6_cycles').length;
+        var countAll = txs ? txs.length : 0;
+
+        var elThisMonth = document.getElementById('count-slice-this-month');
+        var elLast2 = document.getElementById('count-slice-last-2');
+        var elLast6 = document.getElementById('count-slice-last-6');
+        var elAll = document.getElementById('count-slice-all');
+
+        if (elThisMonth) elThisMonth.textContent = countThisMonth;
+        if (elLast2) elLast2.textContent = countLast2;
+        if (elLast6) elLast6.textContent = countLast6;
+        if (elAll) elAll.textContent = countAll;
+    }
+
+    function applyTimeSlice(slice) {
+        activeTimeSlice = slice;
+
+        // 1. Update button active states
+        var buttons = document.querySelectorAll('.dig-timeslice-btn');
+        for (var b = 0; b < buttons.length; b++) {
+            if (buttons[b].getAttribute('data-slice') === activeTimeSlice) {
+                buttons[b].classList.add('active');
+            } else {
+                buttons[b].classList.remove('active');
+            }
+        }
+
+        // 2. Update subtitle dates and stat badge
+        var periodDatesEl = document.getElementById('dig-period-dates-text');
+        var periodBadge = document.getElementById('dig-stat-period-badge');
+        var rangeLabel = '';
+        var badgeLabel = '';
+
+        if (activeTimeSlice === 'this_month') {
+            rangeLabel = cycleRanges.thisMonth ? cycleRanges.thisMonth.label : 'This Month';
+            badgeLabel = '(This Month)';
+        } else if (activeTimeSlice === 'last_2_cycles') {
+            rangeLabel = cycleRanges.last2Cycles ? cycleRanges.last2Cycles.label : 'Last 2 Pay Cycles';
+            badgeLabel = '(Last 2 Cycles)';
+        } else if (activeTimeSlice === 'last_6_cycles') {
+            rangeLabel = cycleRanges.last6Cycles ? cycleRanges.last6Cycles.label : 'Last 6 Pay Cycles';
+            badgeLabel = '(Last 6 Cycles)';
+        } else {
+            rangeLabel = 'All Recorded Transactions';
+            badgeLabel = '(All-Time)';
+        }
+
+        if (periodDatesEl) periodDatesEl.textContent = 'Showing: ' + rangeLabel;
+        if (periodBadge) periodBadge.textContent = badgeLabel;
+
+        // 3. Filter transactions for the slice
+        var sliced = getSlicedTransactions(allTransactions, activeTimeSlice);
+
+        // 4. Empty slice banner handling
+        var emptyBanner = document.getElementById('dig-timeslice-empty-banner');
+        var emptySliceName = document.getElementById('dig-empty-slice-name');
+        var emptySliceDates = document.getElementById('dig-empty-slice-dates');
+        if (sliced.length === 0 && allTransactions.length > 0) {
+            if (emptyBanner) emptyBanner.style.display = 'block';
+            if (emptySliceName) emptySliceName.textContent = activeTimeSlice === 'this_month' ? 'This Month' : (activeTimeSlice === 'last_2_cycles' ? 'Last 2 Pay Cycles' : 'Last 6 Pay Cycles');
+            if (emptySliceDates) emptySliceDates.textContent = rangeLabel;
+        } else {
+            if (emptyBanner) emptyBanner.style.display = 'none';
+        }
+
+        // 5. Rebuild histogram for this slice
+        categoryData = buildCategoryHistogram(sliced);
+        categoryData.sort(function(a, b) {
+            return sortMode === 'count' ? (b.count - a.count) : (b.total - a.total);
+        });
+        renderHistogramBars(categoryData, sortMode);
+
+        // 6. Update Category Select options for this slice
+        var catSelect = document.getElementById('dig-category-select');
+        if (catSelect) {
+            var optHtml = '<option value="ALL">All Categories (' + sliced.length + ')</option>';
+            for (var c = 0; c < categoryData.length; c++) {
+                optHtml += '<option value="' + categoryData[c].rawCategory + '">' + categoryData[c].category + ' (' + categoryData[c].count + ')</option>';
+            }
+            catSelect.innerHTML = optHtml;
+
+            // Retain active category if it exists in new slice, else reset to ALL
+            var categoryStillExists = categoryData.some(function(item) {
+                return item.rawCategory === activeCategoryFilter || item.category === activeCategoryFilter;
+            });
+            if (!categoryStillExists) {
+                activeCategoryFilter = 'ALL';
+            }
+            catSelect.value = activeCategoryFilter;
+        }
+
+        // 7. Update Quick Stat Cards
+        var totalSpent = 0;
+        for (var i = 0; i < sliced.length; i++) {
+            totalSpent += sliced[i].amount;
+        }
+        var statTotal = document.getElementById('dig-stat-total');
+        var statGeotagged = document.getElementById('dig-stat-geotagged');
+        var statCategory = document.getElementById('dig-stat-category');
+        var spotsCount = document.getElementById('dig-spots-count');
+
+        if (statTotal) statTotal.textContent = '£' + totalSpent.toFixed(2);
+        if (statGeotagged) statGeotagged.textContent = String(sliced.length);
+        if (statCategory) statCategory.textContent = categoryData.length > 0 ? categoryData[0].category : 'None';
+        if (spotsCount) spotsCount.textContent = '(' + sliced.length + ' geotagged spots)';
+
+        // 8. Filter by category if selected and render on map
+        var displayed = sliced;
+        if (activeCategoryFilter && activeCategoryFilter !== 'ALL') {
+            displayed = sliced.filter(function(t) {
+                var cat = (t.category || 'general').toLowerCase().trim();
+                return cat === activeCategoryFilter.toLowerCase().trim();
+            });
+        }
+
+        if (!map) {
+            if (allTransactions.length > 0) {
+                setupMap(displayed.length > 0 ? displayed : allTransactions);
+            }
+        } else {
+            renderHeatmapAndMarkers(displayed);
+            if (displayed.length > 0) {
+                fitMapBounds(displayed);
+            }
+        }
+    }
+
+    function generateDynamicTestTransactions() {
+        var tm = cycleRanges.thisMonth;
+        var l2 = cycleRanges.last2Cycles;
+        var l6 = cycleRanges.last6Cycles;
+
+        var dThisMonth1 = tm ? tm.endDate : '2026-11-01'; // Harrods in This Month
+        var dThisMonth2 = tm ? tm.startDate : '2026-10-24'; // Apple in This Month
+        var dLast2 = l2 ? l2.startDate : '2026-09-25'; // Ritz in Last 2 Cycles
+        var dLast2_2 = l2 ? l2.startDate : '2026-09-28'; // Milkman in Last 2 Cycles
+        var dLast6 = l6 ? l6.startDate : '2026-05-25'; // Vatican in Last 6 Cycles
+        var dAll = '2025-08-15'; // Older in All
+
+        return [
+            {
+                id: 9901,
+                lat: 51.4994,
+                lng: -0.1632,
+                amount: 1850.00,
+                merchant: "Harrods Knightsbridge",
+                category: "shopping",
+                emoji: "🛍️",
+                address: "87-135 Brompton Rd, Knightsbridge, London SW1X 7XL, UK",
+                date: dThisMonth1
+            },
+            {
+                id: 9902,
+                lat: 51.5133,
+                lng: -0.1408,
+                amount: 1299.00,
+                merchant: "Apple Regent Street",
+                category: "shopping",
+                emoji: "💻",
+                address: "235 Regent St, Mayfair, London W1B 2EL, UK",
+                date: dThisMonth2
+            },
+            {
+                id: 9903,
+                lat: 51.5070,
+                lng: -0.1416,
+                amount: 650.00,
+                merchant: "The Ritz Restaurant",
+                category: "eating_out",
+                emoji: "🍽️",
+                address: "150 Piccadilly, St. James's, London W1J 9BR, UK",
+                date: dLast2
+            },
+            {
+                id: 9904,
+                lat: 55.9508,
+                lng: -3.1895,
+                amount: 4.20,
+                merchant: "The Milkman Coffee",
+                category: "eating_out",
+                emoji: "☕",
+                address: "7 Cockburn St, Edinburgh EH1 1BP, Scotland, UK",
+                date: dLast2_2
+            },
+            {
+                id: 9905,
+                lat: 41.9029,
+                lng: 12.4534,
+                amount: 18500.00,
+                merchant: "Vatican Apostolic Archive & Sistine Tour",
+                category: "entertainment",
+                emoji: "🏛️",
+                address: "Cortile del Belvedere, 00120 Città del Vaticano, Vatican City",
+                date: dLast6
+            },
+            {
+                id: 9906,
+                lat: 51.5033,
+                lng: -0.1195,
+                amount: 45.00,
+                merchant: "London Eye River Cruise",
+                category: "entertainment",
+                emoji: "🎡",
+                address: "Riverside Building, County Hall, London SE1 7PB, UK",
+                date: dAll
+            }
+        ];
+    }
+
     function initDig() {
         // Retrieve embedded JSON data from script tag
         var dataScript = document.getElementById('dig-data');
@@ -132,6 +357,12 @@
             } catch (e) {
                 console.error('Failed to parse dig-data payload:', e);
             }
+        }
+
+        if (rawPayload.cycles) {
+            cycleRanges = rawPayload.cycles;
+        } else {
+            cycleRanges = buildFallbackCycleRanges(1);
         }
 
         allTransactions = rawPayload.transactions || [];
@@ -150,35 +381,20 @@
         var spotsCount = document.getElementById('dig-spots-count');
         var catSelect = document.getElementById('dig-category-select');
 
-        if (statTotal && statTotal.textContent.trim() === '£0.00' && categoryData.length > 0) {
-            var computedTotal = 0;
-            for (var tIdx = 0; tIdx < categoryData.length; tIdx++) {
-                computedTotal += categoryData[tIdx].total;
-            }
-            statTotal.textContent = '£' + computedTotal.toFixed(2);
-        }
-        if (statCategory && statCategory.textContent.trim() === 'None' && categoryData.length > 0) {
-            statCategory.textContent = categoryData[0].category;
-        }
-        if (catSelect && catSelect.options.length <= 1 && categoryData.length > 0) {
-            var optHtml = '<option value="ALL">All Categories</option>';
-            for (var cIdx = 0; cIdx < categoryData.length; cIdx++) {
-                optHtml += '<option value="' + categoryData[cIdx].rawCategory + '">' + categoryData[cIdx].category + ' (' + categoryData[cIdx].count + ')</option>';
-            }
-            catSelect.innerHTML = optHtml;
-        }
-
         if (statTotal) originalStatTotal = statTotal.textContent;
         if (statGeotagged) originalStatGeotagged = statGeotagged.textContent;
         if (statCategory) originalStatCategory = statCategory.textContent;
         if (spotsCount) originalSpotsCount = spotsCount.textContent;
         if (catSelect) originalCategorySelectHtml = catSelect.innerHTML;
 
-        if (allTransactions.length > 0) {
-            setupMap(allTransactions);
-        }
+        updateSliceButtonCounts(allTransactions);
         initHistogram(categoryData);
         setupControls();
+
+        if (allTransactions.length > 0) {
+            // Apply default time slice ('this_month')
+            applyTimeSlice('this_month');
+        }
     }
 
     function setupMap(transactions) {
@@ -186,7 +402,9 @@
         if (!mapEl) return;
         if (map !== null) {
             renderHeatmapAndMarkers(transactions);
-            fitMapBounds(transactions);
+            if (transactions.length > 0) {
+                fitMapBounds(transactions);
+            }
             return;
         }
 
@@ -209,12 +427,13 @@
 
         renderHeatmapAndMarkers(transactions);
 
-        // Auto-fit bounds to include all transactions
-        fitMapBounds(transactions);
+        if (transactions.length > 0) {
+            fitMapBounds(transactions);
+        }
     }
 
     function fitMapBounds(transactions) {
-        if (!map || transactions.length === 0) return;
+        if (!map || !transactions || transactions.length === 0) return;
         var latLngs = [];
         for (var i = 0; i < transactions.length; i++) {
             var t = transactions[i];
@@ -249,7 +468,7 @@
             markersLayer.clearLayers();
         }
 
-        if (transactions.length === 0) {
+        if (!transactions || transactions.length === 0) {
             return;
         }
 
@@ -262,12 +481,10 @@
         }
 
         // Prepare heatmap points: [lat, lng, normalized intensity]
-        // "The larger the sum, the redder the heat. Green is good on the heatmap."
         var heatPoints = [];
         for (var j = 0; j < transactions.length; j++) {
             var tx = transactions[j];
             if (typeof tx.lat === 'number' && typeof tx.lng === 'number') {
-                // Logarithmic intensity curve so £1k+ stands out prominently, while Vatican City maxes at 1.0
                 var normalizedWeight;
                 if (maxAmount > 50) {
                     var logAmt = Math.log10(Math.max(tx.amount, 1));
@@ -311,7 +528,6 @@
             }
         }
 
-        // Green -> Lime -> Amber -> Orange -> Red
         heatLayer = L.heatLayer(heatPoints, {
             radius: 28,
             blur: 18,
@@ -332,11 +548,7 @@
         var testBtnText = document.getElementById('dig-test-btn-text');
         var emptyCard = document.getElementById('dig-empty-state-card');
         var mapCard = document.getElementById('dig-map-card');
-        var statTotal = document.getElementById('dig-stat-total');
-        var statGeotagged = document.getElementById('dig-stat-geotagged');
-        var statCategory = document.getElementById('dig-stat-category');
-        var spotsCount = document.getElementById('dig-spots-count');
-        var catSelect = document.getElementById('dig-category-select');
+        var timesliceCard = document.getElementById('dig-timeslice-card');
 
         isTestMode = !isTestMode;
 
@@ -351,47 +563,20 @@
                 testBtnText.textContent = 'Exit Test Mode';
             }
 
-            // Show map card, hide empty state
+            // Show map and timeslice cards, hide empty state
             if (emptyCard) emptyCard.style.display = 'none';
             if (mapCard) mapCard.style.display = 'block';
+            if (timesliceCard) timesliceCard.style.display = 'block';
 
-            allTransactions = TEST_DATASET.slice(0);
-            categoryData = buildCategoryHistogram(allTransactions);
-            activeCategoryFilter = 'ALL';
+            allTransactions = generateDynamicTestTransactions();
+            updateSliceButtonCounts(allTransactions);
+            applyTimeSlice(activeTimeSlice);
 
-            // Update stats
-            var testTotal = 0;
-            for (var i = 0; i < allTransactions.length; i++) {
-                testTotal += allTransactions[i].amount;
-            }
-            if (statTotal) statTotal.textContent = '£' + testTotal.toFixed(2);
-            if (statGeotagged) statGeotagged.textContent = String(allTransactions.length);
-            if (statCategory) statCategory.textContent = 'Entertainment';
-            if (spotsCount) spotsCount.textContent = '(' + allTransactions.length + ' test spots)';
-
-            // Populate category select with test categories
-            if (catSelect) {
-                var optHtml = '<option value="ALL">All Categories (' + allTransactions.length + ')</option>';
-                for (var c = 0; c < categoryData.length; c++) {
-                    optHtml += '<option value="' + categoryData[c].rawCategory + '">' + categoryData[c].category + ' (' + categoryData[c].count + ')</option>';
-                }
-                catSelect.innerHTML = optHtml;
-                catSelect.value = 'ALL';
-            }
-
-            if (!map) {
-                setupMap(allTransactions);
-            } else {
-                map.invalidateSize();
-                renderHeatmapAndMarkers(allTransactions);
-                fitMapBounds(allTransactions);
-            }
-
-            renderHistogramBars(categoryData, sortMode);
             setTimeout(function() {
                 if (map) {
                     map.invalidateSize();
-                    fitMapBounds(allTransactions);
+                    var currentDisplayed = getSlicedTransactions(allTransactions, activeTimeSlice);
+                    fitMapBounds(currentDisplayed.length > 0 ? currentDisplayed : allTransactions);
                 }
             }, 150);
         } else {
@@ -406,39 +591,33 @@
             }
 
             allTransactions = liveTransactions.slice(0);
-            categoryData = liveCategoryData.slice(0);
-            activeCategoryFilter = 'ALL';
-
-            // Restore stat cards
-            if (statTotal) statTotal.textContent = originalStatTotal;
-            if (statGeotagged) statGeotagged.textContent = originalStatGeotagged;
-            if (statCategory) statCategory.textContent = originalStatCategory;
-            if (spotsCount) spotsCount.textContent = originalSpotsCount;
-
-            // Restore category select
-            if (catSelect) {
-                catSelect.innerHTML = originalCategorySelectHtml;
-                catSelect.value = 'ALL';
-            }
+            updateSliceButtonCounts(allTransactions);
 
             if (allTransactions.length === 0) {
                 if (mapCard) mapCard.style.display = 'none';
+                if (timesliceCard) timesliceCard.style.display = 'none';
                 if (emptyCard) emptyCard.style.display = 'block';
             } else {
                 if (emptyCard) emptyCard.style.display = 'none';
                 if (mapCard) mapCard.style.display = 'block';
-                if (map) {
-                    map.invalidateSize();
-                    renderHeatmapAndMarkers(allTransactions);
-                    fitMapBounds(allTransactions);
-                }
+                if (timesliceCard) timesliceCard.style.display = 'block';
+                applyTimeSlice(activeTimeSlice);
             }
-
-            renderHistogramBars(categoryData, sortMode);
         }
     }
 
     function setupControls() {
+        // Time Slice buttons
+        var sliceButtons = document.querySelectorAll('.dig-timeslice-btn');
+        for (var i = 0; i < sliceButtons.length; i++) {
+            sliceButtons[i].addEventListener('click', function() {
+                var slice = this.getAttribute('data-slice');
+                if (slice) {
+                    applyTimeSlice(slice);
+                }
+            });
+        }
+
         // Toggle Heatmap layer
         var toggleHeat = document.getElementById('toggle-heat');
         if (toggleHeat) {
@@ -483,8 +662,9 @@
             resetBtn.addEventListener('click', function() {
                 if (catSelect) catSelect.value = 'ALL';
                 activeCategoryFilter = 'ALL';
-                renderHeatmapAndMarkers(allTransactions);
-                fitMapBounds(allTransactions);
+                var sliced = getSlicedTransactions(allTransactions, activeTimeSlice);
+                renderHeatmapAndMarkers(sliced);
+                if (sliced.length > 0) fitMapBounds(sliced);
                 updateHistogramActiveBar(null);
             });
         }
@@ -501,15 +681,19 @@
     }
 
     function filterTransactions(category) {
-        var filtered = allTransactions;
+        activeCategoryFilter = category;
+        var sliced = getSlicedTransactions(allTransactions, activeTimeSlice);
+        var filtered = sliced;
         if (category && category !== 'ALL') {
-            filtered = allTransactions.filter(function(tx) {
+            filtered = sliced.filter(function(tx) {
                 var c = (tx.category || 'General').toLowerCase().trim();
                 return c === category.toLowerCase().trim();
             });
         }
         renderHeatmapAndMarkers(filtered);
-        fitMapBounds(filtered);
+        if (filtered.length > 0) {
+            fitMapBounds(filtered);
+        }
         updateHistogramActiveBar(category);
     }
 
@@ -582,7 +766,7 @@
         if (!data || data.length === 0) {
             container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted);">' +
                 '<i class="fas fa-chart-bar" style="font-size: 2rem; margin-bottom: 8px; opacity: 0.5;"></i>' +
-                '<p style="margin: 0;">No category transaction data available from Monzo yet.</p>' +
+                '<p style="margin: 0;">No category transaction data available for this time slice.</p>' +
                 '</div>';
             return;
         }
@@ -630,14 +814,13 @@
 
         container.innerHTML = html;
 
-        // Clicking a histogram row highlights / filters the map above!
+        // Clicking a histogram row highlights / filters the map above
         var rows = container.querySelectorAll('.hist-row');
         for (var k = 0; k < rows.length; k++) {
             rows[k].addEventListener('click', function() {
                 var cat = this.getAttribute('data-category');
                 var catSelect = document.getElementById('dig-category-select');
                 if (activeCategoryFilter === cat) {
-                    // Toggle off if already selected
                     activeCategoryFilter = 'ALL';
                     if (catSelect) catSelect.value = 'ALL';
                     filterTransactions('ALL');

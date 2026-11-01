@@ -3,6 +3,7 @@ package controllers;
 import helpers.UserHelpers;
 import models.BankTransaction;
 import models.BankTransactionRepository;
+import models.IncomingRepository;
 import models.MonzoConnectionRepository;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.java.Secure;
@@ -27,6 +28,7 @@ public class DigController extends Controller {
 
     private final BankTransactionRepository bankTransactionRepository;
     private final MonzoConnectionRepository monzoConnectionRepository;
+    private final IncomingRepository incomingRepository;
     private final MessagesApi messagesApi;
     private final HttpExecutionContext ec;
 
@@ -36,17 +38,39 @@ public class DigController extends Controller {
     @Inject
     public DigController(BankTransactionRepository bankTransactionRepository,
                          MonzoConnectionRepository monzoConnectionRepository,
+                         IncomingRepository incomingRepository,
                          MessagesApi messagesApi,
                          HttpExecutionContext ec) {
         this.bankTransactionRepository = bankTransactionRepository;
         this.monzoConnectionRepository = monzoConnectionRepository;
+        this.incomingRepository = incomingRepository;
         this.messagesApi = messagesApi;
         this.ec = ec;
+    }
+
+    public DigController(BankTransactionRepository bankTransactionRepository,
+                         MonzoConnectionRepository monzoConnectionRepository,
+                         MessagesApi messagesApi,
+                         HttpExecutionContext ec) {
+        this(bankTransactionRepository, monzoConnectionRepository, null, messagesApi, ec);
+    }
+
+    private int resolveNominalPayday(String userId) {
+        if (incomingRepository == null || userId == null) {
+            return 1;
+        }
+        try {
+            int day = incomingRepository.getNextPayDay(userId);
+            return (day >= 1 && day <= 31) ? day : 1;
+        } catch (Exception e) {
+            return 1;
+        }
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> index(final Http.Request request) {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        int nominalPayday = resolveNominalPayday(sup.getUserId());
 
         return bankTransactionRepository.findGeotaggedTransactions(sup.getUserId(), DATA_LIMIT)
                 .thenComposeAsync(geoList ->
@@ -62,7 +86,8 @@ public class DigController extends Controller {
                                                             histogram,
                                                             isMonzoConnected,
                                                             limitReached,
-                                                            DATA_LIMIT
+                                                            DATA_LIMIT,
+                                                            nominalPayday
                                                     );
 
                                                     return ok(views.html.dig.render(
@@ -78,6 +103,7 @@ public class DigController extends Controller {
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> apiData(final Http.Request request) {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
+        int nominalPayday = resolveNominalPayday(sup.getUserId());
 
         return bankTransactionRepository.findGeotaggedTransactions(sup.getUserId(), DATA_LIMIT)
                 .thenComposeAsync(geoList ->
@@ -96,6 +122,7 @@ public class DigController extends Controller {
                                         item.put("emoji", t.getMerchantEmoji());
                                         item.put("address", t.getMerchantAddress());
                                         item.put("date", t.getDate());
+                                        item.put("timestamp", t.getTimestamp() != null ? t.getTimestamp() : 0L);
                                         txData.add(item);
                                     }
 
@@ -111,8 +138,39 @@ public class DigController extends Controller {
                                         histData.add(item);
                                     }
 
+                                    DigViewModel vm = new DigViewModel(
+                                            geoList,
+                                            histogram,
+                                            false,
+                                            geoList.size() >= DATA_LIMIT,
+                                            DATA_LIMIT,
+                                            nominalPayday
+                                    );
+
+                                    Map<String, Object> cyclesMap = new HashMap<>();
+                                    cyclesMap.put("nominalPayday", vm.getNominalPayday());
+
+                                    Map<String, Object> thisMonth = new HashMap<>();
+                                    thisMonth.put("startDate", vm.getThisMonthStartDate());
+                                    thisMonth.put("endDate", vm.getThisMonthEndDate());
+                                    thisMonth.put("label", vm.getThisMonthDateRangeLabel());
+                                    cyclesMap.put("thisMonth", thisMonth);
+
+                                    Map<String, Object> last2Cycles = new HashMap<>();
+                                    last2Cycles.put("startDate", vm.getLast2CyclesStartDate());
+                                    last2Cycles.put("endDate", vm.getLast2CyclesEndDate());
+                                    last2Cycles.put("label", vm.getLast2CyclesDateRangeLabel());
+                                    cyclesMap.put("last2Cycles", last2Cycles);
+
+                                    Map<String, Object> last6Cycles = new HashMap<>();
+                                    last6Cycles.put("startDate", vm.getLast6CyclesStartDate());
+                                    last6Cycles.put("endDate", vm.getLast6CyclesEndDate());
+                                    last6Cycles.put("label", vm.getLast6CyclesDateRangeLabel());
+                                    cyclesMap.put("last6Cycles", last6Cycles);
+
                                     response.put("transactions", txData);
                                     response.put("histogram", histData);
+                                    response.put("cycles", cyclesMap);
                                     response.put("totalTransactions", txData.size());
                                     response.put("limitReached", geoList.size() >= DATA_LIMIT);
                                     response.put("limit", DATA_LIMIT);
