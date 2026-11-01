@@ -1058,4 +1058,72 @@ public class SpendingPlanAndHistoryTest {
         // Income must strictly be £2,642.83 and NOT inflated to £6,810.83!
         assertThat(currentCycle.getMonthlyIncome()).isEqualTo(2642.83);
     }
+
+    @Test
+    public void pastCyclesUseArchivedSalaryAndDoNotAddCurrentSalaryWhenCreatedAtIsNull() {
+        LocalDate today = LocalDate.of(2026, 10, 31);
+        int payday = 30;
+
+        Account current = debit(1L, "Main Current");
+        // Start of Aug cycle (28 Aug 2026): 1000
+        LocalDate aug28 = ModelHelpers.getActualPaydayDate(payday, 2026, 8); // Friday 28 Aug 2026
+        LocalDate sep30 = ModelHelpers.getActualPaydayDate(payday, 2026, 9); // Wednesday 30 Sep 2026
+        LocalDate oct30 = ModelHelpers.getActualPaydayDate(payday, 2026, 10); // Friday 30 Oct 2026
+
+        current.balances.add(bal(current, 1000f, aug28, 9));
+        current.balances.add(bal(current, 1200f, sep30, 9));
+        current.balances.add(bal(current, 1500f, oct30, 9));
+        current.balances.add(bal(current, 1400f, today, 9));
+
+        // Archived salary: £4,168.00 (archived on Oct 30, 2026 13:00) with createdAt == null
+        Incoming oldJob = new Incoming();
+        oldJob.setId(1L);
+        oldJob.setName("Old Job Salary");
+        oldJob.setNetValue(4168.00f);
+        oldJob.setPayDay(true);
+        oldJob.setIncomingMonthDay(30);
+        oldJob.setAccount(current);
+        oldJob.setArchived(true);
+        oldJob.setCreatedAt(null); // legacy row created before createdAt column existed
+        oldJob.setArchivedAt(oct30.atTime(13, 0).atZone(UK).toEpochSecond());
+
+        // Active salary: Occasio Insights £2,642.83 with createdAt == null
+        Incoming activeSalary = new Incoming();
+        activeSalary.setId(2L);
+        activeSalary.setName("Occasio Insights");
+        activeSalary.setNetValue(2642.83f);
+        activeSalary.setPayDay(true);
+        activeSalary.setIncomingMonthDay(30);
+        activeSalary.setAccount(current);
+        activeSalary.setArchived(false);
+        activeSalary.setCreatedAt(null); // legacy row or null
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                Collections.emptyList(),
+                List.of(current),
+                List.of(activeSalary, oldJob),
+                payday,
+                today,
+                UK,
+                500f
+        );
+
+        // 1. Current cycle (30 Oct 2026 - 30 Nov 2026): uses active salary (£2642.83)
+        HistoricCycleSpent currentCycle = vm.getCurrentCycle();
+        assertThat(currentCycle).isNotNull();
+        assertThat(currentCycle.getCycleStartDate()).isEqualTo(oct30);
+        assertThat(currentCycle.getMonthlyIncome()).isEqualTo(2642.83);
+
+        // 2. September cycle (30 Sep 2026 - 30 Oct 2026): uses old salary (£4168.00) and NOT (£6810.83)
+        HistoricCycleSpent sepCycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(sep30))
+                .findFirst().orElseThrow();
+        assertThat(sepCycle.getMonthlyIncome()).isEqualTo(4168.00);
+
+        // 3. August cycle (28 Aug 2026 - 30 Sep 2026): uses old salary (£4168.00) and NOT (£6810.83)
+        HistoricCycleSpent augCycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(aug28))
+                .findFirst().orElseThrow();
+        assertThat(augCycle.getMonthlyIncome()).isEqualTo(4168.00);
+    }
 }

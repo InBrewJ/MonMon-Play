@@ -40,12 +40,80 @@ public class HistoricSpentCalculator {
         return ts;
     }
 
+    public static long getEffectiveStartSec(Incoming inc, List<Incoming> allIncomings) {
+        if (inc == null) return 0L;
+        Long createdSec = normalizeToEpochSec(inc.getCreatedAt());
+        if (createdSec != null && createdSec > 0) {
+            return createdSec;
+        }
+
+        // If createdAt is null, infer startSec from preceding archived incomings in the same stream
+        if (allIncomings == null || allIncomings.isEmpty()) {
+            return 0L;
+        }
+
+        List<Incoming> preceding = allIncomings.stream()
+                .filter(other -> other != null && other != inc && other.isArchived())
+                .filter(other -> {
+                    // Match streams:
+                    if (inc.isPayDay() || other.isPayDay()) {
+                        return inc.isPayDay() && other.isPayDay();
+                    }
+                    if (inc.getAccount() != null && other.getAccount() != null
+                            && inc.getAccount().getId() != null && other.getAccount().getId() != null) {
+                        return inc.getAccount().getId().equals(other.getAccount().getId());
+                    }
+                    return true;
+                })
+                .filter(other -> {
+                    if (inc.isArchived()) {
+                        Long incArch = normalizeToEpochSec(inc.getArchivedAt());
+                        Long otherArch = normalizeToEpochSec(other.getArchivedAt());
+                        if (incArch != null && otherArch != null && !incArch.equals(otherArch)) {
+                            return otherArch < incArch;
+                        }
+                        if (inc.id != null && other.id != null) {
+                            return other.id < inc.id;
+                        }
+                        return false;
+                    }
+                    return true;
+                })
+                .sorted((a, b) -> {
+                    Long aArch = normalizeToEpochSec(a.getArchivedAt());
+                    Long bArch = normalizeToEpochSec(b.getArchivedAt());
+                    if (aArch != null && bArch != null && !aArch.equals(bArch)) {
+                        return Long.compare(bArch, aArch); // descending, latest first
+                    }
+                    if (a.id != null && b.id != null) {
+                        return Long.compare(b.id, a.id);
+                    }
+                    return 0;
+                })
+                .collect(Collectors.toList());
+
+        if (!preceding.isEmpty()) {
+            Incoming latestPreceding = preceding.get(0);
+            Long archSec = normalizeToEpochSec(latestPreceding.getArchivedAt());
+            if (archSec != null && archSec > 0) {
+                return archSec;
+            }
+        }
+
+        return 0L;
+    }
+
     public static double getAccountPaydayInflow(Account acc, List<Incoming> cycleIncomings, LocalDate cycleStart) {
+        return getAccountPaydayInflow(acc, cycleIncomings, cycleStart, ZoneId.systemDefault());
+    }
+
+    public static double getAccountPaydayInflow(Account acc, List<Incoming> cycleIncomings, LocalDate cycleStart, ZoneId zone) {
         if (acc == null || cycleIncomings == null || cycleIncomings.isEmpty()) {
             return 0.0;
         }
-        long cycleStartSec = cycleStart.atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
-        long cycleEndSec = cycleStart.plusMonths(1).atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
+        ZoneId effectiveZone = zone != null ? zone : ZoneId.systemDefault();
+        long cycleStartSec = cycleStart.atStartOfDay(effectiveZone).toEpochSecond();
+        long cycleEndSec = cycleStart.plusMonths(1).atStartOfDay(effectiveZone).toEpochSecond();
         double total = 0.0;
         for (Incoming inc : cycleIncomings) {
             if (inc != null && inc.getAccount() != null && inc.getAccount().getId() != null
@@ -189,19 +257,32 @@ public class HistoricSpentCalculator {
                         .filter(i -> i != null && !i.isArchived())
                         .collect(Collectors.toList()) : Collections.emptyList();
             } else {
+                final List<Incoming> incomingList = allIncomings;
+                final LocalDate cycleStart = currCycleStart;
                 cycleIncomings = allIncomings != null ? allIncomings.stream()
                         .filter(i -> i != null)
                         .filter(i -> {
-                            Long createdSec = normalizeToEpochSec(i.getCreatedAt());
-                            if (createdSec != null && createdSec > cycleStartSec + 86400L) {
-                                return false; // Created after cycle start / payday
+                            long startSec = getEffectiveStartSec(i, incomingList);
+                            long paySec;
+                            if (i.isPayDay()) {
+                                paySec = cycleStartSec;
+                            } else {
+                                int day = i.getEffectiveIncomingMonthDay(cycleStart);
+                                LocalDate payDate = cycleStart.withDayOfMonth(day);
+                                if (payDate.isBefore(cycleStart)) {
+                                    payDate = cycleStart.plusMonths(1).withDayOfMonth(Math.min(day, cycleStart.plusMonths(1).lengthOfMonth()));
+                                }
+                                paySec = payDate.atStartOfDay(zone).toEpochSecond();
+                            }
+                            if (startSec > paySec + 86400L) {
+                                return false; // Not yet active in this cycle
                             }
                             if (i.isArchived()) {
                                 Long archSec = normalizeToEpochSec(i.getArchivedAt());
                                 if (archSec == null) {
                                     return false; // Legacy archive with no date
                                 }
-                                return archSec >= cycleStartSec; // Active until archived on or after cycleStartSec
+                                return archSec > paySec + 86400L; // Active through payday of this cycle
                             }
                             return true;
                         })
@@ -249,7 +330,7 @@ public class HistoricSpentCalculator {
             double startingPotBudget = 0.0;
             double endingPotBudget = 0.0;
             for (Account pa : potAccounts) {
-                double paInflow = getAccountPaydayInflow(pa, cycleIncomings, currCycleStart);
+                double paInflow = getAccountPaydayInflow(pa, cycleIncomings, currCycleStart, zone);
                 startingPotBudget += getAccountStartBalance(pa, cycleStartSec, cycleEndSec, paInflow);
                 endingPotBudget += getAccountEndBalance(pa, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
             }
@@ -308,7 +389,7 @@ public class HistoricSpentCalculator {
                 }
 
                 boolean isPotAccount = potAccountIds.contains(acc.getId());
-                double accInflow = getAccountPaydayInflow(acc, cycleIncomings, currCycleStart);
+                double accInflow = getAccountPaydayInflow(acc, cycleIncomings, currCycleStart, zone);
                 double startBal = getAccountStartBalance(acc, cycleStartSec, cycleEndSec, accInflow);
                 double endBal = getAccountEndBalance(acc, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
                 double accSpent;
