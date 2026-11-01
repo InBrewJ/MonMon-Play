@@ -15,6 +15,7 @@ import static helpers.TimeHelpers.unixTimestampToDisplayDate;
 
 public class HistoricPotSnapshot {
     private final Pot pot;
+    private final boolean firstPot;
     private final boolean lastPot;
     private final boolean archivedInPeriod;
     private final Long archivedAt;
@@ -53,6 +54,7 @@ public class HistoricPotSnapshot {
 
     public HistoricPotSnapshot(
             Pot pot,
+            boolean firstPot,
             boolean lastPot,
             boolean archivedInPeriod,
             Long archivedAt,
@@ -60,6 +62,7 @@ public class HistoricPotSnapshot {
             List<AccountBalanceSnapshot> accountSnapshots
     ) {
         this.pot = pot;
+        this.firstPot = firstPot;
         this.lastPot = lastPot;
         this.archivedInPeriod = archivedInPeriod;
         this.archivedAt = archivedAt;
@@ -67,12 +70,31 @@ public class HistoricPotSnapshot {
         this.accountSnapshots = accountSnapshots != null ? accountSnapshots : Collections.emptyList();
     }
 
+    public HistoricPotSnapshot(
+            Pot pot,
+            boolean lastPot,
+            boolean archivedInPeriod,
+            Long archivedAt,
+            Double potSpent,
+            List<AccountBalanceSnapshot> accountSnapshots
+    ) {
+        this(pot, !lastPot, lastPot, archivedInPeriod, archivedAt, potSpent, accountSnapshots);
+    }
+
     public Pot getPot() {
         return pot;
     }
 
+    public boolean isFirstPot() {
+        return firstPot;
+    }
+
     public boolean isLastPot() {
         return lastPot;
+    }
+
+    public boolean isIntermediaryPot() {
+        return !firstPot && !lastPot;
     }
 
     public boolean isArchivedInPeriod() {

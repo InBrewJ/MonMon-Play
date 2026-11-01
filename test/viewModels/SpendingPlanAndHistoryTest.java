@@ -707,6 +707,7 @@ public class SpendingPlanAndHistoryTest {
 
         // Snapshot of Pot 1 (archived on Oct 15)
         HistoricPotSnapshot snap1 = snapshots.stream().filter(s -> s.getPot().getId().equals(1L)).findFirst().orElseThrow();
+        assertThat(snap1.isFirstPot()).isTrue();
         assertThat(snap1.isLastPot()).isFalse();
         assertThat(snap1.isArchivedInPeriod()).isTrue();
         assertThat(snap1.getArchivedAt()).isEqualTo(oct15Sec);
@@ -718,11 +719,134 @@ public class SpendingPlanAndHistoryTest {
 
         // Snapshot of Pot 2 (last pot)
         HistoricPotSnapshot snap2 = snapshots.stream().filter(s -> s.getPot().getId().equals(2L)).findFirst().orElseThrow();
+        assertThat(snap2.isFirstPot()).isFalse();
         assertThat(snap2.isLastPot()).isTrue();
         assertThat(snap2.isArchivedInPeriod()).isFalse();
         assertThat(snap2.getAccountSnapshots()).hasSize(1);
         assertThat(snap2.getAccountSnapshots().get(0).getAccountName()).isEqualTo("Current B");
         assertThat(snap2.getAccountSnapshots().get(0).getBalanceOnDate()).isEqualTo(600.0);
         assertThat(snap2.getAccountSnapshots().get(0).getAmountSpent()).isEqualTo(400.0);
+    }
+
+    @Test
+    public void fourMonthlyPotsInPeriodDisplaysFirstIntermediaryAndLastActivePots() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account acc = debit(100L, "Main Current");
+        // Sept 1: 2000
+        acc.balances.add(bal(acc, 2000f, LocalDate.of(2026, 9, 1), 9));
+        // Oct 1: 1500
+        acc.balances.add(bal(acc, 1500f, LocalDate.of(2026, 10, 1), 9));
+        // Oct 25: 1100
+        acc.balances.add(bal(acc, 1100f, LocalDate.of(2026, 10, 25), 9));
+
+        long sep1 = LocalDate.of(2026, 9, 1).atStartOfDay(UK).toEpochSecond();
+        long oct1 = LocalDate.of(2026, 10, 1).atStartOfDay(UK).toEpochSecond();
+        long oct8 = LocalDate.of(2026, 10, 8).atStartOfDay(UK).toEpochSecond();
+        long oct15 = LocalDate.of(2026, 10, 15).atStartOfDay(UK).toEpochSecond();
+        long oct22 = LocalDate.of(2026, 10, 22).atStartOfDay(UK).toEpochSecond();
+
+        Pot pot0 = new Pot();
+        pot0.setId(10L);
+        pot0.setType(Pot.PotType.MONTHLY);
+        pot0.setSpendingPlanName("September Pot");
+        pot0.setCreatedAt(sep1);
+        pot0.setLastUpdated(oct1);
+        pot0.setArchived(true);
+        pot0.addAccount(acc);
+
+        Pot pot1 = new Pot();
+        pot1.setId(11L);
+        pot1.setType(Pot.PotType.MONTHLY);
+        pot1.setSpendingPlanName("Oct Week 1 Pot");
+        pot1.setCreatedAt(oct1);
+        pot1.setLastUpdated(oct8);
+        pot1.setArchived(true);
+        pot1.addAccount(acc);
+
+        Pot pot2 = new Pot();
+        pot2.setId(12L);
+        pot2.setType(Pot.PotType.MONTHLY);
+        pot2.setSpendingPlanName("Oct Week 2 Pot");
+        pot2.setCreatedAt(oct8);
+        pot2.setLastUpdated(oct15);
+        pot2.setArchived(true);
+        pot2.addAccount(acc);
+
+        Pot pot3 = new Pot();
+        pot3.setId(13L);
+        pot3.setType(Pot.PotType.MONTHLY);
+        pot3.setSpendingPlanName("Oct Week 3 Pot");
+        pot3.setCreatedAt(oct15);
+        pot3.setLastUpdated(oct22);
+        pot3.setArchived(true);
+        pot3.addAccount(acc);
+
+        Pot pot4 = new Pot();
+        pot4.setId(14L);
+        pot4.setType(Pot.PotType.MONTHLY);
+        pot4.setSpendingPlanName("Oct Final Pot");
+        pot4.setCreatedAt(oct22);
+        pot4.setLastUpdated(oct22);
+        pot4.setArchived(false);
+        pot4.addAccount(acc);
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                List.of(pot0, pot1, pot2, pot3, pot4),
+                List.of(acc),
+                Collections.emptyList(),
+                payday,
+                today,
+                UK,
+                500f
+        );
+
+        // Find October cycle
+        HistoricCycleSpent octCycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(LocalDate.of(2026, 10, 1)))
+                .findFirst().orElseThrow();
+
+        // All 4 pots configured during October are displayed in order: first, intermediary, last
+        List<HistoricPotSnapshot> octSnaps = octCycle.getPotsInPeriod();
+        assertThat(octSnaps).hasSize(4);
+
+        // First active pot (pot1)
+        assertThat(octSnaps.get(0).getPot().getId()).isEqualTo(11L);
+        assertThat(octSnaps.get(0).isFirstPot()).isTrue();
+        assertThat(octSnaps.get(0).isLastPot()).isFalse();
+        assertThat(octSnaps.get(0).isIntermediaryPot()).isFalse();
+
+        // Intermediary pot 1 (pot2)
+        assertThat(octSnaps.get(1).getPot().getId()).isEqualTo(12L);
+        assertThat(octSnaps.get(1).isFirstPot()).isFalse();
+        assertThat(octSnaps.get(1).isLastPot()).isFalse();
+        assertThat(octSnaps.get(1).isIntermediaryPot()).isTrue();
+
+        // Intermediary pot 2 (pot3)
+        assertThat(octSnaps.get(2).getPot().getId()).isEqualTo(13L);
+        assertThat(octSnaps.get(2).isFirstPot()).isFalse();
+        assertThat(octSnaps.get(2).isLastPot()).isFalse();
+        assertThat(octSnaps.get(2).isIntermediaryPot()).isTrue();
+
+        // Last active pot (pot4) - used for cycle configuration
+        assertThat(octSnaps.get(3).getPot().getId()).isEqualTo(14L);
+        assertThat(octSnaps.get(3).isFirstPot()).isFalse();
+        assertThat(octSnaps.get(3).isLastPot()).isTrue();
+        assertThat(octSnaps.get(3).isIntermediaryPot()).isFalse();
+
+        // pot0 (ended before Oct) must NOT appear in October snapshots
+        assertThat(octSnaps.stream().noneMatch(s -> s.getPot().getId().equals(10L))).isTrue();
+
+        // September cycle must ONLY display pot0, and NONE of pot1, pot2, pot3, pot4
+        HistoricCycleSpent sepCycle = vm.getCycles().stream()
+                .filter(c -> c.getCycleStartDate().equals(LocalDate.of(2026, 9, 1)))
+                .findFirst().orElseThrow();
+        List<HistoricPotSnapshot> sepSnaps = sepCycle.getPotsInPeriod();
+        assertThat(sepSnaps).hasSize(1);
+        assertThat(sepSnaps.get(0).getPot().getId()).isEqualTo(10L);
+        assertThat(sepSnaps.get(0).isFirstPot()).isTrue();
+        assertThat(sepSnaps.get(0).isLastPot()).isTrue();
+        assertThat(sepSnaps.get(0).isIntermediaryPot()).isFalse();
     }
 }

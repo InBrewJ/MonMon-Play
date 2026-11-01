@@ -121,7 +121,7 @@
                             <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">
                                 <i class="fas fa-archive" style="color: var(--primary); margin-right: 5px;"></i>Monthly Pots Configured in this Period
                                 @if(c.hasMultiplePots()) {
-                                    <span class="badge-pill" style="font-size: 0.72rem; background: var(--primary-light); color: var(--primary); margin-left: 6px;">@c.getPotsInPeriod().size() configured (using LAST pot for allowance tracking)</span>
+                                    <span class="badge-pill" style="font-size: 0.72rem; background: var(--primary-light); color: var(--primary); margin-left: 6px;">@c.getPotsInPeriod().size() configured (using LAST pot for allowance)</span>
                                 }
                             </span>
                             <span style="font-size: 0.8rem; color: var(--text-muted);">
@@ -141,11 +141,17 @@
                                     <div>
                                         <b>@potSnap.getPlanSummary()</b>
                                         <span style="color: var(--text-muted); font-size: 0.75rem; margin-left: 4px;">(Created: @potSnap.getCreatedAtHumanReadable())</span>
+                                        @if(potSnap.isFirstPot() && !potSnap.isLastPot()) {
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">First Active Pot</span>
+                                        }
+                                        @if(potSnap.isIntermediaryPot()) {
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px dashed var(--border-color); color: var(--text-muted); font-size: 0.7rem; margin-left: 4px;">Intermediary Pot</span>
+                                        }
                                         @if(potSnap.isLastPot()) {
-                                            <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">Last Monthly Pot (Active Configuration)</span>
+                                            <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">Last Monthly Pot (Allowance Tracking)</span>
                                         }
                                         @if(potSnap.isArchivedInPeriod()) {
-                                            <span class="badge-pill badge-warning" style="font-size: 0.7rem; margin-left: 4px;"><i class="fas fa-trash-alt"></i> Deleted on @potSnap.getArchivedDateHumanReadable()</span>
+                                            <span class="badge-pill badge-warning" style="font-size: 0.7rem; margin-left: 4px;"><i class="fas fa-trash-alt"></i> Replaced / Ended on @potSnap.getArchivedDateHumanReadable()</span>
                                         }
                                     </div>
                                     <div>
@@ -160,7 +166,7 @@
                                         <tr style="color: var(--text-muted); border-bottom: 1px dashed var(--border-color); text-align: left;">
                                             <th style="padding: 2px 4px;">Pot Account</th>
                                             <th style="padding: 2px 4px; text-align: right;">
-                                                @if(potSnap.isArchivedInPeriod()) { Balance on Deletion (@potSnap.getArchivedDateHumanReadable()) } else { Balance at Period End }
+                                                @if(potSnap.isArchivedInPeriod()) { Balance on Replacement / Deletion (@potSnap.getArchivedDateHumanReadable()) } else { Balance at Period End }
                                             </th>
                                             <th style="padding: 2px 4px; text-align: right;">Spent in Pot Window</th>
                                         </tr>

@@ -113,8 +113,8 @@ public class HistoricSpentCalculator {
 
         List<Pot> monthlyPots = allPots.stream()
                 .filter(p -> p != null && p.getType() == Pot.PotType.MONTHLY)
-                .sorted(Comparator.comparing(p -> p.getCreatedAt() != null ? p.getCreatedAt() : 0L))
                 .collect(Collectors.toList());
+        List<ActivePotInterval> potIntervals = computePotIntervals(monthlyPots);
 
         List<Account> ledgerAccounts = resolveLedgerAccounts(allAccounts);
 
@@ -165,7 +165,10 @@ public class HistoricSpentCalculator {
             long effectiveEndSec = isCurrent ? today.atTime(LocalTime.MAX).atZone(zone).toEpochSecond() : cycleEndSec;
 
             // Find which pot configuration was active during this cycle (using last monthly pot in period if multiple)
-            Pot activePot = findActivePotForCycle(monthlyPots, cycleStartSec, cycleEndSec);
+            List<ActivePotInterval> activeIntervalsInCycle = findActivePotsInCycle(potIntervals, cycleStartSec, cycleEndSec);
+            Pot activePot = !activeIntervalsInCycle.isEmpty()
+                    ? activeIntervalsInCycle.get(activeIntervalsInCycle.size() - 1).pot
+                    : findActivePotForCycle(monthlyPots, cycleStartSec, cycleEndSec);
 
             // Incomings active during this cycle (taking historic and soft-deleted into account)
             List<Incoming> cycleIncomings = allIncomings != null ? allIncomings.stream()
@@ -316,26 +319,17 @@ public class HistoricSpentCalculator {
                     .collect(Collectors.toMap(Account::getId, java.util.function.Function.identity(), (a, b) -> a));
 
             List<HistoricPotSnapshot> potsInPeriod = new ArrayList<>();
-            List<Pot> cyclePots = new ArrayList<>();
-            for (Pot p : monthlyPots) {
-                long start = p.getCreatedAt() != null ? p.getCreatedAt() : Long.MIN_VALUE;
-                long end = (p.isArchived() && p.getLastUpdated() != null && p.getLastUpdated() > start) ? p.getLastUpdated() : Long.MAX_VALUE;
-                long overlap = Math.min(end, cycleEndSec) - Math.max(start, cycleStartSec);
-                if (overlap > 0 || (start >= cycleStartSec && start <= cycleEndSec)) {
-                    cyclePots.add(p);
-                }
-            }
-            if (cyclePots.isEmpty() && activePot != null) {
-                cyclePots.add(activePot);
-            }
+            List<ActivePotInterval> displayIntervals = activeIntervalsInCycle;
 
-            for (Pot p : cyclePots) {
-                boolean isLastPot = (p == activePot) || (p.getId() != null && activePot != null && p.getId().equals(activePot.getId()));
-                boolean isArchivedInPeriod = p.isArchived() && p.getLastUpdated() != null && p.getLastUpdated() >= cycleStartSec && p.getLastUpdated() <= cycleEndSec;
-                Long archivedAt = isArchivedInPeriod ? p.getLastUpdated() : null;
+            for (ActivePotInterval interval : displayIntervals) {
+                Pot p = interval.pot;
+                boolean isFirst = (interval == displayIntervals.get(0));
+                boolean isLast = (interval == displayIntervals.get(displayIntervals.size() - 1));
+                boolean isArchivedInPeriod = interval.end <= cycleEndSec;
+                Long archivedAt = isArchivedInPeriod ? Long.valueOf(interval.end) : ((p.isArchived() && p.getLastUpdated() != null) ? p.getLastUpdated() : null);
 
-                long potEndBoundary = isArchivedInPeriod ? p.getLastUpdated() : effectiveEndSec;
-                long potStartBoundary = (p.getCreatedAt() != null && p.getCreatedAt() >= cycleStartSec && p.getCreatedAt() <= effectiveEndSec) ? p.getCreatedAt() : cycleStartSec;
+                long potEndBoundary = Math.min(interval.end, effectiveEndSec);
+                long potStartBoundary = Math.max(interval.start, cycleStartSec);
 
                 List<Account> pAccounts = resolvePotAccounts(p, allAccounts);
                 List<HistoricPotSnapshot.AccountBalanceSnapshot> accountSnapshots = new ArrayList<>();
@@ -364,7 +358,8 @@ public class HistoricSpentCalculator {
                 }
                 potsInPeriod.add(new HistoricPotSnapshot(
                         p,
-                        isLastPot,
+                        isFirst,
+                        isLast,
                         isArchivedInPeriod,
                         archivedAt,
                         potSnapshotSpent,
@@ -571,6 +566,101 @@ public class HistoricSpentCalculator {
         return b != null ? round2((double) b.getValue()) : 0.0;
     }
 
+    public static class ActivePotInterval {
+        public final Pot pot;
+        public final long start;
+        public final long end;
+
+        public ActivePotInterval(Pot pot, long start, long end) {
+            this.pot = pot;
+            this.start = start;
+            this.end = end;
+        }
+
+        public long getOverlap(long windowStart, long windowEnd) {
+            return Math.min(end, windowEnd) - Math.max(start, windowStart);
+        }
+
+        public boolean isActiveIn(long windowStart, long windowEnd) {
+            return getOverlap(windowStart, windowEnd) > 0;
+        }
+    }
+
+    public static List<ActivePotInterval> computePotIntervals(List<Pot> monthlyPots) {
+        if (monthlyPots == null || monthlyPots.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Pot> sorted = new ArrayList<>(monthlyPots);
+        sorted.sort((p1, p2) -> {
+            long t1 = p1.getCreatedAt() != null ? p1.getCreatedAt() : (p1.getLastUpdated() != null ? p1.getLastUpdated() : 0L);
+            long t2 = p2.getCreatedAt() != null ? p2.getCreatedAt() : (p2.getLastUpdated() != null ? p2.getLastUpdated() : 0L);
+            if (t1 != t2) {
+                return Long.compare(t1, t2);
+            }
+            long id1 = p1.getId() != null ? p1.getId() : 0L;
+            long id2 = p2.getId() != null ? p2.getId() : 0L;
+            return Long.compare(id1, id2);
+        });
+
+        List<ActivePotInterval> intervals = new ArrayList<>();
+        int n = sorted.size();
+        for (int i = 0; i < n; i++) {
+            Pot p = sorted.get(i);
+            long start;
+            if (p.getCreatedAt() != null && p.getCreatedAt() > 0) {
+                start = p.getCreatedAt();
+            } else if (p.getLastUpdated() != null && p.getLastUpdated() > 0) {
+                start = p.getLastUpdated();
+            } else if (i == 0) {
+                start = Long.MIN_VALUE;
+            } else {
+                start = intervals.get(i - 1).start;
+            }
+
+            long nextStart = Long.MAX_VALUE;
+            if (i + 1 < n) {
+                Pot next = sorted.get(i + 1);
+                Long nextT = next.getCreatedAt() != null && next.getCreatedAt() > 0 ? next.getCreatedAt() : next.getLastUpdated();
+                if (nextT != null && nextT > 0) {
+                    nextStart = nextT;
+                }
+            }
+
+            long end = nextStart;
+            if (p.isArchived() && p.getLastUpdated() != null && p.getLastUpdated() > start && p.getLastUpdated() < nextStart) {
+                end = p.getLastUpdated();
+            }
+            if (end < start) {
+                end = start;
+            }
+
+            intervals.add(new ActivePotInterval(p, start, end));
+        }
+
+        return intervals;
+    }
+
+    public static List<ActivePotInterval> findActivePotsInCycle(List<ActivePotInterval> intervals, long cycleStartSec, long cycleEndSec) {
+        if (intervals == null || intervals.isEmpty()) {
+            return Collections.emptyList();
+        }
+        long minMeaningfulSec = 12 * 3600L;
+        List<ActivePotInterval> meaningful = new ArrayList<>();
+        List<ActivePotInterval> anyOverlap = new ArrayList<>();
+
+        for (ActivePotInterval interval : intervals) {
+            long overlap = interval.getOverlap(cycleStartSec, cycleEndSec);
+            if (overlap >= minMeaningfulSec) {
+                meaningful.add(interval);
+            }
+            if (overlap > 0) {
+                anyOverlap.add(interval);
+            }
+        }
+        return !meaningful.isEmpty() ? meaningful : anyOverlap;
+    }
+
     /**
      * Picks the LAST monthly pot configuration used during that month/cycle.
      * Pots are expected sorted by createdAt ascending. If multiple monthly pots were
@@ -581,61 +671,21 @@ public class HistoricSpentCalculator {
             return null;
         }
 
-        Pot lastUsed = null;
-        long minMeaningfulSec = 12 * 3600L; // 12 hours active duration in the cycle
+        List<ActivePotInterval> intervals = computePotIntervals(pots);
+        List<ActivePotInterval> activeInCycle = findActivePotsInCycle(intervals, cycleStartSec, cycleEndSec);
+        if (!activeInCycle.isEmpty()) {
+            return activeInCycle.get(activeInCycle.size() - 1).pot;
+        }
 
-        // 1. Find the last pot with meaningful active duration in the cycle
-        for (int i = 0; i < pots.size(); i++) {
-            Pot p = pots.get(i);
-            long start = p.getCreatedAt() != null ? p.getCreatedAt() : Long.MIN_VALUE;
-            long end = (i + 1 < pots.size() && pots.get(i + 1).getCreatedAt() != null)
-                    ? pots.get(i + 1).getCreatedAt()
-                    : Long.MAX_VALUE;
-            if (p.isArchived() && p.getLastUpdated() != null && p.getCreatedAt() != null
-                    && p.getLastUpdated() > p.getCreatedAt()) {
-                end = Math.min(end, p.getLastUpdated());
-            }
-            long overlap = Math.min(end, cycleEndSec) - Math.max(start, cycleStartSec);
-            if (overlap >= minMeaningfulSec) {
-                lastUsed = p;
+        // Fallback: most recent pot created on or before cycleEndSec
+        for (int i = intervals.size() - 1; i >= 0; i--) {
+            ActivePotInterval interval = intervals.get(i);
+            if (interval.start <= cycleEndSec) {
+                return interval.pot;
             }
         }
 
-        if (lastUsed != null) {
-            return lastUsed;
-        }
-
-        // 2. Fallback: last pot with any overlap > 0
-        for (int i = 0; i < pots.size(); i++) {
-            Pot p = pots.get(i);
-            long start = p.getCreatedAt() != null ? p.getCreatedAt() : Long.MIN_VALUE;
-            long end = (i + 1 < pots.size() && pots.get(i + 1).getCreatedAt() != null)
-                    ? pots.get(i + 1).getCreatedAt()
-                    : Long.MAX_VALUE;
-            if (p.isArchived() && p.getLastUpdated() != null && p.getCreatedAt() != null
-                    && p.getLastUpdated() > p.getCreatedAt()) {
-                end = Math.min(end, p.getLastUpdated());
-            }
-            long overlap = Math.min(end, cycleEndSec) - Math.max(start, cycleStartSec);
-            if (overlap > 0) {
-                lastUsed = p;
-            }
-        }
-
-        if (lastUsed != null) {
-            return lastUsed;
-        }
-
-        // 3. Fallback: most recent pot created on or before cycleEndSec
-        for (int i = pots.size() - 1; i >= 0; i--) {
-            Pot p = pots.get(i);
-            long start = p.getCreatedAt() != null ? p.getCreatedAt() : Long.MIN_VALUE;
-            if (start <= cycleEndSec) {
-                return p;
-            }
-        }
-
-        return pots.get(pots.size() - 1);
+        return null;
     }
 
     public static List<Account> resolvePotAccounts(Pot pot, List<Account> allAccounts) {
