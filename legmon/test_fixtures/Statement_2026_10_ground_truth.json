@@ -1,0 +1,57 @@
+{
+  "bank": "Lloyds Bank",
+  "startDate": "2026-10-01",
+  "endDate": "2026-10-29",
+  "openingBalance": 0.00,
+  "closingBalance": 0.02,
+  "summary": {
+    "transactionCount": 5,
+    "paidInCount": 1,
+    "paidOutCount": 4,
+    "totalPaidIn": "500.00",
+    "totalPaidOut": "499.98",
+    "net": "0.02"
+  },
+  "rows": [
+    {
+      "date": "2026-10-14",
+      "description": "J122E00A0099NSPB",
+      "type": "BGC",
+      "paidIn": "500.00",
+      "paidOut": null,
+      "balance": "500.00"
+    },
+    {
+      "date": "2026-10-21",
+      "description": "J BREWER",
+      "type": "TFR",
+      "paidIn": null,
+      "paidOut": "100.00",
+      "balance": "400.00"
+    },
+    {
+      "date": "2026-10-21",
+      "description": "J BREWER",
+      "type": "TFR",
+      "paidIn": null,
+      "paidOut": "57.98",
+      "balance": "342.02"
+    },
+    {
+      "date": "2026-10-22",
+      "description": "BOILER SERV SCOTLA",
+      "type": "FPO",
+      "paidIn": null,
+      "paidOut": "270.00",
+      "balance": "72.02"
+    },
+    {
+      "date": "2026-10-22",
+      "description": "NS&I PREMIUM BONDS",
+      "type": "FPO",
+      "paidIn": null,
+      "paidOut": "72.00",
+      "balance": "0.02"
+    }
+  ]
+}

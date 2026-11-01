@@ -1102,6 +1102,115 @@ public class RealDatabaseSystemTest {
         }
     }
 
+    @Test
+    public void test11_LloydsAndFirstDirectStatementsPipelineBAndDeterministicFallbackInPostgres() throws Exception {
+        java.io.File lloydsPdf = new java.io.File("legmon/test_fixtures/Statement_2026_10.pdf");
+        java.io.File fdPdf = new java.io.File("legmon/test_fixtures/fd statement 9363 26102026.pdf");
+        assertThat(lloydsPdf).exists();
+        assertThat(fdPdf).exists();
+
+        String mistralKey = resolveMistralApiKeyForSysTest();
+
+        // 1. Lloyds Bank Statement (5 txs: 1 Paid In = £500.00, 4 Paid Out = £499.98, open = £0.00, close = £0.02)
+        String lloydsUser = "systest_lloyds_2026_10";
+        Account lloydsAcc = new Account();
+        lloydsAcc.setUserId(lloydsUser);
+        lloydsAcc.setName("Lloyds Classic 9368");
+        lloydsAcc.setType(Account.AccountType.DEBIT);
+        lloydsAcc.setLedgerMode(Account.LedgerMode.ABL);
+        lloydsAcc.setAvailableLimit(0f);
+        lloydsAcc = accountRepo.add(lloydsAcc).toCompletableFuture().get();
+
+        JsonNode lloydsDet = runLegmonContainerPipeline("systest-lloyds-det", 19012, 19013, lloydsPdf, lloydsUser, lloydsAcc.getId(), "", false, false);
+        assertThat(lloydsDet).isNotNull();
+        assertThat(lloydsDet.path("transactions").size()).isEqualTo(5);
+        assertThat(new java.math.BigDecimal(lloydsDet.path("totalPaidIn").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP)).isEqualByComparingTo("500.00");
+        assertThat(new java.math.BigDecimal(lloydsDet.path("totalPaidOut").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP)).isEqualByComparingTo("499.98");
+
+        JsonNode lloydsWebhook = lloydsDet;
+        if (mistralKey != null && !mistralKey.isEmpty()) {
+            JsonNode lloydsB = runLegmonContainerPipeline("systest-lloyds-b", 19014, 19015, lloydsPdf, lloydsUser, lloydsAcc.getId(), mistralKey, true, false);
+            if (lloydsB != null) {
+                assertThat(lloydsB.path("transactions").size()).isEqualTo(5);
+                assertThat(new java.math.BigDecimal(lloydsB.path("totalPaidIn").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP)).isEqualByComparingTo("500.00");
+                assertThat(new java.math.BigDecimal(lloydsB.path("totalPaidOut").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP)).isEqualByComparingTo("499.98");
+                lloydsWebhook = lloydsB;
+            }
+        }
+
+        Result lloydsWhRes = route(app, Helpers.fakeRequest("POST", "/api/monzo/webhook?statement=true&userId=" + lloydsUser)
+                .header("Host", "localhost:9000").bodyJson(lloydsWebhook));
+        assertThat(lloydsWhRes.status()).isEqualTo(200);
+        long lloydsStmtId = new ObjectMapper().readTree(contentAsString(lloydsWhRes)).path("statementId").asLong();
+        Result lloydsConfirm = route(app, Helpers.fakeRequest("POST", "/api/bank/statement/" + lloydsStmtId + "/confirm?userId=" + lloydsUser + "&accountId=" + lloydsAcc.getId())
+                .header("Host", "localhost:9000"));
+        assertThat(lloydsConfirm.status()).isEqualTo(200);
+
+        // 2. First Direct Statement (18 txs: 2 Paid In = £700.00, 16 Paid Out = £652.61, open = £14.50, close = £61.89)
+        String fdUser = "systest_fd_9363_26102026";
+        Account fdAcc = new Account();
+        fdAcc.setUserId(fdUser);
+        fdAcc.setName("First Direct 1st Account 9363");
+        fdAcc.setType(Account.AccountType.DEBIT);
+        fdAcc.setLedgerMode(Account.LedgerMode.ABL);
+        fdAcc.setAvailableLimit(0f);
+        fdAcc = accountRepo.add(fdAcc).toCompletableFuture().get();
+
+        JsonNode fdDet = runLegmonContainerPipeline("systest-fd-det", 19016, 19017, fdPdf, fdUser, fdAcc.getId(), "", false, false);
+        assertThat(fdDet).isNotNull();
+        assertThat(fdDet.path("transactions").size()).isEqualTo(18);
+        assertThat(new java.math.BigDecimal(fdDet.path("totalPaidIn").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP)).isEqualByComparingTo("700.00");
+        assertThat(new java.math.BigDecimal(fdDet.path("totalPaidOut").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP)).isEqualByComparingTo("652.61");
+
+        JsonNode fdWebhook = fdDet;
+        if (mistralKey != null && !mistralKey.isEmpty()) {
+            JsonNode fdB = runLegmonContainerPipeline("systest-fd-b", 19018, 19019, fdPdf, fdUser, fdAcc.getId(), mistralKey, true, false);
+            if (fdB != null) {
+                assertThat(fdB.path("transactions").size()).isEqualTo(18);
+                assertThat(new java.math.BigDecimal(fdB.path("totalPaidIn").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP)).isEqualByComparingTo("700.00");
+                assertThat(new java.math.BigDecimal(fdB.path("totalPaidOut").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP)).isEqualByComparingTo("652.61");
+                fdWebhook = fdB;
+            }
+        }
+
+        Result fdWhRes = route(app, Helpers.fakeRequest("POST", "/api/monzo/webhook?statement=true&userId=" + fdUser)
+                .header("Host", "localhost:9000").bodyJson(fdWebhook));
+        assertThat(fdWhRes.status()).isEqualTo(200);
+        long fdStmtId = new ObjectMapper().readTree(contentAsString(fdWhRes)).path("statementId").asLong();
+        Result fdConfirm = route(app, Helpers.fakeRequest("POST", "/api/bank/statement/" + fdStmtId + "/confirm?userId=" + fdUser + "&accountId=" + fdAcc.getId())
+                .header("Host", "localhost:9000"));
+        assertThat(fdConfirm.status()).isEqualTo(200);
+
+        // Verify both statements' persisted PostgreSQL rows to the penny
+        try (Connection conn = DriverManager.getConnection(SYSTEST_DB_URL, PG_USER, PG_PASS);
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) AS tx_count, " +
+                     "SUM(CASE WHEN amount < 0 THEN 1 ELSE 0 END) AS paid_in_count, " +
+                     "SUM(CASE WHEN amount > 0 THEN 1 ELSE 0 END) AS paid_out_count, " +
+                     "ROUND(SUM(CASE WHEN amount < 0 THEN -amount::numeric ELSE 0 END), 2) AS total_paid_in, " +
+                     "ROUND(SUM(CASE WHEN amount > 0 THEN amount::numeric ELSE 0 END), 2) AS total_paid_out " +
+                     "FROM bank_transaction WHERE userid = ?")) {
+            ps.setString(1, lloydsUser);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getInt("tx_count")).isEqualTo(5);
+                assertThat(rs.getInt("paid_in_count")).isEqualTo(1);
+                assertThat(rs.getInt("paid_out_count")).isEqualTo(4);
+                assertThat(rs.getBigDecimal("total_paid_in")).isEqualByComparingTo("500.00");
+                assertThat(rs.getBigDecimal("total_paid_out")).isEqualByComparingTo("499.98");
+            }
+            ps.setString(1, fdUser);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getInt("tx_count")).isEqualTo(18);
+                assertThat(rs.getInt("paid_in_count")).isEqualTo(2);
+                assertThat(rs.getInt("paid_out_count")).isEqualTo(16);
+                assertThat(rs.getBigDecimal("total_paid_in")).isEqualByComparingTo("700.00");
+                assertThat(rs.getBigDecimal("total_paid_out")).isEqualByComparingTo("652.61");
+            }
+        }
+    }
+
     private String resolveMistralApiKeyForSysTest() {
         String envKey = System.getenv("MISTRAL_API_KEY");
         if (envKey != null && !envKey.trim().isEmpty()) return envKey.trim();

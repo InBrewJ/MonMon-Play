@@ -212,7 +212,13 @@ def to_decimal(v):
 # ---------- scoring ----------
 
 def score(extracted, truth_rows):
-    txs = extracted.get("transactions", []) or []
+    raw_txs = extracted.get("transactions", []) or []
+    txs = [
+        t for t in raw_txs
+        if abs(to_decimal(t.get("amount", 0))) >= Decimal("0.01")
+        and "balancebroughtforward" not in str(t.get("description", "")).lower().replace(" ", "")
+        and "balancecarriedforward" not in str(t.get("description", "")).lower().replace(" ", "")
+    ]
     amounts = [to_decimal(t.get("amount", 0)) for t in txs]
     # MonMon convention: positive = paid out, negative = paid in
     out_total = sum((a for a in amounts if a > 0), Decimal("0.00"))
@@ -250,13 +256,18 @@ def score(extracted, truth_rows):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
+    ap.add_argument("--gt", default="")
     ap.add_argument("--models", default="mistral-small-latest")
     ap.add_argument("--pipelines", default="A,A2,B,C")
     ap.add_argument("--out", default=".")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
-    truth = natwest_ground_truth.parse(args.pdf)
+    if args.gt and os.path.exists(args.gt):
+        gt_data = json.load(open(args.gt))
+        truth = gt_data["rows"]
+    else:
+        truth = natwest_ground_truth.parse(args.pdf)
     t_in = sum((Decimal(r["paidIn"]) for r in truth if r["paidIn"]), Decimal("0.00"))
     t_out = sum((Decimal(r["paidOut"]) for r in truth if r["paidOut"]), Decimal("0.00"))
     print(f"GROUND TRUTH: {len(truth)} txs, paid in £{t_in}, paid out £{t_out}, net £{t_in - t_out}\n")

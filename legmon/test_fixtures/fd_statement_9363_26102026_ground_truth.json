@@ -1,0 +1,161 @@
+{
+  "bank": "First Direct",
+  "startDate": "2026-09-27",
+  "endDate": "2026-10-26",
+  "openingBalance": 14.50,
+  "closingBalance": 61.89,
+  "summary": {
+    "transactionCount": 18,
+    "paidInCount": 2,
+    "paidOutCount": 16,
+    "totalPaidIn": "700.00",
+    "totalPaidOut": "652.61",
+    "net": "47.39"
+  },
+  "rows": [
+    {
+      "date": "2026-09-29",
+      "description": "MAS INT'L 2266013137 LINK.COM* OCCASIO SOUTH SAN FRA",
+      "type": "MAS",
+      "paidIn": null,
+      "paidOut": "6.00",
+      "balance": "8.50"
+    },
+    {
+      "date": "2026-09-30",
+      "description": "CR BREWER JMD FIRSTDIRECTYO",
+      "type": "CR",
+      "paidIn": "600.00",
+      "paidOut": null,
+      "balance": "608.50"
+    },
+    {
+      "date": "2026-10-02",
+      "description": "DD SCOTTISHPOWER",
+      "type": "DD",
+      "paidIn": null,
+      "paidOut": "123.01",
+      "balance": null
+    },
+    {
+      "date": "2026-10-02",
+      "description": "DD FIRST DIRECT LOAN",
+      "type": "DD",
+      "paidIn": null,
+      "paidOut": "246.64",
+      "balance": null
+    },
+    {
+      "date": "2026-10-02",
+      "description": "DD PAYPAL PAYMENT",
+      "type": "DD",
+      "paidIn": null,
+      "paidOut": "12.99",
+      "balance": "225.86"
+    },
+    {
+      "date": "2026-10-05",
+      "description": "MAS INT'L 2274218099 PAYPAL *PROTON 4029357733",
+      "type": "MAS",
+      "paidIn": null,
+      "paidOut": "7.99",
+      "balance": "217.87"
+    },
+    {
+      "date": "2026-10-08",
+      "description": "DD TV LICENCE MBP",
+      "type": "DD",
+      "paidIn": null,
+      "paidOut": "15.00",
+      "balance": null
+    },
+    {
+      "date": "2026-10-08",
+      "description": "MAS INT'L 2277914735 REMARKABLE OSLO",
+      "type": "MAS",
+      "paidIn": null,
+      "paidOut": "3.99",
+      "balance": "198.88"
+    },
+    {
+      "date": "2026-10-13",
+      "description": "MAS PAYPAL *APPLE.COM/ 35314369001",
+      "type": "MAS",
+      "paidIn": null,
+      "paidOut": "2.99",
+      "balance": "195.89"
+    },
+    {
+      "date": "2026-10-14",
+      "description": "MAS GOOGLE *GOOGLE ONE 8888888888",
+      "type": "MAS",
+      "paidIn": null,
+      "paidOut": "9.49",
+      "balance": "186.40"
+    },
+    {
+      "date": "2026-10-16",
+      "description": "MAS WWW.CONCERN.ORG.UK LONDON",
+      "type": "MAS",
+      "paidIn": null,
+      "paidOut": "17.23",
+      "balance": "169.17"
+    },
+    {
+      "date": "2026-10-19",
+      "description": "DD O2",
+      "type": "DD",
+      "paidIn": null,
+      "paidOut": "24.30",
+      "balance": null
+    },
+    {
+      "date": "2026-10-19",
+      "description": "DD H3G",
+      "type": "DD",
+      "paidIn": null,
+      "paidOut": "12.55",
+      "balance": null
+    },
+    {
+      "date": "2026-10-19",
+      "description": "DD HALIFAX",
+      "type": "DD",
+      "paidIn": null,
+      "paidOut": "74.69",
+      "balance": null
+    },
+    {
+      "date": "2026-10-19",
+      "description": "MAS PAYPAL *GODADDY.CO 35314369001",
+      "type": "MAS",
+      "paidIn": null,
+      "paidOut": "45.94",
+      "balance": "11.69"
+    },
+    {
+      "date": "2026-10-20",
+      "description": "MAS PAYPAL *IONOS CLOU 35314369001",
+      "type": "MAS",
+      "paidIn": null,
+      "paidOut": "10.80",
+      "balance": "0.89"
+    },
+    {
+      "date": "2026-10-21",
+      "description": "CR J Brewer FROM ODYB",
+      "type": "CR",
+      "paidIn": "100.00",
+      "paidOut": null,
+      "balance": "100.89"
+    },
+    {
+      "date": "2026-10-26",
+      "description": "DD ZEN INTERNET LIM",
+      "type": "DD",
+      "paidIn": null,
+      "paidOut": "39.00",
+      "balance": "61.89"
+    }
+  ]
+}

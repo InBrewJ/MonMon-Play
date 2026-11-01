@@ -145,6 +145,8 @@ object MistralExtractionService {
         |- In MonMon, deposits, salary, refunds, or incoming credits MUST be negative numbers (e.g. -1500.00 for salary).
         |- For balances: positive number indicates money in bank / credit available.
         |
+        |- Do NOT include "Balance brought forward" or "Balance carried forward" lines in the transactions array.
+        |
         |Extract every valid transaction present in the statement text with the accurate date and amount.
         |Do not wrap in markdown quotes if possible, output pure JSON.
         |""".stripMargin
@@ -293,7 +295,12 @@ object MistralExtractionService {
               merchant = if (merchant.nonEmpty) merchant else desc,
               category = if (cat.nonEmpty) cat else "General"
             )
-          }.toOption
+          }.toOption.filter { tx =>
+            val compact = tx.description.toLowerCase.replace(" ", "")
+            Math.abs(tx.amount) >= 0.005f &&
+              !compact.contains("balancebroughtforward") &&
+              !compact.contains("balancecarriedforward")
+          }
         }.toSeq)
       case _ => None
     }.getOrElse(Seq.empty)

@@ -49,14 +49,16 @@ object DeterministicStatementParser {
 
   // Currency/decimal token with its start index in the line (excludes percentages like 39.90%)
   private val AmountTokenPattern: Regex =
-    """([+\-]?)\s*(?:GBP|[£E])?\s*([\d,]+\.\d{2})(?![0-9%])""".r
+    """(?:([+\-])\s*)?(?:(?:GBP|[£E])\s*)?([\d,]+\.\d{2})(?![0-9%])""".r
 
   private case class ColumnBands(
       paidInCol: Option[Int],
       paidOutCol: Option[Int],
       balanceCol: Option[Int],
       amountCol: Option[Int]
-  )
+  ) {
+    def hasAnyColumn: Boolean = paidInCol.isDefined || paidOutCol.isDefined || amountCol.isDefined
+  }
 
   def parse(rawText: String): ExtractedStatement = {
     val bank = detectBank(rawText)
@@ -111,22 +113,64 @@ object DeterministicStatementParser {
   private def parseMarkdownTables(text: String, defaultYear: Int): Seq[ExtractedTransaction] = {
     val buf = ArrayBuffer.empty[ExtractedTransaction]
     var idx = 0
+    var mdPaidInCol: Option[Int] = None
+    var mdPaidOutCol: Option[Int] = None
+    var mdAmountCol: Option[Int] = None
+    var currentDate: Option[String] = None
+
     for (line <- text.linesIterator) {
-      line match {
-        case MarkdownTableRow(dateRaw, descRaw, typeRaw, paidInRaw, paidOutRaw) =>
-          val paidInVal = parseUnsignedBigDecimal(paidInRaw)
-          val paidOutVal = parseUnsignedBigDecimal(paidOutRaw)
-          if (paidInVal.isDefined || paidOutVal.isDefined) {
-            val isoDate = normalizeDate(dateRaw.trim, defaultYear)
-            val desc = descRaw.trim
-            val signedAmount: BigDecimal = paidOutVal match {
-              case Some(out) if out > 0 => out
-              case _ => -paidInVal.getOrElse(BigDecimal(0))
-            }
-            buf += buildTx(idx, isoDate, desc, typeRaw.trim, signedAmount)
-            idx += 1
+      val trimmed = line.trim
+      if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+        val cells = trimmed.stripPrefix("|").stripSuffix("|").split("\\|", -1).map(_.trim)
+        val lowerCells = cells.map(_.toLowerCase(Locale.ROOT))
+        val isSeparator = cells.forall(c => c.isEmpty || c.forall(ch => ch == '-' || ch == ':' || ch == ' '))
+
+        if (!isSeparator && lowerCells.exists(c => c.contains("date") || c.contains("paid in") || c.contains("paid out") || c.contains("money in") || c.contains("money out"))) {
+          mdPaidInCol = lowerCells.indexWhere(c => c.contains("paid in") || c.contains("money in") || c.contains("credit") || c.contains("payments in") || c == "in") match {
+            case -1 => None
+            case i => Some(i)
           }
-        case _ =>
+          mdPaidOutCol = lowerCells.indexWhere(c => c.contains("paid out") || c.contains("money out") || c.contains("debit") || c.contains("payments out") || c == "out") match {
+            case -1 => None
+            case i => Some(i)
+          }
+          mdAmountCol = lowerCells.indexWhere(c => c.contains("amount")) match {
+            case -1 => None
+            case i => Some(i)
+          }
+        } else if (!isSeparator && cells.length >= 4 && (mdPaidInCol.isDefined || mdPaidOutCol.isDefined || mdAmountCol.isDefined)) {
+          val dateCell = cells(0).replaceAll("""<br\s*/?>""", " ").trim
+          if (isValidDateToken(dateCell)) {
+            currentDate = Some(normalizeDate(dateCell, defaultYear))
+          }
+          val descCell = cells.lift(1).getOrElse("").replaceAll("""<br\s*/?>""", " ").trim
+          val compactDesc = descCell.toLowerCase(Locale.ROOT).replace(" ", "")
+          if (currentDate.isDefined &&
+              !compactDesc.contains("balancebroughtforward") &&
+              !compactDesc.contains("balancecarriedforward")) {
+            val pInCell = mdPaidInCol.flatMap(cells.lift).getOrElse("")
+            val pOutCell = mdPaidOutCol.flatMap(cells.lift).getOrElse("")
+            val amtCell = mdAmountCol.flatMap(cells.lift).getOrElse("")
+
+            val paidInVal = parseUnsignedBigDecimal(pInCell)
+            val paidOutVal = parseUnsignedBigDecimal(pOutCell)
+            val signedAmtOpt: Option[BigDecimal] = if (paidOutVal.exists(_ > 0)) {
+              paidOutVal
+            } else if (paidInVal.exists(_ > 0)) {
+              paidInVal.map(v => -v)
+            } else if (amtCell.nonEmpty) {
+              parseUnsignedBigDecimal(amtCell).map { v =>
+                if (amtCell.contains("+")) -v else v
+              }
+            } else None
+
+            signedAmtOpt.foreach { signedAmt =>
+              val typeCell = if (cells.length >= 5 && !mdPaidInCol.contains(2) && !mdPaidOutCol.contains(2)) cells(2) else ""
+              buf += buildTx(idx, currentDate.get, descCell, typeCell.trim, signedAmt)
+              idx += 1
+            }
+          }
+        }
       }
     }
     buf.toSeq
@@ -177,7 +221,7 @@ object DeterministicStatementParser {
         val amt = indexOfAny(lower, Seq("amount"))
         bands = ColumnBands(pIn, pOut, bal, amt)
         pendingDesc.clear()
-      } else if (!isNoiseLine(lower)) {
+      } else if (bands.hasAnyColumn && !isNoiseLine(lower)) {
         line match {
           case LeadingDatePattern(dateToken, rest) if isValidDateToken(dateToken) =>
             currentDate = Some(normalizeDate(dateToken.trim, defaultYear))
@@ -250,7 +294,7 @@ object DeterministicStatementParser {
 
     if (nonBalanceMatches.isEmpty) return None
     val txMatch = nonBalanceMatches.head
-    val signStr = txMatch.group(1)
+    val signStr = Option(txMatch.group(1)).getOrElse("")
     val mag = BigDecimal(txMatch.group(2).replace(",", "")).setScale(2, BigDecimal.RoundingMode.HALF_UP)
     if (mag == BigDecimal(0)) return None
 
