@@ -158,7 +158,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
             }
         }
         String env = System.getenv("MONZO_REDIRECT_URI");
-        return (env != null && !env.trim().isEmpty()) ? env.trim() : "https://boom.dryark.uk/bank/monzo/callback";
+        return (env != null && !env.trim().isEmpty()) ? env.trim() : "https://monmon.dryark.uk/bank/monzo/callback";
     }
 
     public String resolveClientId(MonzoConnection conn) {
@@ -180,7 +180,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
             return conn.getRedirectUri().trim();
         }
         String configured = getRedirectUri();
-        if (configured != null && !configured.trim().isEmpty() && !configured.equals("https://boom.dryark.uk/bank/monzo/callback")) {
+        if (configured != null && !configured.trim().isEmpty() && !configured.equals("https://monmon.dryark.uk/bank/monzo/callback")) {
             return configured.trim();
         }
         if (fallbackBaseUrl != null && !fallbackBaseUrl.trim().isEmpty()) {

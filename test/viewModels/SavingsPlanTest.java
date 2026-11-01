@@ -738,4 +738,132 @@ public class SavingsPlanTest {
         assertThat(p3.getMonthlyAmount()).isEqualTo(200.0f);
         assertThat(plan.getTotalAllocated()).isEqualTo(400.0f);
     }
+
+    @Test
+    public void testDuplicateItemReferencesInCollectionAreDeduplicatedAndNeverJumpPrioritiesToP23P24() {
+        SavingsPlan plan = new SavingsPlan("user123", "Cartesian Join Guard Plan", 20);
+
+        SavingsPlanItem item1 = new SavingsPlanItem("Item 1", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, 500f, 50f, 1);
+        item1.setId(1L);
+        SavingsPlanItem item2 = new SavingsPlanItem("Item 2", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 50f, 2);
+        item2.setId(2L);
+        SavingsPlanItem item3 = new SavingsPlanItem("Item 3", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1500f, 50f, 3);
+        item3.setId(3L);
+
+        // Simulate Hibernate PersistentBag multiplying item1 22 times due to 22 Outgoings on its Account
+        for (int i = 0; i < 22; i++) {
+            plan.getAllItems().add(item1);
+        }
+        plan.getAllItems().add(item2);
+        plan.getAllItems().add(item3);
+
+        // getItems() must deduplicate and return strictly 3 items
+        List<SavingsPlanItem> active = plan.getItems();
+        assertThat(active).hasSize(3);
+        assertThat(active).extracting(SavingsPlanItem::getName).containsExactly("Item 1", "Item 2", "Item 3");
+
+        // rebalancePriorities() must assign 1, 2, 3 (NEVER 22, 23, 24) and clean up duplicate references
+        plan.rebalancePriorities();
+        List<SavingsPlanItem> afterRebalance = plan.getItems();
+        assertThat(afterRebalance).hasSize(3);
+        assertThat(afterRebalance.get(0).getPriority()).isEqualTo(1);
+        assertThat(afterRebalance.get(1).getPriority()).isEqualTo(2);
+        assertThat(afterRebalance.get(2).getPriority()).isEqualTo(3);
+        assertThat(plan.getAllItems()).hasSize(3);
+
+        // Moving Item 1 down 1 position must swap it with Item 2 (not with a duplicate of Item 1)
+        boolean movedDown = plan.moveItemDown(1L);
+        assertThat(movedDown).isTrue();
+        List<SavingsPlanItem> afterMove = plan.getItems();
+        assertThat(afterMove).extracting(SavingsPlanItem::getName).containsExactly("Item 2", "Item 1", "Item 3");
+        assertThat(afterMove).extracting(SavingsPlanItem::getPriority).containsExactly(1, 2, 3);
+    }
+
+    @Test
+    public void testReassignItemPriorityUpDownAndBoundsInFifteenItemList() {
+        SavingsPlan plan = new SavingsPlan("user123", "Reassign Priority Plan", 25);
+
+        for (int i = 1; i <= 15; i++) {
+            SavingsPlanItem item = new SavingsPlanItem("Item " + i, SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, i * 10f, i);
+            item.setId((long) i);
+            plan.addItem(item);
+        }
+
+        // 1. Reassign P7 (id=7) as P5 -> P7 becomes P5, old P5 becomes P6, old P6 becomes P7
+        boolean reassignedUp = plan.reassignItemPriority(7L, 5);
+        assertThat(reassignedUp).isTrue();
+
+        List<SavingsPlanItem> afterUp = plan.getItems();
+        assertThat(afterUp).hasSize(15);
+        assertThat(afterUp).extracting(SavingsPlanItem::getName).containsExactly(
+                "Item 1", "Item 2", "Item 3", "Item 4", "Item 7",
+                "Item 5", "Item 6", "Item 8", "Item 9", "Item 10",
+                "Item 11", "Item 12", "Item 13", "Item 14", "Item 15"
+        );
+        for (int i = 0; i < 15; i++) {
+            assertThat(afterUp.get(i).getPriority()).isEqualTo(i + 1);
+        }
+
+        // 2. Reassign P3 (Item 3, id=3) as P8 (moving downwards)
+        boolean reassignedDown = plan.reassignItemPriority(3L, 8);
+        assertThat(reassignedDown).isTrue();
+
+        List<SavingsPlanItem> afterDown = plan.getItems();
+        assertThat(afterDown).extracting(SavingsPlanItem::getName).containsExactly(
+                "Item 1", "Item 2", "Item 4", "Item 7", "Item 5",
+                "Item 6", "Item 8", "Item 3", "Item 9", "Item 10",
+                "Item 11", "Item 12", "Item 13", "Item 14", "Item 15"
+        );
+        for (int i = 0; i < 15; i++) {
+            assertThat(afterDown.get(i).getPriority()).isEqualTo(i + 1);
+        }
+
+        // 3. Reassign to same priority is a no-op returning false
+        assertThat(plan.reassignItemPriority(3L, 8)).isFalse();
+
+        // 4. Out-of-bounds priority > 15 clamps to 15 (bottom of list)
+        assertThat(plan.reassignItemPriority(1L, 999)).isTrue();
+        assertThat(plan.getItems().get(14).getName()).isEqualTo("Item 1");
+        assertThat(plan.getItems().get(14).getPriority()).isEqualTo(15);
+
+        // 5. Priority <= 1 clamps to 1 (top of list)
+        assertThat(plan.reassignItemPriority(1L, 1)).isTrue();
+        assertThat(plan.getItems().get(0).getName()).isEqualTo("Item 1");
+        assertThat(plan.getItems().get(0).getPriority()).isEqualTo(1);
+    }
+
+    @Test
+    public void testAddItemWithExplicitMiddlePriorityShiftsSubsequentItemsAndNullPriorityAppends() {
+        SavingsPlan plan = new SavingsPlan("user123", "Insert Priority Plan", 20);
+
+        for (int i = 1; i <= 5; i++) {
+            SavingsPlanItem item = new SavingsPlanItem("Item " + i, SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 500f, 20f, i);
+            item.setId((long) i);
+            plan.addItem(item);
+        }
+
+        // Insert a new item explicitly at P3
+        SavingsPlanItem insertedAtP3 = new SavingsPlanItem("Inserted P3", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, 300f, 50f, 3);
+        insertedAtP3.setId(99L);
+        plan.addItem(insertedAtP3);
+        plan.rebalancePriorities();
+
+        List<SavingsPlanItem> items = plan.getItems();
+        assertThat(items).hasSize(6);
+        assertThat(items).extracting(SavingsPlanItem::getName).containsExactly(
+                "Item 1", "Item 2", "Inserted P3", "Item 3", "Item 4", "Item 5"
+        );
+        assertThat(items).extracting(SavingsPlanItem::getPriority).containsExactly(1, 2, 3, 4, 5, 6);
+
+        // Add an item with null priority (e.g. from addAllCreditCards / addAllOverdrafts) -> appends at tail (P7)
+        SavingsPlanItem appendedNullPri = new SavingsPlanItem("Appended Tail", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, 400f, 0f, null);
+        appendedNullPri.setId(100L);
+        plan.addItem(appendedNullPri);
+        plan.rebalancePriorities();
+
+        List<SavingsPlanItem> afterAppend = plan.getItems();
+        assertThat(afterAppend).hasSize(7);
+        assertThat(afterAppend.get(6).getName()).isEqualTo("Appended Tail");
+        assertThat(afterAppend.get(6).getPriority()).isEqualTo(7);
+    }
 }

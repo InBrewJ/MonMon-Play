@@ -659,7 +659,7 @@ public class RealDatabaseSystemTest {
         initialCreds.setUserId(userId);
         initialCreds.setClientId("oauth2client_00009abcdef");
         initialCreds.setClientSecret("mnzconf.secret_xyz_987654321");
-        initialCreds.setRedirectUri("https://boom.dryark.uk/bank/monzo/callback");
+        initialCreds.setRedirectUri("https://monmon.dryark.uk/bank/monzo/callback");
         monzoConnRepo.save(initialCreds).toCompletableFuture().get();
 
         // 2. Simulate OAuth callback saving accessToken + refreshToken (without overwriting clientId/clientSecret)
@@ -683,7 +683,7 @@ public class RealDatabaseSystemTest {
         assertThat(loaded.isTokenExpired()).isTrue();
         assertThat(loaded.getClientId()).isEqualTo("oauth2client_00009abcdef");
         assertThat(loaded.getClientSecret()).isEqualTo("mnzconf.secret_xyz_987654321");
-        assertThat(loaded.getRedirectUri()).isEqualTo("https://boom.dryark.uk/bank/monzo/callback");
+        assertThat(loaded.getRedirectUri()).isEqualTo("https://monmon.dryark.uk/bank/monzo/callback");
 
         // 3. Simulate token refresh rotating both access_token and refresh_token
         long newExpiresAt = (System.currentTimeMillis() / 1000L) + 21600L; // valid for 6 hours
@@ -698,5 +698,125 @@ public class RealDatabaseSystemTest {
         assertThat(afterRefresh.getRefreshToken()).isEqualTo("refresh_token_v2_rotated");
         assertThat(afterRefresh.getClientId()).isEqualTo("oauth2client_00009abcdef");
         assertThat(afterRefresh.getClientSecret()).isEqualTo("mnzconf.secret_xyz_987654321");
+    }
+
+    @Test
+    public void test07_AccountWith22OutgoingsDoesNotDuplicateItemsOrJumpPrioritiesToP23P24InPostgres() throws Exception {
+        String userId = "systest_cartesian_join_regression";
+        BalanceRepository balanceRepo = app.injector().instanceOf(BalanceRepository.class);
+
+        // 1. Create a Debit Account with 22 Outgoings and 5 Balances in PostgreSQL
+        // (Previously, EAGER outer joins across SavingsPlan.items -> SavingsPlanItem.account -> Account.outgoings
+        // caused Hibernate to insert 22 duplicate references of Item 1 into SavingsPlan.items,
+        // making Item 2 jump to P23 and Item 3 jump to P24, and breaking moveItemDown/Up!)
+        Account heavyAccount = new Account();
+        heavyAccount.setUserId(userId);
+        heavyAccount.setName("Heavy Bills Current Account");
+        heavyAccount.setType(Account.AccountType.DEBIT);
+        heavyAccount.setAvailableLimit(1000f);
+        heavyAccount = accountRepo.add(heavyAccount).toCompletableFuture().get();
+
+        for (int i = 1; i <= 22; i++) {
+            Outgoing o = new Outgoing();
+            o.setUserId(userId);
+            o.setName("Monthly Direct Debit #" + i);
+            o.setCost(15.0f + i);
+            o.setOutgoingDay((i % 28) + 1);
+            o.setAccount(heavyAccount);
+            outgoingRepo.add(o).toCompletableFuture().get();
+        }
+
+        for (int b = 1; b <= 5; b++) {
+            Balance bal = new Balance();
+            bal.setUserId(userId);
+            bal.setAccount(heavyAccount);
+            bal.setValue(-250.0f + (b * 10f));
+            bal.setTimestamp((System.currentTimeMillis() / 1000L) - (b * 86400L));
+            balanceRepo.add(bal).toCompletableFuture().get();
+        }
+
+        // 2. Create a SavingsPlan and link Item 1 to heavyAccount, plus Item 2 and Item 3
+        SavingsPlan plan = new SavingsPlan(userId, "Regression Guard Plan", 20);
+        plan = savingsPlanRepo.createOrReplace(userId, plan).toCompletableFuture().get();
+        Long planId = plan.getId();
+
+        SavingsPlanItem item1 = new SavingsPlanItem("Overdraft Clearout", SavingsPlanItem.ItemType.DEBT_PAYOFF, heavyAccount, 250f, 100f, 1);
+        SavingsPlanItem item2 = new SavingsPlanItem("Barclaycard Payoff", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, 800f, 150f, 2);
+        SavingsPlanItem item3 = new SavingsPlanItem("Emergency Savings", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 2000f, 200f, 3);
+
+        savingsPlanRepo.addItem(planId, item1).toCompletableFuture().get();
+        savingsPlanRepo.addItem(planId, item2).toCompletableFuture().get();
+        savingsPlanRepo.addItem(planId, item3).toCompletableFuture().get();
+
+        // 3. Assert via getActive, listComplete, findById, and raw PostgreSQL SQL that there are strictly 3 items at P1, P2, P3
+        List<SavingsPlanItem> activeItems = assertPositionsInPostgres(userId, planId,
+                "Overdraft Clearout", "Barclaycard Payoff", "Emergency Savings");
+        assertThat(activeItems).hasSize(3);
+        assertThat(activeItems).extracting(SavingsPlanItem::getPriority).containsExactly(1, 2, 3);
+
+        List<SavingsPlan> completeList = savingsPlanRepo.listComplete(userId).toCompletableFuture().get()
+                .collect(java.util.stream.Collectors.toList());
+        assertThat(completeList).hasSize(1);
+        assertThat(completeList.get(0).getItems()).hasSize(3);
+        assertThat(completeList.get(0).getItems()).extracting(SavingsPlanItem::getPriority).containsExactly(1, 2, 3);
+
+        // 4. Move Item 1 (linked to the 22-outgoing account) down 1 position -> must become P2, Barclaycard becomes P1
+        Long overdraftItemId = activeItems.get(0).getId();
+        Boolean movedDown = savingsPlanRepo.moveItemDown(overdraftItemId).toCompletableFuture().get();
+        assertThat(movedDown).isTrue();
+
+        assertPositionsInPostgres(userId, planId,
+                "Barclaycard Payoff", "Overdraft Clearout", "Emergency Savings");
+
+        // 5. Move Item 1 to bottom -> must become P3
+        Boolean movedBottom = savingsPlanRepo.moveToBottom(overdraftItemId).toCompletableFuture().get();
+        assertThat(movedBottom).isTrue();
+
+        assertPositionsInPostgres(userId, planId,
+                "Barclaycard Payoff", "Emergency Savings", "Overdraft Clearout");
+
+        // 6. Reassign Item 1 from P3 back to P1 via updateItem
+        savingsPlanRepo.updateItem(
+                overdraftItemId,
+                "Overdraft Clearout",
+                SavingsPlanItem.ItemType.DEBT_PAYOFF,
+                heavyAccount.getId(),
+                250f,
+                100f,
+                1
+        ).toCompletableFuture().get();
+
+        assertPositionsInPostgres(userId, planId,
+                "Overdraft Clearout", "Barclaycard Payoff", "Emergency Savings");
+    }
+
+    @Test
+    public void test08_InsertItemAtExplicitMiddlePriorityAndAppendNullPriorityInPostgres() throws Exception {
+        String userId = "systest_insert_middle_and_append";
+        SavingsPlan plan = new SavingsPlan(userId, "Insert & Append Plan", 25);
+        plan = savingsPlanRepo.createOrReplace(userId, plan).toCompletableFuture().get();
+        Long planId = plan.getId();
+
+        for (int i = 1; i <= 6; i++) {
+            SavingsPlanItem itm = new SavingsPlanItem("Goal " + i, SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 500f, i * 10f, i);
+            savingsPlanRepo.addItem(planId, itm).toCompletableFuture().get();
+        }
+
+        assertPositionsInPostgres(userId, planId,
+                "Goal 1", "Goal 2", "Goal 3", "Goal 4", "Goal 5", "Goal 6");
+
+        // 1. Add a new item with explicit priority = 3 -> should insert at P3 and shift Goal 3..Goal 6 to P4..P7
+        SavingsPlanItem urgentP3 = new SavingsPlanItem("Urgent P3 Goal", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, 300f, 75f, 3);
+        savingsPlanRepo.addItem(planId, urgentP3).toCompletableFuture().get();
+
+        assertPositionsInPostgres(userId, planId,
+                "Goal 1", "Goal 2", "Urgent P3 Goal", "Goal 3", "Goal 4", "Goal 5", "Goal 6");
+
+        // 2. Add a new item with priority = null (as used by Add All Credit Cards / Overdrafts) -> should append at P8
+        SavingsPlanItem tailGoal = new SavingsPlanItem("Appended Tail Goal", SavingsPlanItem.ItemType.DEBT_PAYOFF, null, 400f, 0f, null);
+        savingsPlanRepo.addItem(planId, tailGoal).toCompletableFuture().get();
+
+        assertPositionsInPostgres(userId, planId,
+                "Goal 1", "Goal 2", "Urgent P3 Goal", "Goal 3", "Goal 4", "Goal 5", "Goal 6", "Appended Tail Goal");
     }
 }

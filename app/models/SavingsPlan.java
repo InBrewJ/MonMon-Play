@@ -149,6 +149,25 @@ public class SavingsPlan {
         this.items.add(item);
     }
 
+    private void deduplicateAndSortItems() {
+        if (this.items == null) return;
+        List<SavingsPlanItem> unique = new ArrayList<>();
+        for (SavingsPlanItem itm : this.items) {
+            if (itm != null && !unique.contains(itm)) {
+                unique.add(itm);
+            }
+        }
+        unique.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        if (this.items.size() != unique.size()) {
+            this.items.clear();
+            this.items.addAll(unique);
+        } else {
+            this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        }
+    }
+
     /**
      * Reassigns an item to a target 1-based priority position (e.g. P7 reassigned as P5),
      * shifting intermediate items cleanly (old P5 becomes P6, old P6 becomes P7, etc.)
@@ -165,16 +184,20 @@ public class SavingsPlan {
             }
         }
         if (idx < 0) return false;
+        int targetIdx = Math.max(0, Math.min(newPriority - 1, active.size() - 1));
+        if (idx == targetIdx) {
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).setPriority(i + 1);
+            }
+            deduplicateAndSortItems();
+            return false;
+        }
         SavingsPlanItem item = active.remove(idx);
-        int targetIdx = Math.max(0, Math.min(newPriority - 1, active.size()));
         active.add(targetIdx, item);
         for (int i = 0; i < active.size(); i++) {
             active.get(i).setPriority(i + 1);
         }
-        if (this.items != null) {
-            this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
-        }
+        deduplicateAndSortItems();
         this.lastUpdated = System.currentTimeMillis();
         return true;
     }
@@ -188,10 +211,7 @@ public class SavingsPlan {
         for (int i = 0; i < active.size(); i++) {
             active.get(i).setPriority(i + 1);
         }
-        if (this.items != null) {
-            this.items.sort(Comparator.comparing(SavingsPlanItem::getPriority, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .thenComparing(SavingsPlanItem::getId, Comparator.nullsLast(Comparator.naturalOrder())));
-        }
+        deduplicateAndSortItems();
         this.lastUpdated = System.currentTimeMillis();
     }
 
