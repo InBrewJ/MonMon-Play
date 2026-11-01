@@ -96,13 +96,19 @@ object MistralExtractionService {
 
   def getModel: String = getPrimaryModel
 
+  def isDeterministicOnly: Boolean = {
+    sys.env.get("LEGMON_DETERMINISTIC_ONLY")
+      .orElse(sys.props.get("LEGMON_DETERMINISTIC_ONLY"))
+      .exists(v => v.trim.equalsIgnoreCase("true") || v.trim == "1")
+  }
+
   def extract(text: String, modelOverride: Option[String] = None): ExtractedStatement = {
     val apiKey = getApiKey
-    if (apiKey.isEmpty) {
-      val err = "Mistral API key is not configured. Set MISTRAL_API_KEY environment variable."
-      logger.error(err)
-      LogBuffer.error(err)
-      throw new IllegalStateException(err)
+    if (isDeterministicOnly || apiKey.isEmpty) {
+      val reason = if (isDeterministicOnly) "LEGMON_DETERMINISTIC_ONLY=true" else "MISTRAL_API_KEY not configured"
+      logger.info(s"Using zero-LLM DeterministicStatementParser ($reason)")
+      LogBuffer.info(s"Using zero-LLM DeterministicStatementParser ($reason)")
+      return DeterministicStatementParser.parse(text)
     }
 
     val effectiveModel = modelOverride.map(_.trim).filter(_.nonEmpty).getOrElse(getPrimaryModel)

@@ -992,6 +992,19 @@ public class RealDatabaseSystemTest {
         natwest = accountRepo.add(natwest).toCompletableFuture().get();
         Long accountId = natwest.getId();
 
+        // Verify Tier 3 Fixed-Cost Zero-LLM Deterministic Fallback (pdftotext -layout + DeterministicStatementParser, MISTRAL_API_KEY="")
+        JsonNode payloadDet = runLegmonContainerPipeline("systest-legmon-det", 19010, 19011, pdfFile, userId, accountId, "", false, false);
+        if (payloadDet != null) {
+            java.math.BigDecimal paidInDet = new java.math.BigDecimal(payloadDet.path("totalPaidIn").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP);
+            java.math.BigDecimal paidOutDet = new java.math.BigDecimal(payloadDet.path("totalPaidOut").asText("0.00")).setScale(2, java.math.RoundingMode.HALF_UP);
+            java.math.BigDecimal errDet = paidInDet.subtract(expectedPaidIn).abs().add(paidOutDet.subtract(expectedPaidOut).abs());
+            System.out.println(String.format(
+                    "[NatWest System Test] Tier 3 Zero-LLM Deterministic Fallback: txCount=%d, paidIn=£%s, paidOut=£%s, totalError=£%s",
+                    payloadDet.path("transactions").size(), paidInDet, paidOutDet, errDet));
+            assertThat(payloadDet.path("transactions").size()).isEqualTo(78);
+            assertThat(errDet).as("Zero-LLM deterministic fallback total error vs ground truth").isEqualByComparingTo("0.00");
+        }
+
         // Check if MISTRAL_API_KEY and legmon:latest Docker container are available to run live A vs B LegMon pipeline comparison
         String mistralKey = resolveMistralApiKeyForSysTest();
         JsonNode pipelineBWebhookPayload = null;
