@@ -1000,50 +1000,85 @@ public class BankSyncController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
-    public CompletionStage<Result> saveMonzoToken(final Http.Request request) {
+    public CompletionStage<Result> verifyMonzoAndTblAccounts(final Http.Request request) {
         SimpleUserProfile sup = UserHelpers.getSimpleUserProfile(playSessionStore, request);
-        DynamicForm form = formFactory.form().bindFromRequest(request);
-
-        String token = form.get("accessToken");
-        if (token == null || token.trim().isEmpty()) {
-            return CompletableFuture.completedFuture(
-                    redirect(routes.BankSyncController.index()).flashing("error", "Personal Access Token cannot be empty."));
+        String hostHeader = request.host();
+        String scheme = request.secure() ? "https" : "http";
+        if (request.header("X-Forwarded-Proto").isPresent()) {
+            scheme = request.header("X-Forwarded-Proto").get();
         }
-        final String cleanToken = token.trim();
+        final String baseUrl = scheme + "://" + hostHeader;
+        final boolean wantsJson = request.header("Accept").map(a -> a.contains("application/json")).orElse(false);
 
-        return monzoBankSyncProvider.fetchAccounts(cleanToken).thenComposeAsync(monzoAccounts -> {
-            MonzoConnection conn = new MonzoConnection(
-                    sup.getUserId(),
-                    cleanToken,
-                    null,
-                    "monzo-user",
-                    System.currentTimeMillis() + (86400L * 365L * 1000L)
-            );
-            return monzoConnectionRepository.save(conn).thenComposeAsync(saved -> {
-                String hostHeader = request.host();
-                String scheme = request.secure() ? "https" : "http";
-                if (request.header("X-Forwarded-Proto").isPresent()) {
-                    scheme = request.header("X-Forwarded-Proto").get();
-                }
-                String baseUrl = scheme + "://" + hostHeader;
+        return monzoConnectionRepository.findByUserId(sup.getUserId()).thenComposeAsync(connOpt -> {
+            MonzoConnection conn = connOpt.orElse(null);
+            return accountRepository.list(sup.getUserId()).thenComposeAsync(accStream -> {
+                List<Account> accounts = accStream.collect(Collectors.toList());
+                return monzoBankSyncProvider.verifyConnectionAndTblAccounts(conn, accounts, baseUrl).thenApplyAsync(report -> {
+                    if (wantsJson) {
+                        ObjectNode res = Json.newObject();
+                        res.put("oauthClientConfigured", report.oauthClientConfigured);
+                        res.put("clientId", report.clientId != null ? report.clientId : "");
+                        res.put("oauthConnected", report.oauthConnected);
+                        res.put("hasRefreshToken", report.hasRefreshToken);
+                        res.put("awaitingInAppApproval", report.awaitingInAppApproval);
+                        res.put("apiPermissionsGranted", report.apiPermissionsGranted);
+                        res.put("monzoUserId", report.monzoUserId != null ? report.monzoUserId : "");
+                        if (report.tokenExpiresAt != null) {
+                            res.put("tokenExpiresAt", report.tokenExpiresAt);
+                        } else {
+                            res.putNull("tokenExpiresAt");
+                        }
+                        res.put("webhooksActive", report.webhooksActive);
+                        res.put("webhookUrl", report.webhookUrl != null ? report.webhookUrl : "");
+                        res.put("summaryMessage", report.summaryMessage != null ? report.summaryMessage : "");
 
-                return monzoBankSyncProvider.registerWebhooks(saved, baseUrl).thenComposeAsync(registeredConn -> {
-                    return accountRepository.list(sup.getUserId()).thenComposeAsync(accStream -> {
-                        List<Account> accounts = accStream.collect(Collectors.toList());
-                        return monzoBankSyncProvider.syncAllUserAccounts(sup.getUserId(), accounts, 30).thenApplyAsync(res -> {
-                            String webhookMsg = registeredConn.hasActiveWebhooks()
-                                    ? " Real-time webhooks registered successfully!"
-                                    : " Real-time push configured.";
-                            return redirect(routes.BankSyncController.index())
-                                    .flashing("info", "Monzo connected! Discovered " + monzoAccounts.size() + " accounts (including Debit & Monzo Flex)." + webhookMsg + " Initial balances loaded.");
-                        }, ec.current());
-                    }, ec.current());
+                        ArrayNode monzoArr = res.putArray("discoveredMonzoAccounts");
+                        for (MonzoBankSyncProvider.MonzoAccountInfo mAcc : report.discoveredMonzoAccounts) {
+                            ObjectNode item = monzoArr.addObject();
+                            item.put("id", mAcc.id);
+                            item.put("type", mAcc.type);
+                            item.put("displayName", mAcc.getDisplayName());
+                            item.put("description", mAcc.description);
+                        }
+
+                        ArrayNode tblArr = res.putArray("tblAccounts");
+                        for (MonzoBankSyncProvider.TblAccountVerification t : report.tblAccounts) {
+                            ObjectNode item = tblArr.addObject();
+                            item.put("monmonAccountId", t.monmonAccountId);
+                            item.put("monmonAccountName", t.monmonAccountName);
+                            item.put("accountType", t.accountType);
+                            item.put("ledgerMode", t.ledgerMode);
+                            item.put("matchedToMonzo", t.matchedToMonzo);
+                            item.put("monzoAccountId", t.monzoAccountId != null ? t.monzoAccountId : "");
+                            item.put("monzoAccountType", t.monzoAccountType != null ? t.monzoAccountType : "");
+                            item.put("monzoAccountLabel", t.monzoAccountLabel != null ? t.monzoAccountLabel : "");
+                            if (t.liveMonzoBalance != null) {
+                                item.put("liveMonzoBalance", t.liveMonzoBalance);
+                            } else {
+                                item.putNull("liveMonzoBalance");
+                            }
+                            if (t.availableBalance != null) {
+                                item.put("availableBalance", t.availableBalance);
+                            } else {
+                                item.putNull("availableBalance");
+                            }
+                            item.put("webhookActive", t.webhookActive);
+                            item.put("webhookId", t.webhookId != null ? t.webhookId : "");
+                            item.put("working", t.working);
+                            item.put("statusDetail", t.statusDetail != null ? t.statusDetail : "");
+                        }
+                        return ok(res);
+                    }
+
+                    if (report.apiPermissionsGranted) {
+                        return redirect(routes.BankSyncController.index()).flashing("info", report.summaryMessage);
+                    } else {
+                        return redirect(routes.BankSyncController.index()).flashing("error", report.summaryMessage);
+                    }
                 }, ec.current());
             }, ec.current());
-        }, ec.current()).exceptionally(err -> {
-            return redirect(routes.BankSyncController.index())
-                    .flashing("error", "Failed to connect to Monzo: " + err.getMessage() + ". Check that your token was copied correctly from developers.monzo.com");
-        });
+        }, ec.current());
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")

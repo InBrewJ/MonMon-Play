@@ -594,7 +594,276 @@ public class MonzoBankSyncProvider implements BankSyncService {
         }).exceptionally(err -> {
             String errDetail = err.getMessage() != null ? err.getMessage() : err.toString();
             System.err.println("Failed to sync Monzo webhooks: " + errDetail);
+            if (isInsufficientPermissionsError(errDetail)) {
+                return new WebhookSyncResult(false, formatFriendlyMonzoError(errDetail, conn), null, null, Collections.emptyList());
+            }
             return new WebhookSyncResult(false, "Failed to sync Monzo webhooks: " + errDetail, null, null, Collections.emptyList());
+        });
+    }
+
+    public static boolean isInsufficientPermissionsError(String msg) {
+        if (msg == null) return false;
+        String lower = msg.toLowerCase();
+        return lower.contains("insufficient_permissions") || lower.contains("forbidden.insufficient_permissions");
+    }
+
+    public String formatFriendlyMonzoError(String rawError, MonzoConnection conn) {
+        if (isInsufficientPermissionsError(rawError)) {
+            String clientId = resolveClientId(conn);
+            String userId = conn != null && conn.getMonzoUserId() != null ? conn.getMonzoUserId() : "your Monzo user";
+            return "Monzo OAuth Client (" + (clientId != null && !clientId.isEmpty() ? clientId : "configured") +
+                    ") is authenticated as " + userId + ", but Monzo is waiting for you to approve access in the Monzo mobile app (403 forbidden.insufficient_permissions). " +
+                    "Open the Monzo app on your phone right now, tap 'Allow / Approve' on the prompt in your Home feed (or go to Profile → Settings → Privacy & Security → Manage Apps), " +
+                    "and then click 'Verify OAuth & TBL Accounts' or 'Re-register / Sync Webhooks'.";
+        }
+        return rawError;
+    }
+
+    public static class TblAccountVerification {
+        public final Long monmonAccountId;
+        public final String monmonAccountName;
+        public final String accountType;
+        public final String ledgerMode;
+        public final boolean matchedToMonzo;
+        public final String monzoAccountId;
+        public final String monzoAccountType;
+        public final String monzoAccountLabel;
+        public final Float liveMonzoBalance;
+        public final Float availableBalance;
+        public final boolean webhookActive;
+        public final String webhookId;
+        public final boolean working;
+        public final String statusDetail;
+
+        public TblAccountVerification(Long monmonAccountId, String monmonAccountName, String accountType, String ledgerMode,
+                                      boolean matchedToMonzo, String monzoAccountId, String monzoAccountType, String monzoAccountLabel,
+                                      Float liveMonzoBalance, Float availableBalance, boolean webhookActive, String webhookId,
+                                      boolean working, String statusDetail) {
+            this.monmonAccountId = monmonAccountId;
+            this.monmonAccountName = monmonAccountName;
+            this.accountType = accountType;
+            this.ledgerMode = ledgerMode;
+            this.matchedToMonzo = matchedToMonzo;
+            this.monzoAccountId = monzoAccountId;
+            this.monzoAccountType = monzoAccountType;
+            this.monzoAccountLabel = monzoAccountLabel;
+            this.liveMonzoBalance = liveMonzoBalance;
+            this.availableBalance = availableBalance;
+            this.webhookActive = webhookActive;
+            this.webhookId = webhookId;
+            this.working = working;
+            this.statusDetail = statusDetail;
+        }
+    }
+
+    public static class MonzoVerificationReport {
+        public final boolean oauthClientConfigured;
+        public final String clientId;
+        public final boolean oauthConnected;
+        public final boolean hasRefreshToken;
+        public final boolean awaitingInAppApproval;
+        public final boolean apiPermissionsGranted;
+        public final String monzoUserId;
+        public final Long tokenExpiresAt;
+        public final boolean webhooksActive;
+        public final String webhookUrl;
+        public final List<MonzoAccountInfo> discoveredMonzoAccounts;
+        public final List<TblAccountVerification> tblAccounts;
+        public final String summaryMessage;
+
+        public MonzoVerificationReport(boolean oauthClientConfigured, String clientId, boolean oauthConnected,
+                                       boolean hasRefreshToken, boolean awaitingInAppApproval, boolean apiPermissionsGranted,
+                                       String monzoUserId, Long tokenExpiresAt, boolean webhooksActive, String webhookUrl,
+                                       List<MonzoAccountInfo> discoveredMonzoAccounts, List<TblAccountVerification> tblAccounts,
+                                       String summaryMessage) {
+            this.oauthClientConfigured = oauthClientConfigured;
+            this.clientId = clientId;
+            this.oauthConnected = oauthConnected;
+            this.hasRefreshToken = hasRefreshToken;
+            this.awaitingInAppApproval = awaitingInAppApproval;
+            this.apiPermissionsGranted = apiPermissionsGranted;
+            this.monzoUserId = monzoUserId;
+            this.tokenExpiresAt = tokenExpiresAt;
+            this.webhooksActive = webhooksActive;
+            this.webhookUrl = webhookUrl;
+            this.discoveredMonzoAccounts = discoveredMonzoAccounts != null ? discoveredMonzoAccounts : Collections.emptyList();
+            this.tblAccounts = tblAccounts != null ? tblAccounts : Collections.emptyList();
+            this.summaryMessage = summaryMessage;
+        }
+    }
+
+    public CompletionStage<MonzoVerificationReport> verifyConnectionAndTblAccounts(
+            MonzoConnection conn, List<Account> userAccounts, String baseUrl) {
+        String resolvedClientId = resolveClientId(conn);
+        String resolvedSecret = resolveClientSecret(conn);
+        boolean clientConfigured = resolvedClientId != null && !resolvedClientId.isEmpty()
+                && resolvedSecret != null && !resolvedSecret.isEmpty();
+
+        if (conn == null || !conn.hasAccessToken()) {
+            return CompletableFuture.completedFuture(new MonzoVerificationReport(
+                    clientConfigured,
+                    resolvedClientId,
+                    false,
+                    false,
+                    false,
+                    false,
+                    null,
+                    null,
+                    false,
+                    null,
+                    Collections.emptyList(),
+                    Collections.emptyList(),
+                    "Monzo OAuth is not yet authorized. Click 'Authorize with Monzo OAuth' to connect your account."
+            ));
+        }
+
+        return fetchAccountsWithRefresh(conn).thenCompose(monzoAccounts -> {
+            // Also sync/discover webhooks if possible
+            CompletionStage<WebhookSyncResult> whStage;
+            if (baseUrl != null && baseUrl.toLowerCase().startsWith("https://")) {
+                whStage = syncWebhooks(conn, baseUrl);
+            } else {
+                whStage = discoverLiveWebhooks(conn).thenApply(list ->
+                        new WebhookSyncResult(!list.isEmpty(), "Discovered " + list.size() + " webhook(s)", conn.getWebhookDebitId(), conn.getWebhookFlexId(), Collections.emptyList()));
+            }
+
+            return whStage.thenCompose(whRes -> {
+                MonzoAccountInfo debitMonzo = monzoAccounts.stream().filter(MonzoAccountInfo::isDebit).findFirst().orElse(null);
+                MonzoAccountInfo flexMonzo = monzoAccounts.stream().filter(MonzoAccountInfo::isFlexCreditCard).findFirst().orElse(null);
+
+                CompletableFuture<Float> debitBalFuture = debitMonzo != null
+                        ? fetchBalance(conn.getAccessToken(), debitMonzo.id).toCompletableFuture()
+                        : CompletableFuture.completedFuture(null);
+                CompletableFuture<Float> flexBalFuture = flexMonzo != null
+                        ? fetchBalance(conn.getAccessToken(), flexMonzo.id).toCompletableFuture()
+                        : CompletableFuture.completedFuture(null);
+
+                return CompletableFuture.allOf(debitBalFuture, flexBalFuture).thenCompose(v -> {
+                    Float debitBal = debitBalFuture.join();
+                    Float flexBal = flexBalFuture.join();
+
+                    List<Account> candidateAccounts = userAccounts != null ? userAccounts.stream()
+                            .filter(a -> a.getLedgerMode() == Account.LedgerMode.TBL
+                                    || a.getName().toLowerCase().contains("monzo")
+                                    || (a.getType() == Account.AccountType.CREDIT && a.getName().toLowerCase().contains("flex")))
+                            .collect(Collectors.toList()) : Collections.emptyList();
+
+                    List<TblAccountVerification> tblVerifications = new ArrayList<>();
+                    List<CompletableFuture<Void>> balanceSaves = new ArrayList<>();
+
+                    for (Account acc : candidateAccounts) {
+                        MonzoAccountInfo matchedMonzo = null;
+                        Float rawBal = null;
+                        String webhookId = null;
+
+                        if (acc.getType() == Account.AccountType.CREDIT &&
+                                (acc.getName().toLowerCase().contains("flex") || acc.getName().toLowerCase().contains("monzo"))) {
+                            matchedMonzo = flexMonzo;
+                            rawBal = flexBal;
+                            webhookId = conn.getWebhookFlexId();
+                        } else if (acc.getType() == Account.AccountType.DEBIT &&
+                                acc.getName().toLowerCase().contains("monzo")) {
+                            matchedMonzo = debitMonzo;
+                            rawBal = debitBal;
+                            webhookId = conn.getWebhookDebitId();
+                        }
+
+                        if (matchedMonzo != null) {
+                            Float availBal = rawBal != null ? convertToAvailableBalance(acc, rawBal) : null;
+                            if (availBal != null && balanceRepository != null) {
+                                Balance b = new Balance();
+                                b.setUserId(conn.getUserId());
+                                b.setValue(availBal);
+                                b.setAccount(acc);
+                                b.setTimestamp(Instant.now().getEpochSecond());
+                                balanceSaves.add(balanceRepository.add(b).thenAccept(saved -> {}).toCompletableFuture());
+                            }
+                            boolean whActive = webhookId != null && !webhookId.isEmpty();
+                            boolean isTbl = acc.getLedgerMode() == Account.LedgerMode.TBL;
+                            boolean working = rawBal != null && isTbl;
+                            String statusDetail = working
+                                    ? "Working — Hooked up to " + matchedMonzo.getDisplayName() + " (" + matchedMonzo.id + "), live balance £" + String.format("%.2f", availBal) + (whActive ? ", webhook active (" + webhookId + ")" : ", webhook pending")
+                                    : (!isTbl ? "Connected to Monzo (" + matchedMonzo.id + "), but currently in ABL mode (switch to TBL for real-time transaction ledger)"
+                                              : "Connected to " + matchedMonzo.id + ", awaiting balance response");
+
+                            tblVerifications.add(new TblAccountVerification(
+                                    acc.getId(),
+                                    acc.getName(),
+                                    acc.getType().name(),
+                                    acc.getLedgerMode().name(),
+                                    true,
+                                    matchedMonzo.id,
+                                    matchedMonzo.type,
+                                    matchedMonzo.getDisplayName(),
+                                    rawBal,
+                                    availBal,
+                                    whActive,
+                                    webhookId,
+                                    working,
+                                    statusDetail
+                            ));
+                        } else {
+                            tblVerifications.add(new TblAccountVerification(
+                                    acc.getId(),
+                                    acc.getName(),
+                                    acc.getType().name(),
+                                    acc.getLedgerMode().name(),
+                                    false,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    false,
+                                    null,
+                                    false,
+                                    "Non-Monzo TBL account (manual / statement sync)"
+                            ));
+                        }
+                    }
+
+                    long workingCount = tblVerifications.stream().filter(t -> t.working).count();
+                    String summary = "OAuth Client connected & approved! Discovered " + monzoAccounts.size() +
+                            " live Monzo account(s). Verified " + workingCount + " Monzo TBL account(s) working with live balances.";
+
+                    return CompletableFuture.allOf(balanceSaves.toArray(new CompletableFuture[0])).thenApply(done ->
+                            new MonzoVerificationReport(
+                                    clientConfigured,
+                                    resolvedClientId,
+                                    true,
+                                    conn.hasRefreshToken(),
+                                    false,
+                                    true,
+                                    conn.getMonzoUserId(),
+                                    conn.getExpiresAt(),
+                                    conn.hasActiveWebhooks(),
+                                    conn.getWebhookUrl(),
+                                    monzoAccounts,
+                                    tblVerifications,
+                                    summary
+                            )
+                    );
+                });
+            });
+        }).exceptionally(err -> {
+            String rawErr = err.getMessage() != null ? err.getMessage() : err.toString();
+            boolean awaitingApproval = isInsufficientPermissionsError(rawErr);
+            String friendly = formatFriendlyMonzoError(rawErr, conn);
+            return new MonzoVerificationReport(
+                    clientConfigured,
+                    resolvedClientId,
+                    conn.hasAccessToken(),
+                    conn.hasRefreshToken(),
+                    awaitingApproval,
+                    false,
+                    conn.getMonzoUserId(),
+                    conn.getExpiresAt(),
+                    conn.hasActiveWebhooks(),
+                    conn.getWebhookUrl(),
+                    Collections.emptyList(),
+                    Collections.emptyList(),
+                    friendly
+            );
         });
     }
 
@@ -1110,7 +1379,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
 
         return monzoConnectionRepository.findByUserId(account.getUserId()).thenCompose(connOpt -> {
             if (connOpt.isEmpty()) {
-                return CompletableFuture.completedFuture(SyncResult.error("No Monzo connection found. Enter your Personal Access Token."));
+                return CompletableFuture.completedFuture(SyncResult.error("No Monzo connection found. Authorize with Monzo OAuth first."));
             }
             MonzoConnection conn = connOpt.get();
             return fetchAccountsWithRefresh(conn).thenCompose(monzoAccounts -> {
@@ -1146,7 +1415,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 }
                 return CompletableFuture.completedFuture(SyncResult.ok(0, "Monzo connected. Transactions stream automatically via webhooks."));
             });
-        }).exceptionally(err -> SyncResult.error("Monzo error: " + err.getMessage()));
+        }).exceptionally(err -> SyncResult.error(formatFriendlyMonzoError("Monzo error: " + err.getMessage(), null)));
     }
 
     @Override
@@ -1154,7 +1423,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
         return monzoConnectionRepository.findByUserId(userId).thenCompose(connOpt -> {
             if (connOpt.isEmpty()) {
                 return CompletableFuture.completedFuture(SyncResult.error(
-                        "No Monzo connection active. Enter your Monzo Personal Access Token on the dashboard."));
+                        "No Monzo connection active. Authorize with Monzo OAuth on the Bank Sync dashboard."));
             }
             MonzoConnection conn = connOpt.get();
 
@@ -1195,7 +1464,7 @@ public class MonzoBankSyncProvider implements BankSyncService {
                 return CompletableFuture.allOf(balFutures.toArray(new CompletableFuture[0])).thenApply(v ->
                         SyncResult.ok(monzoAccounts.size(), "Live balances refreshed for " + monzoAccounts.size() + " Monzo accounts. Webhooks stream transactions automatically in real time."));
             });
-        }).exceptionally(err -> SyncResult.error("Monzo refresh error: " + err.getMessage()));
+        }).exceptionally(err -> SyncResult.error(formatFriendlyMonzoError("Monzo refresh error: " + err.getMessage(), null)));
     }
 
     @Override

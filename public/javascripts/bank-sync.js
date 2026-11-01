@@ -93,6 +93,87 @@
         });
     }
 
+    function verifyMonzoAndTbl(e) {
+        if (e) e.preventDefault();
+        var form = document.getElementById('form-verify-monzo-tbl');
+        var icon = document.getElementById('verify-monzo-icon');
+        var panel = document.getElementById('monzo-verification-panel');
+        if (!form || !panel) return;
+
+        if (icon) {
+            icon.className = 'fas fa-circle-notch fa-spin';
+        }
+        panel.style.display = 'block';
+        panel.style.borderColor = 'var(--border-color)';
+        panel.innerHTML = '<div style="font-size: 0.85rem; color: var(--text-muted);"><i class="fas fa-circle-notch fa-spin"></i> Verifying Monzo OAuth client &amp; querying live TBL account balances...</div>';
+
+        var formData = new FormData(form);
+        fetch('/bank/monzo/verify', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json'
+            },
+            body: formData
+        })
+        .then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(function (data) {
+            if (icon) {
+                icon.className = 'fas fa-check-double';
+            }
+            var isOk = data.apiPermissionsGranted;
+            panel.style.borderColor = isOk ? 'rgba(52, 211, 153, 0.45)' : 'rgba(234, 179, 8, 0.5)';
+
+            var html = '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">';
+            html += '<strong style="font-size: 0.92rem; color: ' + (isOk ? 'var(--success, #10b981)' : '#eab308') + ';">';
+            html += '<i class="fas ' + (isOk ? 'fa-check-circle' : 'fa-exclamation-triangle') + '"></i> ';
+            html += isOk ? 'OAuth Client Verified &amp; TBL Accounts Active' : (data.awaitingInAppApproval ? 'Awaiting Monzo Mobile App Approval (SCA)' : 'OAuth Verification Status');
+            html += '</strong>';
+            html += '<span style="font-family: monospace; font-size: 0.78rem; color: var(--text-muted);">Client: ' + (data.clientId || 'N/A') + ' | User: ' + (data.monzoUserId || 'N/A') + '</span>';
+            html += '</div>';
+
+            html += '<div style="font-size: 0.84rem; color: var(--text-main); margin-bottom: 10px;">' + (data.summaryMessage || '') + '</div>';
+
+            if (data.tblAccounts && data.tblAccounts.length > 0) {
+                html += '<div style="display: grid; gap: 8px;">';
+                for (var i = 0; i < data.tblAccounts.length; i++) {
+                    var t = data.tblAccounts[i];
+                    var rowBorder = t.working ? 'rgba(52, 211, 153, 0.35)' : 'var(--border-color)';
+                    var badgeBg = t.working ? 'var(--success-light, rgba(16, 185, 129, 0.15))' : 'rgba(234, 179, 8, 0.15)';
+                    var badgeColor = t.working ? 'var(--success, #10b981)' : '#eab308';
+                    var badgeLabel = t.working ? 'TBL Working' : (t.matchedToMonzo ? t.ledgerMode + ' Mode' : 'Non-Monzo');
+
+                    html += '<div style="background: var(--card-bg); border: 1px solid ' + rowBorder + '; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">';
+                    html += '<div>';
+                    html += '<strong style="font-size: 0.86rem; color: var(--text-main);">' + t.monmonAccountName + '</strong> ';
+                    html += '<span style="font-size: 0.76rem; color: var(--text-muted);">(' + t.accountType + ' • ' + t.ledgerMode + ')</span>';
+                    html += '<div style="font-size: 0.79rem; color: var(--text-muted); margin-top: 2px;">' + t.statusDetail + '</div>';
+                    html += '</div>';
+                    html += '<div style="display: flex; align-items: center; gap: 8px;">';
+                    if (t.availableBalance !== null && t.availableBalance !== undefined) {
+                        html += '<strong style="font-family: monospace; font-size: 0.9rem; color: var(--text-main);">£' + Number(t.availableBalance).toFixed(2) + '</strong>';
+                    }
+                    html += '<span style="background: ' + badgeBg + '; color: ' + badgeColor + '; border: 1px solid ' + rowBorder + '; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700;">' + badgeLabel + '</span>';
+                    html += '</div>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+
+            panel.innerHTML = html;
+            checkLiveWebhooks(true);
+        })
+        .catch(function (err) {
+            if (icon) {
+                icon.className = 'fas fa-check-double';
+            }
+            panel.style.borderColor = 'var(--danger, #ef4444)';
+            panel.innerHTML = '<div style="font-size: 0.84rem; color: var(--danger, #ef4444);"><i class="fas fa-times-circle"></i> Verification request failed: ' + err.message + '</div>';
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         var refreshBtn = document.getElementById('btn-refresh-webhooks');
         if (refreshBtn) {
@@ -101,6 +182,10 @@
             });
             // Automatically query on page load to discover newly registered webhooks
             checkLiveWebhooks(true);
+        }
+        var verifyForm = document.getElementById('form-verify-monzo-tbl');
+        if (verifyForm) {
+            verifyForm.addEventListener('submit', verifyMonzoAndTbl);
         }
     });
 })();
