@@ -36,6 +36,10 @@ object Main {
         summary("mistralKeyConfigured") = MistralExtractionService.getApiKey.nonEmpty
         summary("mistralOcrEnabled") = MistralOcrService.isEnabled
         summary("mistralOcrModel") = MistralOcrService.getOcrModel
+        summary("primaryModel") = MistralExtractionService.getPrimaryModel
+        summary("fallbackModel") = MistralExtractionService.getFallbackModel
+        summary("primaryPipeline") = s"${MistralOcrService.getOcrModel} + ${MistralExtractionService.getPrimaryModel}"
+        summary("fallbackPipeline") = s"pdftotext -layout + ${MistralExtractionService.getFallbackModel}"
         summary("ocrTools") = ujson.Arr("mistral-ocr", "pdftotext", "xberg", "pdfbox", "tesseract")
         sendResponse(exchange, 200, ujson.write(summary, indent = 2), "application/json")
       }
@@ -154,12 +158,22 @@ object Main {
       callbackUrl: String
   ): Unit = {
     LogBuffer.info(s"[$jobId] Commencing OCR & extraction pipeline")
-    Try {
-      // Step 1: PDF to Text (tries xberg with tesseract OCR, then fallbacks, then deletes file)
-      val ocrText = OcrService.extractTextAndDelete(pdfFile)
-
-      // Step 2: Mistral Call (fault tolerant with backoff & retries)
-      val statement = MistralExtractionService.extract(ocrText)
+    try {
+      // Primary: Pipeline B (Mistral OCR markdown -> mistral-small-latest)
+      // Fallback: Pipeline A2 (pdftotext -layout -> mistral-medium-latest)
+      val statement = Try {
+        val ocrRes = OcrService.extractWithStrategyKeepFile(pdfFile, allowMistralOcr = MistralOcrService.isEnabled)
+        try {
+          MistralExtractionService.extract(ocrRes.text, Some(ocrRes.recommendedModel))
+        } catch {
+          case primaryEx: Throwable if ocrRes.strategy == "mistral-ocr" =>
+            val fallbackModel = MistralExtractionService.getFallbackModel
+            logger.warn(s"[$jobId] Primary pipeline (${ocrRes.strategy} + ${ocrRes.recommendedModel}) failed (${primaryEx.getMessage}); falling back to pdftotext -layout + $fallbackModel")
+            LogBuffer.warn(s"[$jobId] Primary pipeline failed; falling back to pdftotext -layout + $fallbackModel")
+            val fbOcr = OcrService.extractWithStrategyKeepFile(pdfFile, allowMistralOcr = false)
+            MistralExtractionService.extract(fbOcr.text, Some(fbOcr.recommendedModel))
+        }
+      }.get
 
       // Step 3: Send Monzo-compatible data to webhook
       val delivered = MonzoWebhookSender.sendToWebhook(userId, jobId, statement, accountId, callbackUrl)
@@ -168,14 +182,13 @@ object Main {
       } else {
         LogBuffer.warn(s"[$jobId] Extraction completed but webhook delivery failed")
       }
-    } match {
-      case Success(_) => // ok
-      case Failure(ex) =>
+    } catch {
+      case ex: Throwable =>
         val errMsg = s"[$jobId] Pipeline failed: ${ex.getMessage}"
         logger.error(errMsg, ex)
         LogBuffer.error(errMsg)
-        // Ensure file is deleted if still exists
-        Try(if (pdfFile.exists()) pdfFile.delete())
+    } finally {
+      OcrService.deleteQuietly(pdfFile)
     }
   }
 

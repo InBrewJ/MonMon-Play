@@ -79,7 +79,7 @@ object MistralExtractionService {
       .trim
   }
 
-  def getModel: String = {
+  def getPrimaryModel: String = {
     sys.env.get("MISTRAL_MODEL")
       .orElse(sys.props.get("MISTRAL_MODEL"))
       .orElse(ConfCandidatePaths.flatMap(readModelFromFile).headOption)
@@ -87,7 +87,16 @@ object MistralExtractionService {
       .trim
   }
 
-  def extract(text: String): ExtractedStatement = {
+  def getFallbackModel: String = {
+    sys.env.get("MISTRAL_FALLBACK_MODEL")
+      .orElse(sys.props.get("MISTRAL_FALLBACK_MODEL"))
+      .getOrElse("mistral-medium-latest")
+      .trim
+  }
+
+  def getModel: String = getPrimaryModel
+
+  def extract(text: String, modelOverride: Option[String] = None): ExtractedStatement = {
     val apiKey = getApiKey
     if (apiKey.isEmpty) {
       val err = "Mistral API key is not configured. Set MISTRAL_API_KEY environment variable."
@@ -96,8 +105,9 @@ object MistralExtractionService {
       throw new IllegalStateException(err)
     }
 
+    val effectiveModel = modelOverride.map(_.trim).filter(_.nonEmpty).getOrElse(getPrimaryModel)
     val trimmedText = if (text.length > 50000) text.take(50000) else text
-    LogBuffer.info(s"Calling Mistral (${getModel}) to extract statement data (${trimmedText.length} chars of OCR text)")
+    LogBuffer.info(s"Calling Mistral ($effectiveModel) to extract statement data (${trimmedText.length} chars of OCR text)")
 
     val prompt =
       """You are an expert UK banking document and financial statement parsing assistant.
@@ -134,7 +144,7 @@ object MistralExtractionService {
         |""".stripMargin
 
     val payload = ujson.Obj(
-      "model" -> getModel,
+      "model" -> effectiveModel,
       "messages" -> ujson.Arr(
         ujson.Obj("role" -> "system", "content" -> prompt),
         ujson.Obj("role" -> "user", "content" -> s"Bank Statement Raw OCR Text:\n\n$trimmedText")
