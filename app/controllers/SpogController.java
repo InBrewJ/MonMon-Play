@@ -414,6 +414,8 @@ public class SpogController extends Controller {
                 allPots,
                 allAccounts,
                 allIncomings,
+                allOutgoings,
+                allPlans,
                 nominalPayday,
                 today,
                 zone,

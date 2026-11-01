@@ -8,3 +8,7 @@
 ## Nginx config
 
 - `/data/nginx/app.conf` assumes that MonMon will be running on localhost:9000 on the remote server
+
+## Note!
+
+The real, running config is in this private repo: https://github.com/InBrewJ/oz.urawizard.com

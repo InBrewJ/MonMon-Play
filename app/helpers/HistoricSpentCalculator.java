@@ -3,9 +3,12 @@ package helpers;
 import models.Account;
 import models.Balance;
 import models.Incoming;
+import models.Outgoing;
+import models.Plan;
 import models.Pot;
 import viewModels.AccountSpentItem;
 import viewModels.HistoricCycleSpent;
+import viewModels.HistoricPotSnapshot;
 import viewModels.HistoricSpentViewModel;
 
 import java.time.Instant;
@@ -55,7 +58,7 @@ public class HistoricSpentCalculator {
             ZoneId zone,
             Float monthlySurplus
     ) {
-        return calculate(allPots, allAccounts, Collections.emptyList(), nominalPayday, today, zone, monthlySurplus);
+        return calculate(allPots, allAccounts, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), nominalPayday, today, zone, monthlySurplus, Collections.emptyMap());
     }
 
     public static HistoricSpentViewModel calculate(
@@ -67,7 +70,7 @@ public class HistoricSpentCalculator {
             ZoneId zone,
             Float monthlySurplus
     ) {
-        return calculate(allPots, allAccounts, allIncomings, nominalPayday, today, zone, monthlySurplus, Collections.emptyMap());
+        return calculate(allPots, allAccounts, allIncomings, Collections.emptyList(), Collections.emptyList(), nominalPayday, today, zone, monthlySurplus, Collections.emptyMap());
     }
 
     public static HistoricSpentViewModel calculate(
@@ -80,11 +83,32 @@ public class HistoricSpentCalculator {
             Float monthlySurplus,
             Map<Long, Double> tblSpentByAccount
     ) {
+        return calculate(allPots, allAccounts, allIncomings, Collections.emptyList(), Collections.emptyList(), nominalPayday, today, zone, monthlySurplus, tblSpentByAccount);
+    }
+
+    public static HistoricSpentViewModel calculate(
+            List<Pot> allPots,
+            List<Account> allAccounts,
+            List<Incoming> allIncomings,
+            List<Outgoing> allOutgoings,
+            List<Plan> allPlans,
+            int nominalPayday,
+            LocalDate today,
+            ZoneId zone,
+            Float monthlySurplus,
+            Map<Long, Double> tblSpentByAccount
+    ) {
         if (allAccounts == null) {
             allAccounts = Collections.emptyList();
         }
         if (allPots == null) {
             allPots = Collections.emptyList();
+        }
+        if (allOutgoings == null) {
+            allOutgoings = Collections.emptyList();
+        }
+        if (allPlans == null) {
+            allPlans = Collections.emptyList();
         }
 
         List<Pot> monthlyPots = allPots.stream()
@@ -140,7 +164,7 @@ public class HistoricSpentCalculator {
             long cycleEndSec = currCycleEnd.atStartOfDay(zone).toEpochSecond();
             long effectiveEndSec = isCurrent ? today.atTime(LocalTime.MAX).atZone(zone).toEpochSecond() : cycleEndSec;
 
-            // Find which pot configuration was active during this cycle
+            // Find which pot configuration was active during this cycle (using last monthly pot in period if multiple)
             Pot activePot = findActivePotForCycle(monthlyPots, cycleStartSec, cycleEndSec);
 
             // Incomings active during this cycle (taking historic and soft-deleted into account)
@@ -148,6 +172,12 @@ public class HistoricSpentCalculator {
                     .filter(i -> i != null && (i.getCreatedAt() == null || i.getCreatedAt() <= cycleStartSec + 86400L))
                     .filter(i -> !i.isArchived() || (i.getArchivedAt() != null && i.getArchivedAt() >= cycleStartSec))
                     .collect(Collectors.toList()) : Collections.emptyList();
+
+            double monthlyIncome = Incoming.getTotalIncomings(cycleIncomings);
+            if (monthlyIncome <= 0.0 && allIncomings != null && !allIncomings.isEmpty()) {
+                monthlyIncome = Incoming.getTotalIncomings(allIncomings);
+            }
+            monthlyIncome = round2(monthlyIncome);
 
             // Accounts associated with this pot configuration for pot budget calculation
             Pot accountSourcePot = activePot;
@@ -162,6 +192,11 @@ public class HistoricSpentCalculator {
                 }
             }
             List<Account> potAccounts = resolvePotAccounts(accountSourcePot, allAccounts);
+            Set<Long> potAccountIds = potAccounts.stream()
+                    .filter(a -> a != null && a.getId() != null)
+                    .map(Account::getId)
+                    .collect(Collectors.toSet());
+
             double startingPotBudget = 0.0;
             double endingPotBudget = 0.0;
             for (Account pa : potAccounts) {
@@ -172,9 +207,38 @@ public class HistoricSpentCalculator {
             startingPotBudget = round2(startingPotBudget);
             endingPotBudget = round2(endingPotBudget);
 
+            // Calculate cycle pot allowance from monthly allowance (SPOG) or spending plan
+            Float cycleAllowance = ModelHelpers.calculateMonthlyAllowance(
+                    cycleIncomings.isEmpty() ? allIncomings : cycleIncomings,
+                    allOutgoings,
+                    allPlans,
+                    currCycleStart
+            );
+            Float potAllowance;
+            if (monthlySurplus != null && monthlySurplus > 0.0f && (allOutgoings == null || allOutgoings.isEmpty())) {
+                potAllowance = monthlySurplus;
+            } else if (cycleAllowance != null && cycleAllowance > 0.0f) {
+                potAllowance = cycleAllowance;
+            } else if (monthlySurplus != null && monthlySurplus > 0.0f) {
+                potAllowance = monthlySurplus;
+            } else if (activePot != null && activePot.hasSpendingPlan()) {
+                float planSum = 0f;
+                for (models.SpendingPlanSection sec : activePot.getSpendingSections()) {
+                    if (sec.getAmount() != null && sec.getAmount() > 0f) planSum += sec.getAmount();
+                }
+                potAllowance = planSum > 0f ? planSum : (float) (startingPotBudget > 0.0 ? startingPotBudget : monthlyIncome);
+            } else if (startingPotBudget > 0.0) {
+                potAllowance = (float) startingPotBudget;
+            } else {
+                potAllowance = (float) monthlyIncome;
+            }
+            potAllowance = round2(potAllowance);
+
             double cycleSpent = 0.0;
+            double rawPotSpent = 0.0;
             double startingTotalBalance = 0.0;
             double endingTotalBalance = 0.0;
+            double totalSavingsInflow = 0.0;
             List<AccountSpentItem> accountItems = new ArrayList<>();
 
             for (Account acc : ledgerAccounts) {
@@ -188,6 +252,7 @@ public class HistoricSpentCalculator {
                     continue;
                 }
 
+                boolean isPotAccount = potAccountIds.contains(acc.getId());
                 double accInflow = getAccountPaydayInflow(acc, cycleIncomings, currCycleStart);
                 double startBal = getAccountStartBalance(acc, cycleStartSec, cycleEndSec, accInflow);
                 double endBal = getAccountEndBalance(acc, cycleStartSec, cycleEndSec, isCurrent, effectiveEndSec);
@@ -206,6 +271,17 @@ public class HistoricSpentCalculator {
                     continue;
                 }
 
+                boolean isSavings = acc.getType() == Account.AccountType.SHORT_TERM_SAVINGS
+                        || acc.getType() == Account.AccountType.LONG_TERM_SAVINGS;
+                if (isSavings && accSpent < 0.0) {
+                    // Savings account gained value (deposit / transfer in)
+                    totalSavingsInflow += (-accSpent);
+                }
+
+                if (isPotAccount) {
+                    rawPotSpent += accSpent;
+                }
+
                 startingTotalBalance += startBal;
                 endingTotalBalance += endBal;
                 cycleSpent += accSpent;
@@ -215,11 +291,16 @@ public class HistoricSpentCalculator {
                         acc.getType() != null ? acc.getType().name() : "DEBIT",
                         startBal,
                         endBal,
-                        accSpent
+                        accSpent,
+                        isPotAccount
                 ));
             }
 
+            // Total spent across accounts (net transfers into savings naturally cancel out via negative savings delta)
             cycleSpent = round2(Math.max(0.0, cycleSpent));
+            // For pot spent, ignore transfers into savings accounts
+            double potSpent = round2(Math.max(0.0, rawPotSpent - totalSavingsInflow));
+
             startingTotalBalance = round2(startingTotalBalance);
             endingTotalBalance = round2(endingTotalBalance);
 
@@ -229,6 +310,67 @@ public class HistoricSpentCalculator {
             int daysInCycle = Math.max(1, (int) ChronoUnit.DAYS.between(currCycleStart, currCycleEnd));
             int daysElapsed = isCurrent ? Math.max(1, (int) ChronoUnit.DAYS.between(currCycleStart, today)) : daysInCycle;
             double actualDailySpend = round2(daysElapsed > 0 ? cycleSpent / daysElapsed : 0.0);
+
+            Map<Long, Account> accountById = allAccounts.stream()
+                    .filter(a -> a != null && a.getId() != null)
+                    .collect(Collectors.toMap(Account::getId, java.util.function.Function.identity(), (a, b) -> a));
+
+            List<HistoricPotSnapshot> potsInPeriod = new ArrayList<>();
+            List<Pot> cyclePots = new ArrayList<>();
+            for (Pot p : monthlyPots) {
+                long start = p.getCreatedAt() != null ? p.getCreatedAt() : Long.MIN_VALUE;
+                long end = (p.isArchived() && p.getLastUpdated() != null && p.getLastUpdated() > start) ? p.getLastUpdated() : Long.MAX_VALUE;
+                long overlap = Math.min(end, cycleEndSec) - Math.max(start, cycleStartSec);
+                if (overlap > 0 || (start >= cycleStartSec && start <= cycleEndSec)) {
+                    cyclePots.add(p);
+                }
+            }
+            if (cyclePots.isEmpty() && activePot != null) {
+                cyclePots.add(activePot);
+            }
+
+            for (Pot p : cyclePots) {
+                boolean isLastPot = (p == activePot) || (p.getId() != null && activePot != null && p.getId().equals(activePot.getId()));
+                boolean isArchivedInPeriod = p.isArchived() && p.getLastUpdated() != null && p.getLastUpdated() >= cycleStartSec && p.getLastUpdated() <= cycleEndSec;
+                Long archivedAt = isArchivedInPeriod ? p.getLastUpdated() : null;
+
+                long potEndBoundary = isArchivedInPeriod ? p.getLastUpdated() : effectiveEndSec;
+                long potStartBoundary = (p.getCreatedAt() != null && p.getCreatedAt() >= cycleStartSec && p.getCreatedAt() <= effectiveEndSec) ? p.getCreatedAt() : cycleStartSec;
+
+                List<Account> pAccounts = resolvePotAccounts(p, allAccounts);
+                List<HistoricPotSnapshot.AccountBalanceSnapshot> accountSnapshots = new ArrayList<>();
+                double potSnapshotSpent = 0.0;
+
+                for (Account pa : pAccounts) {
+                    Account resolvedPa = accountById.getOrDefault(pa.getId(), pa);
+                    double startBalOnDate;
+                    if (potStartBoundary <= cycleStartSec + 86400L) {
+                        startBalOnDate = getAccountStartBalance(resolvedPa, cycleStartSec, cycleEndSec);
+                    } else {
+                        startBalOnDate = getAccountEndBalance(resolvedPa, 0L, potStartBoundary, false, potStartBoundary);
+                        if (startBalOnDate == 0.0) {
+                            startBalOnDate = getAccountStartBalance(resolvedPa, cycleStartSec, cycleEndSec);
+                        }
+                    }
+                    double balOnDate = getAccountEndBalance(resolvedPa, cycleStartSec, potEndBoundary, isCurrent && potEndBoundary == effectiveEndSec, potEndBoundary);
+                    double paSpentInPotWindow = round2(Math.max(0.0, startBalOnDate - balOnDate));
+                    accountSnapshots.add(new HistoricPotSnapshot.AccountBalanceSnapshot(
+                            resolvedPa.getName(),
+                            resolvedPa.getType() != null ? resolvedPa.getType().name() : "DEBIT",
+                            balOnDate,
+                            paSpentInPotWindow
+                    ));
+                    potSnapshotSpent += paSpentInPotWindow;
+                }
+                potsInPeriod.add(new HistoricPotSnapshot(
+                        p,
+                        isLastPot,
+                        isArchivedInPeriod,
+                        archivedAt,
+                        potSnapshotSpent,
+                        accountSnapshots
+                ));
+            }
 
             cycles.add(new HistoricCycleSpent(
                     currCycleStart,
@@ -244,7 +386,11 @@ public class HistoricSpentCalculator {
                     endingTotalBalance,
                     monthlySurplus,
                     activePot,
-                    accountItems
+                    accountItems,
+                    monthlyIncome,
+                    potAllowance,
+                    potSpent,
+                    potsInPeriod
             ));
 
             // Move to previous cycle

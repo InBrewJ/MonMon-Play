@@ -193,9 +193,12 @@ public class JPABankTransactionRepository implements BankTransactionRepository {
         return supplyAsync(() -> wrap(em -> {
             Map<Long, Double> map = new HashMap<>();
             try {
+                // Exclude transfers into savings accounts and pots from spending sums
                 List<Object[]> rows = em.createQuery(
                         "select t.accountId, coalesce(sum(t.amount), 0.0) from BankTransaction t " +
                                 "where t.userId = :userId and t.timestamp >= :startSec and t.timestamp <= :endSec and t.amount > 0 " +
+                                "and (t.category is null or lower(t.category) not in ('transfers', 'savings', 'pots')) " +
+                                "and (t.description is null or (lower(t.description) not like '%saving%' and lower(t.description) not like '%pot%' and lower(t.description) not like '%isa%' and lower(t.description) not like '%marcus%' and lower(t.description) not like '%chip%' and lower(t.description) not like '%vanguard%')) " +
                                 "group by t.accountId")
                         .setParameter("userId", userId)
                         .setParameter("startSec", startSec)

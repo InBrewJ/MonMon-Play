@@ -569,4 +569,160 @@ public class SpendingPlanAndHistoryTest {
         assertThat(plan.getSections()).hasSize(3);
         assertThat(plan.getTotalSectionsAmount()).isEqualTo(250.0f);
     }
+
+    @Test
+    public void historicSpentShowsMonthlyIncomeAndIgnoresTransfersToSavings() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account current = debit(10L, "Current Account");
+        Account savings = new Account();
+        savings.setId(20L);
+        savings.setName("High Interest Savings");
+        savings.setType(Account.AccountType.SHORT_TERM_SAVINGS);
+        savings.setAvailableLimit(0f);
+        savings.outgoings = Collections.emptyList();
+        savings.balances = new ArrayList<>();
+
+        // Start balances on Oct 1
+        current.balances.add(bal(current, 1000f, LocalDate.of(2026, 10, 1), 9));
+        savings.balances.add(bal(savings, 2000f, LocalDate.of(2026, 10, 1), 9));
+
+        // Oct 5: Spent £300 on groceries/bills from Current
+        current.balances.add(bal(current, 700f, LocalDate.of(2026, 10, 5), 12));
+
+        // Oct 10: Transferred £400 from Current into Savings
+        current.balances.add(bal(current, 300f, LocalDate.of(2026, 10, 10), 14)); // drops to 300
+        savings.balances.add(bal(savings, 2400f, LocalDate.of(2026, 10, 10), 14)); // rises to 2400
+
+        Incoming salary = new Incoming();
+        salary.setId(100L);
+        salary.setName("Monthly Salary");
+        salary.setNetValue(2500f);
+        salary.setPayDay(true);
+        salary.setIncomingMonthDay(1);
+        salary.setAccount(current);
+        salary.setCreatedAt(LocalDate.of(2026, 1, 1).atStartOfDay(UK).toEpochSecond());
+
+        Pot pot = new Pot();
+        pot.setType(Pot.PotType.MONTHLY);
+        pot.setCreatedAt(LocalDate.of(2026, 10, 1).atStartOfDay(UK).toEpochSecond());
+        pot.addAccount(current);
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                List.of(pot), List.of(current, savings), List.of(salary), payday, today, UK, 500f);
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        assertThat(cycle).isNotNull();
+
+        // Income for this month should be £2,500
+        assertThat(cycle.getMonthlyIncome()).isEqualTo(2500.0);
+
+        // Total spent across the month should be £300 (the £400 transfer to savings is completely ignored)
+        assertThat(cycle.getTotalSpent()).isEqualTo(300.0);
+
+        // Pot spent should also ignore the £400 savings transfer
+        assertThat(cycle.getPotSpent()).isEqualTo(300.0);
+
+        // Pot allowance is £500
+        assertThat(cycle.getPotAllowance()).isEqualTo(500.0f);
+
+        // £300 spent vs £500 allowance -> not overspent, £200 under allowance
+        assertThat(cycle.isOverPotAllowance()).isFalse();
+        assertThat(cycle.getAbsolutePotOverspend()).isEqualTo(200.0);
+    }
+
+    @Test
+    public void multipleMonthlyPotsInPeriodUsesLastPotAndCapturesDeletionSnapshot() {
+        LocalDate today = LocalDate.of(2026, 10, 27);
+        int payday = 1;
+
+        Account currentA = debit(101L, "Current A");
+        Account currentB = debit(102L, "Current B");
+
+        currentA.balances.add(bal(currentA, 1000f, LocalDate.of(2026, 10, 1), 9));
+        currentB.balances.add(bal(currentB, 1000f, LocalDate.of(2026, 10, 1), 9));
+
+        // Oct 5: Spent £150 on Current A
+        currentA.balances.add(bal(currentA, 850f, LocalDate.of(2026, 10, 5), 12));
+
+        // Oct 15: Pot 1 is deleted/archived and replaced with Pot 2
+        long oct1Sec = LocalDate.of(2026, 10, 1).atStartOfDay(UK).toEpochSecond();
+        long oct15Sec = LocalDate.of(2026, 10, 15).atStartOfDay(UK).toEpochSecond();
+
+        Pot pot1 = new Pot();
+        pot1.setId(1L);
+        pot1.setType(Pot.PotType.MONTHLY);
+        pot1.setSpendingPlanName("First Pot");
+        pot1.setCreatedAt(oct1Sec);
+        pot1.setLastUpdated(oct15Sec);
+        pot1.setArchived(true);
+        pot1.addAccount(currentA);
+
+        Pot pot2 = new Pot();
+        pot2.setId(2L);
+        pot2.setType(Pot.PotType.MONTHLY);
+        pot2.setSpendingPlanName("Final Reconfigured Pot");
+        pot2.setCreatedAt(oct15Sec);
+        pot2.setLastUpdated(oct15Sec);
+        pot2.setArchived(false);
+        pot2.addAccount(currentB);
+
+        // Oct 20: Spent £400 on Current B
+        currentB.balances.add(bal(currentB, 600f, LocalDate.of(2026, 10, 20), 12));
+
+        Incoming salary = new Incoming();
+        salary.setId(200L);
+        salary.setName("Monthly Salary");
+        salary.setNetValue(2000f);
+        salary.setPayDay(true);
+        salary.setIncomingMonthDay(1);
+        salary.setAccount(currentB);
+        salary.setCreatedAt(LocalDate.of(2026, 1, 1).atStartOfDay(UK).toEpochSecond());
+
+        HistoricSpentViewModel vm = HistoricSpentCalculator.calculate(
+                List.of(pot1, pot2), List.of(currentA, currentB), List.of(salary), payday, today, UK, 350f);
+
+        HistoricCycleSpent cycle = vm.getCurrentCycle();
+        assertThat(cycle).isNotNull();
+
+        // 1. Pot used for cycle configuration must be the LAST pot (pot2)
+        assertThat(cycle.getPotConfig()).isSameAs(pot2);
+
+        // 2. Pot spent is derived from the last pot accounts (Current B: £400)
+        assertThat(cycle.getPotSpent()).isEqualTo(400.0);
+
+        // 3. Pot allowance is £350
+        assertThat(cycle.getPotAllowance()).isEqualTo(350.0f);
+
+        // 4. Over allowance by £50 (£400 spent vs £350 allowance)
+        assertThat(cycle.isOverPotAllowance()).isTrue();
+        assertThat(cycle.getAbsolutePotOverspend()).isEqualTo(50.0);
+        assertThat(cycle.getPotOverspend()).isEqualTo(50.0);
+
+        // 5. State of all monthly pots configured in this period
+        assertThat(cycle.hasMultiplePots()).isTrue();
+        List<HistoricPotSnapshot> snapshots = cycle.getPotsInPeriod();
+        assertThat(snapshots).hasSize(2);
+
+        // Snapshot of Pot 1 (archived on Oct 15)
+        HistoricPotSnapshot snap1 = snapshots.stream().filter(s -> s.getPot().getId().equals(1L)).findFirst().orElseThrow();
+        assertThat(snap1.isLastPot()).isFalse();
+        assertThat(snap1.isArchivedInPeriod()).isTrue();
+        assertThat(snap1.getArchivedAt()).isEqualTo(oct15Sec);
+        assertThat(snap1.getAccountSnapshots()).hasSize(1);
+        // Balance on the day the pot was deleted was 850.0, and 150.0 was spent
+        assertThat(snap1.getAccountSnapshots().get(0).getAccountName()).isEqualTo("Current A");
+        assertThat(snap1.getAccountSnapshots().get(0).getBalanceOnDate()).isEqualTo(850.0);
+        assertThat(snap1.getAccountSnapshots().get(0).getAmountSpent()).isEqualTo(150.0);
+
+        // Snapshot of Pot 2 (last pot)
+        HistoricPotSnapshot snap2 = snapshots.stream().filter(s -> s.getPot().getId().equals(2L)).findFirst().orElseThrow();
+        assertThat(snap2.isLastPot()).isTrue();
+        assertThat(snap2.isArchivedInPeriod()).isFalse();
+        assertThat(snap2.getAccountSnapshots()).hasSize(1);
+        assertThat(snap2.getAccountSnapshots().get(0).getAccountName()).isEqualTo("Current B");
+        assertThat(snap2.getAccountSnapshots().get(0).getBalanceOnDate()).isEqualTo(600.0);
+        assertThat(snap2.getAccountSnapshots().get(0).getAmountSpent()).isEqualTo(400.0);
+    }
 }
