@@ -76,6 +76,11 @@ public class NetWorthTest {
 
         // Food coverage: monthly food cost £200, safe withdrawal £233.33 -> 117% covered
         assertThat(vm.getFoodCoveredPercent()).isEqualTo(117);
+
+        // Asset to debt ratio: 332,000 / 5,800 = 57.24 : 1
+        assertThat(vm.getAssetToDebtRatio()).isEqualTo(57.24);
+        assertThat(vm.getAssetToDebtRatioFormatted()).isEqualTo("57.24 : 1");
+        assertThat(vm.isDebtFree()).isFalse();
     }
 
     @Test
@@ -93,5 +98,11 @@ public class NetWorthTest {
         assertThat(vm.getCashTotal()).isEqualTo(2000.0);
         assertThat(vm.getCustomAssetsTotal()).isEqualTo(3000.0);
         assertThat(vm.getNetWorth()).isEqualTo(5000.0);
+
+        // Debt-free check
+        assertThat(vm.getTotalLiabilities()).isEqualTo(0.0);
+        assertThat(vm.isDebtFree()).isTrue();
+        assertThat(vm.getAssetToDebtRatio()).isNull();
+        assertThat(vm.getAssetToDebtRatioFormatted()).isEqualTo("Debt Free (∞)");
     }
 }

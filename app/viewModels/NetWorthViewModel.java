@@ -157,6 +157,31 @@ public class NetWorthViewModel {
         return totalLiabilities;
     }
 
+    public Double getAssetToDebtRatio() {
+        if (totalLiabilities == null || totalLiabilities <= 0.0) {
+            return null;
+        }
+        if (totalAssets == null || totalAssets <= 0.0) {
+            return 0.0;
+        }
+        return round2(totalAssets / totalLiabilities);
+    }
+
+    public String getAssetToDebtRatioFormatted() {
+        if (totalLiabilities == null || totalLiabilities <= 0.0) {
+            if (totalAssets != null && totalAssets > 0.0) {
+                return "Debt Free (∞)";
+            }
+            return "—";
+        }
+        double ratio = round2(totalAssets / totalLiabilities);
+        return ratio + " : 1";
+    }
+
+    public boolean isDebtFree() {
+        return totalLiabilities == null || totalLiabilities <= 0.0;
+    }
+
     public Double getNetWorth() {
         return netWorth;
     }

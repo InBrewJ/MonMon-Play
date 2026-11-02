@@ -247,8 +247,16 @@
                     </div>
                 }
 
-                <div style="font-size: 0.95rem; margin-bottom: 0.65rem;">
-                    Current spending pace: <b>£@spogVm.getActualDailySpend() / day</b>
+                <div style="font-size: 0.95rem; margin-bottom: 0.65rem; display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        Current spending pace: <b>£@spogVm.getActualDailySpend() / day</b>
+                    </div>
+                    <a href="@routes.SpogController.spendingPace()"
+                       title="View spending pace histogram (5-day chunks)"
+                       aria-label="View spending pace histogram"
+                       style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); color: var(--primary); text-decoration: none; transition: all 0.2s ease;">
+                        <i class="fas fa-chart-bar" style="font-size: 0.85rem;"></i>
+                    </a>
                 </div>
 
                 <!-- Daily Overspend vs MAX Indication -->

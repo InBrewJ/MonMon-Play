@@ -92,6 +92,7 @@
                 </div>
                 <div style="font-size: 0.85rem; color: var(--text-muted);">
                     Assets: <b style="color: var(--success);">£@vm.getTotalAssets()</b> · Debts: <b style="color: var(--danger);">-£@vm.getTotalLiabilities()</b>
+                    <span style="margin: 0 4px;">·</span> Ratio: <b style="color: @if(vm.isDebtFree() || (vm.getAssetToDebtRatio() != null && vm.getAssetToDebtRatio() >= 1.0)) {var(--success)} else {var(--danger)};">@vm.getAssetToDebtRatioFormatted()</b>
                 </div>
             </div>
             <div style="flex: 2; min-width: 280px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
@@ -110,6 +111,10 @@
                 <div style="background: var(--card-bg-subtle); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
                     <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;"><i class="fas fa-credit-card" style="color: var(--danger); margin-right: 4px;"></i> Debts</div>
                     <div style="font-size: 1.25rem; font-weight: 800; color: var(--danger);">-£@vm.getTotalLiabilities()</div>
+                </div>
+                <div style="background: var(--card-bg-subtle); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;"><i class="fas fa-balance-scale" style="color: #6366f1; margin-right: 4px;"></i> Asset/Debt Ratio</div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: @if(vm.isDebtFree() || (vm.getAssetToDebtRatio() != null && vm.getAssetToDebtRatio() >= 1.0)) {var(--success)} else {var(--danger)};">@vm.getAssetToDebtRatioFormatted()</div>
                 </div>
             </div>
         </div>

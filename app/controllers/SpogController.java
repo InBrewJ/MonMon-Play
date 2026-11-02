@@ -426,6 +426,49 @@ public class SpogController extends Controller {
         return ok(views.html.historicSpent.render(viewModel, request, playSessionStore));
     }
 
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public Result spendingPace(final Http.Request request) throws ExecutionException, InterruptedException {
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        String region = request.session().get("region").orElse("UK");
+        java.time.ZoneId zone = helpers.BankHolidayHelper.getTimezone(region);
+        LocalDate today = helpers.BankHolidayHelper.nowInRegion(region);
+
+        int nextPayDay = incomingRepository.getNextPayDay(sup.getUserId());
+        int nominalPayday = nextPayDay > 0 ? nextPayDay : 1;
+
+        int cycleOffset = 0;
+        try {
+            String cycleParam = request.queryString("cycle").orElse(null);
+            if (cycleParam != null && !cycleParam.trim().isEmpty()) {
+                cycleOffset = Integer.parseInt(cycleParam.trim());
+            }
+        } catch (NumberFormatException ignored) {}
+
+        List<Account> allAccounts = repoListToList(this.accountRepository.listComplete(sup.getUserId()));
+        List<Pot> allPots = repoListToList(this.potRepository.listComplete(sup.getUserId()));
+        List<Incoming> allIncomings = repoListToList(incomingRepository.listComplete(sup.getUserId()));
+        List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
+        List<Plan> allPlans = repoListToList(this.planRepository.list(sup.getUserId()));
+        Float monthlySurplus = helpers.ModelHelpers.calculateMonthlyAllowance(allIncomings, allOutgoings, allPlans, today);
+
+        viewModels.SpendingPaceViewModel vm = helpers.SpendingPaceCalculator.calculate(
+                allPots,
+                allAccounts,
+                allIncomings,
+                allOutgoings,
+                allPlans,
+                nominalPayday,
+                today,
+                zone,
+                monthlySurplus,
+                bankTransactionRepository,
+                sup.getUserId(),
+                cycleOffset
+        );
+
+        return ok(views.html.spendingPace.render(vm, vm.toJson(), request, playSessionStore));
+    }
+
     // Ideally, seed should only be possible by someone
     // with a well defined role. Maybe an admin/seeder
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")

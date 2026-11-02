@@ -48,6 +48,7 @@ GET     /api/balances/erratic        controllers.BalanceController.getErraticBal
 GET     /spog                         controllers.SpogController.index(req: Request)
 GET     /spog/seed                    controllers.SpogController.seed(req: Request)
 GET     /historicSpent                controllers.SpogController.historicSpent(req: Request)
+GET     /spendingPace                 controllers.SpogController.spendingPace(req: Request)
 GET     /api/ed-says                  controllers.SpogController.edSays(req: Request)
 
 # NomMon (Smart Grocery & Meal Planner)
