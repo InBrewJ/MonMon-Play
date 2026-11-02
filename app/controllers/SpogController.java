@@ -449,7 +449,9 @@ public class SpogController extends Controller {
         List<Incoming> allIncomings = repoListToList(incomingRepository.listComplete(sup.getUserId()));
         List<Outgoing> allOutgoings = repoListToList(outgoingRepository.list(sup.getUserId()));
         List<Plan> allPlans = repoListToList(this.planRepository.list(sup.getUserId()));
-        Float monthlySurplus = helpers.ModelHelpers.calculateMonthlyAllowance(allIncomings, allOutgoings, allPlans, today);
+
+        Spog spogVm = getSpogVm(sup, request);
+        Float monthlySurplus = spogVm.getSurplus();
 
         viewModels.SpendingPaceViewModel vm = helpers.SpendingPaceCalculator.calculate(
                 allPots,

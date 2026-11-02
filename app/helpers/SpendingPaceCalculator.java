@@ -85,7 +85,11 @@ public class SpendingPaceCalculator {
             isCurrentCycle = selectedCycle.isCurrentCycle();
             daysInCycle = selectedCycle.getDaysInCycle();
             daysElapsed = selectedCycle.getDaysElapsed();
-            if (monthlySurplus != null && monthlySurplus > 0.0f) {
+            if (isCurrentCycle && monthlySurplus != null && monthlySurplus > 0.0f) {
+                monthlyBudget = monthlySurplus;
+            } else if (selectedCycle.getPotAllowance() != null && selectedCycle.getPotAllowance() > 0.0f) {
+                monthlyBudget = selectedCycle.getPotAllowance();
+            } else if (monthlySurplus != null && monthlySurplus > 0.0f) {
                 monthlyBudget = monthlySurplus;
             } else if (selectedCycle.getMonthlyBudget() != null) {
                 monthlyBudget = selectedCycle.getMonthlyBudget();
