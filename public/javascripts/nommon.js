@@ -309,12 +309,48 @@
             return;
         }
 
-        days.forEach(function (d) {
+        var dayNames = [
+            { full: 'sunday', short: 'sun' },
+            { full: 'monday', short: 'mon' },
+            { full: 'tuesday', short: 'tue' },
+            { full: 'wednesday', short: 'wed' },
+            { full: 'thursday', short: 'thu' },
+            { full: 'friday', short: 'fri' },
+            { full: 'saturday', short: 'sat' }
+        ];
+        var now = new Date();
+        var todayInfo = dayNames[now.getDay()];
+
+        function matchesToday(dayString) {
+            if (!dayString || typeof dayString !== 'string') return false;
+            var str = dayString.toLowerCase();
+            if (str.indexOf(todayInfo.full) !== -1) return true;
+            var re = new RegExp('\\b' + todayInfo.short + '\\b', 'i');
+            return re.test(str);
+        }
+
+        var matchedIndex = -1;
+        for (var i = 0; i < days.length; i++) {
+            if (matchesToday(days[i].dayName)) {
+                matchedIndex = i;
+                break;
+            }
+        }
+        if (matchedIndex === -1 && days.length === 7) {
+            // Monday-aligned fallback for 7-day schedule (Mon=0, Tue=1, ..., Sun=6)
+            matchedIndex = (now.getDay() + 6) % 7;
+        }
+
+        days.forEach(function (d, idx) {
+            var isToday = (idx === matchedIndex);
             var card = document.createElement('div');
-            card.className = 'day-card';
+            card.className = 'day-card' + (isToday ? ' is-today' : '');
             card.innerHTML =
-                '<div style="font-weight: 800; font-size: 1rem; color: var(--primary); margin-bottom: 0.6rem; border-bottom: 1px dashed var(--border-color); padding-bottom: 0.35rem; display: flex; justify-content: space-between;">' +
-                '  <span>' + escapeHtml(d.dayName || 'Day') + '</span>' +
+                '<div style="font-weight: 800; font-size: 1rem; color: var(--primary); margin-bottom: 0.6rem; border-bottom: 1px dashed var(--border-color); padding-bottom: 0.35rem; display: flex; justify-content: space-between; align-items: center;">' +
+                '  <div style="display: flex; align-items: center; gap: 8px;">' +
+                '    <span>' + escapeHtml(d.dayName || 'Day') + '</span>' +
+                (isToday ? '    <span class="day-today-badge">Today</span>' : '') +
+                '  </div>' +
                 '  <span class="badge-pill" style="font-size: 0.7rem; background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-muted);">Sainsbury\'s Staples</span>' +
                 '</div>' +
                 '<div style="display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.85rem; line-height: 1.45;">' +

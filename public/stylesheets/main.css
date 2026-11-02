@@ -1655,6 +1655,41 @@ body.modal-scroll-locked {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.day-card.is-today,
+.day-card.today {
+  border: 2px solid #ffffff !important;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.2), 0 4px 14px rgba(0, 0, 0, 0.4);
+  position: relative;
+}
+
+:root[data-theme="light"] .day-card.is-today,
+:root[data-theme="light"] .day-card.today {
+  border: 2px solid #0f172a !important;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.1), 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.day-today-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: #ffffff;
+  color: #0b0f19;
+  padding: 2px 7px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  line-height: 1.2;
+}
+
+:root[data-theme="light"] .day-today-badge {
+  background: #0f172a;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 /* Savings Plan Actions Toolbar (Row on desktop, Stack on mobile) */
