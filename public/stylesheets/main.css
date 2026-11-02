@@ -1122,6 +1122,113 @@ body.modal-scroll-locked {
   100% { transform: scale(1); opacity: 1; }
 }
 
+/* ==========================================================================
+   Shared Ed Says Modal Styles
+   ========================================================================== */
+
+.ed-modal-card {
+  max-width: 580px !important;
+  width: 100% !important;
+}
+
+.ed-modal-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 1rem 1.25rem !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+}
+
+.ed-modal-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-weight: 800 !important;
+  font-size: 1.15rem !important;
+  color: var(--text-main) !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+}
+
+.ed-modal-avatar {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  flex-shrink: 0 !important;
+  vertical-align: middle !important;
+}
+
+.ed-modal-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+  margin-left: auto !important;
+}
+
+.ed-modal-actions .ed-refresh-btn,
+.ed-refresh-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0 !important;
+  padding: 6px 14px !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  height: 34px !important;
+  min-width: fit-content !important;
+  max-width: none !important;
+  box-sizing: border-box !important;
+}
+
+.ed-modal-actions .ed-close-btn,
+.ed-close-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
+  font-size: 1.3rem !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  box-sizing: border-box !important;
+}
+
+.ed-modal-body {
+  padding: 1.25rem !important;
+  max-height: calc(85vh - 70px) !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
+}
+
+.ed-modal-topic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primary);
+  background: var(--primary-light);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 6px;
+  padding: 4px 10px;
+  margin-bottom: 0.85rem;
+}
+
 .preset-chip {
   padding: 0.35rem 0.75rem;
   border-radius: 20px;
@@ -1831,6 +1938,16 @@ body.modal-scroll-locked {
   .pot-legend-dot {
     flex-shrink: 0 !important;
     box-sizing: border-box !important;
+  }
+
+  .ed-modal-actions .ed-refresh-btn,
+  .ed-refresh-btn,
+  .ed-modal-actions .ed-close-btn,
+  .ed-close-btn {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    flex-shrink: 0 !important;
+    max-width: none !important;
   }
 }
 

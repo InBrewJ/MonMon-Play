@@ -54,6 +54,18 @@
         var cards = Array.prototype.slice.call(grid.querySelectorAll('.spog-deck-card, .deck-card'));
         if (cards.length === 0 || pills.length === 0) return;
 
+        // If pills define data-target, ensure cards array ordering matches pills target sequence
+        var pillTargets = pills.map(function(p) { return p.getAttribute('data-target'); }).filter(Boolean);
+        if (pillTargets.length === pills.length) {
+            cards.sort(function(a, b) {
+                var aIdx = pillTargets.indexOf(a.id);
+                var bIdx = pillTargets.indexOf(b.id);
+                if (aIdx === -1) aIdx = 999;
+                if (bIdx === -1) bIdx = 999;
+                return aIdx - bIdx;
+            });
+        }
+
         var currentActiveCard = null;
         var isClickScrolling = false;
         var clickScrollTimeout = null;
@@ -120,7 +132,7 @@
 
             pills.forEach(function(pill, pIdx) {
                 var pillTarget = pill.getAttribute('data-target');
-                var isMatch = (pillTarget && pillTarget === targetId) || (pIdx === targetIndex);
+                var isMatch = pillTarget ? (pillTarget === targetId) : (pIdx === targetIndex);
                 pill.classList.toggle('active', isMatch);
                 pill.setAttribute('aria-selected', isMatch ? 'true' : 'false');
                 if (isMatch && scrollNavPill && window.innerWidth <= 768) {

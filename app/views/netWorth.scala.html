@@ -494,23 +494,26 @@
 
 <!-- Ed Says Modal (Net Worth & Retirement) -->
 <div id="ed-modal" class="modal-backdrop">
-    <div class="modal-content-card" style="max-width: 580px;">
+    <div class="modal-content-card ed-modal-card">
         <!-- Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
-            <div style="font-weight: 800; font-size: 1.1rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" style="width: 28px; height: 28px; vertical-align: middle;" />
-                <span>Ed Says — Retirement & Independence Horizon</span>
+        <div class="ed-modal-header">
+            <div class="ed-modal-title">
+                <img src="@routes.Assets.versioned("images/monmon-monster.svg")" alt="Ed" class="ed-modal-avatar" />
+                <span>Ed says</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <button type="button" class="ed-refresh-btn w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; cursor: pointer;" title="Ask Ed for fresh advice">
+            <div class="ed-modal-actions">
+                <button type="button" class="ed-refresh-btn w3-button w3-tiny w3-round" title="Ask Ed for fresh advice">
                     <i class="fas fa-sync-alt ed-refresh-icon"></i> Ask Ed
                 </button>
-                <button type="button" id="ed-close-btn" style="background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+                <button type="button" id="ed-close-btn" class="ed-close-btn w3-button w3-round" title="Close modal">&times;</button>
             </div>
         </div>
 
         <!-- Body -->
-        <div style="padding: 1.25rem; max-height: calc(85vh - 70px); overflow-y: auto;">
+        <div class="ed-modal-body">
+            <div class="ed-modal-topic-badge">
+                <i class="fas fa-chart-line"></i> Ed Says — Retirement & Independence Horizon
+            </div>
             <!-- Mini context inside modal -->
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 1rem; background: var(--card-bg-subtle); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.8rem;">
                 <div>
