@@ -2,6 +2,7 @@ package models;
 
 import javax.persistence.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -392,6 +393,52 @@ public class SavingsPlan {
     public Float getUnallocatedAmount(Float incomingTotal) {
         float target = getTargetAmount(incomingTotal);
         return round2(target - getTotalAllocated());
+    }
+
+    /**
+     * When unallocated budget is negative (overallocated), deducts the deficit
+     * starting from the lowest priority items (highest priority number) upwards.
+     * Slices with 0 amount are skipped. If a slice amount is less than or equal to
+     * the remaining deficit, it is reduced to 0 and the remainder is deducted from
+     * the next lowest priority slice.
+     */
+    public void trimDeficitFromLowestPriority(Float incomingTotal) {
+        if (incomingTotal == null || incomingTotal <= 0f) return;
+        float targetPot = getTargetAmount(incomingTotal);
+        float totalAllocated = getTotalAllocated();
+        float deficit = round2(totalAllocated - targetPot);
+        if (deficit <= 0.001f) return;
+
+        List<SavingsPlanItem> active = getItems();
+        if (active.isEmpty()) return;
+
+        List<SavingsPlanItem> candidates = active.stream()
+                .filter(i -> !i.isLocked())
+                .collect(Collectors.toList());
+        if (candidates.isEmpty()) {
+            candidates = new ArrayList<>(active);
+        } else {
+            candidates = new ArrayList<>(candidates);
+        }
+        Collections.reverse(candidates);
+
+        float remainingDeficit = deficit;
+        for (SavingsPlanItem item : candidates) {
+            if (remainingDeficit <= 0.001f) break;
+            float currentAmount = item.getMonthlyAmount() != null ? item.getMonthlyAmount() : 0.0f;
+            if (currentAmount > 0.001f) {
+                if (currentAmount <= remainingDeficit) {
+                    item.setMonthlyAmount(0.0f);
+                    remainingDeficit = round2(remainingDeficit - currentAmount);
+                } else {
+                    float newAmount = round2(currentAmount - remainingDeficit);
+                    item.setMonthlyAmount(newAmount);
+                    remainingDeficit = 0.0f;
+                    break;
+                }
+            }
+        }
+        this.lastUpdated = System.currentTimeMillis();
     }
 
     /**

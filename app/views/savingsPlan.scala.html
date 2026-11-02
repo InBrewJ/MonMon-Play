@@ -219,6 +219,12 @@
                                 <i class="fas fa-equals" style="margin-right: 4px; color: var(--primary);"></i>Balance Evenly
                             </button>
                         </form>
+                        <form method="POST" action="/savingsPlan/trimDeficit/@activePlan.getId()" class="plan-action-form trim-deficit-form" style="@if(activePlan.getUnallocatedAmount(incomingTotal) >= 0){display: none;} margin: 0; display: inline;">
+                            @helper.CSRF.formField
+                            <button type="submit" class="w3-button w3-round w3-small plan-action-btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); font-weight: 600; cursor: pointer;" title="Take off negative unallocated (-£@String.format(java.util.Locale.US, "%.2f", Math.abs(activePlan.getUnallocatedAmount(incomingTotal)))) from lower priority items">
+                                <i class="fas fa-sort-amount-down" style="margin-right: 4px; color: var(--danger);"></i>Trim from lower priority (<span class="trim-deficit-label">-£@String.format(java.util.Locale.US, "%.2f", Math.abs(activePlan.getUnallocatedAmount(incomingTotal)))</span>)
+                            </button>
+                        </form>
                     }
                 </div>
             </div>
@@ -675,6 +681,12 @@
                             <i class="fas fa-equals" style="margin-right: 4px; color: var(--primary);"></i> Balance evenly
                         </button>
                     </form>
+                    <form method="POST" action="/savingsPlan/trimDeficit/@activePlan.getId()" class="plan-action-form trim-deficit-form" style="@if(activePlan.getUnallocatedAmount(incomingTotal) >= 0){display: none;}">
+                        @helper.CSRF.formField
+                        <button type="submit" class="w3-button w3-round w3-small plan-action-btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); font-weight: 600; cursor: pointer;" title="Take off negative unallocated (-£@String.format(java.util.Locale.US, "%.2f", Math.abs(activePlan.getUnallocatedAmount(incomingTotal)))) from lower priority items">
+                            <i class="fas fa-sort-amount-down" style="margin-right: 4px; color: var(--danger);"></i> Trim from lower priority (<span class="trim-deficit-label">-£@String.format(java.util.Locale.US, "%.2f", Math.abs(activePlan.getUnallocatedAmount(incomingTotal)))</span>)
+                        </button>
+                    </form>
                 }
                 @if(!editing) {
                     <form method="POST" action="/savingsPlan/addAllOverdrafts" class="plan-action-form">
@@ -692,8 +704,15 @@
                 }
                 <button type="button" id="btn-allocate-max" class="w3-button w3-round w3-small plan-action-btn"
                         title="Allocate the entire remaining unallocated amount to this item"
-                        data-unallocated="@activePlan.getUnallocatedAmount(incomingTotal)">
+                        data-unallocated="@activePlan.getUnallocatedAmount(incomingTotal)"
+                        style="@if(activePlan.getUnallocatedAmount(incomingTotal) <= 0){display: none;}">
                     <i class="fas fa-arrow-down" style="margin-right: 4px; color: var(--primary);"></i> Allocate max (<span id="btn-allocate-max-label">£@activePlan.getUnallocatedAmount(incomingTotal)</span>)
+                </button>
+                <button type="button" id="btn-deduct-deficit" class="w3-button w3-round w3-small plan-action-btn"
+                        title="Take off negative unallocated from this slice"
+                        data-deficit="@Math.abs(activePlan.getUnallocatedAmount(incomingTotal))"
+                        style="@if(activePlan.getUnallocatedAmount(incomingTotal) >= 0){display: none;} background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); font-weight: 600;">
+                    <i class="fas fa-minus-circle" style="margin-right: 4px; color: var(--danger);"></i> Take off deficit (<span id="btn-deduct-deficit-label">-£@String.format(java.util.Locale.US, "%.2f", Math.abs(activePlan.getUnallocatedAmount(incomingTotal)))</span>)
                 </button>
             </div>
 
@@ -783,11 +802,19 @@
 
                     <div>
                         <label for="item-monthly-amount" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Monthly Sliced Amount (£)</label>
-                        <input type="number" step="0.01" min="0" id="item-monthly-amount" name="monthlyAmount" required
-                               inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*"
-                               value='@{if(editing && editingItem != null) String.valueOf(editingItem.getMonthlyAmount()) else ""}'
-                               placeholder="e.g. 150.00 or 0.00 for future plan"
-                               style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);" />
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="number" step="0.01" min="0" id="item-monthly-amount" name="monthlyAmount" required
+                                   inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*"
+                                   value='@{if(editing && editingItem != null) String.valueOf(editingItem.getMonthlyAmount()) else ""}'
+                                   placeholder="e.g. 150.00 or 0.00 for future plan"
+                                   style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);" />
+                            <button type="button" id="btn-input-deduct-deficit" class="w3-button w3-round w3-small plan-action-btn"
+                                    title="Deduct overallocated amount from this slice"
+                                    data-deficit="@Math.abs(activePlan.getUnallocatedAmount(incomingTotal))"
+                                    style="@if(activePlan.getUnallocatedAmount(incomingTotal) >= 0){display: none;} white-space: nowrap; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); font-weight: 600; padding: 7px 12px; cursor: pointer;">
+                                <i class="fas fa-minus-circle" style="margin-right: 4px;"></i> Take off <span class="input-deficit-val">-£@String.format(java.util.Locale.US, "%.2f", Math.abs(activePlan.getUnallocatedAmount(incomingTotal)))</span>
+                            </button>
+                        </div>
                         <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 2px;">Monthly allocation. Can be 0.00 for future targets waiting in queue.</small>
                     </div>
 

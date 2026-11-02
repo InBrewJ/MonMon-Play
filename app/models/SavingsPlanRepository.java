@@ -26,6 +26,8 @@ public interface SavingsPlanRepository {
 
     CompletionStage<SavingsPlan> balanceEvenly(Long planId, Float incomingTotal);
 
+    CompletionStage<SavingsPlan> trimDeficit(Long planId, Float incomingTotal);
+
     CompletionStage<SavingsPlan> updateItemAmounts(Long planId, java.util.Map<Long, Float> amounts);
 
     CompletionStage<SavingsPlanItem> updateItem(Long itemId, String name, SavingsPlanItem.ItemType type, Long accountId, Float targetAmount, Float monthlyAmount, Integer priority);

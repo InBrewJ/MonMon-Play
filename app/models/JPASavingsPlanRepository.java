@@ -143,6 +143,11 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
     }
 
     @Override
+    public CompletionStage<SavingsPlan> trimDeficit(Long planId, Float incomingTotal) {
+        return supplyAsync(() -> wrap(em -> trimDeficit(em, planId, incomingTotal)), executionContext);
+    }
+
+    @Override
     public CompletionStage<SavingsPlan> updateItemAmounts(Long planId, java.util.Map<Long, Float> amounts) {
         return supplyAsync(() -> wrap(em -> updateItemAmounts(em, planId, amounts)), executionContext);
     }
@@ -349,6 +354,15 @@ public class JPASavingsPlanRepository implements SavingsPlanRepository {
         SavingsPlan plan = findPlanWithItems(em, planId);
         if (plan != null) {
             plan.balanceEvenly(incomingTotal);
+            syncPlanState(em, plan);
+        }
+        return plan;
+    }
+
+    private SavingsPlan trimDeficit(EntityManager em, Long planId, Float incomingTotal) {
+        SavingsPlan plan = findPlanWithItems(em, planId);
+        if (plan != null) {
+            plan.trimDeficitFromLowestPriority(incomingTotal);
             syncPlanState(em, plan);
         }
         return plan;

@@ -467,6 +467,47 @@
                 formUnallocatedEl.textContent = '£' + unallocated.toFixed(2);
                 formUnallocatedEl.style.color = unallocated < -0.01 ? 'var(--danger)' : 'var(--primary)';
             }
+            var btnDeductDeficit = document.getElementById('btn-deduct-deficit');
+            var btnDeductDeficitLabel = document.getElementById('btn-deduct-deficit-label');
+            var btnInputDeduct = document.getElementById('btn-input-deduct-deficit');
+            var trimDeficitForms = document.querySelectorAll('.trim-deficit-form');
+
+            if (unallocated < -0.01) {
+                var deficit = Math.abs(unallocated);
+                if (btnDeductDeficit) {
+                    btnDeductDeficit.style.display = 'inline-flex';
+                    btnDeductDeficit.setAttribute('data-deficit', deficit.toFixed(2));
+                    if (btnDeductDeficitLabel) btnDeductDeficitLabel.textContent = '-£' + deficit.toFixed(2);
+                }
+                if (btnInputDeduct) {
+                    btnInputDeduct.style.display = 'inline-flex';
+                    btnInputDeduct.setAttribute('data-deficit', deficit.toFixed(2));
+                    var inputDefLabel = btnInputDeduct.querySelector('.input-deficit-val');
+                    if (inputDefLabel) inputDefLabel.textContent = '-£' + deficit.toFixed(2);
+                }
+                if (btnAllocateMax) {
+                    btnAllocateMax.style.display = 'none';
+                }
+                trimDeficitForms.forEach(function (form) {
+                    form.style.display = 'inline-block';
+                    var label = form.querySelector('.trim-deficit-label');
+                    if (label) label.textContent = '-£' + deficit.toFixed(2);
+                });
+            } else {
+                if (btnDeductDeficit) {
+                    btnDeductDeficit.style.display = 'none';
+                }
+                if (btnInputDeduct) {
+                    btnInputDeduct.style.display = 'none';
+                }
+                if (btnAllocateMax) {
+                    btnAllocateMax.style.display = 'inline-flex';
+                }
+                trimDeficitForms.forEach(function (form) {
+                    form.style.display = 'none';
+                });
+            }
+
             if (btnAllocateMax) {
                 var safeMax = Math.max(0, unallocated);
                 btnAllocateMax.setAttribute('data-unallocated', safeMax.toFixed(2));
@@ -504,6 +545,8 @@
         var previewBox = document.getElementById('item-estimate-preview');
         var targetAmountGroup = document.getElementById('target-amount-group');
         var btnAllocateMax = document.getElementById('btn-allocate-max');
+        var btnDeductDeficit = document.getElementById('btn-deduct-deficit');
+        var btnInputDeduct = document.getElementById('btn-input-deduct-deficit');
 
         // Wire "Allocate Max" button
         if (btnAllocateMax && monthlyAmountInput) {
@@ -515,6 +558,42 @@
                     updateEstimatePreview();
                 }
             });
+        }
+
+        // Wire "Take off deficit" buttons
+        function handleDeductDeficit(e) {
+            if (e) e.preventDefault();
+            if (!monthlyAmountInput) return;
+            var deficit = 0;
+            if (btnDeductDeficit) {
+                deficit = parseFloat(btnDeductDeficit.getAttribute('data-deficit')) || 0;
+            }
+            if (deficit <= 0 && btnInputDeduct) {
+                deficit = parseFloat(btnInputDeduct.getAttribute('data-deficit')) || 0;
+            }
+            if (deficit <= 0 && formUnallocatedEl) {
+                var text = formUnallocatedEl.textContent.replace(/[^0-9.-]/g, '');
+                var parsed = parseFloat(text);
+                if (parsed < 0) deficit = Math.abs(parsed);
+            }
+            if (deficit > 0) {
+                var currentVal = parseFloat(monthlyAmountInput.value) || 0;
+                var newVal = Math.max(0, currentVal - deficit);
+                monthlyAmountInput.value = newVal.toFixed(2);
+                updateEstimatePreview();
+                // Visual feedback highlight
+                monthlyAmountInput.style.outline = '2px solid var(--success)';
+                setTimeout(function () {
+                    monthlyAmountInput.style.outline = '';
+                }, 1000);
+            }
+        }
+
+        if (btnDeductDeficit) {
+            btnDeductDeficit.addEventListener('click', handleDeductDeficit);
+        }
+        if (btnInputDeduct) {
+            btnInputDeduct.addEventListener('click', handleDeductDeficit);
         }
 
         function updateEstimatePreview() {

@@ -866,4 +866,62 @@ public class SavingsPlanTest {
         assertThat(afterAppend.get(6).getName()).isEqualTo("Appended Tail");
         assertThat(afterAppend.get(6).getPriority()).isEqualTo(7);
     }
+
+    @Test
+    public void testTrimDeficitFromLowestPriority() {
+        SavingsPlan plan = new SavingsPlan("user123", "Trim Deficit Plan", 10);
+        // Target pot: 10% of 1000 = 100.00
+
+        SavingsPlanItem p1 = new SavingsPlanItem("P1 Core", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 69.79f, 1);
+        SavingsPlanItem p2 = new SavingsPlanItem("P2 Mid", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 40.00f, 2);
+        SavingsPlanItem p3 = new SavingsPlanItem("P3 Small", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 15.00f, 3);
+        SavingsPlanItem p4 = new SavingsPlanItem("P4 Zero", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 0.00f, 4);
+
+        plan.addItem(p1);
+        plan.addItem(p2);
+        plan.addItem(p3);
+        plan.addItem(p4);
+
+        // Total allocated: 69.79 + 40.00 + 15.00 = 124.79
+        // Target pot: 100.00 -> Deficit is 24.79 (unallocated is -24.79)
+        assertThat(plan.getUnallocatedAmount(1000f)).isEqualTo(-24.79f);
+
+        plan.trimDeficitFromLowestPriority(1000f);
+
+        // P4 was 0 -> remains 0
+        // P3 was 15 <= 24.79 -> reduced to 0, remaining deficit 9.79
+        // P2 was 40 -> reduced by 9.79 to 30.21
+        // P1 was 69.79 -> untouched at 69.79
+        assertThat(p4.getMonthlyAmount()).isEqualTo(0.0f);
+        assertThat(p3.getMonthlyAmount()).isEqualTo(0.0f);
+        assertThat(p2.getMonthlyAmount()).isEqualTo(30.21f);
+        assertThat(p1.getMonthlyAmount()).isEqualTo(69.79f);
+        assertThat(plan.getUnallocatedAmount(1000f)).isEqualTo(0.0f);
+    }
+
+    @Test
+    public void testTrimDeficitSkipsLockedItemsUnlessAllLocked() {
+        SavingsPlan plan = new SavingsPlan("user123", "Locked Trim Plan", 10);
+        // Target: 10% of 1000 = 100.00
+
+        SavingsPlanItem p1 = new SavingsPlanItem("P1 Unlocked", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 60.00f, 1);
+        SavingsPlanItem p2 = new SavingsPlanItem("P2 Locked", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 40.00f, 2);
+        p2.setLocked(true);
+        SavingsPlanItem p3 = new SavingsPlanItem("P3 Unlocked", SavingsPlanItem.ItemType.SAVINGS_TARGET, null, 1000f, 20.00f, 3);
+
+        plan.addItem(p1);
+        plan.addItem(p2);
+        plan.addItem(p3);
+
+        // Total allocated = 120.00. Deficit = 20.00
+        plan.trimDeficitFromLowestPriority(1000f);
+
+        // P3 is lowest unlocked: 20 <= 20 -> 0.00
+        // P2 is locked: untouched at 40.00
+        // P1: untouched at 60.00
+        assertThat(p3.getMonthlyAmount()).isEqualTo(0.0f);
+        assertThat(p2.getMonthlyAmount()).isEqualTo(40.00f);
+        assertThat(p1.getMonthlyAmount()).isEqualTo(60.00f);
+        assertThat(plan.getUnallocatedAmount(1000f)).isEqualTo(0.0f);
+    }
 }

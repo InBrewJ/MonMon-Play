@@ -605,6 +605,21 @@ public class SavingsPlanController extends Controller {
     }
 
     @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
+    public CompletionStage<Result> trimDeficit(Long id, final Http.Request request) {
+        if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
+            return CompletableFuture.completedFuture(
+                    forbidden(play.libs.Json.newObject().put("error", "Waiting list: Your account is pending administrator approval."))
+                            .as("application/json")
+            );
+        }
+        SimpleUserProfile sup = getSimpleUserProfile(playSessionStore, request);
+        return incomingRepository.list(sup.getUserId())
+                .thenApplyAsync(incomings -> Incoming.getTotalIncomings(incomings.collect(Collectors.toList())), ec.current())
+                .thenComposeAsync(total -> savingsPlanRepository.trimDeficit(id, total), ec.current())
+                .thenApplyAsync(sp -> redirect(routes.SavingsPlanController.index().url() + "#sliced-items-card"), ec.current());
+    }
+
+    @Secure(clients = "OidcClient", authorizers = "isAuthenticated")
     public CompletionStage<Result> saveAllocations(Long id, final Http.Request request) {
         if (!helpers.UserHelpers.isUserApproved(playSessionStore, request)) {
             return CompletableFuture.completedFuture(
