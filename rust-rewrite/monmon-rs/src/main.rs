@@ -5,10 +5,13 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
-use models::{Account, Balance, ErraticBalance, Incoming, NewAccount, NewBalance, NewIncoming, NewOutgoing, Outgoing};
+use models::{
+    Account, Balance, ErraticBalance, Incoming, NewAccount, NewBalance, NewIncoming, NewOutgoing,
+    Outgoing, UpdateAccount, UpdateIncoming, UpdateOutgoing,
+};
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
@@ -50,7 +53,7 @@ async fn main() {
     let db_url = env::var("DB_URL")
         .or_else(|_| env::var("DATABASE_URL"))
         .unwrap_or_else(|_| "postgres://postgres:docker@127.0.0.1:5432/monmon-play".to_string());
-    
+
     // Normalize jdbc:postgresql:// if present
     let clean_db_url = db_url.replace("jdbc:postgresql://", "postgres://");
 
@@ -65,12 +68,58 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health_handler))
-        .route("/internal/accounts", get(list_accounts_handler).post(create_account_handler))
-        .route("/internal/incomings", get(list_incomings_handler).post(create_incoming_handler))
-        .route("/internal/outgoings", get(list_outgoings_handler).post(create_outgoing_handler))
+        // Accounts
+        .route(
+            "/internal/accounts",
+            get(list_accounts_handler).post(create_account_handler),
+        )
+        .route(
+            "/internal/accounts/:id",
+            get(get_account_handler).put(update_account_handler),
+        )
+        .route("/internal/accounts/:id/archive", post(archive_account_handler))
+        .route(
+            "/internal/accounts/:id/toggleLedger",
+            post(toggle_ledger_account_handler),
+        )
+        // Incomings
+        .route(
+            "/internal/incomings",
+            get(list_incomings_handler).post(create_incoming_handler),
+        )
+        .route(
+            "/internal/incomings/:id",
+            get(get_incoming_handler).put(update_incoming_handler),
+        )
+        .route(
+            "/internal/incomings/:id/archive",
+            post(archive_incoming_handler),
+        )
+        // Outgoings
+        .route(
+            "/internal/outgoings",
+            get(list_outgoings_handler).post(create_outgoing_handler),
+        )
+        .route("/internal/outgoings/rents", get(list_rents_handler))
+        .route("/internal/outgoings/bills", get(list_bills_handler))
+        .route(
+            "/internal/outgoings/:id",
+            get(get_outgoing_handler).put(update_outgoing_handler),
+        )
+        .route(
+            "/internal/outgoings/:id/archive",
+            post(archive_outgoing_handler),
+        )
         .route("/internal/outgoings/:id/pause", post(pause_outgoing_handler))
-        .route("/internal/outgoings/:id/unpause", post(unpause_outgoing_handler))
-        .route("/internal/balances", get(list_balances_handler).post(create_balance_handler))
+        .route(
+            "/internal/outgoings/:id/unpause",
+            post(unpause_outgoing_handler),
+        )
+        // Balances
+        .route(
+            "/internal/balances",
+            get(list_balances_handler).post(create_balance_handler),
+        )
         .route("/internal/balances/erratic", get(erratic_balances_handler))
         .with_state(state);
 
@@ -90,6 +139,7 @@ async fn health_handler() -> Json<serde_json::Value> {
     Json(json!({ "status": "ok", "service": "monmon-rs" }))
 }
 
+// Accounts Handlers
 async fn list_accounts_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<UserQuery>,
@@ -98,6 +148,16 @@ async fn list_accounts_handler(
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn get_account_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Account>, (StatusCode, String)> {
+    db::get_account(&state.pool, id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))
 }
 
 async fn create_account_handler(
@@ -110,6 +170,38 @@ async fn create_account_handler(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
+async fn update_account_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(payload): Json<UpdateAccount>,
+) -> Result<Json<Account>, (StatusCode, String)> {
+    db::update_account(&state.pool, id, &payload)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn archive_account_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Account>, (StatusCode, String)> {
+    db::archive_account(&state.pool, id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn toggle_ledger_account_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Account>, (StatusCode, String)> {
+    db::toggle_ledger_mode(&state.pool, id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+// Incomings Handlers
 async fn list_incomings_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<UserQuery>,
@@ -118,6 +210,16 @@ async fn list_incomings_handler(
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn get_incoming_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Incoming>, (StatusCode, String)> {
+    db::get_incoming(&state.pool, id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))
 }
 
 async fn create_incoming_handler(
@@ -130,6 +232,28 @@ async fn create_incoming_handler(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
+async fn update_incoming_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(payload): Json<UpdateIncoming>,
+) -> Result<Json<Incoming>, (StatusCode, String)> {
+    db::update_incoming(&state.pool, id, &payload)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn archive_incoming_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Incoming>, (StatusCode, String)> {
+    db::archive_incoming(&state.pool, id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+// Outgoings Handlers
 async fn list_outgoings_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<UserQuery>,
@@ -140,11 +264,62 @@ async fn list_outgoings_handler(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
+async fn list_rents_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UserQuery>,
+) -> Result<Json<Vec<Outgoing>>, (StatusCode, String)> {
+    db::list_rents(&state.pool, &query.user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn list_bills_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UserQuery>,
+) -> Result<Json<Vec<Outgoing>>, (StatusCode, String)> {
+    db::list_bills(&state.pool, &query.user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn get_outgoing_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Outgoing>, (StatusCode, String)> {
+    db::get_outgoing(&state.pool, id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))
+}
+
 async fn create_outgoing_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<NewOutgoing>,
 ) -> Result<Json<Outgoing>, (StatusCode, String)> {
     db::create_outgoing(&state.pool, &payload)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn update_outgoing_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(payload): Json<UpdateOutgoing>,
+) -> Result<Json<Outgoing>, (StatusCode, String)> {
+    db::update_outgoing(&state.pool, id, &payload)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn archive_outgoing_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Outgoing>, (StatusCode, String)> {
+    db::archive_outgoing(&state.pool, id)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -172,6 +347,7 @@ async fn unpause_outgoing_handler(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
+// Balances Handlers
 async fn list_balances_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<UserQuery>,
@@ -196,8 +372,8 @@ async fn erratic_balances_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<UserQuery>,
 ) -> Result<Json<Vec<ErraticBalance>>, (StatusCode, String)> {
-    let threshold = query.threshold.unwrap_or(1000.0);
-    db::detect_erratic_balances(&state.pool, &query.user_id, threshold)
+    let threshold = query.threshold.unwrap_or(200.0);
+    db::find_erratic_balances(&state.pool, &query.user_id, threshold)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))

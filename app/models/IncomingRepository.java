@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 /**
  * This interface provides a non-blocking API for possibly blocking operations.
  */
-@ImplementedBy(JPAIncomingRepository.class)
+@ImplementedBy(RustIncomingRepository.class)
     public interface IncomingRepository {
 
     CompletionStage<Incoming> add(Incoming incoming);

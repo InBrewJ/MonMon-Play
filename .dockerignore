@@ -1,0 +1,10 @@
+.git
+.github
+node_modules
+rust-rewrite
+legmon
+db
+target/streams
+target/scala-2.13
+target/resolution-cache
+target/web

@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 /**
  * This interface provides a non-blocking API for possibly blocking operations.
  */
-@ImplementedBy(JPAOutgoingRepository.class)
+@ImplementedBy(RustOutgoingRepository.class)
 public interface OutgoingRepository {
 
     CompletionStage<Outgoing> add(Outgoing outgoing);

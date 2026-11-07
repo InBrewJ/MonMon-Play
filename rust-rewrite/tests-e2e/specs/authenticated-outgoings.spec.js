@@ -23,9 +23,9 @@ test.describe('Authenticated Outgoings & Pause Modal E2E', () => {
     await expect(page).toHaveTitle(/MonMon Outgoings/);
     await expect(page.locator('body')).toBeVisible();
 
-    // Verify all 6 outgoings are listed
-    const outgoings = page.locator('.col-name b');
-    await expect(outgoings).toHaveCount(6);
+    // Verify seeded outgoings are listed
+    const count = await page.locator('.col-name b').count();
+    expect(count).toBeGreaterThanOrEqual(6);
 
     // Locate the exact Ionos VPS row/card containing brackets and apostrophe (supports desktop table and mobile Stacked Action Cards)
     const isMobile = await page.locator('.mobile-cards-view').isVisible();

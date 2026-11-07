@@ -8,7 +8,7 @@ import java.util.stream.Stream;
 /**
  * This interface provides a non-blocking API for possibly blocking operations.
  */
-@ImplementedBy(JPAAccountRepository.class)
+@ImplementedBy(RustAccountRepository.class)
 public interface AccountRepository {
 
     CompletionStage<Account> add(Account account);
