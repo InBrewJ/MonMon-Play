@@ -1,0 +1,204 @@
+mod db;
+mod models;
+
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::Json,
+    routing::{get, post},
+    Router,
+};
+use models::{Account, Balance, ErraticBalance, Incoming, NewAccount, NewBalance, NewIncoming, NewOutgoing, Outgoing};
+use serde::Deserialize;
+use serde_json::json;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
+use std::env;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tracing::info;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserQuery {
+    pub user_id: String,
+    pub threshold: Option<f32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PausePayload {
+    pub reason: String,
+    pub user_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnpausePayload {
+    pub user_id: String,
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
+
+    let db_url = env::var("DB_URL")
+        .or_else(|_| env::var("DATABASE_URL"))
+        .unwrap_or_else(|_| "postgres://postgres:docker@127.0.0.1:5432/monmon-play".to_string());
+    
+    // Normalize jdbc:postgresql:// if present
+    let clean_db_url = db_url.replace("jdbc:postgresql://", "postgres://");
+
+    info!("Connecting to PostgreSQL at {}", clean_db_url);
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&clean_db_url)
+        .await
+        .expect("Failed to connect to PostgreSQL");
+
+    let state = Arc::new(AppState { pool });
+
+    let app = Router::new()
+        .route("/health", get(health_handler))
+        .route("/internal/accounts", get(list_accounts_handler).post(create_account_handler))
+        .route("/internal/incomings", get(list_incomings_handler).post(create_incoming_handler))
+        .route("/internal/outgoings", get(list_outgoings_handler).post(create_outgoing_handler))
+        .route("/internal/outgoings/:id/pause", post(pause_outgoing_handler))
+        .route("/internal/outgoings/:id/unpause", post(unpause_outgoing_handler))
+        .route("/internal/balances", get(list_balances_handler).post(create_balance_handler))
+        .route("/internal/balances/erratic", get(erratic_balances_handler))
+        .with_state(state);
+
+    let port: u16 = env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(9001);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    info!("monmon-rs is listening on http://{}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn health_handler() -> Json<serde_json::Value> {
+    Json(json!({ "status": "ok", "service": "monmon-rs" }))
+}
+
+async fn list_accounts_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UserQuery>,
+) -> Result<Json<Vec<Account>>, (StatusCode, String)> {
+    db::list_accounts(&state.pool, &query.user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn create_account_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<NewAccount>,
+) -> Result<Json<Account>, (StatusCode, String)> {
+    db::create_account(&state.pool, &payload)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn list_incomings_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UserQuery>,
+) -> Result<Json<Vec<Incoming>>, (StatusCode, String)> {
+    db::list_incomings(&state.pool, &query.user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn create_incoming_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<NewIncoming>,
+) -> Result<Json<Incoming>, (StatusCode, String)> {
+    db::create_incoming(&state.pool, &payload)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn list_outgoings_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UserQuery>,
+) -> Result<Json<Vec<Outgoing>>, (StatusCode, String)> {
+    db::list_outgoings(&state.pool, &query.user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn create_outgoing_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<NewOutgoing>,
+) -> Result<Json<Outgoing>, (StatusCode, String)> {
+    db::create_outgoing(&state.pool, &payload)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn pause_outgoing_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(payload): Json<PausePayload>,
+) -> Result<Json<Outgoing>, (StatusCode, String)> {
+    db::pause_outgoing(&state.pool, id, &payload.user_id, &payload.reason)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn unpause_outgoing_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(payload): Json<UnpausePayload>,
+) -> Result<Json<Outgoing>, (StatusCode, String)> {
+    db::unpause_outgoing(&state.pool, id, &payload.user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn list_balances_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UserQuery>,
+) -> Result<Json<Vec<Balance>>, (StatusCode, String)> {
+    db::list_balances(&state.pool, &query.user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn create_balance_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<NewBalance>,
+) -> Result<Json<Balance>, (StatusCode, String)> {
+    db::create_balance(&state.pool, &payload)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn erratic_balances_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UserQuery>,
+) -> Result<Json<Vec<ErraticBalance>>, (StatusCode, String)> {
+    let threshold = query.threshold.unwrap_or(1000.0);
+    db::detect_erratic_balances(&state.pool, &query.user_id, threshold)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
