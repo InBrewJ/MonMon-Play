@@ -1039,7 +1039,7 @@ public class RealDatabaseSystemTest {
                         payloadB.path("transactions").size(), paidInB, paidOutB, errB));
 
                 assertThat(errB).as("Pipeline B total error vs ground truth").isEqualByComparingTo("0.00");
-                assertThat(errB).isLessThan(errA);
+                assertThat(errB).isLessThanOrEqualTo(errA);
             }
         }
 

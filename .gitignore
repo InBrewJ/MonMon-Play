@@ -16,3 +16,7 @@ secureProd.conf
 .env.*
 !.env.template
 /db/backups/*
+keys/
+*.pem
+*.key
+**/target/
