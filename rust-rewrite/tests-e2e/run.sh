@@ -11,7 +11,7 @@ if ! command -v node >/dev/null 2>&1 && [ -d "$HOME/.nvm/versions/node" ]; then
     fi
 fi
 
-export BASE_URL="${BASE_URL:-http://127.0.0.1:9000}"
+export BASE_URL="${BASE_URL:-http://localhost:9000}"
 
 echo "========================================================================="
 echo " MonMon Playwright E2E Test Suite (Driven by playwright-cli)"
