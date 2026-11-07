@@ -325,4 +325,52 @@ public class NetWorthControllerTest {
         assertThat(body).contains("Pause Netflix 4K immediately");
         assertThat(body).contains("\"configured\":true");
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testOutgoingsViewPauseButtonHandlesSingleQuotesAndBracketsSafely() {
+        Account account = new Account();
+        account.setId(1L);
+        account.setName("Current Account");
+        account.setType(Account.AccountType.DEBIT);
+
+        Outgoing outgoing = new Outgoing();
+        outgoing.setId(42L);
+        outgoing.setName("[£9 for 24 months exVAT, started 2025-06] boom.dryark.uk :: (Ionos VPS L => 4vCPU, 8GB RAM, 240GB SSD) (what happens if we don't pay?)");
+        outgoing.setCost(10.80f);
+        outgoing.setOutgoingDay(15);
+        outgoing.setAccount(account);
+
+        play.data.Form<Outgoing> mockForm = (play.data.Form<Outgoing>) mock(play.data.Form.class);
+        play.data.Form.Field mockField = mock(play.data.Form.Field.class);
+        when(mockField.value()).thenReturn(Optional.empty());
+        when(mockField.name()).thenReturn(Optional.of("field"));
+        when(mockField.indexes()).thenReturn(Collections.emptyList());
+        when(mockField.errors()).thenReturn(Collections.emptyList());
+        when(mockField.constraints()).thenReturn(Collections.emptyList());
+        when(mockForm.field(any())).thenReturn(mockField);
+        when(mockForm.apply(any())).thenReturn(mockField);
+
+        SessionStore sessionStore = mock(SessionStore.class);
+        when(sessionStore.get(any(), any())).thenReturn(Optional.empty());
+        play.i18n.Messages messages = Helpers.stubMessagesApi().preferred(Collections.emptyList());
+
+        Http.Request request = play.api.test.CSRFTokenHelper.addCSRFToken(Helpers.fakeRequest("GET", "/myOutgoings")).build();
+
+        play.twirl.api.Html html = views.html.outgoings.render(
+                scala.jdk.javaapi.CollectionConverters.asScala(Collections.singletonList(outgoing)).toSeq(),
+                10.80f,
+                mockForm,
+                scala.jdk.javaapi.CollectionConverters.asScala(Collections.singletonList(account)).toSeq(),
+                false,
+                request,
+                sessionStore,
+                messages
+        );
+
+        String rendered = html.body();
+        assertThat(rendered).contains("onclick=\"openPauseModal(this)\"");
+        assertThat(rendered).contains("data-id=\"42\"");
+        assertThat(rendered).doesNotContain("onclick=\"openPauseModal(42,");
+    }
 }

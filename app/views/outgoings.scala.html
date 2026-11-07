@@ -157,7 +157,7 @@
                           <i class="fas fa-play"></i>
                         </a>
                       } else {
-                        <a href="javascript:void(0)" onclick="openPauseModal(@o.id, '@o.name', '@o.cost')" title="Pause outgoing" style="color: #f59e0b; font-size: 0.95rem;">
+                        <a href="javascript:void(0)" data-id="@o.id" data-name="@o.name" data-cost="@o.cost" onclick="openPauseModal(this)" title="Pause outgoing" style="color: #f59e0b; font-size: 0.95rem;">
                           <i class="fas fa-pause"></i>
                         </a>
                       }
@@ -253,7 +253,7 @@
                   @if(o.isPaused()) {
                     <a href="/unpauseOutgoing/@o.id" class="btn-action" style="color: #10b981; font-weight: 700;"><i class="fas fa-play"></i> Unpause</a>
                   } else {
-                    <button type="button" onclick="openPauseModal(@o.id, '@o.name', '@o.cost')" class="btn-action" style="background: none; border: none; cursor: pointer; color: #f59e0b; font-weight: 600;"><i class="fas fa-pause"></i> Pause</button>
+                    <button type="button" data-id="@o.id" data-name="@o.name" data-cost="@o.cost" onclick="openPauseModal(this)" class="btn-action" style="background: none; border: none; cursor: pointer; color: #f59e0b; font-weight: 600;"><i class="fas fa-pause"></i> Pause</button>
                   }
                   <a href="/binOutgoing/@o.id" class="btn-action btn-delete" onclick="return confirm('Are you sure you want to delete this outgoing?');"><i class="fas fa-trash-alt"></i> Delete</a>
                 </div>
@@ -458,7 +458,13 @@ function closeOutgoingModal() {
   }
 }
 
-function openPauseModal(id, name, cost) {
+function openPauseModal(idOrEl, name, cost) {
+  var id = idOrEl;
+  if (idOrEl && typeof idOrEl === 'object' && idOrEl.getAttribute) {
+    id = idOrEl.getAttribute('data-id');
+    name = idOrEl.getAttribute('data-name') || '';
+    cost = idOrEl.getAttribute('data-cost') || '0.0';
+  }
   var form = document.getElementById('pause-outgoing-form');
   form.action = '/pauseOutgoing/' + id;
   document.getElementById('pause-outgoing-name').textContent = name;
