@@ -9,111 +9,99 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-REMOTE_USER_HOST="circle@boom.dryark.uk"
-REMOTE_LOG_DIR="/home/circle/app/legmon/logs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$SCRIPT_DIR"
 
-echo -e "${BLUE}${BOLD}==> [1/3] Verifying local Docker image legmon:latest...${NC}"
-if ! docker image inspect legmon:latest >/dev/null 2>&1; then
-    echo -e "${RED}${BOLD}❌ ERROR: Local Docker image 'legmon:latest' not found!${NC}" >&2
+GREENSTREET_HOST="${1:-greenstreet@greenstreet.local}"
+REMOTE_USER="${GREENSTREET_HOST%@*}"
+REMOTE_DIR="/home/${REMOTE_USER}/app/legmon"
+
+JAR_FILE="target/scala-2.13/legmon-assembly-1.0.0.jar"
+if [[ ! -f "$JAR_FILE" ]]; then
+    echo -e "${RED}${BOLD}❌ ERROR: $JAR_FILE not found!${NC}" >&2
     echo -e "${YELLOW}Please run ./build.sh first.${NC}" >&2
     exit 1
 fi
 
-echo -e "${BLUE}${BOLD}==> [2/3] Transferring Docker image to ${REMOTE_USER_HOST} via docker save & docker load...${NC}"
-docker save legmon:latest | gzip | ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" "gunzip | docker load"
-echo -e "${GREEN}✅ Docker image transferred and loaded on remote server.${NC}"
+echo -e "${BLUE}${BOLD}==> [1/3] Preparing ${REMOTE_DIR}/build-context/target/scala-2.13 on ${GREENSTREET_HOST}...${NC}"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/build-context/target/scala-2.13 ${REMOTE_DIR}/logs"
 
-# Sync local root .env or legmon/.env to remote if it exists
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [ -f "$ROOT_DIR/.env" ]; then
-    echo -e "${BLUE}==> Transferring root .env to ${REMOTE_USER_HOST}:/home/circle/app/.env...${NC}"
-    scp -o StrictHostKeyChecking=no "$ROOT_DIR/.env" "${REMOTE_USER_HOST}:/home/circle/app/.env"
-    ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" "chmod 600 /home/circle/app/.env"
-    echo -e "${GREEN}✅ Unified root .env transferred to remote host.${NC}"
-elif [ -f "$SCRIPT_DIR/.env" ]; then
-    echo -e "${BLUE}==> Transferring local legmon/.env to ${REMOTE_USER_HOST}:/home/circle/app/legmon/.env...${NC}"
-    ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" "mkdir -p /home/circle/app/legmon"
-    scp -o StrictHostKeyChecking=no "$SCRIPT_DIR/.env" "${REMOTE_USER_HOST}:/home/circle/app/legmon/.env"
-    echo -e "${GREEN}✅ .env transferred to remote host.${NC}"
+echo -e "${BLUE}${BOLD}==> [2/3] Copying assembly jar, ARM64 Dockerfile, and run_legmon.sh to ${GREENSTREET_HOST}...${NC}"
+scp "$JAR_FILE" "${GREENSTREET_HOST}:${REMOTE_DIR}/build-context/target/scala-2.13/"
+
+if [[ -f "$ROOT_DIR/.env" ]]; then
+    scp "$ROOT_DIR/.env" "${GREENSTREET_HOST}:/home/${REMOTE_USER}/app/.env"
+    ssh "$GREENSTREET_HOST" "chmod 600 /home/${REMOTE_USER}/app/.env"
 fi
 
-echo -e "${BLUE}${BOLD}==> [3/3] Launching LegMon container on ${REMOTE_USER_HOST}...${NC}"
-ssh -o StrictHostKeyChecking=no "${REMOTE_USER_HOST}" 'bash -s' << 'REMOTE_SCRIPT'
+# Write ARM64-clean Dockerfile
+ssh "$GREENSTREET_HOST" "cat > ${REMOTE_DIR}/build-context/Dockerfile" <<'EOF'
+FROM eclipse-temurin:11-jre-focal
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    poppler-utils \
+    curl \
+    ca-certificates \
+    tar \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+RUN mkdir -p /app/logs
+
+COPY target/scala-2.13/legmon-assembly-1.0.0.jar /app/legmon.jar
+
+EXPOSE 9005
+
+CMD ["java", "-Duser.dir=/app", "-jar", "/app/legmon.jar"]
+EOF
+
+ssh "$GREENSTREET_HOST" "cat > ${REMOTE_DIR}/run_legmon.sh && chmod +x ${REMOTE_DIR}/run_legmon.sh" <<EOF
+#!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p /home/circle/app/legmon/logs
+mkdir -p ${REMOTE_DIR}/logs
 
-# Check for .env file (either root .env or legmon/.env)
 ENV_ARG=""
-if [ -f /home/circle/app/.env ]; then
-    ENV_ARG="--env-file /home/circle/app/.env"
-    echo "Found /home/circle/app/.env - loading unified environment into LegMon container..."
-elif [ -f /home/circle/app/legmon/.env ]; then
-    ENV_ARG="--env-file /home/circle/app/legmon/.env"
-    echo "Found /home/circle/app/legmon/.env - loading environment into container..."
+if [ -f /home/${REMOTE_USER}/app/.env ]; then
+    ENV_ARG="--env-file /home/${REMOTE_USER}/app/.env"
 fi
 
-# Stop existing container if running
-if docker ps -q -f name=^legmon$ | grep -q .; then
-    echo "Stopping existing legmon container..."
-    docker stop legmon || true
-fi
+docker stop legmon 2>/dev/null || true
+docker rm legmon 2>/dev/null || true
 
-if docker ps -a -q -f name=^legmon$ | grep -q .; then
-    echo "Removing previous legmon container..."
-    docker rm legmon || true
-fi
-
-echo "Starting new LegMon container on port 9005 with log rotation..."
-docker run -d \
-    --name legmon \
-    --restart always \
-    --network host \
-    --log-driver json-file \
-    --log-opt max-size=10m \
-    --log-opt max-file=5 \
-    -v /home/circle/app/legmon/logs:/app/logs \
-    $ENV_ARG \
-    -e PORT=9005 \
-    -e MONMON_URL="http://127.0.0.1:9000" \
+docker run -d \\
+    --name legmon \\
+    --restart always \\
+    --network host \\
+    --log-driver json-file \\
+    --log-opt max-size=10m \\
+    --log-opt max-file=5 \\
+    -v ${REMOTE_DIR}/logs:/app/logs \\
+    \$ENV_ARG \\
+    -e PORT=9005 \\
+    -e MONMON_URL="http://127.0.0.1:9000" \\
     legmon:latest
 
-echo "Waiting for LegMon service to become healthy (probing http://127.0.0.1:9005/health)..."
-MAX_ATTEMPTS=25
-ATTEMPT=1
-HEALTHY=false
-
-while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
-    RUNNING=$(docker inspect -f '{{.State.Running}}' legmon 2>/dev/null || echo "false")
-    if [ "$RUNNING" != "true" ]; then
-        echo "❌ ERROR: LegMon container is not running (State.Running=$RUNNING)!" >&2
-        docker logs --tail 40 legmon || true
-        exit 1
+echo "Waiting for LegMon on http://127.0.0.1:9005/health..."
+for i in {1..25}; do
+    CODE=\$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9005/health 2>/dev/null || true)
+    if [ "\$CODE" = "200" ]; then
+        echo "✅ LegMon is healthy (HTTP 200)!"
+        curl -s http://127.0.0.1:9005/status || true
+        echo ""
+        exit 0
     fi
-
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9005/health 2>/dev/null || true)
-    if [ "$HTTP_CODE" = "200" ]; then
-        HEALTHY=true
-        break
-    fi
-
-    echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: LegMon starting up (HTTP probe: $HTTP_CODE)... waiting 2s"
+    echo "Attempt \$i/25 (HTTP \$CODE)... waiting 2s"
     sleep 2
-    ATTEMPT=$((ATTEMPT + 1))
 done
+docker logs --tail 40 legmon
+exit 1
+EOF
 
-if [ "$HEALTHY" = true ]; then
-    echo "✅ LegMon is healthy and accepting traffic (HTTP $HTTP_CODE)!"
-    docker ps -f name=^legmon$
-    echo "LegMon Status Summary:"
-    curl -s http://127.0.0.1:9005/status | head -n 15 || true
-    echo ""
-else
-    echo "❌ ERROR: LegMon health check failed after $((MAX_ATTEMPTS * 2)) seconds! Container logs:" >&2
-    docker logs --tail 40 legmon || true
-    exit 1
-fi
-REMOTE_SCRIPT
+echo -e "${BLUE}${BOLD}==> [3/3] Building legmon:latest natively on ${GREENSTREET_HOST} and executing run_legmon.sh...${NC}"
+ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR}/build-context && docker build -t legmon:latest . && cd ${REMOTE_DIR} && ./run_legmon.sh"
 
-echo -e "${GREEN}${BOLD}🎉 LegMon deployment to ${REMOTE_USER_HOST} completed successfully!${NC}"
+echo -e "${GREEN}${BOLD}🎉 LegMon deployment to ${GREENSTREET_HOST} completed successfully!${NC}"
