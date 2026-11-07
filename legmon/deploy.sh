@@ -55,7 +55,7 @@ COPY target/scala-2.13/legmon-assembly-1.0.0.jar /app/legmon.jar
 
 EXPOSE 9005
 
-CMD ["java", "-Duser.dir=/app", "-jar", "/app/legmon.jar"]
+CMD ["java", "-Xms64m", "-Xmx192m", "-Duser.dir=/app", "-jar", "/app/legmon.jar"]
 EOF
 
 ssh "$GREENSTREET_HOST" "cat > ${REMOTE_DIR}/run_legmon.sh && chmod +x ${REMOTE_DIR}/run_legmon.sh" <<EOF

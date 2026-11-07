@@ -21,4 +21,4 @@ RUN unzip -q /tmp/monmon.zip -d /tmp/unpacked \
 EXPOSE 9000
 
 # Remove any stale RUNNING_PID on container startup and launch Play
-ENTRYPOINT ["/bin/bash", "-c", "rm -f /app/RUNNING_PID && exec /app/bin/monmon-play-java- -Dconfig.resource=prod.conf -Dhttp.port=9000 \"$@\"", "--"]
+ENTRYPOINT ["/bin/bash", "-c", "rm -f /app/RUNNING_PID && exec /app/bin/monmon-play-java- -J-Xms256m -J-Xmx512m -Dconfig.resource=prod.conf -Dhttp.port=9000 \"$@\"", "--"]
