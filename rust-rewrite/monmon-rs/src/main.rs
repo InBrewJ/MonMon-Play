@@ -10,6 +10,8 @@ mod models;
 mod net_worth;
 mod nommon;
 mod passkey;
+mod plans;
+mod pot;
 mod savings_plan;
 mod search;
 mod spog;
@@ -232,6 +234,17 @@ async fn main() {
             "/api/monzo/webhook",
             post(bank_sync::handle_monzo_webhook_api),
         )
+        // Plans & Sharing Hub
+        .route("/myPlans", get(plans::get_plans_page))
+        .route("/plans", get(plans::get_plans_page))
+        .route("/plan", post(plans::post_add_plan))
+        .route("/binPlan/:id", get(plans::get_bin_plan).post(plans::get_bin_plan))
+        .route("/plans/updateSavingsPayoffPercentage", get(plans::get_update_savings_payoff_percentage))
+        // Monthly Pot & Spending Plan
+        .route("/myMonthlyPot", get(pot::get_monthly_pot_page))
+        .route("/pot", post(pot::post_pot_form))
+        .route("/pot/applyGruelling", post(pot::post_apply_gruelling))
+        .route("/binPot/:id", get(pot::get_bin_pot).post(pot::get_bin_pot))
         // Savings Plan & Priority Queue
         .route(
             "/api/savings-plan",

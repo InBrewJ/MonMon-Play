@@ -4,6 +4,33 @@ use sqlx::{PgPool, Row};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SpogSpendingSectionDto {
+    pub heading: String,
+    pub planned_amount: f32,
+    pub actual_spent: f32,
+    pub remaining: f32,
+    pub account_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpogSpendingPlanDto {
+    pub name: String,
+    pub max_monthly_allowance: f32,
+    pub spent_this_month: f32,
+    pub remaining_allowance: f32,
+    pub sections: Vec<SpogSpendingSectionDto>,
+    pub remaining_essentials: f32,
+    pub adjusted_fun: f32,
+    pub is_deficit: bool,
+    pub absolute_deficit: f32,
+    pub fun_left_per_day: f32,
+    pub days_until_next_payday: i32,
+    pub actual_monthly_pot_balance: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpogMetrics {
     pub incoming_total: f32,
     pub outgoing_total: f32,
@@ -26,6 +53,7 @@ pub struct SpogMetrics {
     pub liquid_savings_pot: f32,
     pub total_savings_pot: f32,
     pub account_groups: Vec<SpogAccountGroupDto>,
+    pub spending_plan: Option<SpogSpendingPlanDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -418,6 +446,120 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
 
     let monthly_pot_left_per_day = pot_balance / (days_left as f32);
 
+    // 6. Active Pot Spending Plan & Mini Spending Plan
+    let active_pot_row = sqlx::query(
+        r#"
+        SELECT p.id, p.spending_plan_name, p.spending_plan_food, p.spending_plan_fuel,
+               p.spending_plan_transport, p.spending_plan_fun, p.spending_plan_sections_json,
+               p.food_account_id, p.fun_account_id, p.fuel_account_id, p.transport_account_id
+        FROM pot p
+        WHERE (p.userid = $1 OR p.user_id = $1)
+          AND (p.archived IS NULL OR p.archived = false)
+          AND p.type = 'MONTHLY'
+        LIMIT 1
+        "#,
+    )
+    .bind(&user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let spending_plan = if let Some(pr) = active_pot_row {
+        let sp_name: Option<String> = pr.get("spending_plan_name");
+        if let Some(name) = sp_name {
+            if !name.trim().is_empty() {
+                let sp_food: Option<f32> = pr.get("spending_plan_food");
+                let sp_fuel: Option<f32> = pr.get("spending_plan_fuel");
+                let sp_trans: Option<f32> = pr.get("spending_plan_transport");
+                let sp_sections_json: Option<String> = pr.get("spending_plan_sections_json");
+
+                let mut sections = Vec::new();
+                if let Some(ref j) = sp_sections_json {
+                    if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
+                        for s in parsed {
+                            let heading = s.get("heading").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let amount = s.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                            sections.push(SpogSpendingSectionDto {
+                                heading,
+                                planned_amount: amount,
+                                actual_spent: 0.0,
+                                remaining: amount,
+                                account_name: None,
+                            });
+                        }
+                    }
+                }
+                if sections.is_empty() {
+                    if let Some(f) = sp_food {
+                        if f > 0.0 {
+                            sections.push(SpogSpendingSectionDto {
+                                heading: "Food".to_string(),
+                                planned_amount: f,
+                                actual_spent: 0.0,
+                                remaining: f,
+                                account_name: None,
+                            });
+                        }
+                    }
+                    if let Some(f) = sp_fuel {
+                        if f > 0.0 {
+                            sections.push(SpogSpendingSectionDto {
+                                heading: "Fuel".to_string(),
+                                planned_amount: f,
+                                actual_spent: 0.0,
+                                remaining: f,
+                                account_name: None,
+                            });
+                        }
+                    }
+                    if let Some(t) = sp_trans {
+                        if t > 0.0 {
+                            sections.push(SpogSpendingSectionDto {
+                                heading: "Transport".to_string(),
+                                planned_amount: t,
+                                actual_spent: 0.0,
+                                remaining: t,
+                                account_name: None,
+                            });
+                        }
+                    }
+                }
+
+                let remaining_essentials: f32 = sections.iter().map(|s| s.remaining).sum();
+                let spent_this_month = 0.0f32;
+                let remaining_allowance = (surplus - spent_this_month).max(0.0);
+                let adjusted_fun = remaining_allowance - remaining_essentials;
+                let is_deficit = adjusted_fun < 0.0;
+                let absolute_deficit = adjusted_fun.abs();
+                let fun_left_per_day = if is_deficit || days_left <= 0 {
+                    0.0
+                } else {
+                    ((adjusted_fun / days_left as f32) * 100.0).round() / 100.0
+                };
+
+                Some(SpogSpendingPlanDto {
+                    name,
+                    max_monthly_allowance: surplus,
+                    spent_this_month,
+                    remaining_allowance,
+                    sections,
+                    remaining_essentials,
+                    adjusted_fun,
+                    is_deficit,
+                    absolute_deficit,
+                    fun_left_per_day,
+                    days_until_next_payday: days_left,
+                    actual_monthly_pot_balance: pot_balance,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     Ok(SpogMetrics {
         incoming_total,
         outgoing_total,
@@ -440,6 +582,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         liquid_savings_pot,
         total_savings_pot,
         account_groups,
+        spending_plan,
     })
 }
 

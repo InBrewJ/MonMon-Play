@@ -182,6 +182,63 @@
                         </span>
                     {% endif %}
                 </div>
+
+                <!-- Mini Spending Plan (Card 2 Parity) -->
+                {% if let Some(sp) = metrics.spending_plan %}
+                <div class="spog-mini-spending-plan" style="margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.65rem; font-size: 0.9rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                        <span style="font-weight: 700; color: var(--text-main);">
+                            <i class="fas fa-clipboard-list" style="color: var(--primary); margin-right: 4px;"></i>
+                            Spending plan: <span class="badge-pill" style="background: var(--warning-light, rgba(245, 158, 11, 0.15)); color: var(--warning, #d97706); font-size: 0.8rem;">{{ sp.name }}</span>
+                        </span>
+                        <a href="/myMonthlyPot" class="btn-action" style="font-size: 0.8rem;">edit</a>
+                    </div>
+                    <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 3px 0; color: var(--text-muted);">Allowance left (£{{ sp.max_monthly_allowance }} − £{{ sp.spent_this_month }} spent)</td>
+                            <td style="padding: 3px 0; text-align: right; font-weight: 600;">£{{ sp.remaining_allowance }}</td>
+                        </tr>
+                        {% for sec in sp.sections %}
+                        <tr>
+                            <td style="padding: 3px 0; color: var(--text-muted);">
+                                {{ sec.heading }}
+                                {% if let Some(acc) = sec.account_name %}
+                                    <span style="font-size: 0.75rem;">({{ acc }})</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 3px 0; text-align: right; font-weight: 600;">
+                                £{{ sec.remaining }} <span style="font-size: 0.75rem; color: var(--text-muted);">/ £{{ sec.planned_amount }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        <tr>
+                            <td style="padding: 3px 0; color: var(--text-muted);">Essentials still to cover</td>
+                            <td style="padding: 3px 0; text-align: right; font-weight: 600;">−£{{ sp.remaining_essentials }}</td>
+                        </tr>
+                        <tr style="border-top: 1px solid var(--border-color);">
+                            <td style="padding: 5px 0; font-weight: 700;">Left for fun</td>
+                            <td style="padding: 5px 0; text-align: right; font-weight: 800; color: {% if sp.is_deficit %}var(--danger, #ef4444){% else %}var(--success, #10b981){% endif %};">
+                                {% if sp.is_deficit %}−£{{ sp.absolute_deficit }}{% else %}£{{ sp.adjusted_fun }}{% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                    {% if !sp.is_deficit %}
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
+                            ≈ £{{ sp.fun_left_per_day }}/day fun for {{ sp.days_until_next_payday }} days
+                        </div>
+                    {% else %}
+                        <div style="font-size: 0.8rem; color: var(--danger, #ef4444); margin-top: 4px;">
+                            Essentials alone exceed what's left this month.
+                        </div>
+                    {% endif %}
+
+                    <!-- Item 4: Note about actual sum left in monthly pot -->
+                    <div class="monthly-pot-note" style="margin-top: 8px; font-size: 0.82rem; padding: 6px 10px; border-radius: 6px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+                        <span><i class="fas fa-coins" style="color: var(--primary); margin-right: 5px;"></i><strong>Actual Monthly Pot:</strong></span>
+                        <span id="spog-actual-monthly-pot" style="font-weight: 700; color: var(--text-main);">£{{ sp.actual_monthly_pot_balance }}</span>
+                    </div>
+                </div>
+                {% endif %}
             </div>
 
             <!-- Card 4: Accounts Overview -->

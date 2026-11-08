@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>MonMon — Plans & Sharing Hub</title>
+    {% include "nav_head.html" %}
+</head>
+<body>
+
+{% include "nav_header.html" %}
+
+<div class="w3-content" style="max-width: 1200px; padding: 0 1rem 3rem 1rem;">
+    <!-- Header & SPOG link -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1.25rem; flex-wrap: wrap; gap: 10px;">
+        <div>
+            <h2 style="margin: 0; font-weight: 800; display: inline-flex; align-items: center; gap: 10px; color: var(--text-main);">
+                <i class="fas fa-sliders-h" style="color: var(--primary);"></i>
+                Plans & Sharing Hub
+            </h2>
+            <div style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;">
+                Central dashboard for your savings goals, daily spending pot, grocery meal plans, and household bill splits.
+            </div>
+        </div>
+        <div>
+            <a href="/spog" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.85rem;">
+                <i class="fas fa-arrow-left"></i> Back to SPOG
+            </a>
+        </div>
+    </div>
+
+    <!-- 1. Central Planning Hub: 3 Navigation Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <!-- Card 1: Savings Plan -->
+        <div class="w3-card w3-padding" style="border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border-color); background: var(--card-bg);">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <div style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-piggy-bank" style="color: var(--primary);"></i> Savings Plan
+                    </div>
+                    {% if let Some(sp) = active_savings_plan %}
+                        <span class="badge-pill" style="background: var(--primary-light, rgba(79, 70, 229, 0.15)); color: var(--primary, #4f46e5); font-size: 0.72rem; font-weight: 700;">ACTIVE</span>
+                    {% else %}
+                        <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); font-size: 0.72rem; font-weight: 600;">NOT CONFIGURED</span>
+                    {% endif %}
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); min-height: 48px;">
+                    {% if let Some(sp) = active_savings_plan %}
+                        <div><strong>{{ sp.name }}</strong> · {{ sp.percentage }}% of net income</div>
+                        <div style="font-size: 0.78rem; margin-top: 4px;">Allocated to {{ sp.items_count }} debt payoff & savings target items.</div>
+                    {% else %}
+                        <div>Set your savings target percentage and slice it up into debt payoffs and savings pots.</div>
+                    {% endif %}
+                </div>
+            </div>
+            <a href="/savingsPlan" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; width: 100%; margin-top: 1rem; font-weight: 600; text-align: center; text-decoration: none;">
+                <i class="fas fa-arrow-right"></i> Manage Savings Plan
+            </a>
+        </div>
+
+        <!-- Card 2: Monthly Pot / Spending Plan -->
+        <div class="w3-card w3-padding" style="border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border-color); background: var(--card-bg);">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <div style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-archive" style="color: var(--primary);"></i> Monthly Pot & Spending Plan
+                    </div>
+                    {% if let Some(pot) = active_monthly_pot %}
+                        <span class="badge-pill" style="background: var(--primary-light, rgba(79, 70, 229, 0.15)); color: var(--primary, #4f46e5); font-size: 0.72rem; font-weight: 700;">ACTIVE</span>
+                    {% else %}
+                        <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); font-size: 0.72rem; font-weight: 600;">NOT CONFIGURED</span>
+                    {% endif %}
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); min-height: 48px;">
+                    {% if let Some(pot) = active_monthly_pot %}
+                        <div>
+                            <strong>{{ pot.pot_type }} POT</strong>
+                            {% if let Some(sp) = pot.spending_plan_name %}
+                                · Spending Plan: <em>{{ sp }}</em>
+                            {% endif %}
+                        </div>
+                        <div style="font-size: 0.78rem; margin-top: 4px;">{{ pot.accounts_count }} linked account(s) · £{{ pot.pot_total_balance }} total balance.</div>
+                    {% else %}
+                        <div>Assign your day-to-day spending accounts to your monthly pot and set optional category limits.</div>
+                    {% endif %}
+                </div>
+            </div>
+            <a href="/myMonthlyPot" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; width: 100%; margin-top: 1rem; font-weight: 600; text-align: center; text-decoration: none;">
+                <i class="fas fa-arrow-right"></i> Configure Monthly Pot
+            </a>
+        </div>
+
+        <!-- Card 3: NomMon Meal Planner -->
+        <div class="w3-card w3-padding" style="border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border-color); background: var(--card-bg);">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <div style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-utensils" style="color: #ea580c;"></i> NomMon Meal Planner
+                    </div>
+                    <span class="badge-pill" style="background: rgba(249, 115, 22, 0.15); color: #ea580c; border: 1px solid #ea580c; font-size: 0.72rem; font-weight: 700;">SAINSBURY'S</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); min-height: 48px;">
+                    <div>AI grocery assistant targeting Sainsbury's staples.</div>
+                    <div style="font-size: 0.78rem; margin-top: 4px;">7-day meal plan with complete recipes for all meals linked to your food budget.</div>
+                </div>
+            </div>
+            <a href="/nommon" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; width: 100%; margin-top: 1rem; font-weight: 600; text-align: center; text-decoration: none;">
+                <i class="fas fa-arrow-right"></i> Open NomMon
+            </a>
+        </div>
+    </div>
+
+    <!-- 2. Bill & Rent Sharing Agreements -->
+    <div class="w3-card w3-padding w3-margin-bottom" style="border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg);">
+        <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+            <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-users" style="color: var(--primary);"></i> Bill & Rent Sharing Agreements
+            </h3>
+            <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.35rem;">
+                Split household bills and rent with flatmates or a partner. MonMon scales any outgoing tagged as Bill or Rent by your share when calculating your monthly surplus and daily SPOG allowance.
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+            <!-- Left Column: Active Agreements -->
+            <div>
+                <h4 style="margin: 0 0 0.75rem 0; font-size: 1rem; font-weight: 700; color: var(--text-main);">
+                    Active Sharing Agreements ({{ sharing_agreements.len() }})
+                </h4>
+
+                {% if sharing_agreements.is_empty() %}
+                <div style="padding: 1.5rem; text-align: center; background: var(--card-bg-subtle); border-radius: 8px; border: 1px dashed var(--border-color); color: var(--text-muted);">
+                    <i class="fas fa-receipt" style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5;"></i>
+                    <div style="font-weight: 600; font-size: 0.9rem;">No shared agreements active yet</div>
+                    <div style="font-size: 0.8rem; margin-top: 4px;">Use the form to create a bill or rent sharing plan.</div>
+                </div>
+                {% else %}
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    {% for p in sharing_agreements %}
+                    <div id="plan-{{ p.id }}" data-entity-id="plan-{{ p.id }}" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                {% if p.plan_type == "BILL_SHARE" %}
+                                    <i class="fas fa-file-invoice-dollar" style="color: var(--primary); font-size: 1.1rem;"></i>
+                                    <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">Bill Sharing</span>
+                                {% else %}
+                                    <i class="fas fa-home" style="color: #10b981; font-size: 1.1rem;"></i>
+                                    <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">Rent Sharing</span>
+                                {% endif %}
+                            </div>
+                            <a href="/binPlan/{{ p.id }}" class="btn-action btn-delete" title="Delete agreement" onclick="return confirm('Are you sure you want to delete this sharing agreement?');">
+                                <i class="fas fa-trash-alt"></i>
+                            </a>
+                        </div>
+
+                        <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">
+                            {{ p.human_readable_split }}
+                        </div>
+
+                        {% if let Some(n) = p.notes %}
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">
+                            "{{ n }}"
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Right Column: Add / Update Sharing Agreement Form -->
+            <div>
+                <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+                    <h4 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-plus-circle" style="color: var(--primary);"></i> Add or Update Sharing Agreement
+                    </h4>
+
+                    <form method="POST" action="/plan" id="planForm">
+                        <!-- Type selector -->
+                        <label for="planType" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+                            Agreement Type
+                        </label>
+                        <select id="planType" name="type" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 1rem;">
+                            <option value="BILL_SHARE">Bill Sharing (scales all Outgoings tagged as Bill)</option>
+                            <option value="RENT_SHARE">Rent Sharing (scales all Outgoings tagged as Rent)</option>
+                        </select>
+
+                        <!-- Split mode toggles -->
+                        <div style="margin-bottom: 0.75rem;">
+                            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+                                Split Method
+                            </label>
+                            <div style="display: flex; gap: 1rem;">
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer;">
+                                    <input type="radio" name="mode" id="modePeople" value="people" checked />
+                                    <span>Equal Split by People</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer;">
+                                    <input type="radio" name="mode" id="modePercent" value="percent" />
+                                    <span>Exact Percentage</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Mode A: People count -->
+                        <div id="peopleInputGroup" style="margin-bottom: 1rem;">
+                            <label for="peopleCount" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+                                Number of People Sharing the Expense:
+                            </label>
+                            <input type="number" id="peopleCount" name="people" min="1" max="20" step="1" value="2"
+                                   style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); box-sizing: border-box;" />
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                e.g. 2 means 50/50 split; 4 means each pays a 25% (1/4) share.
+                            </div>
+                        </div>
+
+                        <!-- Mode B: Exact percentage -->
+                        <div id="percentInputGroup" style="display: none; margin-bottom: 1rem;">
+                            <label for="splitPercent" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+                                Your Share Percentage (0.1% – 100%):
+                            </label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" id="splitPercent" name="percent" min="0.1" max="100" step="0.1" value="50"
+                                       style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); box-sizing: border-box;" />
+                                <span style="font-weight: 700;">%</span>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                e.g. 20% means you pay 20% of the bills and the other people pay 80%.
+                            </div>
+                        </div>
+
+                        <!-- Live Calculation Preview Pill -->
+                        <div id="splitLivePreview" style="margin-bottom: 1rem; padding: 10px 14px; border-radius: 8px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); font-size: 0.86rem; color: var(--text-main);">
+                            <i class="fas fa-calculator" style="color: var(--primary); margin-right: 6px;"></i>
+                            <span id="previewText">You pay <strong>50%</strong> · Others pay <strong>50%</strong></span>
+                        </div>
+
+                        <!-- Notes -->
+                        <label for="notes" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+                            Notes / Agreement Description (optional)
+                        </label>
+                        <textarea id="notes" name="notes" rows="2" placeholder="e.g. 50/50 split for rent & WiFi"
+                                  style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 1rem; box-sizing: border-box;"></textarea>
+
+                        <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; width: 100%; cursor: pointer;">
+                            <i class="fas fa-save"></i> Save Sharing Agreement
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include "nav_scripts.html" %}
+<script>
+(function() {
+    var modePeople = document.getElementById('modePeople');
+    var modePercent = document.getElementById('modePercent');
+    var peopleGroup = document.getElementById('peopleInputGroup');
+    var percentGroup = document.getElementById('percentInputGroup');
+    var peopleInput = document.getElementById('peopleCount');
+    var percentInput = document.getElementById('splitPercent');
+    var previewText = document.getElementById('previewText');
+
+    function updatePreview() {
+        var isPeople = modePeople && modePeople.checked;
+        var yourPct = 50.0;
+        var othersPct = 50.0;
+
+        if (isPeople) {
+            var people = parseFloat(peopleInput.value) || 1.0;
+            if (people < 1.0) people = 1.0;
+            yourPct = (1.0 / people) * 100.0;
+            othersPct = 100.0 - yourPct;
+
+            var yourShareFmt = (yourPct % 1 === 0) ? yourPct.toFixed(0) : yourPct.toFixed(1);
+            var othersShareFmt = (othersPct % 1 === 0) ? othersPct.toFixed(0) : othersPct.toFixed(1);
+
+            var fractionStr = (people % 1 === 0 && people >= 2) ? ' (1/' + Math.round(people) + 'th share)' : '';
+            previewText.innerHTML = 'You pay <strong>' + yourShareFmt + '%' + fractionStr + '</strong> · Others pay <strong>' + othersShareFmt + '%</strong>';
+        } else {
+            var pct = parseFloat(percentInput.value) || 0.0;
+            if (pct < 0.1) pct = 0.1;
+            if (pct > 100.0) pct = 100.0;
+            yourPct = pct;
+            othersPct = 100.0 - yourPct;
+
+            var yourShareFmt = (yourPct % 1 === 0) ? yourPct.toFixed(0) : yourPct.toFixed(1);
+            var othersShareFmt = (othersPct % 1 === 0) ? othersPct.toFixed(0) : othersPct.toFixed(1);
+
+            previewText.innerHTML = 'You pay <strong>' + yourShareFmt + '%</strong> · Others pay <strong>' + othersShareFmt + '%</strong>';
+        }
+    }
+
+    function toggleMode() {
+        if (modePeople && modePeople.checked) {
+            peopleGroup.style.display = 'block';
+            percentGroup.style.display = 'none';
+        } else {
+            peopleGroup.style.display = 'none';
+            percentGroup.style.display = 'block';
+        }
+        updatePreview();
+    }
+
+    if (modePeople && modePercent) {
+        modePeople.addEventListener('change', toggleMode);
+        modePercent.addEventListener('change', toggleMode);
+    }
+    if (peopleInput) {
+        peopleInput.addEventListener('input', updatePreview);
+    }
+    if (percentInput) {
+        percentInput.addEventListener('input', updatePreview);
+    }
+
+    updatePreview();
+})();
+</script>
+</body>
+</html>

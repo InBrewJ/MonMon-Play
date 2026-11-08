@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>MonMon — Monthly Pot & Spending Plan</title>
+    {% include "nav_head.html" %}
+</head>
+<body>
+
+{% include "nav_header.html" %}
+
+<div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
+    <!-- Header & SPOG link -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1.25rem; flex-wrap: wrap; gap: 10px;">
+        <div>
+            <h2 style="margin: 0; font-weight: 800; display: inline-flex; align-items: center; gap: 10px; color: var(--text-main);">
+                <i class="fas fa-archive" style="color: var(--primary);"></i>
+                Monthly Pot & Spending Plan
+            </h2>
+            <div style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;">
+                Select your day-to-day spending accounts, configure category spending allowances, and link categories to dedicated accounts.
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <a href="/myPlans" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.85rem;">
+                <i class="fas fa-sliders-h"></i> All Plans
+            </a>
+            <a href="/spog" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.85rem;">
+                <i class="fas fa-arrow-left"></i> Back to SPOG
+            </a>
+        </div>
+    </div>
+
+    <div class="w3-row-padding">
+        <!-- Left Column: Active & Archived Pots -->
+        <div class="w3-half">
+            <!-- Active Pot Card -->
+            <div class="w3-card w3-padding w3-margin-bottom" style="border-radius: 8px; background: var(--card-bg);">
+                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    <i class="fas fa-archive" style="color: var(--primary); margin-right: 6px;"></i> Active Monthly Pot
+                </div>
+
+                {% if let Some(p) = active_pot %}
+                <div id="pot-{{ p.id }}" data-entity-id="pot-{{ p.id }}" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: var(--card-bg-subtle);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <span class="badge-pill" style="background: var(--primary-light, rgba(79, 70, 229, 0.15)); color: var(--primary, #4f46e5); font-size: 0.9rem; font-weight: 700;">
+                            {{ p.pot_type }} POT
+                        </span>
+                        <a href="/binPot/{{ p.id }}" class="btn-action btn-delete" title="Delete Pot" onclick="return confirm('Are you sure you want to delete this pot?');">
+                            <i class="fas fa-trash-alt"></i>
+                        </a>
+                    </div>
+                    <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                        Created: {{ p.created_at_human }}
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-main); margin-bottom: 0.4rem;">
+                        Accounts in this pot ({{ p.accounts.len() }}):
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                        {% for a in p.accounts %}
+                        <div style="display: flex; justify-content: space-between; background: var(--card-bg); border: 1px solid var(--border-color); padding: 0.4rem 0.75rem; border-radius: 6px; font-size: 0.9rem;">
+                            <span><b>{{ a.name }}</b> <span style="color: var(--text-muted); font-size: 0.8rem;">({{ a.account_type }})</span></span>
+                            <span style="font-weight: 700; color: var(--success, #16a34a);">£{{ a.latest_balance }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <!-- SUM TOTAL OF MONTHLY POT -->
+                    <div class="pot-total-summary" style="margin: 0.75rem 0; padding: 0.65rem 0.85rem; background: var(--card-bg); border: 1px solid var(--primary, #4f46e5); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 700; font-size: 0.92rem; color: var(--text-main);"><i class="fas fa-coins" style="color: var(--primary); margin-right: 6px;"></i>Total Monthly Pot Balance:</span>
+                        <span id="monthly-pot-total-sum" style="font-weight: 800; font-size: 1.15rem; color: var(--success, #16a34a);">£{{ p.pot_total_balance }}</span>
+                    </div>
+
+                    <!-- Category Accounts Badges if linked -->
+                    {% if p.food_account_name.is_some() || p.fun_account_name.is_some() || p.transport_account_name.is_some() || p.fuel_account_name.is_some() %}
+                    <div style="margin: 0.65rem 0; font-size: 0.82rem;">
+                        <span style="font-weight: 600; color: var(--text-muted);"><i class="fas fa-tags" style="color: var(--primary); margin-right: 4px;"></i>Linked Category Accounts:</span>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem;">
+                            {% if let Some(acc) = p.food_account_name %}
+                                <span class="badge-pill" style="background: var(--card-bg); border: 1px solid var(--border-color); font-weight: 600;">🛒 Food: {{ acc }}</span>
+                            {% endif %}
+                            {% if let Some(acc) = p.fun_account_name %}
+                                <span class="badge-pill" style="background: var(--card-bg); border: 1px solid var(--border-color); font-weight: 600;">🎉 Fun: {{ acc }}</span>
+                            {% endif %}
+                            {% if let Some(acc) = p.transport_account_name %}
+                                <span class="badge-pill" style="background: var(--card-bg); border: 1px solid var(--border-color); font-weight: 600;">🚆 Transport: {{ acc }}</span>
+                            {% endif %}
+                            {% if let Some(acc) = p.fuel_account_name %}
+                                <span class="badge-pill" style="background: var(--card-bg); border: 1px solid var(--border-color); font-weight: 600;">⛽ Fuel: {{ acc }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Spending Plan Summary if attached -->
+                    {% if let Some(sp_name) = p.spending_plan_name %}
+                    <div style="margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.75rem;">
+                        <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.4rem;">
+                            <i class="fas fa-clipboard-list" style="color: var(--primary); margin-right: 4px;"></i>
+                            Spending plan: <span class="badge-pill" style="background: var(--warning-light, rgba(245, 158, 11, 0.15)); color: var(--warning, #d97706);">{{ sp_name }}</span>
+                        </div>
+                        <table style="width: 100%; font-size: 0.85rem;">
+                            <tr><td style="color: var(--text-muted);">Max monthly allowance</td><td style="text-align: right; font-weight: 600;">£{{ surplus }}</td></tr>
+                            {% for sec in p.sections %}
+                            <tr>
+                                <td style="color: var(--text-muted);">
+                                    {{ sec.heading }}
+                                    {% if let Some(acc) = sec.account_name %}
+                                        <span style="font-size: 0.75rem; color: var(--primary);">({{ acc }})</span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: right; font-weight: 600;">£{{ sec.amount }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if let Some(fun) = p.spending_plan_fun %}
+                            <tr style="border-top: 1px solid var(--border-color);">
+                                <td style="font-weight: 700;"><b>Fun (planned)</b></td>
+                                <td style="text-align: right; font-weight: 700;"><b>£{{ fun }}</b></td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                    {% else %}
+                    <div style="margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.75rem;">
+                        <form method="POST" action="/pot/applyGruelling">
+                            <button class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; font-weight: 600;" title="Keeps current accounts, sets Gruelling food plan">
+                                <i class="fas fa-bread-slice"></i> Apply 'Gruelling' preset
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p style="color: var(--text-muted); font-size: 0.9rem;">No monthly pot configured yet. Use the form on the right to select your spending accounts.</p>
+                {% endif %}
+            </div>
+
+            <!-- Archived Pots Card -->
+            {% if !archived_pots.is_empty() %}
+            <div class="w3-card w3-padding w3-margin-bottom" style="border-radius: 8px; background: var(--card-bg);">
+                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    <i class="fas fa-history" style="color: var(--primary); margin-right: 6px;"></i> Archived Pots ({{ archived_pots.len() }})
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                    {% for p in archived_pots %}
+                    <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem; font-size: 0.85rem; background: var(--card-bg-subtle);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-weight: 700; color: var(--text-muted);">{{ p.pot_type }} POT</span>
+                            <span style="font-size: 0.78rem; color: var(--text-muted);">{{ p.created_at_human }}</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">
+                            Accounts: {{ p.accounts.len() }} · Total: £{{ p.pot_total_balance }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Right Column: Configure Pot Form -->
+        <div class="w3-half">
+            <div class="w3-card w3-padding w3-margin-bottom" style="border-radius: 8px; background: var(--card-bg);">
+                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    <i class="fas fa-cog" style="color: var(--primary); margin-right: 6px;"></i> Configure Monthly Pot
+                </div>
+
+                <form method="POST" action="/pot" id="pot-config-form">
+                    <!-- Accounts Checklist -->
+                    <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 0.4rem;">
+                        Spending Accounts to Include in Pot:
+                    </label>
+                    <div style="display: flex; flex-direction: column; gap: 0.4rem; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; background: var(--card-bg-subtle); margin-bottom: 1rem;">
+                        {% for a in all_accounts %}
+                        <label style="display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 0.88rem;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="accounts" value="{{ a.id }}" style="transform: scale(1.15);" />
+                                <span><b>{{ a.name }}</b> <span style="font-size: 0.78rem; color: var(--text-muted);">({{ a.account_type }})</span></span>
+                            </div>
+                            <span style="font-weight: 600; color: var(--text-muted);">£{{ a.latest_balance }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Category Accounts (Optional) -->
+                    <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.35rem; display: block;">
+                        <i class="fas fa-tags" style="color: var(--primary); margin-right: 4px;"></i> Category Accounts (Optional)
+                    </label>
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                        Assign dedicated accounts to track exact spending on food, fun, fuel, and transport without guesswork.
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1rem;">
+                        <div>
+                            <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 2px;">🛒 Food Account</label>
+                            <select name="food_account_id" id="food_account_id" style="width: 100%; padding: 6px 8px; font-size: 0.82rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);">
+                                <option value="0">-- Unassigned / Shared --</option>
+                                {% for a in all_accounts %}
+                                    <option value="{{ a.id }}">{{ a.name }} ({{ a.account_type }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 2px;">🎉 Fun Account</label>
+                            <select name="fun_account_id" id="fun_account_id" style="width: 100%; padding: 6px 8px; font-size: 0.82rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);">
+                                <option value="0">-- Unassigned / Shared --</option>
+                                {% for a in all_accounts %}
+                                    <option value="{{ a.id }}">{{ a.name }} ({{ a.account_type }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 2px;">🚆 Transport Account</label>
+                            <select name="transport_account_id" id="transport_account_id" style="width: 100%; padding: 6px 8px; font-size: 0.82rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);">
+                                <option value="0">-- Unassigned / Shared --</option>
+                                {% for a in all_accounts %}
+                                    <option value="{{ a.id }}">{{ a.name }} ({{ a.account_type }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 2px;">⛽ Fuel Account</label>
+                            <select name="fuel_account_id" id="fuel_account_id" style="width: 100%; padding: 6px 8px; font-size: 0.82rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);">
+                                <option value="0">-- Unassigned / Shared --</option>
+                                {% for a in all_accounts %}
+                                    <option value="{{ a.id }}">{{ a.name }} ({{ a.account_type }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Preset Selector -->
+                    <label for="pot-preset" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 0.4rem;">
+                        Spending Plan Preset:
+                    </label>
+                    <select id="pot-preset" name="preset" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.9rem; margin-bottom: 1rem;">
+                        <option value="none">None (just group accounts into pot)</option>
+                        <option value="gruelling">Gruelling (£216.67/mo food)</option>
+                        <option value="custom">Custom Spending Plan</option>
+                        {% for sp in saved_custom_plans %}
+                        <option value="saved_{{ sp.id }}" data-name="{{ sp.name }}" data-sections="{{ sp.sections_json }}">Saved: {{ sp.name }}</option>
+                        {% endfor %}
+                    </select>
+
+                    <!-- Custom Plan Fields -->
+                    <div id="custom-plan-fields" style="display: none; border-top: 1px dashed var(--border-color); padding-top: 1rem; margin-bottom: 1rem;">
+                        <label for="plan-name-input" style="font-size: 0.85rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 0.35rem;">
+                            Plan Name:
+                        </label>
+                        <input type="text" id="plan-name-input" name="plan_name" placeholder="e.g. Household Essentials" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); margin-bottom: 1rem; box-sizing: border-box;" />
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Category Sections (with optional linked account):</label>
+                            <button type="button" id="btn-add-section" class="w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-weight: 600;">
+                                <i class="fas fa-plus"></i> Add Section
+                            </button>
+                        </div>
+
+                        <div id="sections-container" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
+                            <!-- Dynamic sections -->
+                        </div>
+
+                        <input type="hidden" id="sections-json-input" name="sections_json" value="[]" />
+
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--text-main); margin-bottom: 1rem;">
+                            <input type="checkbox" name="save_template" value="true" />
+                            <span>Save as reusable custom template</span>
+                        </label>
+                    </div>
+
+                    <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; width: 100%; cursor: pointer;">
+                        <i class="fas fa-save"></i> Save Monthly Pot & Spending Plan
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include "nav_scripts.html" %}
+<script>
+(function() {
+    var presetSelect = document.getElementById('pot-preset');
+    var customFields = document.getElementById('custom-plan-fields');
+    var sectionsContainer = document.getElementById('sections-container');
+    var sectionsJsonInput = document.getElementById('sections-json-input');
+    var btnAddSection = document.getElementById('btn-add-section');
+    var planNameInput = document.getElementById('plan-name-input');
+
+    var accountOptionsHtml = '<option value="0">-- No Account --</option>';
+    {% for a in all_accounts %}
+    accountOptionsHtml += '<option value="{{ a.id }}">{{ a.name }}</option>';
+    {% endfor %}
+
+    var sectionsState = [
+        { heading: 'Food', amount: 200, accountId: null },
+        { heading: 'Fuel', amount: 50, accountId: null },
+        { heading: 'Transport', amount: 40, accountId: null }
+    ];
+
+    function serialize() {
+        if (sectionsJsonInput) {
+            sectionsJsonInput.value = JSON.stringify(sectionsState);
+        }
+    }
+
+    function renderSections() {
+        if (!sectionsContainer) return;
+        sectionsContainer.innerHTML = '';
+        sectionsState.forEach(function(sec, idx) {
+            var row = document.createElement('div');
+            row.style.display = 'grid';
+            row.style.gridTemplateColumns = '1.8fr 1fr 1.6fr auto';
+            row.style.gap = '6px';
+            row.style.alignItems = 'center';
+
+            row.innerHTML =
+                '<input type="text" class="sec-heading-inp" placeholder="Category" value="' + (sec.heading || '') + '" style="padding: 6px 8px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-main);" />' +
+                '<input type="number" step="0.01" class="sec-amount-inp" placeholder="£/mo" value="' + (sec.amount || 0) + '" style="padding: 6px 8px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-main);" />' +
+                '<select class="sec-account-inp" style="padding: 6px 4px; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-main);">' + accountOptionsHtml + '</select>' +
+                '<button type="button" class="btn-del-sec" style="background: transparent; border: none; color: var(--danger, #ef4444); cursor: pointer; padding: 4px 6px;"><i class="fas fa-trash-alt"></i></button>';
+
+            var hInp = row.querySelector('.sec-heading-inp');
+            var aInp = row.querySelector('.sec-amount-inp');
+            var accSel = row.querySelector('.sec-account-inp');
+            var bDel = row.querySelector('.btn-del-sec');
+
+            if (sec.accountId) {
+                accSel.value = sec.accountId;
+            }
+
+            hInp.addEventListener('input', function() {
+                sectionsState[idx].heading = hInp.value;
+                serialize();
+            });
+            aInp.addEventListener('input', function() {
+                sectionsState[idx].amount = parseFloat(aInp.value) || 0;
+                serialize();
+            });
+            accSel.addEventListener('change', function() {
+                var v = parseInt(accSel.value, 10);
+                sectionsState[idx].accountId = (v && v > 0) ? v : null;
+                serialize();
+            });
+            bDel.addEventListener('click', function() {
+                sectionsState.splice(idx, 1);
+                renderSections();
+                serialize();
+            });
+
+            sectionsContainer.appendChild(row);
+        });
+        serialize();
+    }
+
+    if (presetSelect) {
+        presetSelect.addEventListener('change', function() {
+            var val = presetSelect.value;
+            if (val === 'custom') {
+                customFields.style.display = 'block';
+                renderSections();
+            } else if (val.indexOf('saved_') === 0) {
+                customFields.style.display = 'block';
+                var opt = presetSelect.options[presetSelect.selectedIndex];
+                if (planNameInput && opt.dataset.name) {
+                    planNameInput.value = opt.dataset.name;
+                }
+                try {
+                    sectionsState = JSON.parse(opt.dataset.sections || '[]');
+                } catch(e) {
+                    sectionsState = [];
+                }
+                renderSections();
+            } else {
+                customFields.style.display = 'none';
+            }
+        });
+    }
+
+    if (btnAddSection) {
+        btnAddSection.addEventListener('click', function() {
+            sectionsState.push({ heading: 'Category ' + (sectionsState.length + 1), amount: 0, accountId: null });
+            renderSections();
+        });
+    }
+
+    serialize();
+})();
+</script>
+</body>
+</html>

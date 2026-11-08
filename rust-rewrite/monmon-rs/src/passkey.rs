@@ -72,7 +72,6 @@ pub async fn get_passkey_options_api(
             "timeout": 60000,
             "attestation": "none",
             "authenticatorSelection": {
-                "authenticatorAttachment": "platform",
                 "residentKey": "preferred",
                 "userVerification": "preferred"
             }

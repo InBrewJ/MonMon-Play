@@ -28,6 +28,11 @@
         return bytes.buffer;
     }
 
+    function getCookie(name) {
+        var match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'));
+        return match ? decodeURIComponent(match[3]) : null;
+    }
+
     function detectDeviceName() {
         var ua = navigator.userAgent;
         if (/iPhone|iPad/i.test(ua)) return 'Apple iOS Device (Touch/Face ID)';
@@ -79,10 +84,11 @@
                     try {
                         var challengeBuf = base64urlToBuffer(options.challenge);
                         var userBuf = new TextEncoder().encode(options.user.id);
+                        var rpConfig = Object.assign({}, options.rp, { id: window.location.hostname });
                         var cred = await navigator.credentials.create({
                             publicKey: {
                                 challenge: challengeBuf,
-                                rp: options.rp,
+                                rp: rpConfig,
                                 user: {
                                     id: userBuf,
                                     name: options.user.name,
@@ -279,19 +285,54 @@
                 addBtn.disabled = true;
                 addBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
                 try {
-                    var credId = 'passkey_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                    var username = getCookie('user_id') || getCookie('monmon_session') || 'demo';
+                    var optRes = await fetch('/api/auth/passkey/options?type=register&username=' + encodeURIComponent(username));
+                    var options = await optRes.json();
+
+                    var credentialId = 'passkey_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                    var rawIdBase64 = credentialId;
+
+                    if (window.PublicKeyCredential && navigator.credentials && navigator.credentials.create) {
+                        try {
+                            var challengeBuf = base64urlToBuffer(options.challenge);
+                            var userBuf = new TextEncoder().encode(options.user.id);
+                            var rpConfig = Object.assign({}, options.rp, { id: window.location.hostname });
+                            var cred = await navigator.credentials.create({
+                                publicKey: {
+                                    challenge: challengeBuf,
+                                    rp: rpConfig,
+                                    user: {
+                                        id: userBuf,
+                                        name: options.user.name,
+                                        displayName: options.user.displayName
+                                    },
+                                    pubKeyCredParams: options.pubKeyCredParams,
+                                    authenticatorSelection: options.authenticatorSelection,
+                                    timeout: 60000
+                                }
+                            });
+                            if (cred) {
+                                rawIdBase64 = bufferToBase64url(cred.rawId);
+                            }
+                        } catch (navErr) {
+                            console.warn('Browser WebAuthn prompt canceled or fallback:', navErr);
+                        }
+                    }
+
                     var regRes = await fetch('/api/auth/passkey/register', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            username: 'demo',
-                            credential_id: credId,
+                            username: username,
+                            credential_id: rawIdBase64,
                             device_name: detectDeviceName()
                         })
                     });
                     var regData = await regRes.json();
                     if (regData.success) {
                         await loadPasskeys();
+                    } else {
+                        alert('Could not add passkey: ' + (regData.message || 'Registration failed'));
                     }
                 } catch (err) {
                     alert('Could not add passkey: ' + err.message);

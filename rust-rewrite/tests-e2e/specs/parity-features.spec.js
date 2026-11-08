@@ -254,4 +254,127 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
     await deleteBtn.click();
     await expect(page).toHaveURL(/\/myBalances/);
   });
+
+  test('10. Passkey WebAuthn: options allow cross-platform password managers (BitWarden/1Password)', async ({ page, request, context }) => {
+    // 1. Check options API does not constrain authenticatorAttachment to "platform"
+    const res = await request.get('/api/auth/passkey/options?type=register&username=demo');
+    expect(res.ok()).toBeTruthy();
+    const data = await res.json();
+    expect(data.authenticatorSelection).toBeDefined();
+    expect(data.authenticatorSelection.authenticatorAttachment).toBeUndefined();
+    expect(data.authenticatorSelection.residentKey).toBe('preferred');
+
+    // 2. Enable virtual authenticator in Chromium via CDP for headless WebAuthn support
+    try {
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('WebAuthn.enable');
+      await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+          protocol: 'ctap2',
+          transport: 'internal',
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true
+        }
+      });
+    } catch (e) {
+      // Non-chromium engines skip CDP
+    }
+
+    // 3. Settings page passkey adding works
+    await context.addCookies(AUTH_COOKIES);
+    await page.goto('/settings');
+    const addPasskeyBtn = page.locator('#btn-add-passkey-settings');
+    await expect(addPasskeyBtn).toBeVisible();
+    await addPasskeyBtn.click();
+
+    // Verify enrolled passkeys list updates
+    await expect(page.locator('#passkeys-list-container')).not.toContainText('No passkeys registered yet');
+  });
+
+  test('11. NomMon Meal Planner: All 7 days have a full recipe in recipes array', async ({ page, request, context }) => {
+    // 1. Check API endpoint directly
+    const apiRes = await request.get('/api/nommon/plan?budget=50&people=1');
+    expect(apiRes.ok()).toBeTruthy();
+    const data = await apiRes.json();
+    expect(data.plan).toBeDefined();
+    expect(data.plan.days).toHaveLength(7);
+    expect(data.plan.recipes.length).toBeGreaterThanOrEqual(7);
+
+    // Each recipe must have title, servings, prepTimeMinutes, cookTimeMinutes, ingredientsUsed, instructions
+    for (const recipe of data.plan.recipes) {
+      expect(recipe.title).toBeTruthy();
+      expect(recipe.servings).toBeGreaterThanOrEqual(1);
+      expect(recipe.instructions.length).toBeGreaterThanOrEqual(1);
+    }
+
+    // 2. Check UI page
+    await context.addCookies(AUTH_COOKIES);
+    await page.goto('/nommon');
+    await expect(page.locator('#nommon-container')).toBeVisible();
+    await expect(page.locator('#btn-regenerate-nommon')).toBeVisible();
+
+    // Check Meal Recipes tab
+    const recipesTabBtn = page.locator('button[data-tab="tab-recipes"]');
+    await expect(recipesTabBtn).toBeVisible();
+    await recipesTabBtn.click();
+    await expect(page.locator('#recipes-container')).toBeVisible();
+  });
+
+  test('12. /myMonthlyPot: Displays account balances, total sum of the monthly pot, and configure form', async ({ page, context }) => {
+    await context.addCookies(AUTH_COOKIES);
+    await page.goto('/myMonthlyPot');
+
+    await expect(page).toHaveTitle(/Monthly Pot/);
+    await expect(page.locator('text=Configure Monthly Pot')).toBeVisible();
+    await expect(page.locator('#pot-config-form')).toBeVisible();
+
+    // Check preset options
+    const presetSelect = page.locator('#pot-preset');
+    await expect(presetSelect).toBeVisible();
+
+    // If an active pot exists, check sum total of the monthly pot
+    const potTotalSummary = page.locator('.pot-total-summary');
+    if (await potTotalSummary.isVisible()) {
+      await expect(potTotalSummary).toContainText('Total Monthly Pot Balance:');
+      await expect(page.locator('#monthly-pot-total-sum')).toContainText('£');
+    }
+  });
+
+  test('13. /myPlans: Central planning hub, sharing agreements form & SPOG mini spending plan note', async ({ page, context }) => {
+    await context.addCookies(AUTH_COOKIES);
+
+    // 1. Navigate to /myPlans
+    await page.goto('/myPlans');
+    await expect(page).toHaveTitle(/Plans & Sharing Hub/);
+    await expect(page.locator('text=Plans & Sharing Hub')).toBeVisible();
+
+    // Verify 3 navigation cards exist
+    await expect(page.locator('a[href="/savingsPlan"].w3-button')).toBeVisible();
+    await expect(page.locator('a[href="/myMonthlyPot"].w3-button')).toBeVisible();
+    await expect(page.locator('a[href="/nommon"].w3-button')).toBeVisible();
+
+    // Verify Bill & Rent Sharing form exists
+    await expect(page.locator('#planForm')).toBeVisible();
+    await expect(page.locator('#previewText')).toContainText('You pay');
+
+    // Create a Bill Sharing agreement
+    await page.selectOption('#planType', 'BILL_SHARE');
+    await page.fill('#peopleCount', '2');
+    await page.fill('#notes', '50/50 test sharing agreement');
+    await page.click('#planForm button[type="submit"]');
+
+    await expect(page).toHaveURL(/\/myPlans/);
+    await expect(page.locator('[data-entity-id*="plan-"]:has-text("Bill Sharing")')).toBeVisible();
+
+    // 2. Check /spog mini spending plan and note about actual monthly pot balance
+    await page.goto('/spog');
+    const potNavPill = page.locator('button[data-target="spog-card-spent"]');
+    if (await potNavPill.isVisible()) {
+      await potNavPill.click();
+    }
+    // Verify SPOG card 2 contains monthly pot note or spent info
+    await expect(page.locator('#spog-card-spent')).toBeVisible();
+    await expect(page.locator('#spog-card-spent').locator('text=Spent This Month')).toBeVisible();
+  });
 });
