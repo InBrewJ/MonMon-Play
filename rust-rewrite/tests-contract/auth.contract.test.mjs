@@ -2,7 +2,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const AUTH_URL = process.env.AUTH_URL || 'http://127.0.0.1:8085';
+const AUTH_URL = process.env.AUTH_URL || 'http://127.0.0.1:8080';
 
 describe('monmon-auth OIDC Contract Tests', () => {
   it('GET /health returns 200 OK', async () => {

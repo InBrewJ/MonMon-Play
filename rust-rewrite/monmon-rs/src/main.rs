@@ -1,6 +1,7 @@
 mod bank_sync;
 mod db;
 mod dig;
+mod landing;
 mod models;
 mod net_worth;
 mod nommon;
@@ -76,7 +77,16 @@ async fn main() {
     let state = Arc::new(AppState { pool });
 
     let app = Router::new()
-        .route("/health", get(health_handler))
+        // Landing & Public Gateway
+        .route("/", get(landing::get_landing_page))
+        .route("/about", get(landing::get_landing_page))
+        .route("/health", get(landing::get_health_api))
+        .route("/api/user/accessStatus", get(landing::get_access_status_api))
+        .route("/login", get(landing::auth_redirect))
+        .route("/myOutgoings", get(landing::auth_redirect))
+        .route("/myAccounts", get(landing::auth_redirect))
+        .route("/myIncomings", get(landing::auth_redirect))
+        .route("/myBalances", get(landing::auth_redirect))
         // Accounts
         .route(
             "/internal/accounts",
