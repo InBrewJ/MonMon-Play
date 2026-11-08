@@ -469,4 +469,78 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
     // If current month is November (month 11), yearlyRow should be visible; March row (3) is not due in Nov 2026
     await expect(nYearlyRow).toBeHidden();
   });
+
+  test('15. NomMon in-store checked items counter and spend update dynamically', async ({ page, context }) => {
+    await context.addCookies(AUTH_COOKIES);
+
+    // Clear localStorage checked items before test
+    await page.addInitScript(() => {
+      localStorage.removeItem('nommon_checked_items');
+    });
+
+    // Intercept NomMon API plan to provide deterministic grocery checklist
+    await page.route('**/api/nommon/plan*', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          plan: {
+            planTitle: 'Test Parity Plan',
+            weeklyBudget: 45.0,
+            estimatedBasketCost: 38.5,
+            safetyBuffer: 6.5,
+            shoppingList: [
+              { name: 'Sainsbury Whole Milk 2L', category: 'Dairy & Eggs', quantity: 1, estimatedPrice: 1.55, packageSize: '2L' },
+              { name: 'Sainsbury British Free Range Eggs 6pk', category: 'Dairy & Eggs', quantity: 1, estimatedPrice: 1.75, packageSize: '6pk' },
+              { name: 'Sainsbury Thick Sliced Wholemeal Loaf', category: 'Bakery', quantity: 2, estimatedPrice: 0.85, packageSize: '800g' }
+            ],
+            days: [],
+            recipes: []
+          },
+          locked: false
+        })
+      });
+    });
+
+    await page.goto('/nommon');
+
+    // Initial counter check
+    const counterEl = page.locator('#nommon-checked-counter');
+    const spendEl = page.locator('#nommon-checked-spend');
+    await expect(counterEl).toBeVisible();
+    await expect(counterEl).toHaveText('0 / 3');
+    await expect(spendEl).toHaveText('£0.00 in cart');
+
+    // Click first item (Whole Milk - £1.55)
+    const milkItem = page.locator('.nommon-checklist-item:has-text("Sainsbury Whole Milk")');
+    await milkItem.click();
+    await expect(counterEl).toHaveText('1 / 3');
+    await expect(spendEl).toHaveText('£1.55 in cart');
+
+    // Click second item (Wholemeal Loaf - 2x £0.85 = £1.70)
+    const loafItem = page.locator('.nommon-checklist-item:has-text("Wholemeal Loaf")');
+    await loafItem.click();
+    await expect(counterEl).toHaveText('2 / 3');
+    await expect(spendEl).toHaveText('£3.25 in cart');
+
+    // Clear checks button resets both counter and cart spend
+    await page.click('#btn-uncheck-all');
+    await expect(counterEl).toHaveText('0 / 3');
+    await expect(spendEl).toHaveText('£0.00 in cart');
+  });
+
+  test('16. Date picker / ticker bar renders with layout stability and early script execution', async ({ page, context }) => {
+    await context.addCookies(AUTH_COOKIES);
+    await page.goto('/spog');
+
+    const ticker = page.locator('#ticker');
+    await expect(ticker).toBeVisible();
+
+    // Verify min-height styling prevents layout collapse / flash
+    const minHeight = await ticker.evaluate(el => window.getComputedStyle(el).minHeight);
+    expect(minHeight).toBe('38px');
+
+    // Verify live ticker content has rendered properly
+    await expect(ticker).toContainText('Today: Day');
+  });
 });

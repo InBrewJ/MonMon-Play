@@ -25,9 +25,9 @@ $(function() {
         ticker.innerHTML = "<span style='color: #60a5fa; font-weight: 700; margin-right: 8px;'><i class='far fa-calendar-alt'></i> Today: Day " + day + " (" + day + suffix + ")</span> · <span style='color: #cbd5e1;'>" + dateStr + " " + timeStr + "</span>";
     }
 
-    if ($('#ticker').length) {
+    if ($('#ticker').length && !window.__monmonTickerInterval) {
         formatTicker();
-        setInterval(formatTicker, 1000);
+        window.__monmonTickerInterval = setInterval(formatTicker, 1000);
     }
 
     if (window.location.hash === "#edit-form" || $("#edit-form.editing-mode").length) {

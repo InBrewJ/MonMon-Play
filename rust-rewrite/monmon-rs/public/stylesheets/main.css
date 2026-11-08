@@ -107,6 +107,8 @@ a:hover {
   position: sticky;
   top: 0;
   z-index: 1000;
+  min-height: 38px;
+  line-height: 1.4;
   padding: 0.55rem 1.5rem;
   text-align: center;
   width: 100%;
@@ -119,6 +121,19 @@ a:hover {
   box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ticker-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 1.2em;
+  opacity: 0.75;
+  font-size: 0.85rem;
 }
 
 header.app-header {

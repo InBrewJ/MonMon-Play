@@ -1,4 +1,33 @@
-<div id="ticker"></div>
+<div id="ticker">
+    <div id="ticker-placeholder" class="ticker-placeholder">
+        <span style="color: #60a5fa; font-weight: 700; margin-right: 8px;"><i class="far fa-calendar-alt"></i> Today</span> · <span style="color: var(--ticker-text, #cbd5e1);">Loading date...</span>
+    </div>
+</div>
+<script>
+    (function() {
+        function renderLiveTicker() {
+            var ticker = document.getElementById('ticker');
+            if (!ticker) return;
+            var now = new Date();
+            var day = now.getDate();
+            var suffix = "th";
+            if (day === 1 || day === 21 || day === 31) {
+                suffix = "st";
+            } else if (day === 2 || day === 22) {
+                suffix = "nd";
+            } else if (day === 3 || day === 23) {
+                suffix = "rd";
+            }
+            var dateStr = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+            var timeStr = now.toLocaleTimeString('en-GB');
+            ticker.innerHTML = "<span style='color: #60a5fa; font-weight: 700; margin-right: 8px;'><i class='far fa-calendar-alt'></i> Today: Day " + day + " (" + day + suffix + ")</span> · <span style='color: #cbd5e1;'>" + dateStr + " " + timeStr + "</span>";
+        }
+        renderLiveTicker();
+        if (!window.__monmonTickerInterval) {
+            window.__monmonTickerInterval = setInterval(renderLiveTicker, 1000);
+        }
+    })();
+</script>
 
 <!-- Header with Brand, Disco Ball, Search and Theme Toggle -->
 <header class="app-header">
