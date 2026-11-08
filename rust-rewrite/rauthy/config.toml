@@ -1,9 +1,9 @@
 [server]
 pub_url = "localhost:8085"
 port_http = 8085
-port_https = 8443
+port_https = 8444
 proxy_mode = true
-trusted_proxies = ["127.0.0.1/32", "172.16.0.0/12"]
+trusted_proxies = ["127.0.0.1/32", "172.16.0.0/12", "192.168.0.0/16", "10.0.0.0/8"]
 
 [cluster]
 node_id = 1

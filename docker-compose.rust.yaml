@@ -3,7 +3,7 @@ version: '3.8'
 services:
   rauthy:
     container_name: rauthy
-    image: ghcr.io/sebadob/rauthy:latest
+    image: ghcr.io/sebadob/rauthy:0.37.2
     command: ["serve", "-c", "/app/rauthy.cfg"]
     environment:
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
@@ -11,48 +11,41 @@ services:
       - ./rust-rewrite/rauthy/config.toml:/app/rauthy.cfg:ro
       - ./rust-rewrite/rauthy/bootstrap:/app/bootstrap:ro
       - ./rust-rewrite/rauthy/data:/app/data
-    ports:
-      - "8085:8085"
-      - "8443:8443"
+    network_mode: host
     restart: always
 
   legmon:
     container_name: legmon-rs
+    image: legmon-rs:latest
     build:
       context: ./rust-rewrite/legmon-rs
       dockerfile: Dockerfile
     environment:
       - PORT=9005
-      - MONMON_HOST=monmon-rs
-      - MONMON_PORT=9001
-    ports:
-      - "9005:9005"
+      - MONMON_HOST=127.0.0.1
+      - MONMON_PORT=9000
+    network_mode: host
     restart: always
 
   monmon:
     container_name: monmon-rs
+    image: monmon-rs:latest
     build:
       context: ./rust-rewrite/monmon-rs
       dockerfile: Dockerfile
     env_file:
       - .env
     environment:
-      - PORT=9001
-      - DB_URL=postgres://postgres:docker@postgres:5432/monmon-rust
+      - PORT=9000
+      - DB_URL=postgres://postgres:sKKUq3fLRtgp8vQeR8AJX9YHR6rPmbgd8eR@127.0.0.1:5433/monmon-play
       - AUTH_URL=http://localhost:8085/auth/v1/oidc/authorize
-      - REDIRECT_URI=http://localhost:9001/callback
-      - LEGMON_URL=http://legmon-rs:9005
+      - REDIRECT_URI=http://localhost:9000/callback
+      - LEGMON_URL=http://127.0.0.1:9005
     volumes:
       - ./public:/app/public:ro
       - ./.env:/app/.env:ro
-    ports:
-      - "9001:9001"
+    network_mode: host
     depends_on:
       - rauthy
       - legmon
     restart: always
-
-networks:
-  default:
-    name: monmon-play_default
-    external: true

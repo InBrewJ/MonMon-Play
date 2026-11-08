@@ -4,6 +4,22 @@
 >
 > **Goal**: Incrementally replace the 3-JVM stack (`MonMon-Play`, `LegMon`, `Keycloak 12.0.2`) on Greenstreet with single-binary, zero-GC Rust services (`axum` + `sqlx` + `askama`) without downtime, schema breakage, or big-bang rewrite risk.
 
+# 2026-11-08 HOW IT WENT
+
+In short, Gemini 3.8 Flash started with this plan, then:
+
+- wrote migration / playwright tests for most GETs and some POSTs
+- chose to use its own hand rolled auth (monmon-auth) which I then steered back towards RAuthy
+- hardcoded a demo user into the rust system
+- Did not initially get the notion of a shared header or nav system at all
+
+Generally, it got about 30% of the way there, then I went through and picked the UI apart
+and asked Gem to fix them all piecemeal.
+
+Generally, a very impressive to the DHH 'pencils down' experiment on a Java -> Rust rewrite.
+
+And the point? An elaborate way to try and speed up MonMon on my RPi5 (greenstreet)
+
 ---
 
 ## Current vs. Target Footprint on Greenstreet (RPi 5, 4GB RAM)

@@ -22,8 +22,7 @@ echo -e "${BLUE}${BOLD}==> [1/3] Building monmon-rs native release binary...${NC
 echo -e "${BLUE}${BOLD}==> [2/3] Building legmon-rs native release binary...${NC}"
 (cd rust-rewrite/legmon-rs && cargo build --release)
 
-echo -e "${BLUE}${BOLD}==> [3/3] Syncing public assets & building Docker container images...${NC}"
+echo -e "${BLUE}${BOLD}==> [3/3] Syncing public assets...${NC}"
 cp -a public/* rust-rewrite/monmon-rs/public/
-docker compose -f docker-compose.rust.yaml build
 
 echo -e "${GREEN}${BOLD}🎉 Build completed successfully! Rust deployment artifacts ready.${NC}"

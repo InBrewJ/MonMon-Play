@@ -20,13 +20,13 @@ echo "Starting MonMon Rust stack via docker compose..."
 docker compose -f docker-compose.rust.yaml up -d
 
 # 3. Wait for services to become healthy via HTTP health checks
-echo "Waiting for monmon-rs service (probing http://127.0.0.1:9001/health)..."
-MAX_ATTEMPTS=20
+echo "Waiting for monmon-rs service (probing http://127.0.0.1:9000/health)..."
+MAX_ATTEMPTS=25
 ATTEMPT=1
 HEALTHY=false
 
 while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9001/health 2>/dev/null || true)
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9000/health 2>/dev/null || true)
     if [ "$HTTP_CODE" = "200" ]; then
         HEALTHY=true
         break
