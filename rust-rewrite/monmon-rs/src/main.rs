@@ -1,6 +1,7 @@
 mod bank_sync;
 mod db;
 mod models;
+mod net_worth;
 mod nommon;
 mod savings_plan;
 mod spog;
@@ -178,6 +179,12 @@ async fn main() {
         )
         .route("/savingsPlan", get(savings_plan::get_savings_plan_page))
         .route("/savingsPlans", get(savings_plan::get_savings_plan_page))
+        // Net Worth & Capital Assets
+        .route("/netWorth", get(net_worth::get_net_worth_page))
+        .route("/api/networth", get(net_worth::get_net_worth_api))
+        .route("/api/networth/asset", post(net_worth::add_asset_api))
+        .route("/netWorth/addAsset", post(net_worth::add_asset_form))
+        .route("/netWorth/binAsset/:id", get(net_worth::bin_asset_endpoint))
         .route("/mySavingsPlan", get(savings_plan::get_savings_plan_page))
         .route(
             "/savingsPlan/addItem",

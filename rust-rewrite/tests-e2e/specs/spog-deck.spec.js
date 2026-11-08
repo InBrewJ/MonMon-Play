@@ -28,7 +28,8 @@ test.describe('SPOG Swipe Deck & Financial Primitives E2E', () => {
     }
   }
 
-  test('SPOG desktop layout: all 4 cards present with key headline metrics', async ({ page }) => {
+  test('SPOG desktop layout: all 4 cards present with key headline metrics', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'Desktop-only layout test');
     const consoleErrors = [];
     page.on('console', msg => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
