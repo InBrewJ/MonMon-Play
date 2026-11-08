@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MonMon - Accurate Mode & Monzo Bank Sync</title>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+    <link rel="stylesheet" href="/assets/stylesheets/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="w3-light-grey">
+
+<header class="w3-container w3-white w3-border-bottom" style="padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+    <h1 style="margin: 0; font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+        <a href="/spog" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
+            <img src="/assets/images/favicon.png" alt="MonMon" style="height: 28px; width: 28px;">
+            <span>MonMon</span>
+        </a>
+    </h1>
+    <div style="font-size: 0.85rem; color: #666;">
+        <i class="fas fa-user-circle"></i> demo (demo@demo.com)
+    </div>
+</header>
+
+<div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h1 style="margin: 0; font-size: 1.75rem; font-weight: 800; color: #0f172a;">
+                <i class="fas fa-satellite-dish" style="color: #0284c7; margin-right: 8px;"></i>
+                Accurate Mode &amp; Monzo Sync
+            </h1>
+            <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.92rem;">
+                Dual-ledger architecture: Monzo API (Debit &amp; Flex Credit Card) with Available-Based Ledger (ABL) fallback.
+            </p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            {% if is_monzo_connected %}
+                <span class="badge" style="background: #dcfce7; color: #16a34a; border: 1px solid rgba(52, 211, 153, 0.3); padding: 6px 12px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
+                    <i class="fas fa-check-circle"></i> Monzo Connected (Debit + Flex)
+                </span>
+            {% else %}
+                <span class="badge" style="background: #fef3c7; color: #d97706; border: 1px solid rgba(251, 191, 36, 0.3); padding: 6px 12px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
+                    <i class="fas fa-exclamation-circle"></i> Monzo Not Connected
+                </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Mobile Navigation Pills for Swipable Cards -->
+    <div class="deck-nav" id="bank-sync-nav" role="tablist" aria-label="Bank Sync Sections" style="display: flex; gap: 8px; margin-bottom: 1rem; overflow-x: auto;">
+        <button type="button" class="deck-nav-pill active" data-target="card-bank-monzo" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid #cbd5e1; background: #0284c7; color: #fff; font-weight: 600;">
+            <i class="fas fa-bolt"></i> Monzo API
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-bank-accounts" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid #cbd5e1; background: #fff; color: #334155;">
+            <i class="fas fa-university"></i> Accounts ({{ accounts_count }})
+        </button>
+        <button type="button" class="deck-nav-pill" data-target="card-bank-txs" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid #cbd5e1; background: #fff; color: #334155;">
+            <i class="fas fa-list"></i> Transactions ({{ txs_count }})
+        </button>
+    </div>
+
+    <div class="deck-layout-grid" style="display: flex; flex-direction: column; gap: 1rem;">
+        <!-- Monzo API Card -->
+        <div class="deck-card w3-card w3-round" id="card-bank-monzo" style="background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px;">
+            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700;">
+                <i class="fas fa-bolt" style="color: #0284c7; margin-right: 6px;"></i>
+                Monzo Direct Bank Feed
+            </h3>
+            <p style="color: #64748b; font-size: 0.9rem;">
+                Real-time transaction webhook feeds directly populate your account ledgers and spending pace analytics.
+            </p>
+            <div style="margin-top: 1rem;">
+                <a href="/bank/monzo/connect" class="w3-button w3-round" style="background: #0284c7; color: #fff; font-weight: 600;">
+                    <i class="fas fa-plug"></i> Connect Monzo
+                </a>
+            </div>
+        </div>
+
+        <!-- Accounts Card -->
+        <div class="deck-card w3-card w3-round" id="card-bank-accounts" style="background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px;">
+            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700;">
+                <i class="fas fa-university" style="color: #0284c7; margin-right: 6px;"></i>
+                Configured Ledger Accounts ({{ accounts_count }})
+            </h3>
+            <p style="color: #64748b; font-size: 0.9rem;">
+                Switch individual accounts between Transaction-Based Ledger (TBL) and Available-Based Ledger (ABL).
+            </p>
+        </div>
+
+        <!-- Transactions Card -->
+        <div class="deck-card w3-card w3-round" id="card-bank-txs" style="background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px;">
+            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700;">
+                <i class="fas fa-list" style="color: #0284c7; margin-right: 6px;"></i>
+                Recent Synced Transactions ({{ recent_transactions.len() }})
+            </h3>
+
+            {% if recent_transactions.is_empty() %}
+                <div style="text-align: center; padding: 2rem; color: #64748b;">
+                    <p>No bank transactions recorded yet.</p>
+                </div>
+            {% else %}
+                <table class="w3-table w3-striped" style="width: 100%;">
+                    <thead>
+                        <tr style="background: #f1f5f9; color: #475569;">
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Merchant</th>
+                            <th>Category</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tx in recent_transactions %}
+                        <tr>
+                            <td>{{ tx.date }}</td>
+                            <td>{{ tx.description }}</td>
+                            <td>{{ tx.merchant_name.as_deref().unwrap_or("—") }}</td>
+                            <td>{{ tx.category.as_deref().unwrap_or("General") }}</td>
+                            <td style="font-weight: 700; color: #0284c7;">£{{ tx.amount }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

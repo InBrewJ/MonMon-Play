@@ -6,16 +6,15 @@ use axum::{
     http::StatusCode,
     response::{Html, Json},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use std::sync::Arc;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct NomMonQuery {
+    #[serde(alias = "userId")]
     pub user_id: Option<String>,
-    pub userId: Option<String>,
     pub force: Option<bool>,
     pub budget: Option<f32>,
     pub people: Option<i32>,
@@ -26,20 +25,18 @@ impl NomMonQuery {
     pub fn get_user_id(&self) -> String {
         self.user_id
             .clone()
-            .or_else(|| self.userId.clone())
             .unwrap_or_else(|| "demo".to_string())
     }
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LockPlanRequest {
     pub plan: Value,
     pub budget: Option<f32>,
     pub people: Option<i32>,
     pub postcode: Option<String>,
+    #[serde(alias = "userId")]
     pub user_id: Option<String>,
-    pub userId: Option<String>,
 }
 
 #[derive(Template)]
@@ -142,7 +139,7 @@ pub async fn lock_nommon_plan_api(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<LockPlanRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let raw_uid = payload.user_id.or(payload.userId).unwrap_or_else(|| "demo".to_string());
+    let raw_uid = payload.user_id.unwrap_or_else(|| "demo".to_string());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
     let plan_str = serde_json::to_string(&payload.plan).unwrap_or_default();

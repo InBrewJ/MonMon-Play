@@ -1,3 +1,4 @@
+mod bank_sync;
 mod db;
 mod models;
 mod nommon;
@@ -136,6 +137,20 @@ async fn main() {
         .route("/api/nommon/plan", get(nommon::get_nommon_plan_api))
         .route("/api/nommon/lock", post(nommon::lock_nommon_plan_api))
         .route("/api/nommon/unlock", post(nommon::unlock_nommon_plan_api))
+        // Bank Sync & Monzo
+        .route("/bank", get(bank_sync::get_bank_sync_page))
+        .route(
+            "/bank/transactions",
+            get(bank_sync::list_bank_transactions_api),
+        )
+        .route(
+            "/bank/monzo/webhooks/status",
+            get(bank_sync::get_monzo_webhook_status_api),
+        )
+        .route(
+            "/api/monzo/webhook",
+            post(bank_sync::handle_monzo_webhook_api),
+        )
         // Savings Plan & Priority Queue
         .route(
             "/api/savings-plan",
