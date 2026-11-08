@@ -27,12 +27,19 @@ pub async fn get_health_api() -> Json<Value> {
     }))
 }
 
-pub async fn get_access_status_api() -> Json<Value> {
+pub async fn get_access_status_api(headers: HeaderMap) -> Json<Value> {
+    let auth = crate::management::is_authenticated(&headers);
+    let raw_uid = if auth {
+        crate::pot::get_user_id_from_headers_or_default(&headers, None)
+    } else {
+        "guest".to_string()
+    };
     Json(serde_json::json!({
-        "authenticated": true,
+        "authenticated": auth,
         "approved": true,
-        "status": "APPROVED",
-        "userId": "demo"
+        "status": if auth { "APPROVED" } else { "GUEST" },
+        "userId": raw_uid,
+        "username": raw_uid
     }))
 }
 

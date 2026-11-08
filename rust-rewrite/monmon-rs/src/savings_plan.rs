@@ -76,6 +76,13 @@ impl SavingsPlanDto {
     pub fn abs_unallocated(&self) -> f32 {
         self.unallocated_amount.abs()
     }
+    pub fn max_percent(&self) -> i32 {
+        if self.incoming_total > 0.0 {
+            100.min(0.max(((self.max_surplus / self.incoming_total) * 100.0).floor() as i32))
+        } else {
+            100
+        }
+    }
 }
 
 impl SavingsPlanItemDto {
@@ -313,23 +320,9 @@ pub async fn get_user_incoming_total(pool: &PgPool, user_id: &str) -> f32 {
 }
 
 pub async fn get_user_outgoing_total(pool: &PgPool, user_id: &str) -> f32 {
-    let row = sqlx::query(
-        r#"
-        SELECT COALESCE(SUM(cost), 0.0)::real AS total
-        FROM outgoing
-        WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
-          AND (paused IS NULL OR paused = false)
-        "#,
-    )
-    .bind(user_id)
-    .fetch_one(pool)
-    .await;
-
-    match row {
-        Ok(r) => r.get::<f32, _>("total"),
-        Err(_) => 0.0,
-    }
+    let outgoings = crate::db::list_outgoings(pool, user_id).await.unwrap_or_default();
+    let today = chrono::Local::now().date_naive();
+    crate::models::total_effective_outgoings(&outgoings, today)
 }
 
 pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<SavingsPlanDto, sqlx::Error> {

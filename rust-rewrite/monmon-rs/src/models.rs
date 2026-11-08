@@ -200,7 +200,7 @@ impl Outgoing {
 pub fn total_effective_outgoings(outgoings: &[Outgoing], as_of: chrono::NaiveDate) -> f32 {
     outgoings
         .iter()
-        .filter(|o| !o.paused.unwrap_or(false) && !o.archived.unwrap_or(false) && o.is_due_in_month(as_of))
+        .filter(|o| !o.paused.unwrap_or(false) && !o.archived.unwrap_or(false) && !o.hidden_from_total.unwrap_or(false) && o.is_due_in_month(as_of))
         .map(|o| o.cost)
         .sum()
 }

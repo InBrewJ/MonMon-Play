@@ -97,6 +97,10 @@
         <div class="nav-current-crumb-pill">
             <a href="/spog" class="current-crumb-link"><i class="fas fa-compass"></i> Menu</a>
         </div>
+        <div class="user-chip nav-user-chip" id="nav-user-chip" title="Signed in user" style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 0.8rem; border-radius: 9999px; background: var(--card-bg-subtle, rgba(255,255,255,0.05)); border: 1px solid var(--border-color); text-decoration: none;">
+            <i class="fas fa-user-circle" style="color: var(--primary);"></i>
+            <span id="nav-username-display" style="font-weight: 600; color: var(--text-main);">User</span>
+        </div>
     </div>
 </nav>
 <script>
@@ -148,6 +152,10 @@
             <img src="/assets/images/monmon-monster.svg" alt="MonMon" width="30" height="30" />
             <span>MonMon</span>
         </div>
+        <div class="user-chip" id="drawer-user-chip" style="margin-left: auto; margin-right: 8px; font-size: 0.78rem; padding: 2px 8px;">
+            <i class="fas fa-user-circle" style="color: var(--primary);"></i>
+            <span id="drawer-username-display" style="font-weight: 600;">User</span>
+        </div>
         <button id="nav-drawer-close" class="nav-drawer-close" type="button" aria-label="Close navigation">&times;</button>
     </div>
     <div class="nav-drawer-content">
@@ -172,3 +180,53 @@
         </ol>
     </div>
 </aside>
+<script>
+(function() {
+    function resolveUser() {
+        var username = "";
+        try {
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i++) {
+                var c = cookies[i].trim();
+                if (c.indexOf('user_id=') === 0) {
+                    username = c.substring(8);
+                    break;
+                }
+                if (c.indexOf('monmon_session=') === 0) {
+                    var s = c.substring(15);
+                    if (s && s !== 'authenticated') {
+                        username = s;
+                        break;
+                    }
+                }
+            }
+        } catch (e) {}
+
+        function applyUser(name) {
+            if (!name) return;
+            var navEl = document.getElementById('nav-username-display');
+            if (navEl) navEl.textContent = name;
+            var drawerEl = document.getElementById('drawer-username-display');
+            if (drawerEl) drawerEl.textContent = name;
+        }
+
+        if (username) {
+            applyUser(username);
+        } else {
+            fetch('/api/user/accessStatus')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.userId && data.userId !== 'guest') {
+                        applyUser(data.userId);
+                    }
+                })
+                .catch(function() {});
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', resolveUser);
+    } else {
+        resolveUser();
+    }
+})();
+</script>

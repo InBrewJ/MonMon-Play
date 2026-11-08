@@ -217,8 +217,26 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     let completed_outgoings: f32 = outgoings_row.get::<f32, _>("completed_cost");
     let pending_outgoings: f32 = outgoings_row.get::<f32, _>("pending_cost");
 
-    // Surplus & Allowances
-    let surplus = (incoming_total - outgoing_total).max(0.0);
+    // Surplus & Allowances (accounting for active Savings Plan percentage)
+    let savings_plan_row = sqlx::query(
+        r#"
+        SELECT savingspercentage
+        FROM savings_plan
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+        ORDER BY createdat DESC NULLS LAST, id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let savings_percentage: i32 = savings_plan_row
+        .map(|r| r.get::<i32, _>("savingspercentage"))
+        .unwrap_or(0);
+    let savings_plan_cost = (savings_percentage as f32 / 100.0) * incoming_total;
+    let surplus = (incoming_total - outgoing_total - savings_plan_cost).max(0.0);
     let max_per_day = if days_between_paydays > 0 {
         surplus / (days_between_paydays as f32)
     } else {
@@ -279,7 +297,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
             None => (0.0f32, None),
         };
 
-        // Fetch outgoings for this account
+        // Fetch outgoings for this account due in this cycle
         let outgoings = sqlx::query(
             r#"
             SELECT name, cost, outgoingday
@@ -287,9 +305,13 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
             WHERE account_id = $1
               AND (archived IS NULL OR archived = false)
               AND (paused IS NULL OR paused = false)
+              AND (hiddenfromtotal IS NULL OR hiddenfromtotal = false)
+              AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $2 AND (COALESCE(yearinterval, 1) <= 1 OR ($3 >= COALESCE(startingyear, $3) AND ($3 - COALESCE(startingyear, $3)) % COALESCE(yearinterval, 1) = 0))))
             "#
         )
         .bind(acc_id)
+        .bind(current_month)
+        .bind(current_year)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
@@ -359,7 +381,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
 
         // Update overall summary metrics
         match acc_type.to_uppercase().as_str() {
-            "DEBIT" | "CURRENT" | "DEBIT_SHARED_BILLS" => {
+            "DEBIT" | "CURRENT" => {
                 total_available_debit += adjusted_available;
             }
             "CREDIT" => {
@@ -374,7 +396,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
                 total_savings_pot += latest_balance;
             }
             _ => {
-                total_available_debit += adjusted_available;
+                // LOAN, MORTGAGE, DEBIT_SHARED_BILLS, etc. are NOT added to debit
             }
         }
 
@@ -444,27 +466,41 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     };
 
     // 5. Monthly Pot Left Per Day
-    let pot_row = sqlx::query(
+    let active_pot_id_row = sqlx::query(
         r#"
-        WITH latest_balance AS (
-            SELECT DISTINCT ON (account_id) account_id, value
-            FROM balance
-            ORDER BY account_id, timestamp DESC
-        )
-        SELECT COALESCE(SUM(b.value), 0.0)::real AS pot_balance
-        FROM pot p
-        JOIN pot_accounts pa ON pa.pot_id = p.id
-        JOIN latest_balance b ON b.account_id = pa.account_id
-        WHERE (p.userid = $1 OR p.user_id = $1)
-          AND (p.archived IS NULL OR p.archived = false)
-          AND p.type = 'MONTHLY'
+        SELECT id
+        FROM pot
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+          AND type = 'MONTHLY'
+        ORDER BY createdat DESC NULLS LAST, id DESC
+        LIMIT 1
         "#,
     )
     .bind(&user_id)
     .fetch_optional(pool)
     .await?;
 
-    let pot_balance = pot_row.map(|r| r.get::<f32, _>("pot_balance")).unwrap_or(0.0);
+    let pot_account_ids: Vec<i64> = if let Some(pr) = active_pot_id_row {
+        let pot_id: i64 = pr.get("id");
+        sqlx::query("SELECT account_id FROM pot_accounts WHERE pot_id = $1")
+            .bind(pot_id)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .map(|r| r.get::<i64, _>("account_id"))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let pot_balance: f32 = all_account_statuses
+        .iter()
+        .filter(|a| pot_account_ids.contains(&a.id))
+        .map(|a| a.adjusted_available)
+        .sum();
+
     let days_left = if next_pay_day >= today_day {
         next_pay_day - today_day + 1
     } else {
@@ -484,6 +520,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         WHERE (p.userid = $1 OR p.user_id = $1)
           AND (p.archived IS NULL OR p.archived = false)
           AND p.type = 'MONTHLY'
+        ORDER BY p.createdat DESC NULLS LAST, p.id DESC
         LIMIT 1
         "#,
     )
