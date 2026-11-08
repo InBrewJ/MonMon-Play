@@ -127,4 +127,131 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
       await expect(page.locator('#name')).not.toHaveValue('');
     }
   });
+
+  test('7. Incoming "Is this Payday?" flag, target account, and CRUD lifecycle', async ({ page, context }) => {
+    await context.addCookies(AUTH_COOKIES);
+    await page.goto('/myIncomings');
+
+    // 1. Open Add Incoming modal and verify controls
+    await page.getByRole('button', { name: 'Add Incoming' }).click();
+    await expect(page.locator('#incoming-modal')).toBeVisible();
+    await expect(page.locator('#incoming-payday')).toBeVisible();
+    await expect(page.locator('#incoming-account')).toBeVisible();
+
+    // 2. Create a new incoming with payday checked
+    const testName = 'Salary Test E2E ' + Date.now();
+    await page.fill('#incoming-name', testName);
+    await page.fill('input[name="netValue"]', '2750.50');
+    await page.fill('input[name="incomingMonthDay"]', '28');
+    await page.check('#incoming-payday');
+    await page.click('#incoming-submit-btn');
+
+    // 3. Confirm redirected to /myIncomings and row has Primary Payday badge
+    await expect(page).toHaveURL(/\/myIncomings/);
+    const row = page.locator('tr:visible, .item-card:visible').filter({ hasText: testName }).first();
+    await expect(row).toBeVisible();
+    await expect(row.locator('.badge-payday-yes')).toContainText('Primary Payday');
+
+    // 4. Edit incoming: uncheck payday
+    await row.locator('.btn-edit').click();
+    await expect(page.locator('#incoming-modal')).toBeVisible();
+    await expect(page.locator('#incoming-payday')).toBeChecked();
+    await page.uncheck('#incoming-payday');
+    await page.click('#incoming-submit-btn');
+
+    // 5. Confirm updated to Secondary badge
+    await expect(page).toHaveURL(/\/myIncomings/);
+    const updatedRow = page.locator('tr:visible, .item-card:visible').filter({ hasText: testName }).first();
+    await expect(updatedRow.locator('.badge-payday-no')).toContainText('Secondary');
+
+    // 6. Delete the test incoming
+    page.on('dialog', dialog => dialog.accept());
+    await updatedRow.locator('.btn-delete').click();
+    await page.waitForURL(/\/myIncomings/);
+    await expect(page.locator('tr:visible, .item-card:visible').filter({ hasText: testName })).toHaveCount(0);
+  });
+
+  test('8. SPOG Grouped Accounts with Freshness Badges and Update Prefill Redirect', async ({ page, context }) => {
+    await context.addCookies(AUTH_COOKIES);
+    await page.goto('/spog');
+
+    // 1. Verify Card 4 Accounts section (switch tab on mobile deck if present)
+    const accountsNavPill = page.locator('button[data-target="spog-card-accounts"]');
+    if (await accountsNavPill.isVisible()) {
+      await accountsNavPill.click();
+    }
+    const accountsCard = page.locator('#spog-card-accounts');
+    await expect(accountsCard).toBeVisible();
+    await expect(accountsCard.locator('text=Accounts & Balances')).toBeVisible();
+
+    // 2. Verify account groups are displayed
+    await expect(page.locator('.spog-account-group-title').first()).toBeVisible();
+
+    // 3. Verify freshness badges exist (e.g. FRESH, STALE, NO_PAYMENT_DUE, or NO_BALANCE)
+    const updateLink = accountsCard.locator('a[href*="/myBalances?accountId="]').first();
+    await expect(updateLink).toBeVisible();
+    const href = await updateLink.getAttribute('href');
+    expect(href).toMatch(/\/myBalances\?accountId=\d+/);
+
+    // 4. Click update link and verify balance screen loads with prefilled account
+    await updateLink.click();
+    await expect(page).toHaveURL(/\/myBalances\?accountId=\d+/);
+    await expect(page.locator('text=Updating balance for')).toBeVisible();
+    const accountSelect = page.locator('#account');
+    await expect(accountSelect).toBeVisible();
+    const selectedVal = await accountSelect.inputValue();
+    expect(selectedVal).not.toBe('');
+  });
+
+  test('9. /myBalances Parity: Interactive Chart Canvas, Account Multiselect Filters, Sign Toggle & CRUD', async ({ page, context }) => {
+    await context.addCookies(AUTH_COOKIES);
+    await page.goto('/myBalances');
+
+    // 1. Verify canvas chart exists
+    const chart = page.locator('#balance-chart');
+    await expect(chart).toBeVisible();
+
+    // 2. Verify account multi-select filter controls
+    const filterBtn = page.locator('#btn-account-multiselect');
+    await expect(filterBtn).toBeVisible();
+    await filterBtn.click();
+    await expect(page.locator('#multiselect-dropdown')).toBeVisible();
+
+    // Test "None" button
+    await page.locator('#select-none-btn').click();
+    await expect(page.locator('#empty-chart-msg')).toBeVisible();
+
+    // Test "All" button
+    await page.locator('#select-all-btn').click();
+    await expect(page.locator('#empty-chart-msg')).toBeHidden();
+
+    // Test "Monthly Pot" button
+    await page.locator('#select-pot-btn').click();
+    await expect(page.locator('#empty-chart-msg')).toBeHidden();
+
+    // 3. Test sign toggle button (±)
+    const valInput = page.locator('#balance-value');
+    const signBtn = page.locator('#balance-sign-toggle');
+    await valInput.fill('250.75');
+    await signBtn.click();
+    expect(await valInput.inputValue()).toBe('-250.75');
+    await signBtn.click();
+    expect(await valInput.inputValue()).toBe('250.75');
+
+    // 4. Record new balance and verify in list
+    const testBalanceVal = '189.42';
+    await valInput.fill(testBalanceVal);
+    await page.click('#record-balance-form button[type="submit"]');
+    await expect(page).toHaveURL(/\/myBalances/);
+
+    // Verify balance appears in log
+    const balanceEntry = page.locator(`tr:has-text("£${testBalanceVal}"), .stat-cell:has-text("£${testBalanceVal}")`).first();
+    await expect(balanceEntry).toBeVisible();
+
+    // 5. Delete balance
+    page.on('dialog', dialog => dialog.accept());
+    const deleteBtn = page.locator('form[action*="/balance/"][action*="/delete"] button[type="submit"]:visible').first();
+    await deleteBtn.click();
+    await expect(page).toHaveURL(/\/myBalances/);
+  });
 });

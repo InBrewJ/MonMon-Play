@@ -16,6 +16,12 @@ pub struct Account {
     pub archived: Option<bool>,
 }
 
+impl Account {
+    pub fn is_selected(&self, sel: &Option<i64>) -> bool {
+        *sel == Some(self.id)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewAccount {

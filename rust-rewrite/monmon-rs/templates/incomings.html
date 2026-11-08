@@ -25,6 +25,7 @@
                     <thead>
                         <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
                             <th>Name</th>
+                            <th>Target Account</th>
                             <th>Net Value</th>
                             <th>Payday</th>
                             <th>Day of Month</th>
@@ -33,23 +34,35 @@
                     </thead>
                     <tbody>
                         {% if incomings.is_empty() %}
-                            <tr><td colspan="5" style="text-align: center; color: #64748b; padding: 2rem;">No incomings configured.</td></tr>
+                            <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No incomings configured. Click <b>+ Add Incoming</b> above.</td></tr>
                         {% else %}
                             {% for inc in incomings %}
                                 <tr id="incoming-{{ inc.id }}">
                                     <td><b>{{ inc.name }}</b></td>
+                                    <td>
+                                        {% if let Some(acc) = inc.account_name %}
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle, #f1f5f9); color: var(--primary, #6366f1); font-weight: 600; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">
+                                                <i class="fas fa-university" style="margin-right: 4px;"></i>{{ acc }}
+                                            </span>
+                                        {% else %}
+                                            <span style="color: var(--text-muted); font-size: 0.85rem;">—</span>
+                                        {% endif %}
+                                    </td>
                                     <td style="color: #10b981; font-weight: 600;">£{{ inc.net_value }}</td>
                                     <td>
                                         {% if inc.payday.unwrap_or(false) %}
-                                            <span class="badge-pill" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Primary Payday</span>
+                                            <span class="badge-pill badge-payday-yes" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.8rem; font-weight: 600;"><i class="fas fa-check"></i> Primary Payday</span>
                                         {% else %}
-                                            <span class="badge-pill" style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Secondary</span>
+                                            <span class="badge-pill badge-payday-no" style="background:var(--card-bg-subtle, #f1f5f9); color:var(--text-muted, #475569); padding:2px 8px; border-radius:4px; font-size:0.8rem;">Secondary</span>
                                         {% endif %}
                                     </td>
                                     <td>Day {{ inc.incoming_month_day }}</td>
-                                    <td style="text-align: right;">
-                                        <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" title="Edit" style="color: var(--primary); text-decoration: none;">
+                                    <td style="text-align: right; white-space: nowrap;">
+                                        <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" title="Edit" style="color: var(--primary); text-decoration: none; margin-right: 12px;">
                                             <i class="fas fa-pen"></i>
+                                        </a>
+                                        <a href="/binIncoming/{{ inc.id }}" class="btn-action btn-delete" title="Delete" style="color: var(--danger, #ef4444); text-decoration: none;">
+                                            <i class="fas fa-trash-alt"></i>
                                         </a>
                                     </td>
                                 </tr>
@@ -74,12 +87,21 @@
                             </div>
                             <div class="stat-cell">
                                 <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Payday</div>
-                                <div class="stat-cell-val">{% if inc.payday.unwrap_or(false) %}Yes{% else %}No{% endif %}</div>
+                                <div class="stat-cell-val">
+                                    {% if inc.payday.unwrap_or(false) %}
+                                        <span class="badge-pill badge-payday-yes" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;"><i class="fas fa-check"></i> Primary Payday</span>
+                                    {% else %}
+                                        <span class="badge-pill badge-payday-no" style="background:var(--card-bg-subtle, #f1f5f9); color:var(--text-muted, #475569); padding:2px 8px; border-radius:4px; font-size:0.75rem;">Secondary</span>
+                                    {% endif %}
+                                </div>
                             </div>
                         </div>
-                        <div class="item-card-actions" style="border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 8px;">
-                            <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-block;">
+                        <div class="item-card-actions" style="border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 8px; display: flex; gap: 8px;">
+                            <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
                                 <i class="fas fa-pen"></i> Edit
+                            </a>
+                            <a href="/binIncoming/{{ inc.id }}" class="btn-action btn-delete" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--danger, #ef4444); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fas fa-trash-alt"></i> Delete
                             </a>
                         </div>
                     </div>
@@ -99,19 +121,39 @@
             <form id="incoming-modal-form" method="POST" action="{% if let Some(i) = editing_incoming %}/updateIncoming/{{ i.id }}{% else %}/incoming{% endif %}">
                 <div style="margin-bottom: 0.75rem;">
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Incoming Name</label>
-                    <input id="incoming-name" name="name" type="text" required value="{% if let Some(i) = editing_incoming %}{{ i.name }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                    <input id="incoming-name" name="name" type="text" required value="{% if let Some(i) = editing_incoming %}{{ i.name }}{% endif %}" placeholder="e.g. Salary, Side gig" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Target Account</label>
+                    <select id="incoming-account" name="account_id" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                        <option value="">-- None / Select Target Account --</option>
+                        {% for a in accounts %}
+                            <option value="{{ a.id }}" {% if let Some(i) = editing_incoming %}{% if a.is_selected(i.account_id) %}selected{% endif %}{% endif %}>
+                                {{ a.name }} ({{ a.account_type }})
+                            </option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div style="margin-bottom: 0.75rem;">
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Net Value (£)</label>
-                    <input name="netValue" type="number" step="0.01" required value="{% if let Some(i) = editing_incoming %}{{ i.net_value }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                    <input name="netValue" type="number" step="0.01" required value="{% if let Some(i) = editing_incoming %}{{ i.net_value }}{% endif %}" placeholder="0.00" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
-                <div style="margin-bottom: 1rem;">
+                <div style="margin-bottom: 0.85rem;">
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month</label>
-                    <input name="incomingMonthDay" type="number" min="1" max="31" required value="{% if let Some(i) = editing_incoming %}{{ i.incoming_month_day }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                    <input name="incomingMonthDay" type="number" min="1" max="31" required value="{% if let Some(i) = editing_incoming %}{{ i.incoming_month_day }}{% endif %}" placeholder="Day of month (1-31)" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 1.25rem;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-main);">
+                        <input type="checkbox" id="incoming-payday" name="payday" value="true" {% if let Some(i) = editing_incoming %}{% if i.payday.unwrap_or(false) %}checked{% endif %}{% endif %} style="width: 18px; height: 18px; accent-color: #10b981; cursor: pointer;">
+                        <span><i class="fas fa-coins" style="color: #10b981; margin-right: 4px;"></i> Is this Payday?</span>
+                    </label>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-left: 26px; margin-top: 2px;">
+                        Designates this incoming as the primary cycle cutoff for spending pace and allowance calculations.
+                    </div>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 8px;">
                     <button type="button" onclick="closeIncomingModal()" style="padding: 8px 16px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main); border-radius: 6px; cursor: pointer;">Cancel</button>
-                    <button type="submit" style="padding: 8px 16px; background: #10b981; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">{% if editing %}Save Changes{% else %}Add Incoming{% endif %}</button>
+                    <button type="submit" id="incoming-submit-btn" style="padding: 8px 16px; background: #10b981; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">{% if editing %}Save Changes{% else %}Add Incoming{% endif %}</button>
                 </div>
             </form>
         </div>

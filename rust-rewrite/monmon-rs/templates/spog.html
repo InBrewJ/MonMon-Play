@@ -187,7 +187,7 @@
             <!-- Card 4: Accounts Overview -->
             <div class="w3-card w3-padding spog-deck-card" id="spog-card-accounts">
                 <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
-                    <i class="fas fa-university" style="color: var(--primary); margin-right: 6px;"></i> Account Overview
+                    <i class="fas fa-university" style="color: var(--primary); margin-right: 6px;"></i> Accounts & Balances
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1rem; font-size: 0.92rem;">
@@ -217,6 +217,58 @@
                         <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Total Savings</div>
                         <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary);">£{{ metrics.total_savings_pot }}</div>
                     </div>
+                </div>
+
+                <!-- Grouped Accounts with Balances & Freshness Indicators -->
+                <div class="spog-account-groups" style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                    {% for group in metrics.account_groups %}
+                    <div class="spog-account-group" style="margin-bottom: 1.25rem;">
+                        <div class="spog-account-group-title" style="font-weight: 700; font-size: 0.92rem; color: var(--text-main); margin-bottom: 0.6rem; display: flex; align-items: center; gap: 6px;">
+                            <i class="{{ group.icon }}" style="color: var(--primary);"></i> {{ group.group_name }}
+                        </div>
+                        <div class="spog-account-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem;">
+                            {% for a in group.accounts %}
+                            <div class="item-card spog-account-item" style="padding: 0.75rem 0.9rem; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem;">
+                                    <b style="font-size: 0.92rem; color: var(--text-main);">{{ a.name }}</b>
+                                    <span style="font-weight: 700; font-size: 0.95rem; color: var(--primary);">£{{ a.latest_balance }}</span>
+                                </div>
+
+                                <!-- Freshness Indicator -->
+                                <div style="margin: 0.35rem 0 0.5rem 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                    {% if a.freshness_status == "FRESH" %}
+                                        <a href="/myBalances?accountId={{ a.id }}" class="badge-pill badge-freshness-fresh btn-update-balance" title="{{ a.freshness_message }} · Click to update balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                                            <i class="fas fa-check-circle"></i> Up to date · <u>Update</u>
+                                        </a>
+                                    {% else if a.freshness_status == "STALE" %}
+                                        <a href="/myBalances?accountId={{ a.id }}" class="badge-pill badge-freshness-stale btn-update-balance" title="{{ a.freshness_message }} · Click to update balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                                            <i class="fas fa-exclamation-triangle"></i> Balance Stale · <u>Update</u>
+                                        </a>
+                                    {% else if a.freshness_status == "NO_BALANCE" %}
+                                        <a href="/myBalances?accountId={{ a.id }}" class="badge-pill badge-freshness-neutral btn-update-balance" title="{{ a.freshness_message }} · Click to record initial balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                                            <i class="fas fa-clock"></i> No balance · <u>Add</u>
+                                        </a>
+                                    {% else %}
+                                        <a href="/myBalances?accountId={{ a.id }}" class="badge-pill badge-freshness-neutral btn-update-balance" title="{{ a.freshness_message }} · Click to record balance" style="font-size: 0.73rem; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                                            <i class="fas fa-calendar-check"></i> No payments due · <u>Update</u>
+                                        </a>
+                                    {% endif %}
+
+                                    <span style="font-size: 0.72rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px;" title="Last recorded balance snapshot">
+                                        <i class="fas fa-history" style="font-size: 0.68rem;"></i> {{ a.time_ago }}
+                                    </span>
+                                </div>
+
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem 0.85rem; font-size: 0.78rem; color: var(--text-muted); padding-top: 0.35rem; border-top: 1px dashed var(--border-color);">
+                                    <span>Paid: £{{ a.already_paid }}</span>
+                                    <span>Pending: £{{ a.pending }}</span>
+                                    <span>Avail: £{{ a.adjusted_available }}</span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
 
                 <div style="margin-top: 0.75rem;">

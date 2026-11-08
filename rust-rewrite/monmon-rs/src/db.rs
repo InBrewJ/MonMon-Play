@@ -503,7 +503,7 @@ pub async fn list_balances(pool: &PgPool, user_id: &str) -> Result<Vec<Balance>,
 }
 
 pub async fn create_balance(pool: &PgPool, bal: &NewBalance) -> Result<Balance, sqlx::Error> {
-    let ts = bal.timestamp.unwrap_or_else(|| Utc::now().timestamp_millis());
+    let ts = bal.timestamp.unwrap_or_else(|| Utc::now().timestamp());
     sqlx::query_as::<_, Balance>(
         r#"
         INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
@@ -519,6 +519,14 @@ pub async fn create_balance(pool: &PgPool, bal: &NewBalance) -> Result<Balance, 
     .bind(&bal.user_id)
     .fetch_one(pool)
     .await
+}
+
+pub async fn delete_balance(pool: &PgPool, id: i64) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query("DELETE FROM balance WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
 }
 
 pub async fn find_erratic_balances(

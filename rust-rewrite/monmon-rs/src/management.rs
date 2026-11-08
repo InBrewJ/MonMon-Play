@@ -1,16 +1,19 @@
 use askama::Template;
 use axum::{
-    extract::{Form, State},
+    extract::{Form, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
+    Json,
 };
-use serde::Deserialize;
+use chrono::Datelike;
+use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use std::sync::Arc;
 
 use crate::AppState;
 use crate::db;
 use crate::models::{
-    Account, Balance, Incoming, NewAccount, NewBalance, NewIncoming, NewOutgoing, Outgoing,
+    Account, Incoming, NewAccount, NewBalance, NewIncoming, NewOutgoing, Outgoing,
 };
 use crate::spog::resolve_user_id;
 
@@ -63,14 +66,38 @@ pub struct OutgoingsTemplate {
 #[template(path = "incomings.html")]
 pub struct IncomingsTemplate {
     pub incomings: Vec<Incoming>,
+    pub accounts: Vec<Account>,
     pub editing: bool,
     pub editing_incoming: Option<Incoming>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BalanceViewDto {
+    pub id: i64,
+    pub value: f32,
+    pub timestamp: i64,
+    pub account_id: i64,
+    pub account_name: String,
+    pub account_type: String,
+    pub date_str: String,
 }
 
 #[derive(Template)]
 #[template(path = "balances.html")]
 pub struct BalancesTemplate {
-    pub balances: Vec<Balance>,
+    pub balances: Vec<BalanceViewDto>,
+    pub accounts: Vec<Account>,
+    pub chart_balances_json: String,
+    pub paydays_json: String,
+    pub default_account_ids_json: String,
+    pub selected_account_id: Option<i64>,
+    pub selected_account_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct BalancesQuery {
+    #[serde(alias = "accountId")]
+    pub account_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,6 +113,50 @@ pub struct AccountForm {
     pub interest_rate: Option<f32>,
 }
 
+fn deserialize_checkbox<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct CheckboxVisitor;
+    impl<'de> serde::de::Visitor<'de> for CheckboxVisitor {
+        type Value = Option<bool>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a boolean or string representation of a boolean ('on', 'true', '1')")
+        }
+        fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
+            Ok(Some(v))
+        }
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> {
+            match v.to_ascii_lowercase().as_str() {
+                "true" | "on" | "yes" | "1" => Ok(Some(true)),
+                "false" | "off" | "no" | "0" | "" => Ok(Some(false)),
+                _ => Ok(Some(false)),
+            }
+        }
+        fn visit_none<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_some<D2>(self, deserializer: D2) -> Result<Self::Value, D2::Error>
+        where
+            D2: serde::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(self)
+        }
+    }
+    deserializer.deserialize_option(CheckboxVisitor)
+}
+
+fn deserialize_empty_as_none<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    match opt.as_deref() {
+        None | Some("") => Ok(None),
+        Some(s) => s.trim().parse::<i64>().map(Some).map_err(serde::de::Error::custom),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct IncomingForm {
     pub id: Option<i64>,
@@ -94,7 +165,10 @@ pub struct IncomingForm {
     pub net_value: f32,
     #[serde(alias = "incomingMonthDay")]
     pub incoming_month_day: i32,
+    #[serde(default, alias = "payDay", deserialize_with = "deserialize_checkbox")]
     pub payday: Option<bool>,
+    #[serde(default, alias = "accountId", alias = "account_id", deserialize_with = "deserialize_empty_as_none")]
+    pub account_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,14 +178,15 @@ pub struct OutgoingForm {
     pub cost: f32,
     #[serde(alias = "outgoingDay")]
     pub outgoing_day: i32,
-    #[serde(alias = "accountId", alias = "account_id")]
+    #[serde(default, alias = "accountId", alias = "account_id", deserialize_with = "deserialize_empty_as_none")]
     pub account_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct BalanceForm {
-    #[serde(alias = "accountId")]
+    #[serde(alias = "accountId", alias = "account_id")]
     pub account_id: i64,
+    #[serde(alias = "value")]
     pub balance: f32,
 }
 
@@ -355,9 +430,13 @@ pub async fn get_incomings_page(
     let incomings = db::list_incomings(&state.pool, &user_id)
         .await
         .unwrap_or_default();
+    let accounts = db::list_accounts(&state.pool, &user_id)
+        .await
+        .unwrap_or_default();
 
     let tmpl = IncomingsTemplate {
         incomings,
+        accounts,
         editing: false,
         editing_incoming: None,
     };
@@ -378,11 +457,15 @@ pub async fn get_edit_incoming_page(
     let incomings = db::list_incomings(&state.pool, &user_id)
         .await
         .unwrap_or_default();
+    let accounts = db::list_accounts(&state.pool, &user_id)
+        .await
+        .unwrap_or_default();
     let editing_incoming = incomings.iter().find(|i| i.id == id).cloned();
     let editing = editing_incoming.is_some();
 
     let tmpl = IncomingsTemplate {
         incomings,
+        accounts,
         editing,
         editing_incoming,
     };
@@ -403,8 +486,8 @@ pub async fn post_update_incoming_form(
         gross_value: Some(form.net_value),
         incoming_month_day: form.incoming_month_day,
         user_id: Some(user_id),
-        account_id: None,
-        payday: form.payday,
+        account_id: form.account_id,
+        payday: Some(form.payday.unwrap_or(false)),
     };
     db::update_incoming(&state.pool, id, &update)
         .await
@@ -425,8 +508,8 @@ pub async fn post_update_incoming_form_direct(
             gross_value: Some(form.net_value),
             incoming_month_day: form.incoming_month_day,
             user_id: Some(user_id),
-            account_id: None,
-            payday: form.payday,
+            account_id: form.account_id,
+            payday: Some(form.payday.unwrap_or(false)),
         };
         db::update_incoming(&state.pool, id, &update)
             .await
@@ -446,10 +529,25 @@ pub async fn post_incoming_form(
         gross_value: Some(form.net_value),
         incoming_month_day: form.incoming_month_day,
         user_id,
-        account_id: None,
-        payday: form.payday,
+        account_id: form.account_id,
+        payday: Some(form.payday.unwrap_or(false)),
     };
     db::create_incoming(&state.pool, &new_inc)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Redirect::to("/myIncomings"))
+}
+
+pub async fn get_bin_incoming(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    if !is_authenticated(&headers) {
+        return Ok(Redirect::to("/login"));
+    }
+    db::archive_incoming(&state.pool, id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -459,16 +557,179 @@ pub async fn post_incoming_form(
 pub async fn get_balances_page(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(query): Query<BalancesQuery>,
 ) -> Result<Response, (StatusCode, String)> {
     if !is_authenticated(&headers) {
-        return Ok(crate::landing::auth_redirect(Some("/myBalances")).await.into_response());
+        let return_to = if let Some(acc_id) = query.account_id {
+            format!("/myBalances?accountId={}", acc_id)
+        } else {
+            "/myBalances".to_string()
+        };
+        return Ok(crate::landing::auth_redirect(Some(&return_to)).await.into_response());
     }
     let user_id = resolve_user_id(&state.pool, "demo").await;
-    let balances = db::list_balances(&state.pool, &user_id)
+
+    // 1. Fetch active accounts
+    let accounts = db::list_accounts(&state.pool, &user_id)
         .await
         .unwrap_or_default();
 
-    let tmpl = BalancesTemplate { balances };
+    let selected_account_id = query.account_id;
+    let selected_account_name = selected_account_id
+        .and_then(|id| accounts.iter().find(|a| a.id == id).map(|a| a.name.clone()));
+
+    // 2. Fetch balances with account details
+    let balance_rows = sqlx::query(
+        r#"
+        SELECT 
+            b.id,
+            b.value,
+            b.timestamp,
+            b.account_id,
+            COALESCE(a.name, 'Unknown Account') as account_name,
+            COALESCE(a.type, 'CURRENT') as account_type
+        FROM balance b
+        LEFT JOIN account a ON b.account_id = a.id
+        WHERE (b.user_id = $1 OR b.userid = $1 OR b."userId" = $1)
+        ORDER BY b.timestamp DESC, b.id DESC
+        "#,
+    )
+    .bind(&user_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut balances_dto = Vec::new();
+    let mut chart_points = Vec::new();
+
+    for r in &balance_rows {
+        let id: i64 = r.get("id");
+        let val: f32 = r.get("value");
+        let raw_ts: i64 = r.get("timestamp");
+        let acc_id: i64 = r.get("account_id");
+        let acc_name: String = r.get("account_name");
+        let acc_type: String = r.get("account_type");
+
+        let ts_sec = if raw_ts > 100_000_000_000 {
+            raw_ts / 1000
+        } else {
+            raw_ts
+        };
+
+        let dt = chrono::DateTime::from_timestamp(ts_sec, 0)
+            .unwrap_or_else(|| chrono::Utc::now());
+        let date_str = dt.format("%d %b %Y, %H:%M").to_string();
+
+        balances_dto.push(BalanceViewDto {
+            id,
+            value: val,
+            timestamp: ts_sec,
+            account_id: acc_id,
+            account_name: acc_name.clone(),
+            account_type: acc_type.clone(),
+            date_str: date_str.clone(),
+        });
+
+        chart_points.push(serde_json::json!({
+            "id": id,
+            "accountId": acc_id,
+            "accountName": acc_name,
+            "value": val,
+            "timestamp": ts_sec,
+            "dateStr": date_str
+        }));
+    }
+
+    let chart_balances_json = serde_json::to_string(&chart_points).unwrap_or_else(|_| "[]".to_string());
+
+    // 3. Compute paydays across the last 2 years up to 2 months into the future
+    let payday_day: i32 = sqlx::query(
+        r#"
+        SELECT COALESCE(
+            (SELECT incomingmonthday FROM incoming 
+             WHERE (userid = $1 OR user_id = $1) 
+               AND (archived IS NULL OR archived = false) 
+               AND (payday = true OR type = 'SALARY') 
+             ORDER BY id ASC LIMIT 1),
+            25
+        ) AS payday
+        "#,
+    )
+    .bind(&user_id)
+    .fetch_one(&state.pool)
+    .await
+    .map(|r| r.get::<i32, _>("payday"))
+    .unwrap_or(25);
+
+    let today = chrono::Local::now().date_naive();
+    let mut paydays = Vec::new();
+    let current_year = today.year();
+    let current_month = today.month() as i32;
+    for month_offset in -24..=2 {
+        let mut target_m = current_month + month_offset;
+        let mut target_y = current_year;
+        while target_m < 1 {
+            target_m += 12;
+            target_y -= 1;
+        }
+        while target_m > 12 {
+            target_m -= 12;
+            target_y += 1;
+        }
+        let m = target_m as u32;
+        let max_days = match m {
+            4 | 6 | 9 | 11 => 30,
+            2 => if (target_y % 4 == 0 && target_y % 100 != 0) || (target_y % 400 == 0) { 29 } else { 28 },
+            _ => 31,
+        };
+        let d = (payday_day as u32).min(max_days);
+        if let Some(date) = chrono::NaiveDate::from_ymd_opt(target_y, m, d) {
+            let dt = date.and_hms_opt(9, 0, 0).unwrap().and_local_timezone(chrono::Utc).unwrap();
+            let ts = dt.timestamp();
+            paydays.push(serde_json::json!({
+                "timestamp": ts,
+                "label": "Payday",
+                "dateStr": date.format("%d %b %Y").to_string()
+            }));
+        }
+    }
+    let paydays_json = serde_json::to_string(&paydays).unwrap_or_else(|_| "[]".to_string());
+
+    // 4. Default account IDs (Monthly Pot accounts, or all accounts)
+    let pot_accounts_rows = sqlx::query(
+        r#"
+        SELECT pa.account_id 
+        FROM pot p
+        JOIN pot_accounts pa ON pa.pot_id = p.id
+        WHERE (p.userid = $1 OR p.user_id = $1)
+          AND (p.archived IS NULL OR p.archived = false)
+          AND p.type = 'MONTHLY'
+        "#,
+    )
+    .bind(&user_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut default_account_ids: Vec<i64> = pot_accounts_rows
+        .into_iter()
+        .map(|r| r.get("account_id"))
+        .collect();
+
+    if default_account_ids.is_empty() {
+        default_account_ids = accounts.iter().map(|a| a.id).collect();
+    }
+    let default_account_ids_json = serde_json::to_string(&default_account_ids).unwrap_or_else(|_| "[]".to_string());
+
+    let tmpl = BalancesTemplate {
+        balances: balances_dto,
+        accounts,
+        chart_balances_json,
+        paydays_json,
+        default_account_ids_json,
+        selected_account_id,
+        selected_account_name,
+    };
     tmpl.render()
         .map(|html| Html(html).into_response())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -482,7 +743,7 @@ pub async fn post_balance_form(
     let new_bal = NewBalance {
         account_id: form.account_id,
         value: form.balance,
-        timestamp: Some(chrono::Utc::now().timestamp_millis()),
+        timestamp: Some(chrono::Utc::now().timestamp()),
         user_id,
     };
     db::create_balance(&state.pool, &new_bal)
@@ -490,6 +751,32 @@ pub async fn post_balance_form(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Redirect::to("/myBalances"))
+}
+
+pub async fn post_delete_balance(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    db::delete_balance(&state.pool, id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Redirect::to("/myBalances"))
+}
+
+pub async fn get_erratic_balances_api(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<crate::models::ErraticBalance>>, (StatusCode, String)> {
+    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let threshold: f32 = params
+        .get("threshold")
+        .and_then(|t| t.parse().ok())
+        .unwrap_or(500.0);
+    let list = db::find_erratic_balances(&state.pool, &user_id, threshold)
+        .await
+        .unwrap_or_default();
+    Ok(Json(list))
 }
 
 #[derive(Debug, Deserialize)]
