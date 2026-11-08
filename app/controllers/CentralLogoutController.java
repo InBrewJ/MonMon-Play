@@ -11,9 +11,10 @@ public class CentralLogoutController extends LogoutController {
     @Inject
     public CentralLogoutController(Config config) {
         this.config = config;
-        setDefaultUrl(config.getString("baseUrl") + "/?defaulturlafterlogoutafteridp");
+        setDefaultUrl(config.hasPath("baseUrl") ? config.getString("baseUrl") + "/" : "/");
+        setDestroySession(true);
         setLocalLogout(true);
         setCentralLogout(true);
-        setLogoutUrlPattern(config.getString("baseUrl") + "/.*");
+        setLogoutUrlPattern(".*");
     }
 }

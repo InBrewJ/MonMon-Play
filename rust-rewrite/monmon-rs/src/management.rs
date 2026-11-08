@@ -17,12 +17,19 @@ use crate::spog::resolve_user_id;
 pub fn is_authenticated(headers: &HeaderMap) -> bool {
     if let Some(cookie_hdr) = headers.get(axum::http::header::COOKIE) {
         if let Ok(cookie_str) = cookie_hdr.to_str() {
-            if cookie_str.contains("monmon_session=")
-                || cookie_str.contains("PLAY_SESSION=")
-                || cookie_str.contains("authenticated")
-                || cookie_str.contains("demo")
-            {
-                return true;
+            for part in cookie_str.split(';') {
+                let part = part.trim();
+                if let Some((name, val)) = part.split_once('=') {
+                    let val = val.trim();
+                    if !val.is_empty() {
+                        if name == "monmon_session" || name == "PLAY_SESSION" || name == "user_id" {
+                            return true;
+                        }
+                        if name == "authenticated" && val == "true" {
+                            return true;
+                        }
+                    }
+                }
             }
         }
     }

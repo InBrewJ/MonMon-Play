@@ -3,7 +3,38 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('New User Flow, Existing User Flow & Floating Action Buttons', () => {
 
-  test('New user sign up flow shows the onboarding hints modal', async ({ page }) => {
+  test('Welcome and Landing page matches the complete public design and feature set', async ({ page }) => {
+    // 1. Visit Welcome/Landing Page
+    const res = await page.goto('/');
+    expect(res?.status()).toBe(200);
+
+    // 2. SEO title matches Java landing page
+    await expect(page).toHaveTitle(/MonMon — Intelligent Single-Pane-of-Glass Personal Finance & NomMon Meal Planning/);
+
+    // 3. Hero section headlines and action buttons
+    const heroTitle = page.locator('h1').first();
+    await expect(heroTitle).toContainText(/Master your cashflow/i);
+
+    await expect(page.locator('.hero-cta-group a[href="/signup"]')).toBeVisible();
+    await expect(page.locator('.hero-cta-group a[href="/login"]')).toBeVisible();
+    await expect(page.locator('.hero-cta-group a[href="#what-is-nommon"]')).toBeVisible();
+
+    // 4. Feature showcase sections
+    await expect(page.locator('h2:has-text("What is MonMon?")')).toBeVisible();
+    await expect(page.locator('h2:has-text("What is NomMon?")')).toBeVisible();
+    await expect(page.locator('h2:has-text("Meet Ed")')).toBeVisible();
+
+    // 5. Theme toggle button on landing page works
+    const themeBtn = page.locator('#landing-theme-toggle, #theme-toggle').first();
+    await expect(themeBtn).toBeVisible();
+    const htmlEl = page.locator('html');
+    const initialTheme = await htmlEl.getAttribute('data-theme');
+    await themeBtn.click();
+    const newTheme = await htmlEl.getAttribute('data-theme');
+    expect(newTheme).not.toEqual(initialTheme);
+  });
+
+  test('New user sign up flow shows onboarding hints modal AND logging out terminates session', async ({ page }) => {
     // 1. Visit Landing Page
     await page.goto('/');
     await expect(page).toHaveTitle(/MonMon/);
@@ -44,9 +75,26 @@ test.describe('New User Flow, Existing User Flow & Floating Action Buttons', () 
     await expect(dismissBtn).toBeVisible();
     await dismissBtn.click();
     await expect(hintsModal).not.toBeVisible();
+
+    // 9. Open Navigation Drawer and perform Logout
+    const navToggle = page.locator('#nav-toggle');
+    await expect(navToggle).toBeVisible();
+    await navToggle.click();
+
+    const logoutLink = page.locator('.drawer-logout a[href="/centralLogout"]');
+    await expect(logoutLink).toBeVisible();
+    await logoutLink.click();
+
+    // 10. Verify redirect back to Landing page
+    await page.waitForURL(url => url.pathname === '/' || url.pathname === '');
+    expect(page.url()).not.toContain('/spog');
+
+    // 11. Verify session is destroyed: accessing protected route redirects to login / auth provider
+    await page.goto('/spog');
+    expect(page.url()).toMatch(/auth|login/);
   });
 
-  test('Existing user sign in flow does NOT show the onboarding hints modal', async ({ page }) => {
+  test('Existing user sign in flow does NOT show hints modal AND logging out terminates session', async ({ page }) => {
     // 1. Visit Landing Page
     await page.goto('/');
 
@@ -74,6 +122,23 @@ test.describe('New User Flow, Existing User Flow & Floating Action Buttons', () 
     // 7. Seeded cards and metrics are visible
     const metricsGrid = page.locator('.spog-layout-grid, #spog-card-pot').first();
     await expect(metricsGrid).toBeVisible();
+
+    // 8. Open Drawer and perform Logout
+    const navToggle = page.locator('#nav-toggle');
+    await expect(navToggle).toBeVisible();
+    await navToggle.click();
+
+    const logoutLink = page.locator('.drawer-logout a[href="/centralLogout"]');
+    await expect(logoutLink).toBeVisible();
+    await logoutLink.click();
+
+    // 9. Verify redirect back to Landing page
+    await page.waitForURL(url => url.pathname === '/' || url.pathname === '');
+    expect(page.url()).not.toContain('/spog');
+
+    // 10. Verify session is destroyed: accessing protected route redirects to login / auth provider
+    await page.goto('/myAccounts');
+    expect(page.url()).toMatch(/auth|login/);
   });
 
   test('SPOG floating buttons: Can I Afford This? and Ask Ed float on bottom right', async ({ page }) => {

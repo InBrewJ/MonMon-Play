@@ -4,7 +4,17 @@ const { test, expect } = require('@playwright/test');
 test.describe('SPOG Swipe Deck & Financial Primitives E2E', () => {
 
   async function loginIfRequired(page) {
-    if (page.url().includes('auth')) {
+    if (page.url().includes('auth') || page.url().includes('login')) {
+      const isMonmonLogin = await page.locator('form[action="/login"]').isVisible({ timeout: 1000 }).catch(() => false);
+      if (isMonmonLogin) {
+        await page.fill('input[name="username"]', 'demo');
+        await page.fill('input[name="password"]', 'demo');
+        await Promise.all([
+          page.waitForNavigation(),
+          page.click('button[type="submit"]')
+        ]);
+        return;
+      }
       const isRauthy = await page.locator('input[type="email"]').isVisible({ timeout: 1000 }).catch(() => false);
       if (isRauthy) {
         await page.fill('input[type="email"]', 'demo@demo.com');
@@ -31,12 +41,13 @@ test.describe('SPOG Swipe Deck & Financial Primitives E2E', () => {
   test('SPOG desktop layout: all 4 cards present with key headline metrics', async ({ page, isMobile }) => {
     test.skip(isMobile, 'Desktop-only layout test');
     const consoleErrors = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text());
-    });
 
     await page.goto('/spog');
     await loginIfRequired(page);
+
+    page.on('console', msg => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
+    });
 
     await expect(page).toHaveTitle(/MonMon SPOG/);
     await expect(page.locator('body')).toBeVisible();

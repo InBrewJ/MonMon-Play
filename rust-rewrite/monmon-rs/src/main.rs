@@ -119,6 +119,7 @@ async fn main() {
         .route("/login", get(get_login_page).post(login_form_handler))
         .route("/signup", get(get_signup_page).post(signup_form_handler))
         .route("/logout", get(logout_handler))
+        .route("/centralLogout", get(logout_handler))
         .route("/callback", get(callback_handler))
         // Ed Says AI Financial Copilot
         .route("/api/ed-says", get(ed::ed_says_spog_api))
@@ -627,9 +628,10 @@ async fn login_form_handler(
 async fn logout_handler() -> Response {
     let mut response = axum::response::Redirect::to("/").into_response();
     let headers = response.headers_mut();
-    headers.append(axum::http::header::SET_COOKIE, "user_id=; Path=/; Max-Age=0".parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, "monmon_session=; Path=/; Max-Age=0".parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, "authenticated=; Path=/; Max-Age=0".parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, "user_id=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, "monmon_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, "authenticated=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, "PLAY_SESSION=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
     response
 }
 
@@ -679,7 +681,14 @@ async fn get_spog_page(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Query(query): Query<std::collections::HashMap<String, String>>,
-) -> Result<Html<String>, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
+    if !crate::management::is_authenticated(&headers)
+        && !query.contains_key("userId")
+        && !query.contains_key("user_id")
+    {
+        return Ok(crate::landing::auth_redirect(Some("/spog")).await.into_response());
+    }
+
     let mut user_id = query
         .get("userId")
         .or_else(|| query.get("user_id"))
@@ -737,7 +746,7 @@ async fn get_spog_page(
     };
 
     tmpl.render()
-        .map(Html)
+        .map(|h| Html(h).into_response())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
