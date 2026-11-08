@@ -389,6 +389,10 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
     await page.goto('/myOutgoings');
     await expect(page).toHaveTitle(/MonMon Outgoings/);
 
+    // Ensure no raw JS source leaked into rendered body text
+    const bodyText = await page.innerText('body');
+    expect(bodyText).not.toContain('function openPauseModal');
+
     // Filter tabs should exist on the page
     const tabsBar = page.locator('.outgoings-tabs-bar');
     await expect(tabsBar).toBeVisible();
