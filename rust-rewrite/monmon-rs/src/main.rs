@@ -3,6 +3,7 @@ mod bank_sync;
 mod db;
 mod dig;
 mod landing;
+mod management;
 mod models;
 mod net_worth;
 mod nommon;
@@ -89,10 +90,10 @@ async fn main() {
         .route("/settings/approveUser/:id", post(admin::approve_user_handler))
         .route("/settings/rejectUser/:id", post(admin::reject_user_handler))
         .route("/waitinglist", get(admin::get_waiting_list))
-        .route("/myOutgoings", get(landing::auth_redirect))
-        .route("/myAccounts", get(landing::auth_redirect))
-        .route("/myIncomings", get(landing::auth_redirect))
-        .route("/myBalances", get(landing::auth_redirect))
+        .route("/myOutgoings", get(management::get_outgoings_page))
+        .route("/myAccounts", get(management::get_accounts_page))
+        .route("/myIncomings", get(management::get_incomings_page))
+        .route("/myBalances", get(management::get_balances_page))
         // Accounts
         .route(
             "/internal/accounts",

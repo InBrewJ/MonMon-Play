@@ -39,7 +39,7 @@ test.describe('Settings and Management Views E2E', () => {
     }
 
     expect(res?.status()).toBe(200);
-    await expect(page.locator('.desktop-view, .mobile-cards-view, .w3-content')).toBeVisible();
+    await expect(page.locator('.w3-content').first()).toBeVisible();
   });
 
   test('Outgoings management page renders list and pause action', async ({ page }) => {

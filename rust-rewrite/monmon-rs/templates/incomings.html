@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MonMon Incomings</title>
+    <link rel="stylesheet" href="/assets/stylesheets/w3.css">
+    <link rel="stylesheet" href="/assets/stylesheets/main.css">
+    <link rel="stylesheet" href="/assets/stylesheets/spog-deck.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="w3-light-grey">
+    <header class="w3-top">
+        <div class="w3-bar w3-white w3-padding w3-card" style="letter-spacing:1px; display:flex; align-items:center; justify-content:space-between;">
+            <a href="/spog" class="w3-bar-item w3-button" style="font-weight:800; font-size:1.15rem; color:var(--primary, #4f46e5); display:inline-flex; align-items:center; gap:8px;">
+                <img src="/assets/images/monmon-monster.svg" alt="MonMon" style="width:24px; height:24px;"> MonMon
+            </a>
+            <div class="w3-right">
+                <a href="/spog" class="w3-bar-item w3-button">SPOG</a>
+                <a href="/myAccounts" class="w3-bar-item w3-button">Accounts</a>
+                <a href="/myOutgoings" class="w3-bar-item w3-button">Outgoings</a>
+                <a href="/myIncomings" class="w3-bar-item w3-button active" style="font-weight:700;">Incomings</a>
+                <a href="/settings" class="w3-bar-item w3-button"><i class="fas fa-cog"></i></a>
+            </div>
+        </div>
+    </header>
+
+    <main class="w3-content" style="max-width: 1200px; margin-top: 80px; padding: 1rem 1rem 3rem 1rem;">
+        <div class="w3-card w3-padding w3-white w3-round" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: #475569;">
+                    <i class="fas fa-money-bill-wave" style="color: #10b981; margin-right: 6px;"></i> Incomings ({{ incomings.len() }})
+                </div>
+            </div>
+
+            <!-- Desktop View -->
+            <div class="desktop-view" style="overflow-x: auto;">
+                <table class="w3-table w3-striped">
+                    <thead>
+                        <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
+                            <th>Name</th>
+                            <th>Net Value</th>
+                            <th>Payday</th>
+                            <th>Day of Month</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if incomings.is_empty() %}
+                            <tr><td colspan="4" style="text-align: center; color: #64748b; padding: 2rem;">No incomings configured.</td></tr>
+                        {% else %}
+                            {% for inc in incomings %}
+                                <tr id="incoming-{{ inc.id }}">
+                                    <td><b>{{ inc.name }}</b></td>
+                                    <td style="color: #10b981; font-weight: 600;">£{{ inc.net_value }}</td>
+                                    <td>
+                                        {% if inc.payday.unwrap_or(false) %}
+                                            <span class="badge-pill" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Primary Payday</span>
+                                        {% else %}
+                                            <span class="badge-pill" style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Secondary</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>Day {{ inc.incoming_month_day }}</td>
+                                </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Mobile View -->
+            <div class="mobile-cards-view" style="display: none;">
+                {% for inc in incomings %}
+                    <div class="item-card" id="card-incoming-{{ inc.id }}" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                        <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div class="item-card-title" style="font-weight: 700; color: #1e293b;">{{ inc.name }}</div>
+                            <span class="badge-pill" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.75rem;">Day {{ inc.incoming_month_day }}</span>
+                        </div>
+                        <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem;">
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Net</div>
+                                <div class="stat-cell-val" style="font-weight: 600; color: #10b981;">£{{ inc.net_value }}</div>
+                            </div>
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Payday</div>
+                                <div class="stat-cell-val">{% if inc.payday.unwrap_or(false) %}Yes{% else %}No{% endif %}</div>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </main>
+
+    <script>
+        if (window.innerWidth <= 768) {
+            var mob = document.querySelector('.mobile-cards-view');
+            var desk = document.querySelector('.desktop-view');
+            if (mob) mob.style.display = 'block';
+            if (desk) desk.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

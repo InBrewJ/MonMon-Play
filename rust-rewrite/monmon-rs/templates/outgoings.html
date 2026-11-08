@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MonMon Outgoings</title>
+    <link rel="stylesheet" href="/assets/stylesheets/w3.css">
+    <link rel="stylesheet" href="/assets/stylesheets/main.css">
+    <link rel="stylesheet" href="/assets/stylesheets/spog-deck.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="w3-light-grey">
+    <header class="w3-top">
+        <div class="w3-bar w3-white w3-padding w3-card" style="letter-spacing:1px; display:flex; align-items:center; justify-content:space-between;">
+            <a href="/spog" class="w3-bar-item w3-button" style="font-weight:800; font-size:1.15rem; color:var(--primary, #4f46e5); display:inline-flex; align-items:center; gap:8px;">
+                <img src="/assets/images/monmon-monster.svg" alt="MonMon" style="width:24px; height:24px;"> MonMon
+            </a>
+            <div class="w3-right">
+                <a href="/spog" class="w3-bar-item w3-button">SPOG</a>
+                <a href="/myAccounts" class="w3-bar-item w3-button">Accounts</a>
+                <a href="/myOutgoings" class="w3-bar-item w3-button active" style="font-weight:700;">Outgoings</a>
+                <a href="/myIncomings" class="w3-bar-item w3-button">Incomings</a>
+                <a href="/settings" class="w3-bar-item w3-button"><i class="fas fa-cog"></i></a>
+            </div>
+        </div>
+    </header>
+
+    <main class="w3-content" style="max-width: 1200px; margin-top: 80px; padding: 1rem 1rem 3rem 1rem;">
+        <div class="w3-card w3-padding w3-white w3-round" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: #475569;">
+                    <i class="fas fa-credit-card" style="color: #4f46e5; margin-right: 6px;"></i> Recurring Outgoings ({{ outgoings.len() }})
+                </div>
+            </div>
+
+            <!-- Desktop View -->
+            <div class="desktop-view" style="overflow-x: auto;">
+                <table class="w3-table w3-striped">
+                    <thead>
+                        <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
+                            <th>Name</th>
+                            <th>Cost</th>
+                            <th>Day of Month</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th style="text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if outgoings.is_empty() %}
+                            <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No outgoings configured.</td></tr>
+                        {% else %}
+                            {% for o in outgoings %}
+                                <tr id="outgoing-{{ o.id }}">
+                                    <td class="col-name"><b>{{ o.name }}</b></td>
+                                    <td>£{{ o.cost }}</td>
+                                    <td>Day {{ o.outgoing_day }}</td>
+                                    <td>
+                                        {% if o.rent.unwrap_or(false) %}
+                                            <span class="badge-pill" style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Rent</span>
+                                        {% else if o.bill.unwrap_or(false) %}
+                                            <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Bill</span>
+                                        {% else %}
+                                            <span class="badge-pill" style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Subscription</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if o.paused.unwrap_or(false) %}
+                                            <span class="badge-pill" style="background:#fee2e2; color:#991b1b; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Paused</span>
+                                        {% else %}
+                                            <span class="badge-pill" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Active</span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <a href="javascript:void(0)" onclick="openPauseModal('{{ o.id }}', '{{ o.name }}', {{ o.cost }})" class="btn-action" title="Pause outgoing" style="color: #4f46e5; text-decoration: none; font-weight: 600; font-size: 0.85rem;">
+                                            <i class="fas fa-pause-circle"></i> Pause
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Mobile Stacked Action Cards View -->
+            <div class="mobile-cards-view" style="display: none;">
+                {% for o in outgoings %}
+                    <div class="item-card" id="card-outgoing-{{ o.id }}" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                        <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div class="item-card-title col-name" style="font-weight: 700; color: #1e293b;"><b>{{ o.name }}</b></div>
+                            <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem;">Day {{ o.outgoing_day }}</span>
+                        </div>
+                        <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; margin-bottom: 10px;">
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Cost</div>
+                                <div class="stat-cell-val" style="font-weight: 600; color: #ef4444;">£{{ o.cost }}</div>
+                            </div>
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Status</div>
+                                <div class="stat-cell-val">{% if o.paused.unwrap_or(false) %}Paused{% else %}Active{% endif %}</div>
+                            </div>
+                        </div>
+                        <div class="item-card-actions" style="border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                            <button type="button" onclick="openPauseModal('{{ o.id }}', '{{ o.name }}', {{ o.cost }})" class="btn-action" style="padding: 4px 12px; background: #e0e7ff; color: #3730a3; border: none; border-radius: 4px; font-size: 0.82rem; cursor: pointer;">
+                                <i class="fas fa-pause"></i> Pause
+                            </button>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </main>
+
+    <!-- Pause Outgoing Modal -->
+    <div id="pause-outgoing-modal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100;">
+        <div class="modal-content-card" style="background: #fff; padding: 1.5rem; border-radius: 12px; max-width: 450px; width: 90%; position: relative;">
+            <button type="button" onclick="closePauseModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; cursor: pointer;">&times;</button>
+            <div style="font-weight: 700; font-size: 1.1rem; color: #1e293b; margin-bottom: 1rem;">
+                <i class="fas fa-pause-circle" style="color: #f59e0b; margin-right: 6px;"></i> Pause Outgoing
+            </div>
+            <div style="margin-bottom: 1rem; font-size: 0.95rem;">
+                Pause <b id="pause-outgoing-name">Outgoing</b> (<span id="pause-outgoing-cost">£0.00</span>)?
+            </div>
+            <form id="pause-outgoing-form" method="POST" action="">
+                <div style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Reason (optional)</label>
+                    <input id="pause-reason" name="reason" type="text" placeholder="e.g. Free trial, holiday pause" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" onclick="closePauseModal()" style="padding: 8px 16px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">Cancel</button>
+                    <button type="submit" style="padding: 8px 16px; background: #f59e0b; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">Confirm Pause</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openPauseModal(id, name, cost) {
+            document.getElementById('pause-outgoing-name').innerText = name;
+            document.getElementById('pause-outgoing-cost').innerText = '£' + cost;
+            document.getElementById('pause-outgoing-form').action = '/internal/outgoings/' + id + '/pause';
+            document.getElementById('pause-outgoing-modal').style.display = 'flex';
+        }
+        function closePauseModal() {
+            document.getElementById('pause-outgoing-modal').style.display = 'none';
+        }
+        if (window.innerWidth <= 768) {
+            var mob = document.querySelector('.mobile-cards-view');
+            var desk = document.querySelector('.desktop-view');
+            if (mob) mob.style.display = 'block';
+            if (desk) desk.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

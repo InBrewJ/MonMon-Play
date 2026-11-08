@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MonMon Accounts</title>
+    <link rel="stylesheet" href="/assets/stylesheets/w3.css">
+    <link rel="stylesheet" href="/assets/stylesheets/main.css">
+    <link rel="stylesheet" href="/assets/stylesheets/spog-deck.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="w3-light-grey">
+    <header class="w3-top">
+        <div class="w3-bar w3-white w3-padding w3-card" style="letter-spacing:1px; display:flex; align-items:center; justify-content:space-between;">
+            <a href="/spog" class="w3-bar-item w3-button" style="font-weight:800; font-size:1.15rem; color:var(--primary, #4f46e5); display:inline-flex; align-items:center; gap:8px;">
+                <img src="/assets/images/monmon-monster.svg" alt="MonMon" style="width:24px; height:24px;"> MonMon
+            </a>
+            <div class="w3-right">
+                <a href="/spog" class="w3-bar-item w3-button">SPOG</a>
+                <a href="/myAccounts" class="w3-bar-item w3-button active" style="font-weight:700;">Accounts</a>
+                <a href="/myOutgoings" class="w3-bar-item w3-button">Outgoings</a>
+                <a href="/myIncomings" class="w3-bar-item w3-button">Incomings</a>
+                <a href="/settings" class="w3-bar-item w3-button"><i class="fas fa-cog"></i></a>
+            </div>
+        </div>
+    </header>
+
+    <main class="w3-content" style="max-width: 1200px; margin-top: 80px; padding: 1rem 1rem 3rem 1rem;">
+        <div class="w3-card w3-padding w3-white w3-round" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: #475569;">
+                    <i class="fas fa-university" style="color: #4f46e5; margin-right: 6px;"></i> Your Bank Accounts ({{ accounts.len() }})
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="/bank/sync#statement-upload" class="btn-action" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: #ef4444; color: #fff; border: none; border-radius: 6px; font-weight: 600; font-size: 0.88rem; text-decoration: none;">
+                        <i class="fas fa-file-pdf"></i> Upload Statement
+                    </a>
+                    <button type="button" class="btn-action" onclick="openAccountModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: #4f46e5; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
+                        <i class="fas fa-plus"></i> Add Account
+                    </button>
+                </div>
+            </div>
+
+            <!-- Desktop View -->
+            <div class="desktop-view" style="overflow-x: auto;">
+                <table class="w3-table w3-striped">
+                    <thead>
+                        <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
+                            <th>Name</th>
+                            <th>Nickname</th>
+                            <th>Type</th>
+                            <th>Limit / Drawdown</th>
+                            <th>Interest</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if accounts.is_empty() %}
+                            <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No accounts found. Click <b>+ Add Account</b> above to get started.</td></tr>
+                        {% else %}
+                            {% for a in accounts %}
+                                <tr id="account-{{ a.id }}">
+                                    <td><b>{{ a.name }}</b></td>
+                                    <td>{{ a.nickname.as_deref().unwrap_or("-") }}</td>
+                                    <td><span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.8rem;">{{ a.account_type }}</span></td>
+                                    <td>£{{ a.account_limit.unwrap_or(0.0) }}</td>
+                                    <td>{{ a.interest_rate.unwrap_or(0.0) }}%</td>
+                                    <td style="text-align: right;">
+                                        <form method="POST" action="/internal/accounts/{{ a.id }}/archive" style="display: inline;">
+                                            <button type="submit" class="btn-action btn-delete" style="background:none; border:none; color:#ef4444; cursor:pointer;" onclick="return confirm('Archive account?');">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Mobile Stacked Action Cards View -->
+            <div class="mobile-cards-view" style="display: none;">
+                {% for a in accounts %}
+                    <div class="item-card" id="card-account-{{ a.id }}" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                        <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div class="item-card-title" style="font-weight: 700; color: #1e293b;">{{ a.name }}</div>
+                            <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem;">{{ a.account_type }}</span>
+                        </div>
+                        <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 0.85rem; margin-bottom: 10px;">
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Limit</div>
+                                <div class="stat-cell-val" style="font-weight: 600;">£{{ a.account_limit.unwrap_or(0.0) }}</div>
+                            </div>
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Interest</div>
+                                <div class="stat-cell-val" style="font-weight: 600;">{{ a.interest_rate.unwrap_or(0.0) }}%</div>
+                            </div>
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Nickname</div>
+                                <div class="stat-cell-val" style="font-weight: 600;">{{ a.nickname.as_deref().unwrap_or("-") }}</div>
+                            </div>
+                        </div>
+                        <div class="item-card-actions" style="display: flex; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                            <a href="/bank/sync?uploadAccount={{ a.id }}#statement-upload" class="btn-action" style="padding: 4px 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.8rem; text-decoration: none;"><i class="fas fa-file-pdf"></i> Statement</a>
+                            <form method="POST" action="/internal/accounts/{{ a.id }}/archive" style="display: inline;">
+                                <button type="submit" class="btn-action btn-delete" style="padding: 4px 10px; background: #f1f5f9; color: #ef4444; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.8rem; cursor: pointer;"><i class="fas fa-trash-alt"></i> Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Dialog for Add Account -->
+    <div id="account-modal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100;">
+        <div class="modal-content-card" style="background: #fff; padding: 1.5rem; border-radius: 12px; max-width: 500px; width: 90%; position: relative;">
+            <button type="button" onclick="closeAccountModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; cursor: pointer;">&times;</button>
+            <div style="font-weight: 700; font-size: 1.1rem; color: #1e293b; margin-bottom: 1rem;">
+                <i class="fas fa-plus-circle" style="color: #4f46e5; margin-right: 6px;"></i> Add New Account
+            </div>
+            <form id="account-modal-form" method="POST" action="/internal/accounts">
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Account Name</label>
+                    <input id="acc-name" name="name" type="text" required style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Nickname</label>
+                    <input id="acc-nickname" name="nickname" type="text" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Account Type</label>
+                    <select id="type" name="type" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                        <option value="CURRENT">Current Account</option>
+                        <option value="SHORT_TERM_SAVINGS">Savings Account</option>
+                        <option value="CREDIT">Credit Card</option>
+                        <option value="LOAN">Loan</option>
+                        <option value="MORTGAGE">Mortgage</option>
+                        <option value="PENSION">Pension</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Limit / Balance (£)</label>
+                    <input id="availableLimit" name="availableLimit" type="number" step="0.01" value="0.0" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" onclick="closeAccountModal()" style="padding: 8px 16px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">Cancel</button>
+                    <button type="submit" style="padding: 8px 16px; background: #4f46e5; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">Create Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openAccountModal() {
+            document.getElementById('account-modal').style.display = 'flex';
+        }
+        function closeAccountModal() {
+            document.getElementById('account-modal').style.display = 'none';
+        }
+        if (window.innerWidth <= 768) {
+            var mob = document.querySelector('.mobile-cards-view');
+            var desk = document.querySelector('.desktop-view');
+            if (mob) mob.style.display = 'block';
+            if (desk) desk.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
