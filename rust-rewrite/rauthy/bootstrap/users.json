@@ -4,7 +4,7 @@
     "email": "admin@monmon.local",
     "preferred_username": "admin",
     "given_name": "admin",
-    "family_name": "",
+    "family_name": "User",
     "password": {
       "Plain": "G5YTPjgB3bbWrvrkbPPcpcmXPkupYC2QRVA"
     },
@@ -114,7 +114,7 @@
   {
     "id": "6d1c304f8ebe4620bd284d56",
     "email": "rorywebber1000@gmail.com",
-    "preferred_username": "rorywebber1000@gmail.com",
+    "preferred_username": "rorywebber1000",
     "given_name": "Rory",
     "family_name": "Webber",
     "password": {

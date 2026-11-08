@@ -1,5 +1,5 @@
 {
-  "migrated_at": "2026-11-08T21:25:29.535593+00:00",
+  "migrated_at": "2026-11-08T21:31:40.617139+00:00",
   "keycloak_db": "keycloak_live",
   "monmon_db": "monmon_live",
   "total_users": 16,
@@ -118,8 +118,11 @@
     }
   ],
   "user_access_sync": {
-    "inserted": [
+    "inserted": [],
+    "skipped": [
       "admin",
+      "inbrewj",
+      "demo",
       "demo2",
       "caity",
       "demo3",
@@ -131,11 +134,7 @@
       "demo6",
       "demo10",
       "demoinflow",
-      "newguy1000"
-    ],
-    "skipped": [
-      "inbrewj",
-      "demo",
+      "newguy1000",
       "waitinglist"
     ]
   }

@@ -2,7 +2,7 @@ use crate::spog::{calculate_spog, resolve_user_id};
 use crate::AppState;
 use askama::Template;
 use axum::{
-    extract::{Form, Path, Query, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
 };
@@ -64,21 +64,153 @@ pub struct MonthlyPotTemplate {
     pub monthly_pot_total_balance: f32,
 }
 
-#[derive(Debug, Deserialize)]
+fn deserialize_single_or_vec_i64<'de, D>(deserializer: D) -> Result<Option<Vec<i64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Helper {
+        Seq(Vec<i64>),
+        SeqStr(Vec<String>),
+        Single(i64),
+        SingleStr(String),
+    }
+
+    let opt = Option::<Helper>::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(Helper::Seq(v)) => Ok(Some(v)),
+        Some(Helper::SeqStr(v)) => {
+            let parsed = v.into_iter().filter_map(|s| s.trim().parse::<i64>().ok()).collect();
+            Ok(Some(parsed))
+        }
+        Some(Helper::Single(i)) => Ok(Some(vec![i])),
+        Some(Helper::SingleStr(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                let parsed = trimmed
+                    .split(',')
+                    .filter_map(|p| p.trim().parse::<i64>().ok())
+                    .collect();
+                Ok(Some(parsed))
+            }
+        }
+    }
+}
+
+fn deserialize_empty_as_none_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NumOrStr {
+        Num(i64),
+        Str(String),
+    }
+
+    let opt = Option::<NumOrStr>::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(NumOrStr::Num(i)) => Ok(Some(i)),
+        Some(NumOrStr::Str(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                trimmed.parse::<i64>().map(Some).map_err(serde::de::Error::custom)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct PotFormPayload {
+    #[serde(default, deserialize_with = "deserialize_single_or_vec_i64")]
     pub accounts: Option<Vec<i64>>,
     pub preset: Option<String>,
     pub plan_name: Option<String>,
     pub sections_json: Option<String>,
-    #[serde(alias = "foodAccountId")]
+    #[serde(default, alias = "foodAccountId", deserialize_with = "deserialize_empty_as_none_i64")]
     pub food_account_id: Option<i64>,
-    #[serde(alias = "funAccountId")]
+    #[serde(default, alias = "funAccountId", deserialize_with = "deserialize_empty_as_none_i64")]
     pub fun_account_id: Option<i64>,
-    #[serde(alias = "fuelAccountId")]
+    #[serde(default, alias = "fuelAccountId", deserialize_with = "deserialize_empty_as_none_i64")]
     pub fuel_account_id: Option<i64>,
-    #[serde(alias = "transportAccountId")]
+    #[serde(default, alias = "transportAccountId", deserialize_with = "deserialize_empty_as_none_i64")]
     pub transport_account_id: Option<i64>,
     pub save_template: Option<String>,
+}
+
+impl PotFormPayload {
+    pub fn from_form_body(body: &str) -> Self {
+        let trimmed = body.trim();
+        if trimmed.starts_with('{') {
+            if let Ok(p) = serde_json::from_str::<PotFormPayload>(trimmed) {
+                return p;
+            }
+        }
+
+        let mut payload = PotFormPayload::default();
+        let mut accounts = Vec::new();
+
+        for (key, val) in form_urlencoded::parse(body.as_bytes()) {
+            let key = key.as_ref();
+            let val = val.trim();
+            match key {
+                "accounts" | "accounts[]" => {
+                    for part in val.split(',') {
+                        let part = part.trim();
+                        if let Ok(id) = part.parse::<i64>() {
+                            accounts.push(id);
+                        }
+                    }
+                }
+                "preset" => {
+                    if !val.is_empty() {
+                        payload.preset = Some(val.to_string());
+                    }
+                }
+                "plan_name" | "planName" => {
+                    if !val.is_empty() {
+                        payload.plan_name = Some(val.to_string());
+                    }
+                }
+                "sections_json" | "sectionsJson" => {
+                    if !val.is_empty() {
+                        payload.sections_json = Some(val.to_string());
+                    }
+                }
+                "food_account_id" | "foodAccountId" => {
+                    payload.food_account_id = val.parse::<i64>().ok();
+                }
+                "fun_account_id" | "funAccountId" => {
+                    payload.fun_account_id = val.parse::<i64>().ok();
+                }
+                "fuel_account_id" | "fuelAccountId" => {
+                    payload.fuel_account_id = val.parse::<i64>().ok();
+                }
+                "transport_account_id" | "transportAccountId" => {
+                    payload.transport_account_id = val.parse::<i64>().ok();
+                }
+                "save_template" | "saveTemplate" => {
+                    if !val.is_empty() {
+                        payload.save_template = Some(val.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !accounts.is_empty() {
+            payload.accounts = Some(accounts);
+        }
+
+        payload
+    }
 }
 
 pub fn get_user_id_from_headers_or_default(headers: &HeaderMap, query_uid: Option<&str>) -> String {
@@ -397,8 +529,9 @@ pub async fn get_monthly_pot_page(
 pub async fn post_pot_form(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-    Form(payload): Form<PotFormPayload>,
+    body: String,
 ) -> Result<Redirect, (StatusCode, String)> {
+    let payload = PotFormPayload::from_form_body(&body);
     let user_id = get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &user_id).await;
     let now = chrono::Utc::now().timestamp();
@@ -598,4 +731,54 @@ pub async fn get_bin_pot(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Redirect::to("/myMonthlyPot"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_single_account_string_deserialization() {
+        // User's exact error case: "invalid type: string \"18\", expected a sequence"
+        let body = "accounts=18&preset=custom&plan_name=Essentials&food_account_id=5&fun_account_id=";
+        let payload = PotFormPayload::from_form_body(body);
+        assert_eq!(payload.accounts, Some(vec![18]));
+        assert_eq!(payload.preset.as_deref(), Some("custom"));
+        assert_eq!(payload.plan_name.as_deref(), Some("Essentials"));
+        assert_eq!(payload.food_account_id, Some(5));
+        assert_eq!(payload.fun_account_id, None);
+    }
+
+    #[test]
+    fn test_multiple_accounts_deserialization() {
+        let body = "accounts=18&accounts=19&accounts=20&preset=gruelling";
+        let payload = PotFormPayload::from_form_body(body);
+        assert_eq!(payload.accounts, Some(vec![18, 19, 20]));
+        assert_eq!(payload.preset.as_deref(), Some("gruelling"));
+    }
+
+    #[test]
+    fn test_comma_separated_accounts_deserialization() {
+        let body = "accounts=18%2C19%2C20&preset=custom";
+        let payload = PotFormPayload::from_form_body(body);
+        assert_eq!(payload.accounts, Some(vec![18, 19, 20]));
+    }
+
+    #[test]
+    fn test_empty_accounts_and_selects() {
+        let body = "preset=none&food_account_id=&fuel_account_id=";
+        let payload = PotFormPayload::from_form_body(body);
+        assert_eq!(payload.accounts, None);
+        assert_eq!(payload.food_account_id, None);
+        assert_eq!(payload.fuel_account_id, None);
+    }
+
+    #[test]
+    fn test_json_payload_compatibility() {
+        let json = r#"{"accounts":[18,19],"preset":"custom","plan_name":"My Plan","food_account_id":18}"#;
+        let payload = PotFormPayload::from_form_body(json);
+        assert_eq!(payload.accounts, Some(vec![18, 19]));
+        assert_eq!(payload.plan_name.as_deref(), Some("My Plan"));
+        assert_eq!(payload.food_account_id, Some(18));
+    }
 }

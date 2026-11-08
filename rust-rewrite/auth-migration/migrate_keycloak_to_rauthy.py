@@ -10,8 +10,10 @@ This script performs an end-to-end migration from Keycloak to Rauthy:
 """
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -118,10 +120,13 @@ def sync_user_access(db: str, users: list, host: str, port: int, user: str, dry_
 
     for u in users:
         uid = u["id"].lower()
-        uname = u["username"].lower()
+        clean_name = re.sub(r'[^a-zA-Z0-9_-]', '', u["username"].split('@')[0])[:32]
+        uname = clean_name.lower()
         uemail = u["email"].lower()
 
         if uid in existing_uids or uname in existing_usernames or uemail in existing_emails:
+            if not dry_run and "@" in u["username"]:
+                run_psql(db, f"UPDATE user_access SET username = '{clean_name}' WHERE userid = '{u['id']}';", host, port, user)
             skipped.append(u["username"])
             continue
 
@@ -138,7 +143,7 @@ def sync_user_access(db: str, users: list, host: str, port: int, user: str, dry_
             '{u["email"]}',
             '{status}',
             '{u["id"]}',
-            '{u["username"]}'
+            '{clean_name}'
         );
         """
         if not dry_run:
@@ -182,7 +187,12 @@ def generate_rauthy_bootstrap(users: list, output_dir: Path, env_passwords: dict
 
     # 4. Generate clients.json
     clients_path = output_dir / "clients.json"
-    client_secret = env_passwords.get("OIDC_CLIENT_SECRET") or env_passwords.get("KEYCLOAK_MONMON_PLAY_CLIENT_SECRET") or "01c283f569ff42e4a080971629656fbb01c283f569ff42e4a080971629656fbb"
+    raw_secret = env_passwords.get("OIDC_CLIENT_SECRET") or env_passwords.get("KEYCLOAK_MONMON_PLAY_CLIENT_SECRET") or "01c283f569ff42e4a080971629656fbb01c283f569ff42e4a080971629656fbb"
+    if len(raw_secret) < 64:
+        import hashlib
+        client_secret = hashlib.sha256(raw_secret.encode()).hexdigest()
+    else:
+        client_secret = raw_secret
     clients_payload = [
         {
             "id": "monmon-web",
@@ -247,12 +257,16 @@ def generate_rauthy_bootstrap(users: list, output_dir: Path, env_passwords: dict
         user_roles = ["admin", "user"] if u["is_admin"] else ["user"]
         user_groups = ["admin", "user"] if u["is_admin"] else ["user"]
 
+        clean_username = re.sub(r'[^a-zA-Z0-9_-]', '', u["username"].split('@')[0])[:32]
+        given_name = (u["first_name"] or clean_username.capitalize())[:32]
+        family_name = (u["last_name"] or "User")[:32]
+
         rauthy_users.append({
             "id": clean_hex,
             "email": u["email"],
-            "preferred_username": u["username"],
-            "given_name": u["first_name"],
-            "family_name": u["last_name"],
+            "preferred_username": clean_username,
+            "given_name": given_name,
+            "family_name": family_name,
             "password": {
                 "Plain": pwd
             },
