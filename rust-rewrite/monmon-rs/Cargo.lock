@@ -1077,6 +1077,7 @@ dependencies = [
  "askama_axum",
  "axum",
  "chrono",
+ "dotenvy",
  "reqwest",
  "serde",
  "serde_json",

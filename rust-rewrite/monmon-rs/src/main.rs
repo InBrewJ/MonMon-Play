@@ -95,6 +95,13 @@ pub async fn callback_handler(Query(params): Query<CallbackQuery>) -> Response {
 
 #[tokio::main]
 async fn main() {
+    // Load .env variables from current directory or project root
+    let _ = dotenvy::dotenv();
+    let _ = dotenvy::from_filename(".env");
+    let _ = dotenvy::from_filename("../../.env");
+    let _ = dotenvy::from_filename("../.env");
+    let _ = dotenvy::from_filename("/app/.env");
+
     tracing_subscriber::fmt::init();
 
     let db_url = env::var("DB_URL")

@@ -81,8 +81,17 @@ pub async fn get_nommon_page(
 }
 
 fn get_nommon_model() -> String {
-    std::env::var("NOMMON_MISTRAL_MODEL")
-        .unwrap_or_else(|_| "mistral-medium-latest".to_string())
+    if let Ok(model) = std::env::var("NOMMON_MISTRAL_MODEL") {
+        if !model.trim().is_empty() {
+            return model;
+        }
+    }
+    if let Ok(model) = std::env::var("MISTRAL_MODEL") {
+        if !model.trim().is_empty() && model != "mistral-small-latest" {
+            return model;
+        }
+    }
+    "mistral-medium-latest".to_string()
 }
 
 fn build_nommon_system_prompt() -> &'static str {
@@ -97,14 +106,20 @@ STRICT REQUIREMENTS:
    - OPULENT (>= £120/person/wk): Exclusively Sainsbury's 'Taste the Difference' (TTD) range, prime butcher cuts (Ribeye, Sirloin, Fillet Steaks), and luxury seafood (Salmon, Scallops, Jumbo King Prawns).
 2. Household Size & Portion Scaling:
    - The plan MUST feed the exact number of people specified ('peopleCount').
-   - All recipe 'servings' MUST be at least equal to peopleCount.
+   - All recipe 'servings' MUST be at least equal to peopleCount (scaled up for batch cooks).
    - Shopping list retail pack quantities must provide enough food for all people for 7 days.
 3. Budget ceiling & scaling: The shopping basket total MUST strictly land between 88% and 96% of weeklyBudget.
 4. Nutrition & Dietary Variety: Whole foods, balanced macros, vegetable variety.
-5. RECIPES FOR ALL MEALS:
-   - Every single meal across all 7 days (all 7 dinners, plus any cooked lunches) MUST have a corresponding full recipe in the 'recipes' array (at least 7 full recipes), not just batch cook ones!
-   - Each recipe must specify 'title', 'servings' (>= peopleCount), 'prepTimeMinutes', 'cookTimeMinutes', 'ingredientsUsed' (array of strings), and 'instructions' (array of clear concise steps).
-6. Shopping List Unit Requirements:
+5. MEAL PLANNING PHILOSOPHY — PRIMARILY BATCH COOKING WITH SOME INDIVIDUAL RECIPES:
+   - The weekly plan MUST be built primarily around 2 to 3 hearty, budget-stretching BATCH COOKS (e.g. big family stews, bolognese, chili con carne, rich curries, pasta bakes) where cooking once yields dinner plus next-day lunches or dinners (e.g. Monday batch cooked dinner, Tuesday lunch/dinner reheat).
+   - Complement the batch cooks with 1 to 2 fresh individual recipes for special nights (e.g. fresh pan-seared fish, steak night, or quick stir-fry).
+   - In the 'days' array: Clearly indicate when a batch meal is cooked and when leftovers are eaten (e.g. 'Dinner: Hearty Beef & Veg Cottage Pie (Batch Cook)', and the next day 'Lunch: Reheated Cottage Pie (from batch)').
+6. FULL RECIPES FOR ALL MEALS:
+   - Every single cooked meal on the plan (all 2-3 batch cooks AND the 1-2 individual fresh recipes, covering every day of the week) MUST have a corresponding complete recipe in the 'recipes' array with step-by-step instructions.
+   - For batch-cooking recipes: Include '(Batch Cook)' in the title and set 'servings' to at least 2x peopleCount (e.g. if feeding 2 people, a batch cook yields 4+ servings).
+   - For individual recipes: Set 'servings' equal to peopleCount.
+   - Each recipe must specify 'title', 'servings', 'prepTimeMinutes', 'cookTimeMinutes', 'ingredientsUsed' (array of strings), and 'instructions' (array of clear concise steps).
+7. Shopping List Unit Requirements:
    - 'quantity' is STRICTLY integer number of retail packs (1, 2, 3, etc.).
    - 'packageSize' describes retail package (e.g. '500g bag', '640g pack', '400g tin').
    - 'estimatedPrice' is price for ONE pack.
@@ -128,6 +143,94 @@ JSON RESPONSE SCHEMA:
 }"#
 }
 
+fn attempt_repair_truncated_json(raw: &str) -> Option<Value> {
+    let mut trimmed = raw.trim();
+    if let Some(rest) = trimmed.strip_prefix("```json") {
+        trimmed = rest;
+    } else if let Some(rest) = trimmed.strip_prefix("```") {
+        trimmed = rest;
+    }
+    if let Some(rest) = trimmed.strip_suffix("```") {
+        trimmed = rest;
+    }
+    let trimmed = trimmed.trim();
+
+    // 1. Try parsing directly
+    if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
+        return Some(v);
+    }
+
+    // 2. Scan backwards to find a clean truncation point
+    let chars: Vec<char> = trimmed.chars().collect();
+    let max_lookback = chars.len().min(4000);
+    let start_pos = chars.len();
+    let end_pos = chars.len().saturating_sub(max_lookback);
+
+    for i in (end_pos..=start_pos).rev() {
+        let candidate: String = chars[..i].iter().collect();
+        let mut c_trimmed = candidate.trim_end();
+        if c_trimmed.ends_with(',') {
+            c_trimmed = c_trimmed[..c_trimmed.len() - 1].trim_end();
+        }
+
+        let mut stack = Vec::new();
+        let mut in_string = false;
+        let mut escaped = false;
+        let mut valid = true;
+
+        for ch in c_trimmed.chars() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = !in_string;
+                continue;
+            }
+            if !in_string {
+                match ch {
+                    '{' => stack.push('}'),
+                    '[' => stack.push(']'),
+                    '}' | ']' => {
+                        if stack.last() == Some(&ch) {
+                            stack.pop();
+                        } else {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if !valid || in_string {
+            continue;
+        }
+
+        if c_trimmed.ends_with(':') {
+            continue;
+        }
+
+        let mut repaired = c_trimmed.to_string();
+        while let Some(closer) = stack.pop() {
+            repaired.push(closer);
+        }
+
+        if let Ok(val) = serde_json::from_str::<Value>(&repaired) {
+            if val.is_object() && (val.get("shoppingList").is_some() || val.get("title").is_some() || val.get("planTitle").is_some()) {
+                return Some(val);
+            }
+        }
+    }
+
+    None
+}
+
 fn build_nommon_user_prompt(budget: f32, people: i32, postcode: Option<&str>) -> String {
     let p = people.max(1).min(12);
     let min_target = budget * 0.88;
@@ -135,11 +238,11 @@ fn build_nommon_user_prompt(budget: f32, people: i32, postcode: Option<&str>) ->
     let per_person = budget / (p as f32);
 
     let tier_desc = if per_person < 55.0 {
-        "Frugal / Value (Stamford Street Co. staples, oats, lentils, value mince)"
+        "Frugal / Value (Stamford Street Co. staples, oats, lentils, value mince, bulk batch cooking)"
     } else if per_person < 80.0 {
-        "Moderate Everyday (Sainsbury's own-brand essentials, fresh vegetables, chicken)"
+        "Moderate Everyday (Sainsbury's own-brand essentials, fresh vegetables, chicken, family batch cooks)"
     } else if per_person < 120.0 {
-        "Generous (Quality fresh cuts, salmon, seasonal vegetables, selected Taste the Difference)"
+        "Generous (Quality fresh cuts, salmon, seasonal vegetables, selected Taste the Difference, weekend steak)"
     } else {
         "Opulent Gourmet Indulgence (Taste the Difference prime steaks, seafood, artisan sourdough, organic produce)"
     };
@@ -153,9 +256,10 @@ fn build_nommon_user_prompt(budget: f32, people: i32, postcode: Option<&str>) ->
         "Please generate a 7-day Sainsbury's grocery and meal plan for {} person(s) with a total weekly food budget of £{:.2} (£{:.2}/person).\n\
          Target Basket Range: between £{:.2} and £{:.2} (88% - 96% of budget).\n\
          Budget Tier: {}.{}\n\
-         CRITICAL: Include FULL RECIPES for ALL 7 days' dinners (at least 7 recipes in the 'recipes' array) with step-by-step instructions and servings equal to {}.\n\
+         CORE MEAL STRUCTURE: Primarily BATCH COOKING (2-3 large batch cooks like cottage pie, rich curry, or pasta bake that provide dinner plus next-day lunches/dinners) paired with 1-2 fresh individual recipes for other nights.\n\
+         RECIPES REQUIREMENT: Every meal in the plan must have a full recipe in the 'recipes' array (both batch cooks with scaled servings AND individual meals).\n\
          Respond strictly with valid JSON only.",
-        p, budget, per_person, min_target, max_target, tier_desc, loc_str, p
+        p, budget, per_person, min_target, max_target, tier_desc, loc_str
     )
 }
 
@@ -163,13 +267,14 @@ fn build_fallback_plan(budget: f32, people: i32) -> Value {
     let p = people.max(1);
     let estimated_cost = ((budget * 0.91) * 100.0).round() / 100.0;
     let safety_buffer = ((budget - estimated_cost) * 100.0).round() / 100.0;
+    let batch_servings = p * 2;
 
     serde_json::json!({
-        "title": format!("NomMon 7-Day Sainsbury's Plan ({} Person{})", p, if p == 1 { "" } else { "s" }),
+        "title": format!("NomMon 7-Day Sainsbury's Batch Cooking Plan ({} Person{})", p, if p == 1 { "" } else { "s" }),
         "weeklyBudget": budget,
         "estimatedCost": estimated_cost,
         "safetyBuffer": safety_buffer,
-        "nutritionHighlight": "High fiber, lean protein, balanced micronutrients & 100% complete recipes for every day",
+        "nutritionHighlight": "Batch cooking efficiency with high fiber, lean protein, balanced micronutrients & 100% complete recipes for every meal",
         "shoppingList": [
             { "name": "Stamford Street Co. British Beef Mince 20% Fat 500g", "category": "Meat & Poultry", "packageSize": "500g pack", "quantity": p, "estimatedPrice": 2.49 },
             { "name": "Sainsbury's British Fresh Chicken Breast Fillets 640g", "category": "Meat & Poultry", "packageSize": "640g pack", "quantity": p, "estimatedPrice": 4.60 },
@@ -193,18 +298,18 @@ fn build_fallback_plan(budget: f32, people: i32) -> Value {
             { "name": "Sainsbury's Rolled Porridge Oats 1kg", "category": "Pantry & Pulses", "packageSize": "1kg bag", "quantity": 1, "estimatedPrice": 0.90 }
         ],
         "days": [
-            { "dayName": "Monday", "breakfast": "Warm Porridge with sliced banana & honey", "lunch": "Cheddar & Tomato wholemeal toastie", "dinner": "Hearty Beef & Vegetable Cottage Pie", "snack": "Boiled free range egg", "prepNotes": "Boil potatoes and mash with butter & milk" },
-            { "dayName": "Tuesday", "breakfast": "Scrambled free range eggs on wholemeal toast", "lunch": "Leftover Cottage Pie & steamed broccoli", "dinner": "Creamy Garlic Tuscan Chicken with Rice", "snack": "Fresh banana", "prepNotes": "Simmer chicken breasts with spinach and cream" },
-            { "dayName": "Wednesday", "breakfast": "Rolled oats with warm milk & cinnamon", "lunch": "Tuscan Chicken rice bowl", "dinner": "Spiced Chickpea & Spinach Curry", "snack": "Cheddar cubes with carrot sticks", "prepNotes": "Toast whole spices for fragrant aromatic curry" },
-            { "dayName": "Thursday", "breakfast": "Poached eggs on wholemeal toast with spinach", "lunch": "Warm Chickpea curry with rice", "dinner": "Pan-Seared Salmon Fillets with Crushed Potatoes", "snack": "Banana oat smoothie", "prepNotes": "Crisp salmon skin in hot skillet for 4 mins" },
-            { "dayName": "Friday", "breakfast": "Porridge with sliced banana", "lunch": "Egg salad wholemeal sandwich", "dinner": "Baked Stamford Street Beef & Tomato Penne", "snack": "Toasted wholemeal soldiers", "prepNotes": "Top pasta bake with grated cheddar and broil" },
-            { "dayName": "Saturday", "breakfast": "Weekend full breakfast: Eggs, grilled tomato, toast", "lunch": "Leftover Baked Beef Penne", "dinner": "30-Day Aged Ribeye Steak & Rosemary Wedges", "snack": "Cheddar cheese on toast", "prepNotes": "Rest steak 5 minutes before slicing" },
-            { "dayName": "Sunday", "breakfast": "Soft boiled eggs with buttered wholemeal soldiers", "lunch": "Lentil soup with crusty toast", "dinner": "Slow-Simmered Lentil Dahl & Basmati Rice", "snack": "Warm spiced milk", "prepNotes": "Simmer red lentils with turmeric and cumin" }
+            { "dayName": "Monday", "breakfast": "Warm Porridge with sliced banana & honey", "lunch": "Cheddar & Tomato wholemeal toastie", "dinner": "Hearty Beef & Vegetable Cottage Pie (Batch Cook Day 1)", "snack": "Boiled free range egg", "prepNotes": "Batch cook double batch tonight; portion half into fridge for Tuesday's lunch & dinner" },
+            { "dayName": "Tuesday", "breakfast": "Scrambled free range eggs on wholemeal toast", "lunch": "Reheated Cottage Pie (from Monday's batch) & steamed broccoli", "dinner": "Creamy Garlic Tuscan Chicken with Rice (Batch Cook Day 1)", "snack": "Fresh banana", "prepNotes": "Simmer double chicken portion in rich garlic spinach sauce for Wednesday's lunch" },
+            { "dayName": "Wednesday", "breakfast": "Rolled oats with warm milk & cinnamon", "lunch": "Reheated Tuscan Chicken Rice Bowl (from Tuesday's batch)", "dinner": "Spiced Chickpea & Spinach Curry (Batch Cook Day 1)", "snack": "Cheddar cubes with carrot sticks", "prepNotes": "Toast whole cumin and coriander seeds for deep fragrant batch curry" },
+            { "dayName": "Thursday", "breakfast": "Poached eggs on wholemeal toast with spinach", "lunch": "Warm Chickpea Curry with Rice (from Wednesday's batch)", "dinner": "Pan-Seared Salmon Fillets with Crushed Potatoes (Fresh Meal)", "snack": "Banana oat smoothie", "prepNotes": "Crisp salmon skin in hot skillet for 4 mins for a quick fresh Thursday dinner" },
+            { "dayName": "Friday", "breakfast": "Porridge with sliced banana", "lunch": "Egg salad wholemeal sandwich", "dinner": "Baked Stamford Street Beef & Tomato Penne (Batch Cook Day 1)", "snack": "Toasted wholemeal soldiers", "prepNotes": "Bake in large casserole dish; save half for Saturday lunch" },
+            { "dayName": "Saturday", "breakfast": "Weekend full breakfast: Eggs, grilled tomato, toast", "lunch": "Reheated Baked Beef Penne (from Friday's batch)", "dinner": "30-Day Aged Ribeye Steak & Rosemary Wedges (Fresh Meal)", "snack": "Cheddar cheese on toast", "prepNotes": "Sear steak to medium-rare; rest 5 minutes with garlic butter" },
+            { "dayName": "Sunday", "breakfast": "Soft boiled eggs with buttered wholemeal soldiers", "lunch": "Leftover steak slices on warm toast with mustard", "dinner": "Slow-Simmered Lentil Dahl & Basmati Rice (Fresh Meal)", "snack": "Warm spiced milk", "prepNotes": "Simmer red lentils with turmeric and cumin for a soothing end to the week" }
         ],
         "recipes": [
             {
-                "title": "Hearty Beef & Vegetable Cottage Pie",
-                "servings": p,
+                "title": "Hearty Beef & Vegetable Cottage Pie (Batch Cook)",
+                "servings": batch_servings,
                 "prepTimeMinutes": 20,
                 "cookTimeMinutes": 35,
                 "ingredientsUsed": ["Stamford Street Co. British Beef Mince 20% Fat 500g", "Sainsbury's Baking Potatoes Loose x4", "Sainsbury's Carrots Loose 500g", "Sainsbury's Brown Onions Loose x3", "Stamford Street Co. Chopped Tomatoes 400g"],
@@ -212,85 +317,85 @@ fn build_fallback_plan(budget: f32, people: i32) -> Value {
                     "Peel and cube potatoes; boil in salted water for 15 minutes until tender, then mash with a splash of milk and seasoning.",
                     "In a deep pan, brown the minced beef with diced onion and sliced carrots until golden.",
                     "Stir in chopped tomatoes, a dash of water and pepper, then simmer on low heat for 15 minutes.",
-                    "Transfer meat sauce to an oven dish, spread the mashed potatoes evenly on top, and bake at 200°C for 20 minutes until crisp and bubbling."
+                    "Transfer meat sauce to an oven dish, spread the mashed potatoes evenly on top, and bake at 200°C for 20 minutes until crisp and bubbling. Portion half for Tuesday."
                 ]
             },
             {
-                "title": "Creamy Garlic Tuscan Chicken with Rice",
-                "servings": p,
+                "title": "Creamy Garlic Tuscan Chicken with Rice (Batch Cook)",
+                "servings": batch_servings,
                 "prepTimeMinutes": 15,
                 "cookTimeMinutes": 25,
-                "ingredientsUsed": ["Sainsbury's British Fresh Chicken Breast Fillets 640g", "Sainsbury's Baby Spinach 200g", "Sainsbury's Long Grain Rice 1kg", "Sainsbury's Whole Milk 2.27L (4 Pints)"],
+                "ingredientsUsed": ["Sainsbury's British Fresh Chicken Breast Fillets 640g", "Sainsbury's Long Grain Rice 1kg", "Sainsbury's Baby Spinach 200g", "Sainsbury's Whole Milk 2.27L (4 Pints)"],
                 "instructions": [
-                    "Cook long grain rice according to package directions in lightly salted boiling water.",
-                    "Season chicken breast fillets with salt and pepper. Sear in a skillet with oil for 6 minutes per side until cooked through.",
-                    "Remove chicken; in the same pan, stir in fresh baby spinach, crushed garlic, and milk, simmering until gently thickened.",
-                    "Return chicken to the sauce to coat thoroughly and serve warm over fluffy steamed rice."
+                    "Rinse long grain rice and simmer in double volume of salted water for 12 minutes until fluffy.",
+                    "Dice chicken breast fillets and sear in a hot skillet with olive oil until golden brown on all sides.",
+                    "Add garlic, splash of milk, and fresh baby spinach; simmer gently for 8 minutes until sauce is glossy and chicken is cooked through.",
+                    "Serve over steamed rice. Package the remaining portions for Wednesday's lunch."
                 ]
             },
             {
-                "title": "Spiced Chickpea & Spinach Curry",
+                "title": "Spiced Chickpea & Spinach Curry (Batch Cook)",
+                "servings": batch_servings,
+                "prepTimeMinutes": 10,
+                "cookTimeMinutes": 20,
+                "ingredientsUsed": ["Sainsbury's Chickpeas in Water 400g", "Sainsbury's Baby Spinach 200g", "Sainsbury's Brown Onions Loose x3", "Stamford Street Co. Chopped Tomatoes 400g"],
+                "instructions": [
+                    "Finely dice onion and sauté in a saucepan with oil and curry spices until softened and fragrant.",
+                    "Pour in chopped tomatoes and drained chickpeas; simmer on medium heat for 15 minutes.",
+                    "Fold in baby spinach leaves until wilted, seasoning with salt and pepper to taste.",
+                    "Serve hot with steamed rice or bread. Chill the second half for Thursday's lunch."
+                ]
+            },
+            {
+                "title": "Baked Stamford Street Beef & Tomato Penne (Batch Cook)",
+                "servings": batch_servings,
+                "prepTimeMinutes": 15,
+                "cookTimeMinutes": 25,
+                "ingredientsUsed": ["Sainsbury's Penne Pasta 500g", "Stamford Street Co. British Beef Mince 20% Fat 500g", "Stamford Street Co. Chopped Tomatoes 400g", "Sainsbury's Mature British Cheddar 400g"],
+                "instructions": [
+                    "Boil penne pasta in salted water for 9 minutes until al dente; drain.",
+                    "Brown the minced beef with chopped onion, stir in chopped tomatoes, and simmer for 10 minutes.",
+                    "Toss pasta with meat sauce in an ovenproof baking dish and top generously with grated cheddar.",
+                    "Bake at 190°C for 15 minutes until cheese is golden and bubbling. Save remaining portions for Saturday lunch."
+                ]
+            },
+            {
+                "title": "Pan-Seared Salmon Fillets with Crushed Potatoes (Fresh Meal)",
+                "servings": p,
+                "prepTimeMinutes": 10,
+                "cookTimeMinutes": 15,
+                "ingredientsUsed": ["Sainsbury's Scottish Salmon Fillets x2 240g", "Sainsbury's Baking Potatoes Loose x4", "Sainsbury's Broccoli Loose 350g"],
+                "instructions": [
+                    "Boil potatoes until tender, drain and lightly crush with a fork, olive oil, and sea salt.",
+                    "Steam broccoli florets for 5 minutes until vibrant green.",
+                    "Heat oil in a skillet over high heat; place salmon skin-side down and press gently for 4 minutes until skin is crisp, flip and cook 2 minutes.",
+                    "Serve salmon immediately over crushed potatoes with steamed broccoli."
+                ]
+            },
+            {
+                "title": "30-Day Aged Ribeye Steak & Rosemary Wedges (Fresh Meal)",
                 "servings": p,
                 "prepTimeMinutes": 10,
                 "cookTimeMinutes": 20,
-                "ingredientsUsed": ["Sainsbury's Chickpeas in Water 400g", "Stamford Street Co. Chopped Tomatoes 400g", "Sainsbury's Baby Spinach 200g", "Sainsbury's Brown Onions Loose x3", "Sainsbury's Long Grain Rice 1kg"],
+                "ingredientsUsed": ["Taste the Difference 30-Day Aged British Ribeye Steak 225g", "Sainsbury's Baking Potatoes Loose x4"],
                 "instructions": [
-                    "Finely dice the onion and sauté in a medium pot with oil until softened and translucent.",
-                    "Add curry spices (cumin, turmeric, chili) and stir for 1 minute until fragrant.",
-                    "Pour in the drained chickpeas and canned chopped tomatoes, simmering gently for 15 minutes.",
-                    "Fold in the fresh baby spinach during the final 3 minutes until wilted, and serve alongside steamed rice."
+                    "Cut potatoes into wedges, toss with olive oil, salt and pepper; roast at 210°C for 25 minutes until crisp.",
+                    "Bring ribeye steak to room temperature; pat dry and season generously with salt.",
+                    "Sear in a smoking hot pan with oil and butter for 2.5 minutes per side for medium-rare.",
+                    "Rest steak on a warm cutting board for 5 minutes before serving with hot wedges."
                 ]
             },
             {
-                "title": "Pan-Seared Salmon Fillets with Crushed Potatoes",
+                "title": "Slow-Simmered Lentil Dahl & Basmati Rice (Fresh Meal)",
                 "servings": p,
                 "prepTimeMinutes": 10,
-                "cookTimeMinutes": 18,
-                "ingredientsUsed": ["Sainsbury's Scottish Salmon Fillets x2 240g", "Sainsbury's Baking Potatoes Loose x4", "Sainsbury's Broccoli Loose 350g"],
-                "instructions": [
-                    "Boil cubed potatoes in salted water until soft; crush lightly with a fork and season with pepper.",
-                    "Steam fresh broccoli florets for 5 minutes until tender-crisp.",
-                    "Pat salmon fillets dry with kitchen paper and season the skin generously with salt.",
-                    "Sear skin-side down in a hot skillet for 4-5 minutes until golden and crisp, flip gently and cook for 2 more minutes."
-                ]
-            },
-            {
-                "title": "Baked Stamford Street Beef & Tomato Penne",
-                "servings": p,
-                "prepTimeMinutes": 15,
                 "cookTimeMinutes": 25,
-                "ingredientsUsed": ["Stamford Street Co. British Beef Mince 20% Fat 500g", "Sainsbury's Penne Pasta 500g", "Stamford Street Co. Chopped Tomatoes 400g", "Sainsbury's Mature British Cheddar 400g"],
+                "ingredientsUsed": ["Sainsbury's Red Split Lentils 500g", "Sainsbury's Long Grain Rice 1kg", "Sainsbury's Brown Onions Loose x3"],
                 "instructions": [
-                    "Boil penne pasta in salted water for 9 minutes until al dente; drain.",
-                    "Brown remaining minced beef with diced onion and stir in chopped tomatoes with herbs.",
-                    "Combine the pasta with the beef tomato sauce and transfer to an ovenproof baking dish.",
-                    "Generously top with grated mature cheddar and bake at 200°C for 15 minutes until cheese is melted and golden."
-                ]
-            },
-            {
-                "title": "30-Day Aged Gourmet Ribeye Steak & Rosemary Wedges",
-                "servings": p,
-                "prepTimeMinutes": 10,
-                "cookTimeMinutes": 30,
-                "ingredientsUsed": ["Taste the Difference 30-Day Aged British Ribeye Steak 225g", "Sainsbury's Baking Potatoes Loose x4", "Sainsbury's Broccoli Loose 350g"],
-                "instructions": [
-                    "Cut potatoes into thick wedges, toss with vegetable oil, salt, and rosemary, and roast at 210°C for 30 minutes.",
-                    "Bring ribeye steak to room temperature for 20 minutes; season both sides generously with sea salt and cracked pepper.",
-                    "Heat a heavy cast-iron skillet until smoking hot. Sear steak for 2.5 minutes per side for medium-rare.",
-                    "Remove steak and rest on a warm board for 5 minutes before carving; serve with golden wedges and steamed broccoli."
-                ]
-            },
-            {
-                "title": "Slow-Simmered Lentil Dahl & Basmati Rice",
-                "servings": p,
-                "prepTimeMinutes": 10,
-                "cookTimeMinutes": 30,
-                "ingredientsUsed": ["Sainsbury's Red Split Lentils 500g", "Sainsbury's Long Grain Rice 1kg", "Sainsbury's Brown Onions Loose x3", "Stamford Street Co. Chopped Tomatoes 400g"],
-                "instructions": [
-                    "Rinse red split lentils in cold water until water runs clear.",
-                    "Sauté diced onion with turmeric, cumin, and garlic in a deep saucepan until golden.",
-                    "Add red lentils, 2 cups of water, and half a can of chopped tomatoes. Bring to a gentle boil.",
-                    "Reduce heat and simmer for 25 minutes, stirring occasionally, until lentils melt into a creamy fragrant dahl. Serve with rice."
+                    "Rinse red split lentils until water runs clear.",
+                    "In a pot, sauté diced onion with spices; add lentils and 3 cups of water.",
+                    "Simmer on low heat for 20 minutes stirring occasionally until lentils are creamy and tender.",
+                    "Serve hot over steamed long grain rice with fresh chopped herbs or a dollop of yogurt."
                 ]
             }
         ]
@@ -341,6 +446,8 @@ pub async fn get_nommon_plan_api(
     let api_key = std::env::var("MISTRAL_API_KEY").unwrap_or_default();
     if !api_key.trim().is_empty() {
         let model = get_nommon_model();
+        tracing::info!("NomMon calling Mistral API (model: {}) for budget £{:.2}, people: {}", model, budget, people);
+
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
@@ -352,7 +459,7 @@ pub async fn get_nommon_plan_api(
         let payload = serde_json::json!({
             "model": model,
             "temperature": 0.35,
-            "max_tokens": 4000,
+            "max_tokens": 8192,
             "response_format": { "type": "json_object" },
             "messages": [
                 { "role": "system", "content": system_prompt },
@@ -368,27 +475,46 @@ pub async fn get_nommon_plan_api(
             .send()
             .await;
 
-        if let Ok(resp) = resp_result {
-            if resp.status().is_success() {
-                if let Ok(body) = resp.json::<Value>().await {
-                    if let Some(content_str) = body
-                        .pointer("/choices/0/message/content")
-                        .and_then(|v| v.as_str())
-                    {
-                        if let Ok(parsed_plan) = serde_json::from_str::<Value>(content_str) {
-                            return Ok(Json(serde_json::json!({
-                                "configured": true,
-                                "locked": false,
-                                "plan": parsed_plan
-                            })));
+        match resp_result {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    match resp.json::<Value>().await {
+                        Ok(body) => {
+                            if let Some(content_str) = body
+                                .pointer("/choices/0/message/content")
+                                .and_then(|v| v.as_str())
+                            {
+                                if let Some(parsed_plan) = attempt_repair_truncated_json(content_str) {
+                                    tracing::info!("NomMon successfully generated fresh meal plan from Mistral ({})", model);
+                                    return Ok(Json(serde_json::json!({
+                                        "configured": true,
+                                        "locked": false,
+                                        "plan": parsed_plan
+                                    })));
+                                } else {
+                                    tracing::warn!("Failed to parse or repair Mistral JSON content. Raw snippet: {}", &content_str[..content_str.len().min(300)]);
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            tracing::warn!("Failed to deserialize Mistral response JSON: {:?}", err);
                         }
                     }
+                } else {
+                    let err_text = resp.text().await.unwrap_or_default();
+                    tracing::warn!("Mistral API returned error status {}: {}", status, err_text);
                 }
             }
+            Err(err) => {
+                tracing::warn!("Mistral API HTTP request error: {:?}", err);
+            }
         }
+    } else {
+        tracing::warn!("MISTRAL_API_KEY environment variable is missing or empty; NomMon serving fallback batch plan");
     }
 
-    // 3. Fallback comprehensive plan with all 7 recipes
+    // 3. Fallback comprehensive batch cooking plan with all recipes
     let fallback = build_fallback_plan(budget, people);
     Ok(Json(serde_json::json!({
         "configured": !api_key.trim().is_empty(),
