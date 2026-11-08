@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  postgres:
+    container_name: postgres-monmon
+    image: postgres:11
+    environment:
+      - POSTGRES_PASSWORD=docker
+      - POSTGRES_DB=monmon-play
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  monmon-auth:
+    container_name: monmon-auth
+    build:
+      context: ./rust-rewrite/monmon-auth
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8080
+      - DB_URL=postgres://postgres:docker@postgres:5432/monmon-play
+      - ISSUER_URL=http://localhost:8080/auth/realms/monmon
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  legmon:
+    container_name: legmon-rs
+    build:
+      context: ./rust-rewrite/legmon-rs
+      dockerfile: Dockerfile
+    environment:
+      - PORT=9005
+      - MONMON_HOST=monmon
+      - MONMON_PORT=9000
+    ports:
+      - "9005:9005"
+    restart: always
+
+  monmon:
+    container_name: monmon-rs
+    build:
+      context: ./rust-rewrite/monmon-rs
+      dockerfile: Dockerfile
+    environment:
+      - PORT=9000
+      - DB_URL=postgres://postgres:docker@postgres:5432/monmon-play
+      - AUTH_URL=http://localhost:8080/auth/realms/monmon/protocol/openid-connect/auth
+      - REDIRECT_URI=http://localhost:9000/callback
+      - LEGMON_URL=http://legmon:9005
+    ports:
+      - "9000:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      monmon-auth:
+        condition: service_started
+      legmon:
+        condition: service_started
+    restart: always
+
+volumes:
+  db-data:
+    driver: local

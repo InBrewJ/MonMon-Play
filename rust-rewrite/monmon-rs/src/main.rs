@@ -14,8 +14,8 @@ mod statement;
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
-    response::{Html, IntoResponse, Json},
+    http::{header, StatusCode},
+    response::{Html, IntoResponse, Json, Response},
     routing::{delete, get, post, put},
     Router,
 };
@@ -58,6 +58,35 @@ pub struct UnpausePayload {
     pub user_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CallbackQuery {
+    pub code: Option<String>,
+    pub state: Option<String>,
+}
+
+pub async fn callback_handler(Query(params): Query<CallbackQuery>) -> Response {
+    let target = params.state.unwrap_or_else(|| "/myOutgoings".to_string());
+    let clean_target = if target.starts_with('/') {
+        target
+    } else {
+        "/myOutgoings".to_string()
+    };
+
+    Response::builder()
+        .status(StatusCode::SEE_OTHER)
+        .header(header::LOCATION, clean_target)
+        .header(
+            header::SET_COOKIE,
+            "monmon_session=authenticated; Path=/; HttpOnly; SameSite=Lax",
+        )
+        .header(
+            header::SET_COOKIE,
+            "PLAY_SESSION=authenticated; Path=/",
+        )
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -84,7 +113,8 @@ async fn main() {
         .route("/about", get(landing::get_landing_page))
         .route("/health", get(landing::get_health_api))
         .route("/api/user/accessStatus", get(landing::get_access_status_api))
-        .route("/login", get(landing::auth_redirect))
+        .route("/login", get(|| async { landing::auth_redirect(None).await }))
+        .route("/callback", get(callback_handler))
         // Settings & Waiting List
         .route("/settings", get(admin::get_settings).post(admin::post_settings))
         .route("/settings/approveUser/:id", post(admin::approve_user_handler))
@@ -94,6 +124,12 @@ async fn main() {
         .route("/myAccounts", get(management::get_accounts_page))
         .route("/myIncomings", get(management::get_incomings_page))
         .route("/myBalances", get(management::get_balances_page))
+        .route("/account", post(management::post_account_form))
+        .route("/incoming", post(management::post_incoming_form))
+        .route("/outgoing", post(management::post_outgoing_form))
+        .route("/balance", post(management::post_balance_form))
+        .route("/pauseOutgoing/:id", post(management::pause_outgoing_web))
+        .route("/unpauseOutgoing/:id", get(management::unpause_outgoing_web).post(management::unpause_outgoing_web))
         // Accounts
         .route(
             "/internal/accounts",

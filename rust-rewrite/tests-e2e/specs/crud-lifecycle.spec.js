@@ -59,10 +59,8 @@ test.describe('Rust-through-Java Ship of Theseus: Core Primitives CRUD E2E', () 
     await page.fill('input[name="incomingMonthDay"]', '18');
 
     // 3. Submit
-    await Promise.all([
-      page.waitForNavigation(),
-      page.locator('#incoming-modal-form button[type="submit"]').click()
-    ]);
+    await page.locator('#incoming-modal-form button[type="submit"]').click();
+    await page.waitForLoadState('load');
 
     // 4. Verify new incoming is displayed
     await expect(page.locator('body')).toContainText(uniqueIncomingName);
