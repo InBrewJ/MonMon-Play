@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MonMon - Monzo Dig (Monzo Spending Heatmap &amp; Histogram)</title>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+    <link rel="stylesheet" href="/assets/stylesheets/main.css">
+    <link rel="stylesheet" href="/assets/stylesheets/spog-deck.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --primary-light: #eef2ff;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --card-bg: #ffffff;
+            --card-bg-subtle: #f9fafb;
+            --border-color: #e5e7eb;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f3f4f6;
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+        }
+        .navbar {
+            background-color: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .navbar a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+        }
+        .navbar a.active, .navbar a:hover {
+            color: var(--primary);
+            background-color: #f3f4f6;
+        }
+        .dig-stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+            min-width: 180px;
+        }
+        .dig-map-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .dig-map-header {
+            padding: 16px 20px;
+            background: var(--card-bg-subtle);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        #dig-map {
+            height: 500px;
+            width: 100%;
+            background: #e5e7eb;
+            z-index: 1;
+        }
+        .dig-legend {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            padding: 10px 20px;
+            background: var(--card-bg-subtle);
+            border-top: 1px solid var(--border-color);
+            flex-wrap: wrap;
+        }
+        .dig-legend-gradient {
+            width: 140px;
+            height: 10px;
+            border-radius: 999px;
+            background: linear-gradient(to right, #10b981 0%, #84cc16 30%, #eab308 60%, #f97316 80%, #ef4444 100%);
+        }
+        .hist-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 32px;
+        }
+        .hist-btn-group {
+            display: inline-flex;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .hist-btn {
+            background: var(--card-bg-subtle);
+            color: var(--text-muted);
+            border: none;
+            padding: 6px 14px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .hist-btn.active {
+            background: var(--primary);
+            color: #ffffff;
+        }
+        .dig-timeslice-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px 18px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .dig-timeslice-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        @media (min-width: 768px) {
+            .dig-timeslice-group {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 12px;
+            }
+        }
+        .dig-timeslice-btn {
+            background: var(--card-bg-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 14px;
+            color: var(--text-main);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .dig-timeslice-btn.active {
+            background: var(--primary);
+            color: #ffffff !important;
+            border-color: var(--primary);
+        }
+        .dig-timeslice-btn .dig-btn-count {
+            background: var(--card-bg);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+        }
+        .dig-timeslice-btn.active .dig-btn-count {
+            background: rgba(255, 255, 255, 0.22);
+            color: #ffffff;
+            border-color: transparent;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="navbar">
+        <div style="font-weight: 800; font-size: 1.2rem; color: var(--primary); display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-coins"></i> MonMon
+        </div>
+        <nav style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="/spog"><i class="fas fa-chart-pie"></i> SPOG</a>
+            <a href="/savingsPlan"><i class="fas fa-layer-group"></i> Savings Plan</a>
+            <a href="/spendingPace"><i class="fas fa-tachometer-alt"></i> Spending Pace</a>
+            <a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a>
+            <a href="/bank"><i class="fas fa-university"></i> Bank Sync</a>
+            <a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a>
+            <a href="/dig" class="active"><i class="fas fa-search-location"></i> Monzo Dig</a>
+        </nav>
+    </header>
+
+    <main class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1 style="margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-main);">
+                    <i class="fas fa-search-location" style="color: var(--primary); margin-right: 8px;"></i>
+                    Monzo Dig — Monzo Spending Heatmap &amp; Breakdown
+                </h1>
+                <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.95rem;">
+                    Exclusively for your <strong>Monzo</strong> accounts (Current &amp; Monzo Flex) — visualise <strong>WHERE</strong> and <strong>HOW</strong> you have spent your money on Monzo.
+                </p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                {% if is_monzo_connected %}
+                    <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem; border: 1px solid rgba(16, 185, 129, 0.3);">
+                        <i class="fas fa-check-circle"></i> Monzo Connected
+                    </span>
+                {% else %}
+                    <a href="/bank" class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem; text-decoration: none; border: 1px solid rgba(245, 158, 11, 0.3);">
+                        <i class="fas fa-link"></i> Connect Monzo in Bank Sync
+                    </a>
+                {% endif %}
+                {% if is_limit_reached %}
+                    <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: var(--primary); padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem; border: 1px solid rgba(99, 102, 241, 0.3);">
+                        <i class="fas fa-filter"></i> Capped at latest {{ data_limit }} txs
+                    </span>
+                {% endif %}
+                <button type="button" id="btn-dig-test" class="w3-button w3-round w3-small" title="Load sample dataset with spending in London UK, Edinburgh UK, and Vatican City" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600; font-size: 0.85rem; padding: 6px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-flask" style="color: var(--primary);"></i>
+                    <span id="dig-test-btn-text">Test</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Quick Stat Cards -->
+        <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+            <div class="dig-stat-card">
+                <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">
+                    Total Monzo Spent <span id="dig-stat-period-badge" style="text-transform: none; font-size: 0.75rem; color: var(--primary); font-weight: 700;">(This Month)</span>
+                </span>
+                <span id="dig-stat-total" style="font-size: 1.6rem; font-weight: 800; color: var(--text-main);">
+                    £{{ total_spent }}
+                </span>
+            </div>
+            <div class="dig-stat-card">
+                <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Geotagged Locations</span>
+                <span id="dig-stat-geotagged" style="font-size: 1.6rem; font-weight: 800; color: var(--primary);">
+                    {{ total_geotagged }}
+                </span>
+            </div>
+            <div class="dig-stat-card">
+                <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Top Spending Category</span>
+                <span id="dig-stat-category" style="font-size: 1.3rem; font-weight: 700; color: var(--text-main);">
+                    {{ top_category }}
+                </span>
+            </div>
+        </div>
+
+        <!-- Empty state container -->
+        <div id="dig-empty-state-card" class="dig-map-card" style="padding: 48px 24px; text-align: center; {% if total_geotagged > 0 %}display: none;{% endif %}">
+            <div style="display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 50%; background: var(--primary-light); color: var(--primary); font-size: 2rem; margin-bottom: 16px;">
+                <i class="fas fa-map-marked-alt"></i>
+            </div>
+            <h2 style="font-size: 1.4rem; font-weight: 700; margin: 0 0 8px 0; color: var(--text-main);">
+                No Geotagged Monzo Transactions Found
+            </h2>
+            <p style="color: var(--text-muted); max-width: 580px; margin: 0 auto 20px auto; font-size: 0.95rem; line-height: 1.6;">
+                We could not find any Monzo transactions with merchant coordinates (latitude and longitude).
+                When you make in-store purchases on your Monzo debit or Flex card, Monzo enriches transactions with merchant location data.
+                Sync your transactions via Bank Sync or hook up Monzo webhooks to see your spending heatmap light up.
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                <a href="/bank" class="w3-button w3-round" style="background: var(--primary); color: #ffffff; font-weight: 600; text-decoration: none; padding: 10px 20px;">
+                    <i class="fas fa-exchange-alt"></i> Open Bank Sync
+                </a>
+                <button type="button" id="btn-dig-test-empty" class="w3-button w3-round" style="background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 600; padding: 10px 20px; cursor: pointer;">
+                    <i class="fas fa-flask" style="color: var(--primary); margin-right: 6px;"></i> Test Sample Spending
+                </button>
+            </div>
+        </div>
+
+        <!-- Timeslice filter card -->
+        <div id="dig-timeslice-card" class="dig-timeslice-card" style="{% if total_geotagged == 0 %}display: none;{% endif %}">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-calendar-alt" style="color: var(--primary);"></i> Pay Cycle Filter
+                </div>
+                <div id="dig-timeslice-date-label" style="font-size: 0.82rem; color: var(--text-muted); background: var(--card-bg-subtle); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-color);">
+                    Payday Cycle
+                </div>
+            </div>
+            <div class="dig-timeslice-group">
+                <button type="button" class="dig-timeslice-btn active" data-slice="this_month">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span style="font-weight: 700; font-size: 0.88rem;">This Month</span>
+                        <span style="font-size: 0.72rem; opacity: 0.75;">Current cycle</span>
+                    </div>
+                    <span class="dig-btn-count" id="count-this-month">0</span>
+                </button>
+                <button type="button" class="dig-timeslice-btn" data-slice="last_2_cycles">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span style="font-weight: 700; font-size: 0.88rem;">Last 2 Cycles</span>
+                        <span style="font-size: 0.72rem; opacity: 0.75;">~2 months</span>
+                    </div>
+                    <span class="dig-btn-count" id="count-last-2-cycles">0</span>
+                </button>
+                <button type="button" class="dig-timeslice-btn" data-slice="last_6_cycles">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span style="font-weight: 700; font-size: 0.88rem;">Last 6 Cycles</span>
+                        <span style="font-size: 0.72rem; opacity: 0.75;">~Half year</span>
+                    </div>
+                    <span class="dig-btn-count" id="count-last-6-cycles">0</span>
+                </button>
+                <button type="button" class="dig-timeslice-btn" data-slice="all">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span style="font-weight: 700; font-size: 0.88rem;">All Time</span>
+                        <span style="font-size: 0.72rem; opacity: 0.75;">All geotagged</span>
+                    </div>
+                    <span class="dig-btn-count" id="count-all">0</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Interactive Map Card -->
+        <div id="dig-map-card" class="dig-map-card" style="{% if total_geotagged == 0 %}display: none;{% endif %}">
+            <div class="dig-map-header">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                        <i class="fas fa-map" style="color: var(--primary); margin-right: 6px;"></i> Spending Heatmap &amp; Places
+                    </h3>
+                    <span style="font-size: 0.82rem; color: var(--text-muted);">
+                        Showing <strong id="dig-spots-count">{{ total_geotagged }}</strong> spending locations
+                    </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer;">
+                        <input type="checkbox" id="toggle-heatmap" checked>
+                        <span>Heatmap</span>
+                    </label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer;">
+                        <input type="checkbox" id="toggle-markers" checked>
+                        <span>Markers</span>
+                    </label>
+                    <select id="dig-category-select" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); font-size: 0.85rem; color: var(--text-main);">
+                        <option value="ALL">All Categories</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="dig-map"></div>
+
+            <div class="dig-legend">
+                <span>Spending intensity:</span>
+                <span style="font-weight: 600; color: #10b981;">Low</span>
+                <div class="dig-legend-gradient"></div>
+                <span style="font-weight: 600; color: #ef4444;">High</span>
+            </div>
+        </div>
+
+        <!-- Category Histogram Card -->
+        <div id="dig-histogram-card" class="hist-card" style="{% if total_geotagged == 0 %}display: none;{% endif %}">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                    <i class="fas fa-chart-bar" style="color: var(--primary); margin-right: 6px;"></i> Category Spending Breakdown
+                </h3>
+                <div class="hist-btn-group">
+                    <button type="button" class="hist-btn active" id="btn-sort-spend">By Spend</button>
+                    <button type="button" class="hist-btn" id="btn-sort-count">By Count</button>
+                </div>
+            </div>
+            <div id="histogram-table-container"></div>
+        </div>
+
+    </main>
+
+    <script id="dig-data" type="application/json">
+        {{ json_payload|safe }}
+    </script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="/assets/javascripts/leaflet-heat.js"></script>
+    <script src="/assets/javascripts/dig.js"></script>
+
+</body>
+</html>

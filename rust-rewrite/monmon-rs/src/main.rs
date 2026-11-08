@@ -1,5 +1,6 @@
 mod bank_sync;
 mod db;
+mod dig;
 mod models;
 mod net_worth;
 mod nommon;
@@ -185,6 +186,11 @@ async fn main() {
         .route("/api/networth/asset", post(net_worth::add_asset_api))
         .route("/netWorth/addAsset", post(net_worth::add_asset_form))
         .route("/netWorth/binAsset/:id", get(net_worth::bin_asset_endpoint))
+        // Monzo Dig (Geotagged Heatmap & Category Histogram)
+        .route("/dig", get(dig::get_dig_page))
+        .route("/monzo-dig", get(dig::get_dig_page))
+        .route("/api/dig/data", get(dig::get_dig_data_api))
+        .route("/api/monzo-dig/data", get(dig::get_dig_data_api))
         .route("/mySavingsPlan", get(savings_plan::get_savings_plan_page))
         .route(
             "/savingsPlan/addItem",
