@@ -878,9 +878,18 @@ async fn get_spending_pace_page_handler(
     headers: HeaderMap,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Html<String>, (StatusCode, String)> {
+    if !crate::management::is_authenticated(&headers) {
+        return Ok(Html(format!(
+            "<script>window.location.href = '/login?return_to=/spendingPace';</script>"
+        )));
+    }
     let user_id = crate::pot::get_user_id_from_headers_or_default(
         &headers,
         query.get("userId").or_else(|| query.get("user_id")).map(|s| s.as_str()),
     );
-    spog::get_spending_pace_page(&state, &user_id).await
+    let cycle_offset: i32 = query
+        .get("cycle")
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    spog::get_spending_pace_page(&state, &user_id, cycle_offset).await
 }

@@ -499,6 +499,7 @@ pub async fn get_monthly_pot_page(
         total_savings_pot: 0.0,
         account_groups: vec![],
         spending_plan: None,
+        spent_this_month: 0.0,
     });
 
     let pace = crate::spog::calculate_spending_pace(&state.pool, &user_id).await.unwrap_or_else(|_| crate::spog::SpendingPaceMetrics {

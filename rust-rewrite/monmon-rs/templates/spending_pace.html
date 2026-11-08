@@ -16,11 +16,35 @@
                 <i class="fas fa-chart-bar" style="color: #0284c7; margin-right: 8px;"></i>Spending Pace Breakdown
             </h3>
             <div style="font-size: 0.85rem; color: #64748b; margin-top: 2px;">
-                <span>Current Monthly Cycle</span>
-                <span class="badge-pill" style="background: #e0f2fe; color: #0284c7; margin-left: 6px; padding: 2px 8px; border-radius: 12px; font-weight: 600;">Day {{ days_elapsed }} of {{ days_in_cycle }}</span>
+                <span>{{ cycle_date_range }}</span>
+                {% if is_current_cycle %}
+                    <span class="badge-pill" style="background: #e0f2fe; color: #0284c7; margin-left: 6px; padding: 2px 8px; border-radius: 12px; font-weight: 600;">Day {{ days_elapsed }} of {{ days_in_cycle }}</span>
+                {% else %}
+                    <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); margin-left: 6px; padding: 2px 8px; border-radius: 12px; font-weight: 600;">Past Cycle ({{ days_in_cycle }} days)</span>
+                {% endif %}
             </div>
         </div>
-        <div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            {% if available_cycles_count > 1 %}
+                <div style="display: inline-flex; align-items: center; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;">
+                    {% if has_prev_cycle %}
+                        <a href="/spendingPace?cycle={{ prev_cycle_offset }}"
+                           class="w3-button w3-small"
+                           title="Previous pay cycle"
+                           style="background: var(--card-bg); padding: 5px 10px; color: var(--text-main);">
+                            <i class="fas fa-chevron-left"></i> Previous
+                        </a>
+                    {% endif %}
+                    {% if has_next_cycle %}
+                        <a href="/spendingPace?cycle={{ next_cycle_offset }}"
+                           class="w3-button w3-small"
+                           title="Next pay cycle"
+                           style="background: var(--card-bg); padding: 5px 10px; color: var(--text-main); border-left: 1px solid var(--border-color);">
+                            Next <i class="fas fa-chevron-right"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            {% endif %}
             <a href="/spog" class="w3-button w3-round w3-small" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155;"><i class="fas fa-arrow-left"></i> Back to SPOG</a>
         </div>
     </div>

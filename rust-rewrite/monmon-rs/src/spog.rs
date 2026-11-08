@@ -1,3 +1,4 @@
+use askama::Template;
 use chrono::{Datelike, Local};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
@@ -54,6 +55,7 @@ pub struct SpogMetrics {
     pub total_savings_pot: f32,
     pub account_groups: Vec<SpogAccountGroupDto>,
     pub spending_plan: Option<SpogSpendingPlanDto>,
+    pub spent_this_month: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,7 +166,14 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     let today_day = today.day() as i32;
     let current_month = today.month() as i32;
     let current_year = today.year();
-    let days_between_paydays = 31; // Standard monthly cycle representation
+
+    let nominal_payday = next_pay_day.max(1);
+    let cycle_start = crate::historic_spent::find_last_payday_date(today, nominal_payday);
+    let cycle_end = crate::historic_spent::find_next_payday_date(today, nominal_payday);
+    let days_between_paydays = (cycle_end - cycle_start).num_days().max(1) as i32;
+    let _days_since_last_payday = ((today - cycle_start).num_days() as i32 + 1).min(days_between_paydays).max(1);
+    let days_until_next_payday = (cycle_end - today).num_days().max(1) as i32;
+    let days_left = days_until_next_payday;
 
     // 3. Outgoings with Rent & Bill Breakdown (only counting outgoings due this month)
     let outgoings_row = sqlx::query(
@@ -501,14 +510,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         .map(|a| a.adjusted_available)
         .sum();
 
-    let days_left = if next_pay_day >= today_day {
-        next_pay_day - today_day + 1
-    } else {
-        days_between_paydays - today_day + next_pay_day
-    }
-    .max(1);
-
-    let monthly_pot_left_per_day = pot_balance / (days_left as f32);
+    let monthly_pot_left_per_day = pot_balance / (days_left.max(1) as f32);
 
     // 6. Active Pot Spending Plan & Mini Spending Plan
     let active_pot_row = sqlx::query(
@@ -528,7 +530,49 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     .fetch_optional(pool)
     .await?;
 
-    let spending_plan = if let Some(pr) = active_pot_row {
+    let cycle_start_sec = cycle_start
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_local_timezone(chrono::Utc)
+        .unwrap()
+        .timestamp();
+    let now_sec = chrono::Utc::now().timestamp();
+
+    let mut balance_acc_ids = pot_account_ids.clone();
+    if let Some(ref pr) = active_pot_row {
+        if let Some(ref j) = pr.get::<Option<String>, _>("spending_plan_sections_json") {
+            if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
+                for s in parsed {
+                    if let Some(aid) = s.get("accountId").and_then(|v| v.as_i64()) {
+                        if !balance_acc_ids.contains(&aid) {
+                            balance_acc_ids.push(aid);
+                        }
+                    }
+                }
+            }
+        }
+        for col in &["food_account_id", "fuel_account_id", "transport_account_id", "fun_account_id"] {
+            if let Some(aid) = pr.get::<Option<i64>, _>(*col) {
+                if !balance_acc_ids.contains(&aid) {
+                    balance_acc_ids.push(aid);
+                }
+            }
+        }
+    }
+
+    let balance_map = crate::historic_spent::load_account_balances(pool, &balance_acc_ids)
+        .await
+        .unwrap_or_default();
+
+    let mut pot_spent = 0.0f32;
+    for pid in &pot_account_ids {
+        if let Some(bals) = balance_map.get(pid) {
+            pot_spent += crate::historic_spent::calculate_account_spent(bals, cycle_start_sec, now_sec);
+        }
+    }
+    let spent_this_month = ((pot_spent * 100.0).round()) / 100.0;
+
+    let spending_plan = if let Some(ref pr) = active_pot_row {
         let sp_name: Option<String> = pr.get("spending_plan_name");
         if let Some(name) = sp_name {
             if !name.trim().is_empty() {
@@ -543,56 +587,86 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
                         for s in parsed {
                             let heading = s.get("heading").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let amount = s.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                            let account_id = s.get("accountId").and_then(|v| v.as_i64());
+
+                            let (actual_spent, remaining, account_name) = if let Some(aid) = account_id {
+                                let acc_name = all_account_statuses
+                                    .iter()
+                                    .find(|a| a.id == aid)
+                                    .map(|a| a.nickname.clone().unwrap_or_else(|| a.name.clone()));
+                                let spent = balance_map
+                                    .get(&aid)
+                                    .map(|b| crate::historic_spent::calculate_account_spent(b, cycle_start_sec, now_sec))
+                                    .unwrap_or(0.0);
+                                let rem = ((amount - spent).max(0.0) * 100.0).round() / 100.0;
+                                (spent, rem, acc_name)
+                            } else {
+                                let fraction = (days_left as f32 / days_between_paydays as f32).clamp(0.0, 1.0);
+                                let rem = ((amount * fraction) * 100.0).round() / 100.0;
+                                (0.0, rem, None)
+                            };
+
                             sections.push(SpogSpendingSectionDto {
                                 heading,
                                 planned_amount: amount,
-                                actual_spent: 0.0,
-                                remaining: amount,
-                                account_name: None,
+                                actual_spent,
+                                remaining,
+                                account_name,
                             });
                         }
                     }
                 }
                 if sections.is_empty() {
+                    let mut legacy_defs = Vec::new();
                     if let Some(f) = sp_food {
                         if f > 0.0 {
-                            sections.push(SpogSpendingSectionDto {
-                                heading: "Food".to_string(),
-                                planned_amount: f,
-                                actual_spent: 0.0,
-                                remaining: f,
-                                account_name: None,
-                            });
+                            let aid: Option<i64> = pr.get("food_account_id");
+                            legacy_defs.push(("Food", f, aid));
                         }
                     }
                     if let Some(f) = sp_fuel {
                         if f > 0.0 {
-                            sections.push(SpogSpendingSectionDto {
-                                heading: "Fuel".to_string(),
-                                planned_amount: f,
-                                actual_spent: 0.0,
-                                remaining: f,
-                                account_name: None,
-                            });
+                            let aid: Option<i64> = pr.get("fuel_account_id");
+                            legacy_defs.push(("Fuel", f, aid));
                         }
                     }
                     if let Some(t) = sp_trans {
                         if t > 0.0 {
-                            sections.push(SpogSpendingSectionDto {
-                                heading: "Transport".to_string(),
-                                planned_amount: t,
-                                actual_spent: 0.0,
-                                remaining: t,
-                                account_name: None,
-                            });
+                            let aid: Option<i64> = pr.get("transport_account_id");
+                            legacy_defs.push(("Transport", t, aid));
                         }
+                    }
+                    for (heading, amount, aid_opt) in legacy_defs {
+                        let (actual_spent, remaining, account_name) = if let Some(aid) = aid_opt {
+                            let acc_name = all_account_statuses
+                                .iter()
+                                .find(|a| a.id == aid)
+                                .map(|a| a.nickname.clone().unwrap_or_else(|| a.name.clone()));
+                            let spent = balance_map
+                                .get(&aid)
+                                .map(|b| crate::historic_spent::calculate_account_spent(b, cycle_start_sec, now_sec))
+                                .unwrap_or(0.0);
+                            let rem = ((amount - spent).max(0.0) * 100.0).round() / 100.0;
+                            (spent, rem, acc_name)
+                        } else {
+                            let fraction = (days_left as f32 / days_between_paydays as f32).clamp(0.0, 1.0);
+                            let rem = ((amount * fraction) * 100.0).round() / 100.0;
+                            (0.0, rem, None)
+                        };
+
+                        sections.push(SpogSpendingSectionDto {
+                            heading: heading.to_string(),
+                            planned_amount: amount,
+                            actual_spent,
+                            remaining,
+                            account_name,
+                        });
                     }
                 }
 
-                let remaining_essentials: f32 = sections.iter().map(|s| s.remaining).sum();
-                let spent_this_month = 0.0f32;
-                let remaining_allowance = (surplus - spent_this_month).max(0.0);
-                let adjusted_fun = remaining_allowance - remaining_essentials;
+                let remaining_essentials = ((sections.iter().map(|s| s.remaining).sum::<f32>()) * 100.0).round() / 100.0;
+                let remaining_allowance = (((surplus - spent_this_month).max(0.0)) * 100.0).round() / 100.0;
+                let adjusted_fun = (((remaining_allowance - remaining_essentials)) * 100.0).round() / 100.0;
                 let is_deficit = adjusted_fun < 0.0;
                 let absolute_deficit = adjusted_fun.abs();
                 let fun_left_per_day = if is_deficit || days_left <= 0 {
@@ -648,6 +722,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         total_savings_pot,
         account_groups,
         spending_plan,
+        spent_this_month,
     })
 }
 
@@ -655,28 +730,30 @@ pub async fn calculate_spending_pace(
     pool: &PgPool,
     raw_user_id: &str,
 ) -> Result<SpendingPaceMetrics, sqlx::Error> {
-    let spog = calculate_spog(pool, raw_user_id).await?;
+    let user_id = resolve_user_id(pool, raw_user_id).await;
+    let spog = calculate_spog(pool, &user_id).await?;
     let today = Local::now().date_naive();
-    let today_day = today.day() as i32;
+    let nominal_payday = spog.next_pay_day.max(1);
+    let cycle_start = crate::historic_spent::find_last_payday_date(today, nominal_payday);
+    let cycle_end = crate::historic_spent::find_next_payday_date(today, nominal_payday);
+    let days_in_cycle = (cycle_end - cycle_start).num_days().max(1) as i32;
+    let days_elapsed = ((today - cycle_start).num_days() as i32 + 1).min(days_in_cycle).max(1);
 
-    // Approximate days elapsed in current cycle
-    let days_elapsed = today_day.clamp(1, spog.days_between_paydays) as f32;
-    let expected_spend = spog.max_per_day * days_elapsed;
-    let spent_this_month = 0.0f32; // Ingested bank transactions or balance delta
-    let actual_daily_spend = if days_elapsed > 0.0 {
-        spent_this_month / days_elapsed
+    let spent_this_month = spog.spent_this_month;
+    let actual_daily_spend = if days_elapsed > 0 {
+        ((spent_this_month / days_elapsed as f32) * 100.0).round() / 100.0
     } else {
         0.0
     };
 
-    let baseline_diff_total = expected_spend - spent_this_month;
-    let is_behind_baseline = baseline_diff_total < 0.0;
-    let absolute_baseline_diff_total = baseline_diff_total.abs();
+    let daily_overspend = ((actual_daily_spend - spog.max_per_day) * 100.0).round() / 100.0;
+    let is_behind_baseline = daily_overspend > 0.0;
+    let absolute_baseline_diff_total = ((daily_overspend.abs()) * 100.0).round() / 100.0;
 
     Ok(SpendingPaceMetrics {
         spent_this_month,
         actual_daily_spend,
-        baseline_diff_total,
+        baseline_diff_total: daily_overspend,
         is_behind_baseline,
         absolute_baseline_diff_total,
     })
@@ -684,17 +761,28 @@ pub async fn calculate_spending_pace(
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SpendingPaceChunkDto {
+    pub chunk_index: i32,
     pub label: String,
     pub date_range: String,
+    pub date_range_str: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub start_day: i32,
+    pub end_day: i32,
     pub days_in_chunk: i32,
     pub days_elapsed: i32,
     pub total_spent: f32,
+    pub spending_pace: f32,
     pub pace: f32,
     pub cumulative_spent: f32,
+    pub cumulative_days_elapsed: i32,
     pub cumulative_pace: f32,
+    pub target_max_pace: f32,
+    pub difference_from_max: f32,
     pub is_current: bool,
     pub is_future: bool,
     pub is_over_target: bool,
+    pub is_over_budget: bool,
 }
 
 #[derive(askama::Template)]
@@ -710,125 +798,239 @@ pub struct SpendingPaceTemplate {
     pub is_behind_baseline: bool,
     pub chunks: Vec<SpendingPaceChunkDto>,
     pub chart_json: String,
+    pub cycle_offset: i32,
+    pub available_cycles_count: usize,
+    pub is_current_cycle: bool,
+    pub cycle_date_range: String,
+    pub has_prev_cycle: bool,
+    pub has_next_cycle: bool,
+    pub prev_cycle_offset: i32,
+    pub next_cycle_offset: i32,
 }
 
 pub async fn get_spending_pace_page(
     state: &std::sync::Arc<crate::AppState>,
     raw_user_id: &str,
+    cycle_offset: i32,
 ) -> Result<axum::response::Html<String>, (axum::http::StatusCode, String)> {
-    let spog = calculate_spog(&state.pool, raw_user_id)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let pace = calculate_spending_pace(&state.pool, raw_user_id)
+    let user_id = resolve_user_id(&state.pool, raw_user_id).await;
+    let available_cycles = crate::historic_spent::calculate_historic_cycles(&state.pool, &user_id, 12)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let today = Local::now().date_naive();
-    let days_in_cycle = spog.days_between_paydays.max(28);
-    let days_elapsed = (today.day() as i32).clamp(1, days_in_cycle);
+    let available_cycles_count = available_cycles.len();
+    let safe_offset = (cycle_offset.max(0) as usize).min(available_cycles_count.saturating_sub(1));
+
+    let selected = if !available_cycles.is_empty() {
+        &available_cycles[safe_offset]
+    } else {
+        return Err((axum::http::StatusCode::INTERNAL_SERVER_ERROR, "No cycles available".to_string()));
+    };
+
+    let cycle_start_date = selected.cycle_start_date;
+    let _cycle_end_date = selected.cycle_end_date;
+    let is_current_cycle = selected.is_current_cycle;
+    let days_in_cycle = selected.days_in_cycle.max(1);
+    let days_elapsed = selected.days_elapsed;
+    let monthly_budget = selected.pot_allowance;
+    let max_per_day = ((monthly_budget / days_in_cycle as f32) * 100.0).round() / 100.0;
+    let cycle_date_range = selected.cycle_date_range.clone();
+    let pot_account_ids = selected.pot_account_ids.clone();
+
+    // Load balances for pot accounts
+    let balance_map = crate::historic_spent::load_account_balances(&state.pool, &pot_account_ids)
+        .await
+        .unwrap_or_default();
 
     // Build 5-day chunks
     let mut chunks = Vec::new();
     let mut cumulative_spent = 0.0f32;
-    let mut cumulative_days = 0i32;
+    let mut cumulative_days_elapsed = 0i32;
 
-    let month_str = today.format("%b").to_string();
     let mut start_day = 1;
-    let mut chunk_idx = 1;
+    let mut chunk_index = 1;
 
     while start_day <= days_in_cycle {
         let end_day = (start_day + 4).min(days_in_cycle);
         let days_in_chunk = end_day - start_day + 1;
+        let chunk_start_date = cycle_start_date + chrono::Duration::days((start_day - 1) as i64);
+        let chunk_end_date = cycle_start_date + chrono::Duration::days((end_day - 1) as i64);
 
-        let is_current = days_elapsed >= start_day && days_elapsed <= end_day;
-        let is_future = days_elapsed < start_day;
-        let chunk_elapsed = if is_future {
-            0
-        } else if is_current {
-            days_elapsed - start_day + 1
+        let chunk_start_sec = chunk_start_date
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_local_timezone(chrono::Utc)
+            .unwrap()
+            .timestamp();
+        let chunk_end_sec = chunk_end_date
+            .and_hms_opt(23, 59, 59)
+            .unwrap()
+            .and_local_timezone(chrono::Utc)
+            .unwrap()
+            .timestamp();
+
+        let (is_current, is_future, chunk_days_elapsed) = if is_current_cycle {
+            if today < chunk_start_date {
+                (false, true, 0)
+            } else if today > chunk_end_date {
+                (false, false, days_in_chunk)
+            } else {
+                let elapsed = ((today - chunk_start_date).num_days() as i32 + 1).min(days_in_chunk);
+                (true, false, elapsed)
+            }
         } else {
-            days_in_chunk
+            (false, false, days_in_chunk)
         };
 
-        // Calculate chunk spent based on pace and elapsed
-        let chunk_spent = if chunk_elapsed > 0 {
-            let chunk_ratio = chunk_elapsed as f32 / days_elapsed as f32;
-            ((pace.spent_this_month * chunk_ratio * 100.0).round() / 100.0).max(0.0)
+        let chunk_spent = if !is_future {
+            let effective_end_sec = if is_current {
+                chrono::Utc::now().timestamp()
+            } else {
+                chunk_end_sec
+            };
+            let mut s = 0.0f32;
+            for pid in &pot_account_ids {
+                if let Some(bals) = balance_map.get(pid) {
+                    s += crate::historic_spent::calculate_account_spent(bals, chunk_start_sec, effective_end_sec);
+                }
+            }
+            ((s * 100.0).round()) / 100.0
         } else {
-            0.0
+            0.0f32
         };
 
-        let chunk_pace = if chunk_elapsed > 0 {
-            ((chunk_spent / chunk_elapsed as f32) * 100.0).round() / 100.0
+        let spending_pace = if chunk_days_elapsed > 0 {
+            ((chunk_spent / chunk_days_elapsed as f32) * 100.0).round() / 100.0
         } else {
-            0.0
+            0.0f32
         };
 
-        cumulative_spent += chunk_spent;
-        cumulative_days += chunk_elapsed;
-
-        let cumulative_pace = if cumulative_days > 0 {
-            ((cumulative_spent / cumulative_days as f32) * 100.0).round() / 100.0
+        cumulative_spent = (((cumulative_spent + chunk_spent) * 100.0).round()) / 100.0;
+        cumulative_days_elapsed += chunk_days_elapsed;
+        let cumulative_pace = if cumulative_days_elapsed > 0 {
+            ((cumulative_spent / cumulative_days_elapsed as f32) * 100.0).round() / 100.0
         } else {
-            0.0
+            0.0f32
         };
 
-        let is_over_target = chunk_pace > spog.max_per_day;
+        let is_over_target = spending_pace > max_per_day;
+        let difference_from_max = ((spending_pace - max_per_day) * 100.0).round() / 100.0;
+
+        let chunk_label = if start_day == end_day {
+            format!("Day {}", start_day)
+        } else {
+            format!("Days {}–{}", start_day, end_day)
+        };
+
+        let date_range_formatted = format!(
+            "{} – {}",
+            chunk_start_date.format("%d %b"),
+            chunk_end_date.format("%d %b")
+        );
 
         chunks.push(SpendingPaceChunkDto {
-            label: format!("Chunk {}", chunk_idx),
-            date_range: format!("{} {} – {} {}", start_day, month_str, end_day, month_str),
+            chunk_index,
+            label: chunk_label,
+            date_range: date_range_formatted.clone(),
+            date_range_str: date_range_formatted,
+            start_date: chunk_start_date.to_string(),
+            end_date: chunk_end_date.to_string(),
+            start_day,
+            end_day,
             days_in_chunk,
-            days_elapsed: chunk_elapsed,
+            days_elapsed: chunk_days_elapsed,
             total_spent: chunk_spent,
-            pace: chunk_pace,
+            spending_pace,
+            pace: spending_pace,
             cumulative_spent,
+            cumulative_days_elapsed,
             cumulative_pace,
+            target_max_pace: max_per_day,
+            difference_from_max,
             is_current,
             is_future,
             is_over_target,
+            is_over_budget: is_over_target,
         });
 
         start_day += 5;
-        chunk_idx += 1;
+        chunk_index += 1;
     }
 
+    let total_spent = cumulative_spent;
+    let actual_daily_spend = if days_elapsed > 0 {
+        ((total_spent / days_elapsed as f32) * 100.0).round() / 100.0
+    } else {
+        0.0f32
+    };
+
+    let daily_overspend = ((actual_daily_spend - max_per_day) * 100.0).round() / 100.0;
+    let is_behind_baseline = daily_overspend > 0.0;
+    let absolute_baseline_diff_total = ((daily_overspend.abs()) * 100.0).round() / 100.0;
+
     let chart_data = serde_json::json!({
-        "maxPerDay": spog.max_per_day,
-        "monthlyBudget": spog.surplus,
+        "isCurrentCycle": is_current_cycle,
+        "daysInCycle": days_in_cycle,
+        "daysElapsed": days_elapsed,
+        "monthlyBudget": monthly_budget,
+        "maxPerDay": max_per_day,
+        "totalSpent": total_spent,
+        "actualDailySpend": actual_daily_spend,
+        "cycleDateRange": cycle_date_range,
         "chunks": chunks.iter().map(|c| {
             serde_json::json!({
+                "chunkIndex": c.chunk_index,
                 "label": c.label,
-                "dateRange": c.date_range,
+                "dateRangeStr": c.date_range_str,
+                "startDate": c.start_date,
+                "endDate": c.end_date,
+                "startDay": c.start_day,
+                "endDay": c.end_day,
                 "daysInChunk": c.days_in_chunk,
                 "daysElapsed": c.days_elapsed,
                 "totalSpent": c.total_spent,
-                "pace": c.pace,
+                "spendingPace": c.spending_pace,
                 "cumulativeSpent": c.cumulative_spent,
+                "cumulativeDaysElapsed": c.cumulative_days_elapsed,
                 "cumulativePace": c.cumulative_pace,
+                "targetMaxPace": c.target_max_pace,
+                "differenceFromMax": c.difference_from_max,
+                "isOverBudget": c.is_over_budget,
                 "isCurrent": c.is_current,
-                "isFuture": c.is_future,
-                "isOverTarget": c.is_over_target,
+                "isFuture": c.is_future
             })
         }).collect::<Vec<_>>()
     });
 
     let chart_json = serde_json::to_string(&chart_data).unwrap_or_else(|_| "{}".to_string());
 
+    let has_prev_cycle = safe_offset < available_cycles_count.saturating_sub(1);
+    let has_next_cycle = safe_offset > 0;
+    let prev_cycle_offset = (safe_offset + 1) as i32;
+    let next_cycle_offset = (safe_offset.saturating_sub(1)) as i32;
+
     let tmpl = SpendingPaceTemplate {
         days_elapsed,
         days_in_cycle,
-        max_per_day: spog.max_per_day,
-        monthly_budget: spog.surplus,
-        actual_daily_spend: pace.actual_daily_spend,
-        spent_this_month: pace.spent_this_month,
-        absolute_baseline_diff_total: pace.absolute_baseline_diff_total,
-        is_behind_baseline: pace.is_behind_baseline,
+        max_per_day,
+        monthly_budget,
+        actual_daily_spend,
+        spent_this_month: total_spent,
+        absolute_baseline_diff_total,
+        is_behind_baseline,
         chunks,
         chart_json,
+        cycle_offset: safe_offset as i32,
+        available_cycles_count,
+        is_current_cycle,
+        cycle_date_range,
+        has_prev_cycle,
+        has_next_cycle,
+        prev_cycle_offset,
+        next_cycle_offset,
     };
 
-    use askama::Template;
     tmpl.render()
         .map(axum::response::Html)
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
