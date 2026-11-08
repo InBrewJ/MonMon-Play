@@ -1,3 +1,4 @@
+mod admin;
 mod bank_sync;
 mod db;
 mod dig;
@@ -83,6 +84,11 @@ async fn main() {
         .route("/health", get(landing::get_health_api))
         .route("/api/user/accessStatus", get(landing::get_access_status_api))
         .route("/login", get(landing::auth_redirect))
+        // Settings & Waiting List
+        .route("/settings", get(admin::get_settings).post(admin::post_settings))
+        .route("/settings/approveUser/:id", post(admin::approve_user_handler))
+        .route("/settings/rejectUser/:id", post(admin::reject_user_handler))
+        .route("/waitinglist", get(admin::get_waiting_list))
         .route("/myOutgoings", get(landing::auth_redirect))
         .route("/myAccounts", get(landing::auth_redirect))
         .route("/myIncomings", get(landing::auth_redirect))
