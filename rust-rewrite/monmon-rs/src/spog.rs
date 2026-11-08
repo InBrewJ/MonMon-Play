@@ -280,7 +280,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
 
         // Fetch latest balance for this account
         let bal_row = sqlx::query(
-            "SELECT value, timestamp FROM balance WHERE account_id = $1 ORDER BY timestamp DESC, id DESC LIMIT 1"
+            "SELECT COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp FROM balance WHERE account_id = $1 ORDER BY timestamp DESC, id DESC LIMIT 1"
         )
         .bind(acc_id)
         .fetch_optional(pool)

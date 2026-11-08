@@ -490,7 +490,7 @@ pub async fn list_balances(pool: &PgPool, user_id: &str) -> Result<Vec<Balance>,
     sqlx::query_as::<_, Balance>(
         r#"
         SELECT 
-            id, value, timestamp, account_id,
+            id, COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp, account_id,
             COALESCE(user_id, userid, "userId") as user_id
         FROM balance
         WHERE COALESCE(user_id, userid, "userId") = $1

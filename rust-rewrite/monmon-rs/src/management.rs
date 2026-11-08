@@ -774,15 +774,15 @@ pub async fn get_balances_page(
         r#"
         SELECT 
             b.id,
-            b.value,
-            b.timestamp,
-            b.account_id,
+            COALESCE(b.value, 0.0)::real as value,
+            COALESCE(b.timestamp, 0)::bigint as timestamp,
+            COALESCE(b.account_id, 0)::bigint as account_id,
             COALESCE(a.name, 'Unknown Account') as account_name,
             COALESCE(a.type, 'CURRENT') as account_type
         FROM balance b
         LEFT JOIN account a ON b.account_id = a.id
         WHERE (b.user_id = $1 OR b.userid = $1 OR b."userId" = $1)
-        ORDER BY b.timestamp DESC, b.id DESC
+        ORDER BY b.timestamp DESC NULLS LAST, b.id DESC
         "#,
     )
     .bind(&user_id)
@@ -790,16 +790,21 @@ pub async fn get_balances_page(
     .await
     .unwrap_or_default();
 
-    let mut balances_dto = Vec::new();
     let mut chart_points = Vec::new();
+    let now_ts = chrono::Utc::now().timestamp();
+    let sixty_days_ago_sec = now_ts - (60 * 86400);
+    let mut daily_sampled: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
+
+    let ten_days_ago_date = (chrono::Utc::now() - chrono::Duration::days(10)).date_naive();
+    let mut by_account: std::collections::HashMap<i64, Vec<BalanceViewDto>> = std::collections::HashMap::new();
 
     for r in &balance_rows {
         let id: i64 = r.get("id");
-        let val: f32 = r.get("value");
-        let raw_ts: i64 = r.get("timestamp");
-        let acc_id: i64 = r.get("account_id");
-        let acc_name: String = r.get("account_name");
-        let acc_type: String = r.get("account_type");
+        let val: f32 = r.get::<Option<f32>, _>("value").unwrap_or(0.0);
+        let raw_ts: i64 = r.get::<Option<i64>, _>("timestamp").unwrap_or(0);
+        let acc_id: i64 = r.get::<Option<i64>, _>("account_id").unwrap_or(0);
+        let acc_name: String = r.get::<Option<String>, _>("account_name").unwrap_or_else(|| "Unknown Account".to_string());
+        let acc_type: String = r.get::<Option<String>, _>("account_type").unwrap_or_else(|| "CURRENT".to_string());
 
         let ts_sec = if raw_ts > 100_000_000_000 {
             raw_ts / 1000
@@ -811,7 +816,7 @@ pub async fn get_balances_page(
             .unwrap_or_else(|| chrono::Utc::now());
         let date_str = dt.format("%d %b %Y, %H:%M").to_string();
 
-        balances_dto.push(BalanceViewDto {
+        let item = BalanceViewDto {
             id,
             value: val,
             timestamp: ts_sec,
@@ -819,17 +824,81 @@ pub async fn get_balances_page(
             account_name: acc_name.clone(),
             account_type: acc_type.clone(),
             date_str: date_str.clone(),
-        });
+        };
 
-        chart_points.push(serde_json::json!({
+        by_account.entry(acc_id).or_default().push(item);
+
+        let point = serde_json::json!({
             "id": id,
             "accountId": acc_id,
             "accountName": acc_name,
             "value": val,
             "timestamp": ts_sec,
             "dateStr": date_str
-        }));
+        });
+
+        if ts_sec >= sixty_days_ago_sec {
+            chart_points.push(point);
+        } else {
+            let day_key = format!("{}_{}", acc_id, dt.format("%Y-%m-%d"));
+            daily_sampled.entry(day_key).or_insert(point);
+        }
     }
+
+    for (_, pt) in daily_sampled {
+        chart_points.push(pt);
+    }
+    chart_points.sort_by_key(|p| p.get("timestamp").and_then(|t| t.as_i64()).unwrap_or(0));
+
+    // Prepare table display: filter last 10 days per account (matching Java filterLastTenDaysBalancesPerAccount)
+    let mut balances_dto = Vec::new();
+    let mut existing_ids = std::collections::HashSet::new();
+
+    for (_acc_id, acc_bals) in &by_account {
+        let mut distinct_dates = Vec::new();
+        for b in acc_bals {
+            if let Some(dt) = chrono::DateTime::from_timestamp(b.timestamp, 0) {
+                let d = dt.date_naive();
+                if !distinct_dates.contains(&d) {
+                    distinct_dates.push(d);
+                }
+            }
+        }
+        let mut allowed_dates = std::collections::HashSet::new();
+        let mut count = 0;
+        for d in distinct_dates {
+            if d >= ten_days_ago_date || count < 10 {
+                allowed_dates.insert(d);
+                count += 1;
+            }
+            if count >= 10 && d < ten_days_ago_date {
+                break;
+            }
+        }
+
+        for b in acc_bals {
+            if let Some(dt) = chrono::DateTime::from_timestamp(b.timestamp, 0) {
+                if allowed_dates.contains(&dt.date_naive()) {
+                    if existing_ids.insert(b.id) {
+                        balances_dto.push(b.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // If preselected account, include up to 30 snapshots for that account
+    if let Some(target_acc_id) = selected_account_id {
+        if let Some(acc_bals) = by_account.get(&target_acc_id) {
+            for b in acc_bals.iter().take(30) {
+                if existing_ids.insert(b.id) {
+                    balances_dto.push(b.clone());
+                }
+            }
+        }
+    }
+
+    balances_dto.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
 
     let chart_balances_json = serde_json::to_string(&chart_points).unwrap_or_else(|_| "[]".to_string());
 
@@ -849,7 +918,7 @@ pub async fn get_balances_page(
     .bind(&user_id)
     .fetch_one(&state.pool)
     .await
-    .map(|r| r.get::<i32, _>("payday"))
+    .map(|r| r.get::<Option<i32>, _>("payday").unwrap_or(25))
     .unwrap_or(25);
 
     let today = chrono::Local::now().date_naive();
@@ -904,7 +973,8 @@ pub async fn get_balances_page(
 
     let mut default_account_ids: Vec<i64> = pot_accounts_rows
         .into_iter()
-        .map(|r| r.get("account_id"))
+        .map(|r| r.get::<Option<i64>, _>("account_id").unwrap_or(0))
+        .filter(|&id| id > 0)
         .collect();
 
     if default_account_ids.is_empty() {
