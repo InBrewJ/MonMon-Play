@@ -56,6 +56,7 @@ pub struct SpogMetrics {
     pub account_groups: Vec<SpogAccountGroupDto>,
     pub spending_plan: Option<SpogSpendingPlanDto>,
     pub spent_this_month: f32,
+    pub days_until_next_payday: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,13 +246,13 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         .map(|r| r.get::<i32, _>("savingspercentage"))
         .unwrap_or(0);
     let savings_plan_cost = (savings_percentage as f32 / 100.0) * incoming_total;
-    let surplus = (incoming_total - outgoing_total - savings_plan_cost).max(0.0);
+    let surplus = (((incoming_total - outgoing_total - savings_plan_cost).max(0.0)) * 100.0).round() / 100.0;
     let max_per_day = if days_between_paydays > 0 {
-        surplus / (days_between_paydays as f32)
+        ((surplus / (days_between_paydays as f32)) * 100.0).round() / 100.0
     } else {
         0.0
     };
-    let max_per_week = max_per_day * 7.0;
+    let max_per_week = ((max_per_day * 7.0) * 100.0).round() / 100.0;
     let max_per_month = surplus;
 
     // 4. Accounts & Balances and Freshness Calculation
@@ -510,7 +511,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         .map(|a| a.adjusted_available)
         .sum();
 
-    let monthly_pot_left_per_day = pot_balance / (days_left.max(1) as f32);
+    let monthly_pot_left_per_day = (((pot_balance / (days_left.max(1) as f32)) * 100.0).round()) / 100.0;
 
     // 6. Active Pot Spending Plan & Mini Spending Plan
     let active_pot_row = sqlx::query(
@@ -723,6 +724,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         account_groups,
         spending_plan,
         spent_this_month,
+        days_until_next_payday,
     })
 }
 

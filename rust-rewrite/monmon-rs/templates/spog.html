@@ -346,24 +346,73 @@
 
 {% include "ed_fab_modal.html" %}
 
-<!-- Affordability Scratchpad Modal -->
-<div id="afford-modal" class="afford-modal-backdrop" style="display: none;">
-    <div class="afford-modal-card">
-        <div class="afford-modal-header">
-            <h3><i class="fas fa-calculator" style="color: var(--primary); margin-right: 8px;"></i> Can I Afford This?</h3>
-            <button id="afford-close-btn" type="button" class="afford-close-btn" aria-label="Close modal">&times;</button>
-        </div>
-        <div class="afford-modal-body">
-            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0;">
-                Simulate the real-time impact of an expense on your daily spending allowance between now and next payday.
-            </p>
-            <div style="margin-bottom: 1rem;">
-                <label for="afford-cost-input" style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Expense Cost (£)</label>
-                <input type="number" id="afford-cost-input" placeholder="0.00" step="0.50" min="0" style="width: 100%; font-size: 1.5rem; font-weight: 800; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main); margin-top: 4px;" />
+<!-- Can I Afford This Scratchpad Modal -->
+<div id="afford-modal" class="modal-backdrop">
+    <div class="modal-content-card" style="max-width: 520px;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 1.1rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.3rem;">🤔</span> Can I Afford This?
             </div>
-            <div id="afford-result-box" style="display: none; padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg-subtle);">
-                <div id="afford-verdict-banner" style="font-weight: 800; font-size: 1.1rem; margin-bottom: 0.5rem;"></div>
-                <div id="afford-verdict-desc" style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5;"></div>
+            <button type="button" id="afford-close-btn" style="background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 1.25rem;">
+            <!-- Pot Context Box -->
+            <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.84rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="color: var(--text-muted);">Current Left in Pot:</span>
+                    <strong style="color: var(--primary);">£{{ metrics.monthly_pot_left_per_day }}/day</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="color: var(--text-muted);">Target Baseline:</span>
+                    <strong>£{{ metrics.max_per_day }}/day</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Days until Payday:</span>
+                    <span><strong>{{ metrics.days_until_next_payday }}</strong> days</span>
+                </div>
+            </div>
+
+            <!-- Form input -->
+            <div style="margin-bottom: 1rem;">
+                <label for="afford-cost-input" style="display: block; font-weight: 700; font-size: 0.88rem; margin-bottom: 0.4rem; color: var(--text-main);">
+                    How much does it cost?
+                </label>
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 1.2rem; font-weight: 700; color: var(--text-muted);">£</span>
+                    <input type="number" step="0.01" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" id="afford-cost-input" placeholder="0.00" style="width: 100%; padding-left: 2rem; font-size: 1.25rem; font-weight: 700; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg, var(--card-bg)); color: var(--text-main);" autofocus />
+                </div>
+            </div>
+
+            <!-- Quick Presets -->
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.25rem;">
+                <button type="button" class="preset-chip" data-amt="15">+£15</button>
+                <button type="button" class="preset-chip" data-amt="30">+£30</button>
+                <button type="button" class="preset-chip" data-amt="50">+£50</button>
+                <button type="button" class="preset-chip" data-amt="100">+£100</button>
+                <button type="button" class="preset-chip" data-amt="250">+£250</button>
+                <button type="button" class="preset-chip" id="preset-clear" style="color: var(--danger, #ef4444); border-color: rgba(248, 113, 113, 0.3);">Reset</button>
+            </div>
+
+            <!-- Live Calculation Result -->
+            <div id="afford-result-box" style="display: none; border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color); background: var(--card-bg-subtle);">
+                <div id="afford-verdict-banner" style="display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.5rem;"></div>
+                <div id="afford-verdict-desc" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-main);"></div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed var(--border-color); font-size: 0.82rem;">
+                    <div>• Current: £<span id="afford-curr-day">0.00</span>/day</div>
+                    <div>• After purchase: £<span id="afford-new-day">0.00</span>/day</div>
+                </div>
+            </div>
+
+            <div id="afford-initial-prompt" style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0;">
+                <i class="fas fa-arrow-up" style="margin-right: 4px;"></i> Type an amount or tap a preset to test affordability.
+            </div>
+
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 1.25rem;">
+                <i class="fas fa-info-circle"></i> Scratchpad only — client-side simulation, nothing is saved.
             </div>
         </div>
     </div>
@@ -466,45 +515,86 @@
 $(function() {
     var monthlyPotLeftPerDay = parseFloat("{{ metrics.monthly_pot_left_per_day }}") || 0;
     var maxPerDay = parseFloat("{{ metrics.max_per_day }}") || 0;
-    var daysUntilPayday = Math.max(1, parseInt("{{ metrics.days_between_paydays }}") || 30);
+    var daysUntilPayday = Math.max(1, parseInt("{{ metrics.days_until_next_payday }}") || 1);
     var totalAvailablePot = monthlyPotLeftPerDay * daysUntilPayday;
 
-    $('#btn-afford-fab').on('click', function() {
+    function openAffordModal() {
+        $('html, body').addClass('modal-scroll-locked');
         $('#afford-modal').css('display', 'flex');
-        $('#afford-cost-input').focus();
-    });
-    $('#afford-close-btn').on('click', function() {
+        setTimeout(function() { $('#afford-cost-input').focus(); }, 50);
+        calculateAffordability();
+    }
+
+    function closeAffordModal() {
+        $('html, body').removeClass('modal-scroll-locked');
         $('#afford-modal').hide();
-    });
+    }
+
+    $('#btn-afford-fab').on('click', openAffordModal);
+    $('#afford-close-btn').on('click', closeAffordModal);
+
     $('#afford-modal').on('click', function(e) {
-        if (e.target === this) $('#afford-modal').hide();
+        if (e.target === this) {
+            closeAffordModal();
+        }
     });
 
-    $('#afford-cost-input').on('input keyup change', function() {
-        var cost = parseFloat($(this).val());
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape' && $('#afford-modal').is(':visible')) {
+            closeAffordModal();
+        }
+    });
+
+    $('.preset-chip[data-amt]').on('click', function() {
+        var add = parseFloat($(this).data('amt')) || 0;
+        var current = parseFloat($('#afford-cost-input').val()) || 0;
+        $('#afford-cost-input').val((current + add).toFixed(2));
+        calculateAffordability();
+    });
+
+    $('#preset-clear').on('click', function() {
+        $('#afford-cost-input').val('');
+        calculateAffordability();
+    });
+
+    $('#afford-cost-input').on('input keyup change', calculateAffordability);
+
+    function calculateAffordability() {
+        var cost = parseFloat($('#afford-cost-input').val());
         if (isNaN(cost) || cost <= 0) {
             $('#afford-result-box').hide();
+            $('#afford-initial-prompt').show();
             return;
         }
+
+        $('#afford-initial-prompt').hide();
         $('#afford-result-box').show();
+
         var newAvailable = totalAvailablePot - cost;
         var newLeftPerDay = newAvailable / daysUntilPayday;
+        var dropPerDay = monthlyPotLeftPerDay - newLeftPerDay;
+
+        $('#afford-curr-day').text(monthlyPotLeftPerDay.toFixed(2));
+        $('#afford-new-day').text(Math.max(0, newLeftPerDay).toFixed(2));
+
         var banner = $('#afford-verdict-banner');
         var desc = $('#afford-verdict-desc');
 
         if (newAvailable >= 0) {
             if (newLeftPerDay >= maxPerDay) {
                 banner.html('<i class="fas fa-check-circle" style="color: #10b981;"></i> <span style="color: #10b981;">YES, comfortably affordable!</span>');
-                desc.html('You can afford this £' + cost.toFixed(2) + ' expense. Daily allowance drops to <strong>£' + newLeftPerDay.toFixed(2) + '/day</strong>, remaining above baseline (£' + maxPerDay.toFixed(2) + '/day).');
+                desc.html('You can comfortably afford this £' + cost.toFixed(2) + ' expense.<br/>Your daily spend will drop by £' + dropPerDay.toFixed(2) + '/day to <strong>£' + newLeftPerDay.toFixed(2) + '/day</strong>, remaining safely above your <strong>£' + maxPerDay.toFixed(2) + '/day</strong> target baseline.');
             } else {
+                var extraNeeded = (maxPerDay * daysUntilPayday) - newAvailable;
                 banner.html('<i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i> <span style="color: #f59e0b;">YES, but drops below baseline</span>');
-                desc.html('Affordable, but daily allowance drops from £' + monthlyPotLeftPerDay.toFixed(2) + '/day to <strong>£' + newLeftPerDay.toFixed(2) + '/day</strong> (below target baseline £' + maxPerDay.toFixed(2) + '/day).');
+                desc.html('You have enough funds in your pot, but your daily allowance will drop from £' + monthlyPotLeftPerDay.toFixed(2) + '/day to <strong>£' + newLeftPerDay.toFixed(2) + '/day</strong> (below your £' + maxPerDay.toFixed(2) + '/day target baseline).<br/><span style="display: inline-block; margin-top: 6px; color: var(--text-muted); font-size: 0.82rem;">💡 You need <strong>£' + extraNeeded.toFixed(2) + '</strong> more to afford this without dropping below £' + maxPerDay.toFixed(2) + '/day.</span>');
             }
         } else {
+            var shortfall = Math.abs(newAvailable);
             banner.html('<i class="fas fa-times-circle" style="color: #ef4444;"></i> <span style="color: #ef4444;">NO, exceeds monthly pot</span>');
-            desc.html('This purchase exceeds your remaining monthly pot by £' + Math.abs(newAvailable).toFixed(2) + '.');
+            desc.html('You need <strong>£' + shortfall.toFixed(2) + '</strong> more to afford this purchase without overdrawing your monthly pot. Your daily allowance for the next ' + daysUntilPayday + ' days would drop to <strong>£0.00/day</strong>.');
         }
-    });
+    }
 });
 </script>
 
