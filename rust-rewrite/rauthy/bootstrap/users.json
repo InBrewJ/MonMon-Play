@@ -1,12 +1,12 @@
 [
   {
-    "id": "9aee56db733a457caa7474fe",
-    "email": "demo@demo.com",
-    "preferred_username": "demo",
-    "given_name": "Demo",
-    "family_name": "User",
+    "id": "ed085f281b72448585647367",
+    "email": "admin@monmon.local",
+    "preferred_username": "admin",
+    "given_name": "admin",
+    "family_name": "",
     "password": {
-      "Plain": "demo"
+      "Plain": "G5YTPjgB3bbWrvrkbPPcpcmXPkupYC2QRVA"
     },
     "roles": [
       "admin",
@@ -14,6 +14,278 @@
     ],
     "groups": [
       "admin",
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "2ccc203fa98c488fa5ba8d20",
+    "email": "jason@urawizard.com",
+    "preferred_username": "inbrewj",
+    "given_name": "Jason",
+    "family_name": "Brewer",
+    "password": {
+      "Plain": "G5YTPjgB3bbWrvrkbPPcpcmXPkupYC2QRVA"
+    },
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "groups": [
+      "admin",
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "434268bd0c8a41f6b1913768",
+    "email": "demo@urawizard.com",
+    "preferred_username": "demo",
+    "given_name": "Demo",
+    "family_name": "Demo",
+    "password": {
+      "Plain": "demo"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "2d81294f786643378fe31a11",
+    "email": "demo2@urawizard.com",
+    "preferred_username": "demo2",
+    "given_name": "demo2",
+    "family_name": "demo2",
+    "password": {
+      "Plain": "demo2123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "9f9c7b6839e44088b6e9e33d",
+    "email": "c@d.com",
+    "preferred_username": "caity",
+    "given_name": "Caity",
+    "family_name": "D",
+    "password": {
+      "Plain": "CngELcybSQkS76MKUeEdQXZ8sr3XjexEVVM"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "a30778495e8c41bb893b8e3f",
+    "email": "demo3@urawizard.com",
+    "preferred_username": "demo3",
+    "given_name": "Demo3",
+    "family_name": "Demo3",
+    "password": {
+      "Plain": "demo3123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "6d1c304f8ebe4620bd284d56",
+    "email": "rorywebber1000@gmail.com",
+    "preferred_username": "rorywebber1000@gmail.com",
+    "given_name": "Rory",
+    "family_name": "Webber",
+    "password": {
+      "Plain": "rorywebber1000@gmail.com123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "7558b8744cdf43ab8b97a8a9",
+    "email": "norman-brewer@urawizard.com",
+    "preferred_username": "norman",
+    "given_name": "Norman",
+    "family_name": "B",
+    "password": {
+      "Plain": "norman123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "04635238dcae4bcb921e3b9c",
+    "email": "margot.berrezaie5@gmail.com",
+    "preferred_username": "margotb",
+    "given_name": "Margot",
+    "family_name": "Berrezaie",
+    "password": {
+      "Plain": "margotb123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "6ad838656bf54b06a6685ded",
+    "email": "demo4@4.com",
+    "preferred_username": "demo4",
+    "given_name": "demo4",
+    "family_name": "demo4",
+    "password": {
+      "Plain": "demo4123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "231f3a3b34d94d1494bd9abf",
+    "email": "demo5@5.com",
+    "preferred_username": "demo5",
+    "given_name": "demo5",
+    "family_name": "demo5",
+    "password": {
+      "Plain": "demo5123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "9f930b9fa76142e0b9be27db",
+    "email": "demo6@6.com",
+    "preferred_username": "demo6",
+    "given_name": "demo6",
+    "family_name": "demo6",
+    "password": {
+      "Plain": "demo6123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "b8bfd89ea4ae4463a6cc7c2e",
+    "email": "demo10@lalalalala.com",
+    "preferred_username": "demo10",
+    "given_name": "demo10",
+    "family_name": "demo10",
+    "password": {
+      "Plain": "demo10123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "b449472c8bb34cea87c12c2f",
+    "email": "demoinflow@urawizard.com",
+    "preferred_username": "demoinflow",
+    "given_name": "J",
+    "family_name": "B",
+    "password": {
+      "Plain": "demoinflow123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "1fe7548afdd34d25b1f29e43",
+    "email": "newguy@dryark.uk",
+    "preferred_username": "newguy1000",
+    "given_name": "new",
+    "family_name": "guy",
+    "password": {
+      "Plain": "newguy1000123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "id": "ebeae1198dac4175a4fc5906",
+    "email": "waitinglist@dryark.uk",
+    "preferred_username": "waitinglist",
+    "given_name": "Waiting",
+    "family_name": "List Guy",
+    "password": {
+      "Plain": "waitinglist123"
+    },
+    "roles": [
+      "user"
+    ],
+    "groups": [
       "user"
     ],
     "enabled": true,

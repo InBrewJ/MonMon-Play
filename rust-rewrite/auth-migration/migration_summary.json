@@ -1,0 +1,142 @@
+{
+  "migrated_at": "2026-11-08T21:25:29.535593+00:00",
+  "keycloak_db": "keycloak_live",
+  "monmon_db": "monmon_live",
+  "total_users": 16,
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@monmon.local",
+      "keycloak_uuid": "ed085f28-1b72-4485-8564-73671a0b406d",
+      "rauthy_id": "ed085f281b72448585647367",
+      "is_admin": true
+    },
+    {
+      "username": "inbrewj",
+      "email": "jason@urawizard.com",
+      "keycloak_uuid": "2ccc203f-a98c-488f-a5ba-8d20a384a9fc",
+      "rauthy_id": "2ccc203fa98c488fa5ba8d20",
+      "is_admin": true
+    },
+    {
+      "username": "demo",
+      "email": "demo@urawizard.com",
+      "keycloak_uuid": "434268bd-0c8a-41f6-b191-3768a7fe0048",
+      "rauthy_id": "434268bd0c8a41f6b1913768",
+      "is_admin": false
+    },
+    {
+      "username": "demo2",
+      "email": "demo2@urawizard.com",
+      "keycloak_uuid": "2d81294f-7866-4337-8fe3-1a1170d371af",
+      "rauthy_id": "2d81294f786643378fe31a11",
+      "is_admin": false
+    },
+    {
+      "username": "caity",
+      "email": "c@d.com",
+      "keycloak_uuid": "9f9c7b68-39e4-4088-b6e9-e33dd48e46e0",
+      "rauthy_id": "9f9c7b6839e44088b6e9e33d",
+      "is_admin": false
+    },
+    {
+      "username": "demo3",
+      "email": "demo3@urawizard.com",
+      "keycloak_uuid": "a3077849-5e8c-41bb-893b-8e3f945a06fb",
+      "rauthy_id": "a30778495e8c41bb893b8e3f",
+      "is_admin": false
+    },
+    {
+      "username": "rorywebber1000@gmail.com",
+      "email": "rorywebber1000@gmail.com",
+      "keycloak_uuid": "6d1c304f-8ebe-4620-bd28-4d56a5b3d59a",
+      "rauthy_id": "6d1c304f8ebe4620bd284d56",
+      "is_admin": false
+    },
+    {
+      "username": "norman",
+      "email": "norman-brewer@urawizard.com",
+      "keycloak_uuid": "7558b874-4cdf-43ab-8b97-a8a9cacf04f1",
+      "rauthy_id": "7558b8744cdf43ab8b97a8a9",
+      "is_admin": false
+    },
+    {
+      "username": "margotb",
+      "email": "margot.berrezaie5@gmail.com",
+      "keycloak_uuid": "04635238-dcae-4bcb-921e-3b9cecc7291e",
+      "rauthy_id": "04635238dcae4bcb921e3b9c",
+      "is_admin": false
+    },
+    {
+      "username": "demo4",
+      "email": "demo4@4.com",
+      "keycloak_uuid": "6ad83865-6bf5-4b06-a668-5ded561ebeed",
+      "rauthy_id": "6ad838656bf54b06a6685ded",
+      "is_admin": false
+    },
+    {
+      "username": "demo5",
+      "email": "demo5@5.com",
+      "keycloak_uuid": "231f3a3b-34d9-4d14-94bd-9abfe62ffa96",
+      "rauthy_id": "231f3a3b34d94d1494bd9abf",
+      "is_admin": false
+    },
+    {
+      "username": "demo6",
+      "email": "demo6@6.com",
+      "keycloak_uuid": "9f930b9f-a761-42e0-b9be-27dbddcbddac",
+      "rauthy_id": "9f930b9fa76142e0b9be27db",
+      "is_admin": false
+    },
+    {
+      "username": "demo10",
+      "email": "demo10@lalalalala.com",
+      "keycloak_uuid": "b8bfd89e-a4ae-4463-a6cc-7c2e1cd0e0aa",
+      "rauthy_id": "b8bfd89ea4ae4463a6cc7c2e",
+      "is_admin": false
+    },
+    {
+      "username": "demoinflow",
+      "email": "demoinflow@urawizard.com",
+      "keycloak_uuid": "b449472c-8bb3-4cea-87c1-2c2fc58899c6",
+      "rauthy_id": "b449472c8bb34cea87c12c2f",
+      "is_admin": false
+    },
+    {
+      "username": "newguy1000",
+      "email": "newguy@dryark.uk",
+      "keycloak_uuid": "1fe7548a-fdd3-4d25-b1f2-9e43dbaf8337",
+      "rauthy_id": "1fe7548afdd34d25b1f29e43",
+      "is_admin": false
+    },
+    {
+      "username": "waitinglist",
+      "email": "waitinglist@dryark.uk",
+      "keycloak_uuid": "ebeae119-8dac-4175-a4fc-5906c5031780",
+      "rauthy_id": "ebeae1198dac4175a4fc5906",
+      "is_admin": false
+    }
+  ],
+  "user_access_sync": {
+    "inserted": [
+      "admin",
+      "demo2",
+      "caity",
+      "demo3",
+      "rorywebber1000@gmail.com",
+      "norman",
+      "margotb",
+      "demo4",
+      "demo5",
+      "demo6",
+      "demo10",
+      "demoinflow",
+      "newguy1000"
+    ],
+    "skipped": [
+      "inbrewj",
+      "demo",
+      "waitinglist"
+    ]
+  }
+}

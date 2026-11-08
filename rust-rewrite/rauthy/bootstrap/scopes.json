@@ -1,0 +1,14 @@
+[
+  {
+    "name": "openid",
+    "scope": "openid"
+  },
+  {
+    "name": "profile",
+    "scope": "profile"
+  },
+  {
+    "name": "email",
+    "scope": "email"
+  }
+]

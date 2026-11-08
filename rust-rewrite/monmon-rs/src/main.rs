@@ -630,13 +630,13 @@ async fn signup_form_handler(
 
     let _ = sqlx::query(
         r#"
-        INSERT INTO user_access (user_id, email, approved, created_at)
-        VALUES ($1, $2, true, NOW())
-        ON CONFLICT (user_id) DO UPDATE SET approved = true
+        INSERT INTO user_access (id, approvedat, approvedby, createdat, email, status, userid, username)
+        VALUES (nextval('hibernate_sequence'), NOW(), 'SYSTEM', NOW(), $1, 'APPROVED', $2, $2)
+        ON CONFLICT (userid) DO UPDATE SET status = 'APPROVED'
         "#,
     )
-    .bind(&username)
     .bind(&email)
+    .bind(&username)
     .execute(&state.pool)
     .await;
 

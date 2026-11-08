@@ -92,15 +92,16 @@ pub async fn register_passkey_api(
     let device_name = payload.device_name.unwrap_or_else(|| "Browser Authenticator".to_string());
 
     // Ensure user exists in user_access
+    let user_email = format!("{}@example.com", username);
     let _ = sqlx::query(
         r#"
-        INSERT INTO user_access (user_id, email, approved, created_at)
-        VALUES ($1, $2, true, NOW())
-        ON CONFLICT (user_id) DO UPDATE SET approved = true
+        INSERT INTO user_access (id, approvedat, approvedby, createdat, email, status, userid, username)
+        VALUES (nextval('hibernate_sequence'), NOW(), 'SYSTEM', NOW(), $1, 'APPROVED', $2, $2)
+        ON CONFLICT (userid) DO UPDATE SET status = 'APPROVED'
         "#,
     )
+    .bind(&user_email)
     .bind(&username)
-    .bind(format!("{}@example.com", username))
     .execute(&state.pool)
     .await;
 

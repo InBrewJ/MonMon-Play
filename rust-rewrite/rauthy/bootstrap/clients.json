@@ -3,7 +3,7 @@
     "id": "monmon-web",
     "name": "MonMon Web",
     "secret": {
-      "Plain": "01c283f569ff42e4a080971629656fbb01c283f569ff42e4a080971629656fbb"
+      "Plain": "ddd05838-4c77-4051-94a0-9849820a557b"
     },
     "redirect_uris": [
       "http://localhost:9000/callback",

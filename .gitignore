@@ -23,4 +23,9 @@ keys/
 
 # Rauthy runtime data and state
 rust-rewrite/rauthy/data/
+backups/
+__pycache__/
+*.pyc
+
+
 
