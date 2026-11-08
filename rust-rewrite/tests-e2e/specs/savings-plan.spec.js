@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 test.describe('Savings Plan & Priority Queue E2E', () => {
 
   async function loginIfRequired(page) {
-    if (page.url().includes('auth')) {
+    if (page.url().includes('auth') || page.url().includes('login')) {
       const isRauthy = await page.locator('input[type="email"]').isVisible({ timeout: 1000 }).catch(() => false);
       if (isRauthy) {
         await page.fill('input[type="email"]', 'demo@demo.com');

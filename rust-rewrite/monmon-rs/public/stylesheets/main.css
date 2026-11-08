@@ -967,7 +967,7 @@ hr {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 990;
+  z-index: 1050;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -998,8 +998,8 @@ hr {
 .fab-ed {
   position: fixed;
   bottom: 24px;
-  left: 24px;
-  z-index: 990;
+  right: 24px;
+  z-index: 1050;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1012,6 +1012,13 @@ hr {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 14px rgba(139, 92, 246, 0.4);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 0;
+}
+
+/* When Can I Afford This and Ed both exist on the page (e.g. SPOG), stack Ed above Afford */
+.fab-afford ~ .fab-ed,
+#btn-afford-fab ~ #btn-ed-fab {
+  bottom: 84px;
+  right: 24px;
 }
 
 .fab-ed img {
@@ -1034,8 +1041,14 @@ hr {
 @media (max-width: 768px) {
   .fab-ed {
     display: flex;
-    bottom: 18px;
-    left: 18px;
+    bottom: 20px;
+    right: 20px;
+  }
+
+  .fab-afford ~ .fab-ed,
+  #btn-afford-fab ~ #btn-ed-fab {
+    bottom: 78px;
+    right: 20px;
   }
 
   #ed-says-desktop-panel {
@@ -1053,9 +1066,15 @@ hr {
 
   .fab-ed {
     bottom: 18px;
-    left: 18px;
+    right: 18px;
     width: 48px;
     height: 48px;
+  }
+
+  .fab-afford ~ .fab-ed,
+  #btn-afford-fab ~ #btn-ed-fab {
+    bottom: 74px;
+    right: 18px;
   }
 
   .fab-ed img {

@@ -2,12 +2,14 @@ mod admin;
 mod bank_sync;
 mod db;
 mod dig;
+mod ed;
 mod landing;
 mod management;
 mod models;
 mod net_worth;
 mod nommon;
 mod savings_plan;
+mod search;
 mod spog;
 mod statement;
 
@@ -16,7 +18,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, StatusCode},
     response::{Html, IntoResponse, Json, Response},
-    routing::{delete, get, post, put},
+    routing::{delete, get, post},
     Router,
 };
 use models::{
@@ -113,8 +115,15 @@ async fn main() {
         .route("/about", get(landing::get_landing_page))
         .route("/health", get(landing::get_health_api))
         .route("/api/user/accessStatus", get(landing::get_access_status_api))
-        .route("/login", get(|| async { landing::auth_redirect(None).await }))
+        .route("/api/search", get(search::search_api))
+        .route("/login", get(get_login_page).post(login_form_handler))
+        .route("/signup", get(get_signup_page).post(signup_form_handler))
+        .route("/logout", get(logout_handler))
         .route("/callback", get(callback_handler))
+        // Ed Says AI Financial Copilot
+        .route("/api/ed-says", get(ed::ed_says_spog_api))
+        .route("/api/ed-says-outgoings", get(ed::ed_says_outgoings_api))
+        .route("/api/ed-says-networth", get(ed::ed_says_networth_api))
         // Settings & Waiting List
         .route("/settings", get(admin::get_settings).post(admin::post_settings))
         .route("/settings/approveUser/:id", post(admin::approve_user_handler))
@@ -234,6 +243,18 @@ async fn main() {
         )
         .route("/savingsPlan", get(savings_plan::get_savings_plan_page))
         .route("/savingsPlans", get(savings_plan::get_savings_plan_page))
+        .route("/mySavingsPlan", get(savings_plan::get_savings_plan_page))
+        .route("/savingsPlan/addItem", post(savings_plan::add_item_form_handler))
+        .route("/savingsPlan/moveUp/:id", post(savings_plan::move_up_form_handler))
+        .route("/savingsPlan/moveDown/:id", post(savings_plan::move_down_form_handler))
+        .route("/savingsPlan/moveToTop/:id", post(savings_plan::move_to_top_form_handler))
+        .route("/savingsPlan/moveToBottom/:id", post(savings_plan::move_to_bottom_form_handler))
+        .route("/savingsPlan/toggleLock/:id", post(savings_plan::toggle_lock_form_handler))
+        .route("/savingsPlan/updatePercentage", post(savings_plan::update_percentage_form_handler))
+        .route("/savingsPlan/balanceEvenly/:id", post(savings_plan::balance_evenly_form_handler))
+        .route("/savingsPlan/trimDeficit/:id", post(savings_plan::trim_deficit_form_handler))
+        .route("/binSavingsPlanItem/:id", get(savings_plan::bin_item_handler))
+        .route("/binSavingsPlan/:id", get(savings_plan::bin_plan_handler))
         // Net Worth & Capital Assets
         .route("/netWorth", get(net_worth::get_net_worth_page))
         .route("/api/networth", get(net_worth::get_net_worth_api))
@@ -254,11 +275,6 @@ async fn main() {
         .route("/bank/statement/upload", post(statement::upload_statement_form))
         .route("/bank/statement/:id/confirm", post(statement::confirm_statement_api))
         .route("/bank/statement/:id/discard", post(statement::discard_statement_api))
-        .route("/mySavingsPlan", get(savings_plan::get_savings_plan_page))
-        .route(
-            "/savingsPlan/addItem",
-            post(savings_plan::add_item_form_handler),
-        )
         .nest_service(
             "/assets",
             ServeDir::new(if std::path::Path::new("public").exists() {
@@ -525,12 +541,105 @@ async fn erratic_balances_handler(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AuthForm {
+    pub username: String,
+    pub email: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "signup.html")]
+struct SignupTemplate {}
+
+#[derive(Template)]
+#[template(path = "login.html")]
+struct LoginTemplate {}
+
+async fn get_signup_page() -> Html<String> {
+    SignupTemplate {}
+        .render()
+        .map(Html)
+        .unwrap_or_else(|_| Html(String::new()))
+}
+
+async fn get_login_page() -> Html<String> {
+    LoginTemplate {}
+        .render()
+        .map(Html)
+        .unwrap_or_else(|_| Html(String::new()))
+}
+
+async fn signup_form_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Form(form): axum::extract::Form<AuthForm>,
+) -> Result<Response, (StatusCode, String)> {
+    let username = form.username.trim().to_string();
+    let email = form.email.unwrap_or_else(|| format!("{}@example.com", username));
+
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO user_access (user_id, email, approved, created_at)
+        VALUES ($1, $2, true, NOW())
+        ON CONFLICT (user_id) DO UPDATE SET approved = true
+        "#,
+    )
+    .bind(&username)
+    .bind(&email)
+    .execute(&state.pool)
+    .await;
+
+    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
+    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
+    let auth_val = "authenticated=true; Path=/; SameSite=Lax";
+
+    let mut response = axum::response::Redirect::to("/spog").into_response();
+    let headers = response.headers_mut();
+    headers.append(axum::http::header::SET_COOKIE, cookie_val.parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, session_val.parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, auth_val.parse().unwrap());
+
+    Ok(response)
+}
+
+async fn login_form_handler(
+    axum::extract::Form(form): axum::extract::Form<AuthForm>,
+) -> Result<Response, (StatusCode, String)> {
+    let username = if form.username.trim().is_empty() {
+        "demo".to_string()
+    } else {
+        form.username.trim().to_string()
+    };
+
+    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
+    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
+    let auth_val = "authenticated=true; Path=/; SameSite=Lax";
+
+    let mut response = axum::response::Redirect::to("/spog").into_response();
+    let headers = response.headers_mut();
+    headers.append(axum::http::header::SET_COOKIE, cookie_val.parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, session_val.parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, auth_val.parse().unwrap());
+
+    Ok(response)
+}
+
+async fn logout_handler() -> Response {
+    let mut response = axum::response::Redirect::to("/").into_response();
+    let headers = response.headers_mut();
+    headers.append(axum::http::header::SET_COOKIE, "user_id=; Path=/; Max-Age=0".parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, "monmon_session=; Path=/; Max-Age=0".parse().unwrap());
+    headers.append(axum::http::header::SET_COOKIE, "authenticated=; Path=/; Max-Age=0".parse().unwrap());
+    response
+}
+
 #[derive(Template)]
 #[template(path = "spog.html")]
 struct SpogTemplate {
     username: String,
     metrics: spog::SpogMetrics,
     pace: spog::SpendingPaceMetrics,
+    is_fresh_account: bool,
 }
 
 // SPOG Handlers
@@ -568,13 +677,41 @@ async fn get_spending_pace(
 
 async fn get_spog_page(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    let user_id = query
+    let mut user_id = query
         .get("userId")
         .or_else(|| query.get("user_id"))
         .cloned()
-        .unwrap_or_else(|| "demo".to_string());
+        .unwrap_or_default();
+
+    if user_id.trim().is_empty() {
+        if let Some(cookie_hdr) = headers.get(axum::http::header::COOKIE) {
+            if let Ok(cookie_str) = cookie_hdr.to_str() {
+                for part in cookie_str.split(';') {
+                    let part = part.trim();
+                    if let Some(val) = part.strip_prefix("user_id=") {
+                        let val = val.trim();
+                        if !val.is_empty() {
+                            user_id = val.to_string();
+                            break;
+                        }
+                    }
+                    if let Some(val) = part.strip_prefix("monmon_session=") {
+                        let val = val.trim();
+                        if !val.is_empty() && val != "authenticated" {
+                            user_id = val.to_string();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if user_id.trim().is_empty() {
+        user_id = "demo".to_string();
+    }
 
     let metrics = spog::calculate_spog(&state.pool, &user_id)
         .await
@@ -584,10 +721,19 @@ async fn get_spog_page(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    let resolved = spog::resolve_user_id(&state.pool, &user_id).await;
+    let accounts_count: i64 = sqlx::query_scalar("SELECT count(*) FROM account WHERE (userid = $1 OR user_id = $1)")
+        .bind(&resolved)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let is_fresh_account = accounts_count == 0;
+
     let tmpl = SpogTemplate {
         username: user_id,
         metrics,
         pace,
+        is_fresh_account,
     };
 
     tmpl.render()

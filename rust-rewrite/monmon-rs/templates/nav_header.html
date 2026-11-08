@@ -1,0 +1,102 @@
+<div id="ticker"></div>
+
+<!-- Header with Brand, Disco Ball, Search and Theme Toggle -->
+<header class="app-header">
+    <div class="header-brand-group">
+        <h1>
+            <a href="/spog" title="MonMon">
+                <img src="/assets/images/monmon-monster.svg" alt="MonMon Monster" class="monmon-logo-icon" width="38" height="38" />
+                <span>MonMon</span>
+            </a>
+        </h1>
+
+        <div id="disco-header-slot" class="disco-header-slot" style="display: none;" role="button" aria-label="Disco mode toggle" title="🎉 Payday Disco Mode!">
+            <div class="disco-hanger"></div>
+            <div class="disco-ball-wrapper">
+                <div class="disco-ball" id="disco-ball"></div>
+            </div>
+            <span class="disco-badge">PAYDAY!</span>
+        </div>
+    </div>
+
+    <div class="header-actions-group">
+        <!-- Global Expandable Search Bar -->
+        <div class="header-search-container" id="header-search-container">
+            <div class="header-search-input-wrap">
+                <i class="fas fa-search header-search-icon" id="header-search-trigger" title="Search MonMon (Press / or Ctrl+K)"></i>
+                <input type="text"
+                       id="global-search-input"
+                       class="header-search-input"
+                       placeholder="Search... (/)"
+                       autocomplete="off"
+                       spellcheck="false"
+                       aria-label="Search MonMon" />
+                <button type="button" id="header-search-clear" class="header-search-clear" aria-label="Clear search" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
+                <span class="header-search-spinner" id="header-search-spinner" style="display: none;">
+                    <i class="fas fa-circle-notch fa-spin"></i>
+                </span>
+                <kbd class="header-search-kbd-hint" id="header-search-kbd">/</kbd>
+            </div>
+
+            <!-- Search Results Dropdown -->
+            <div class="header-search-dropdown" id="header-search-dropdown" style="display: none;">
+                <div class="header-search-results-list" id="header-search-results-list" role="listbox"></div>
+                <div class="header-search-footer" id="header-search-footer">
+                    <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+                    <span><kbd>↵</kbd> select</span>
+                    <span><kbd>esc</kbd> close</span>
+                </div>
+            </div>
+        </div>
+
+        <button id="theme-toggle" class="theme-toggle-btn" type="button" aria-label="Toggle theme" title="Switch to Light/Dark Mode">
+            <i class="fas fa-sun" id="theme-toggle-icon"></i>
+            <span id="theme-toggle-text">Light Mode</span>
+        </button>
+    </div>
+</header>
+
+<!-- Navigation crumbs & Drawer toggle -->
+<nav class="crumbs" id="main-nav">
+    <div class="nav-bar-inner">
+        <button id="nav-toggle" class="nav-chevron-toggle" type="button" aria-label="Toggle navigation options">
+            <i class="fas fa-chevron-right" id="nav-toggle-icon"></i>
+            <span class="nav-toggle-text">Menu</span>
+        </button>
+        <div class="nav-current-crumb-pill">
+            <a href="/spog" class="current-crumb-link"><i class="fas fa-compass"></i> Menu</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Left-hand slide-out navigation drawer -->
+<div id="nav-backdrop" class="nav-drawer-backdrop"></div>
+<aside id="nav-drawer" class="nav-drawer" aria-label="Main Navigation">
+    <div class="nav-drawer-header">
+        <div class="nav-drawer-brand">
+            <img src="/assets/images/monmon-monster.svg" alt="MonMon" width="30" height="30" />
+            <span>MonMon</span>
+        </div>
+        <button id="nav-drawer-close" class="nav-drawer-close" type="button" aria-label="Close navigation">&times;</button>
+    </div>
+    <div class="nav-drawer-content">
+        <ol class="nav-drawer-list" id="nav-crumbs-list">
+            <li class="drawer-crumb"><a href="/spog"><i class="fas fa-chart-pie"></i> SPOG</a></li>
+            <li class="drawer-crumb"><a href="/myOutgoings"><i class="fas fa-credit-card"></i> Outgoings</a></li>
+            <li class="drawer-crumb"><a href="/myAccounts"><i class="fas fa-university"></i> Accounts</a></li>
+            <li class="drawer-crumb"><a href="/myIncomings"><i class="fas fa-money-bill-wave"></i> Incomings</a></li>
+            <li class="drawer-crumb"><a href="/myBalances"><i class="fas fa-coins"></i> Balances</a></li>
+            <li class="drawer-crumb"><a href="/savingsPlan"><i class="fas fa-sliders-h"></i> Plans</a></li>
+            <li class="drawer-crumb"><a href="/spendingPace"><i class="fas fa-chart-line"></i> Spending Pace</a></li>
+            <li class="drawer-crumb"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
+            <li class="drawer-crumb"><a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a></li>
+            <li class="drawer-crumb"><a href="/bank"><i class="fas fa-exchange-alt"></i> Bank Sync</a></li>
+            <li class="drawer-crumb"><a href="/dig"><i class="fas fa-map-marked-alt"></i> Monzo Dig</a></li>
+            <li class="drawer-crumb"><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
+            <li class="drawer-divider"></li>
+            <li class="drawer-crumb drawer-logout"><a href="/centralLogout"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+        </ol>
+    </div>
+</aside>

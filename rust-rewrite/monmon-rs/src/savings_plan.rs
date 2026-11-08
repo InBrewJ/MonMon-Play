@@ -3,7 +3,7 @@ use askama::Template;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Json, Redirect},
+    response::{Html, Json, Redirect},
     Form,
 };
 use serde::{Deserialize, Serialize};
@@ -21,11 +21,27 @@ pub struct SavingsPlanItemDto {
     pub item_type: String,
     pub account_id: Option<i64>,
     pub account_name: Option<String>,
+    pub account_type: Option<String>,
+    pub account_limit: Option<f32>,
+    pub current_balance: Option<f32>,
+    pub debt_owed: f32,
+    pub remaining_to_target: f32,
+    pub rough_months: Option<i32>,
     pub target_amount: f32,
     pub monthly_amount: f32,
     pub priority: i32,
     pub locked: bool,
     pub archived: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavingsPlanSummaryDto {
+    pub id: i64,
+    pub name: String,
+    pub savings_percentage: i32,
+    pub created_at: i64,
+    pub items_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +57,40 @@ pub struct SavingsPlanDto {
     pub unallocated_amount: f32,
     pub max_surplus: f32,
     pub items: Vec<SavingsPlanItemDto>,
+    pub previous_plans: Vec<SavingsPlanSummaryDto>,
+}
+
+impl SavingsPlanDto {
+    pub fn is_overallocated(&self) -> bool {
+        self.unallocated_amount < 0.0
+    }
+    pub fn breadline_month(&self) -> f32 {
+        (((self.max_surplus - self.target_amount).max(0.0)) * 100.0).round() / 100.0
+    }
+    pub fn breadline_week(&self) -> f32 {
+        (((self.max_surplus - self.target_amount).max(0.0) / 4.33) * 100.0).round() / 100.0
+    }
+    pub fn breadline_day(&self) -> f32 {
+        (((self.max_surplus - self.target_amount).max(0.0) / 30.0) * 100.0).round() / 100.0
+    }
+    pub fn abs_unallocated(&self) -> f32 {
+        self.unallocated_amount.abs()
+    }
+}
+
+impl SavingsPlanItemDto {
+    pub fn is_debt_paid_off(&self) -> bool {
+        self.debt_owed <= 0.0
+    }
+    pub fn is_target_reached(&self) -> bool {
+        self.target_amount > 0.0 && self.remaining_to_target <= 0.0
+    }
+    pub fn has_target(&self) -> bool {
+        self.target_amount > 0.0
+    }
+    pub fn has_limit(&self) -> bool {
+        self.account_limit.map(|l| l > 0.0).unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,7 +143,144 @@ pub struct AccountSimple {
     pub limit: f32,
 }
 
-// Helper: fetch user's incoming total
+// -------------------------------------------------------------
+// Pure Domain Calculations (Mirrored from SavingsPlanTest.java)
+// -------------------------------------------------------------
+
+pub fn calculate_debt_owed(
+    account_type: Option<&str>,
+    limit: Option<f32>,
+    current_balance: Option<f32>,
+    target_amount: f32,
+) -> f32 {
+    let lim = limit.unwrap_or(0.0);
+    let bal = current_balance.unwrap_or(0.0);
+
+    match account_type.map(|s| s.to_uppercase()).as_deref() {
+        Some("CREDIT") => (lim - bal).max(0.0),
+        Some("DEBIT") | Some("DEBIT_SHARED_BILLS") => {
+            if bal < 0.0 {
+                (-bal).max(0.0)
+            } else {
+                0.0
+            }
+        }
+        Some("LOAN") => bal.max(0.0),
+        _ => {
+            if target_amount > 0.0 {
+                target_amount
+            } else {
+                (lim - bal).max(0.0)
+            }
+        }
+    }
+}
+
+pub fn calculate_remaining_to_target(
+    current_balance: Option<f32>,
+    target_amount: f32,
+) -> f32 {
+    let bal = current_balance.unwrap_or(0.0);
+    (target_amount - bal).max(0.0)
+}
+
+pub fn calculate_rough_months_to_payoff(debt_owed: f32, monthly_amount: f32) -> Option<i32> {
+    if debt_owed <= 0.0 {
+        Some(0)
+    } else if monthly_amount <= 0.0 {
+        None
+    } else {
+        Some((debt_owed / monthly_amount).ceil() as i32)
+    }
+}
+
+pub fn calculate_rough_months_to_target(
+    remaining_to_target: f32,
+    monthly_amount: f32,
+    target_amount: f32,
+) -> Option<i32> {
+    if target_amount <= 0.0 {
+        None
+    } else if remaining_to_target <= 0.0 {
+        Some(0)
+    } else if monthly_amount <= 0.0 {
+        None
+    } else {
+        Some((remaining_to_target / monthly_amount).ceil() as i32)
+    }
+}
+
+pub fn scale_items_proportionally(items: &mut [SavingsPlanItemDto], target_pot: f32) {
+    if items.is_empty() {
+        return;
+    }
+
+    let initial_total: f32 = items.iter().filter(|i| !i.locked).map(|i| i.monthly_amount).sum();
+    let locked_total: f32 = items.iter().filter(|i| i.locked).map(|i| i.monthly_amount).sum();
+    let available_pot = (target_pot - locked_total).max(0.0);
+
+    let unlocked_count = items.iter().filter(|i| !i.locked).count();
+    if unlocked_count == 0 {
+        return;
+    }
+
+    if initial_total <= 0.0 {
+        let equal_share = ((available_pot / unlocked_count as f32) * 100.0).round() / 100.0;
+        for it in items.iter_mut() {
+            if !it.locked {
+                it.monthly_amount = equal_share;
+            }
+        }
+    } else {
+        let ratio = available_pot / initial_total;
+        for it in items.iter_mut() {
+            if !it.locked {
+                it.monthly_amount = ((it.monthly_amount * ratio) * 100.0).round() / 100.0;
+            }
+        }
+    }
+}
+
+pub fn balance_items_evenly(items: &mut [SavingsPlanItemDto], target_pot: f32) {
+    let locked_total: f32 = items.iter().filter(|i| i.locked).map(|i| i.monthly_amount).sum();
+    let available_pot = (target_pot - locked_total).max(0.0);
+    let unlocked_count = items.iter().filter(|i| !i.locked).count();
+    if unlocked_count == 0 {
+        return;
+    }
+    let share = ((available_pot / unlocked_count as f32) * 100.0).round() / 100.0;
+    for it in items.iter_mut() {
+        if !it.locked {
+            it.monthly_amount = share;
+        }
+    }
+}
+
+pub fn trim_items_deficit(items: &mut [SavingsPlanItemDto], target_pot: f32) {
+    let total_allocated: f32 = items.iter().map(|i| i.monthly_amount).sum();
+    if total_allocated <= target_pot {
+        return;
+    }
+    let mut deficit = total_allocated - target_pot;
+
+    // Traverse unlocked items in reverse priority (lowest priority first)
+    for it in items.iter_mut().rev() {
+        if !it.locked && it.monthly_amount > 0.0 {
+            if it.monthly_amount >= deficit {
+                it.monthly_amount = ((it.monthly_amount - deficit) * 100.0).round() / 100.0;
+                break;
+            } else {
+                deficit -= it.monthly_amount;
+                it.monthly_amount = 0.0;
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// Database Helpers & Loaders
+// -------------------------------------------------------------
+
 pub async fn get_user_incoming_total(pool: &PgPool, user_id: &str) -> f32 {
     let row = sqlx::query(
         r#"
@@ -101,6 +288,26 @@ pub async fn get_user_incoming_total(pool: &PgPool, user_id: &str) -> f32 {
         FROM incoming
         WHERE (userid = $1 OR user_id = $1)
           AND (archived IS NULL OR archived = false)
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await;
+
+    match row {
+        Ok(r) => r.get::<f32, _>("total"),
+        Err(_) => 0.0,
+    }
+}
+
+pub async fn get_user_outgoing_total(pool: &PgPool, user_id: &str) -> f32 {
+    let row = sqlx::query(
+        r#"
+        SELECT COALESCE(SUM(cost), 0.0)::real AS total
+        FROM outgoing
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+          AND (paused IS NULL OR paused = false)
         "#,
     )
     .bind(user_id)
@@ -121,7 +328,7 @@ pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<S
         SELECT id, name, savingspercentage
         FROM savings_plan
         WHERE (userid = $1 OR user_id = $1)
-          AND archived = false
+          AND (archived IS NULL OR archived = false)
         ORDER BY createdat DESC NULLS LAST
         LIMIT 1
         "#,
@@ -137,7 +344,6 @@ pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<S
             row.get::<i32, _>("savingspercentage"),
         ),
         None => {
-            // Create default active savings plan
             let now = chrono::Utc::now().timestamp_millis();
             let new_row = sqlx::query(
                 r#"
@@ -164,7 +370,10 @@ pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<S
             COALESCE(i.priority, 1) AS priority,
             COALESCE(i.locked, false) AS locked,
             COALESCE(i.archived, false) AS archived,
-            a.name AS account_name
+            a.name AS account_name,
+            a.type AS account_type,
+            COALESCE(a.account_limit, 0.0)::real AS account_limit,
+            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_balance
         FROM savings_plan_item i
         LEFT JOIN account a ON a.id = i.account_id
         WHERE i.savings_plan_id = $1
@@ -176,25 +385,58 @@ pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<S
     .fetch_all(pool)
     .await?;
 
-    let mut items: Vec<SavingsPlanItemDto> = items_rows
+    let items: Vec<SavingsPlanItemDto> = items_rows
         .into_iter()
         .enumerate()
-        .map(|(idx, r)| SavingsPlanItemDto {
-            id: r.get("id"),
-            savings_plan_id: r.get("savings_plan_id"),
-            name: r.get("name"),
-            item_type: r.get("item_type"),
-            account_id: r.get("account_id"),
-            account_name: r.get("account_name"),
-            target_amount: r.get("targetamount"),
-            monthly_amount: r.get("monthlyamount"),
-            priority: (idx + 1) as i32, // Enforce strictly contiguous 1..N order
-            locked: r.get("locked"),
-            archived: r.get("archived"),
+        .map(|(idx, r)| {
+            let account_type: Option<String> = r.get("account_type");
+            let account_limit: Option<f32> = Some(r.get("account_limit"));
+            let current_balance: Option<f32> = Some(r.get("current_balance"));
+            let target_amount: f32 = r.get("targetamount");
+            let monthly_amount: f32 = r.get("monthlyamount");
+            let item_type: String = r.get("item_type");
+
+            let debt_owed = if item_type == "DEBT_PAYOFF" {
+                calculate_debt_owed(account_type.as_deref(), account_limit, current_balance, target_amount)
+            } else {
+                0.0
+            };
+
+            let remaining_to_target = if item_type == "SAVINGS_TARGET" {
+                calculate_remaining_to_target(current_balance, target_amount)
+            } else {
+                0.0
+            };
+
+            let rough_months = if item_type == "DEBT_PAYOFF" {
+                calculate_rough_months_to_payoff(debt_owed, monthly_amount)
+            } else {
+                calculate_rough_months_to_target(remaining_to_target, monthly_amount, target_amount)
+            };
+
+            SavingsPlanItemDto {
+                id: r.get("id"),
+                savings_plan_id: r.get("savings_plan_id"),
+                name: r.get("name"),
+                item_type,
+                account_id: r.get("account_id"),
+                account_name: r.get("account_name"),
+                account_type,
+                account_limit,
+                current_balance,
+                debt_owed,
+                remaining_to_target,
+                rough_months,
+                target_amount,
+                monthly_amount,
+                priority: (idx + 1) as i32,
+                locked: r.get("locked"),
+                archived: r.get("archived"),
+            }
         })
         .collect();
 
-    // Rebalance in DB if priority drifted
+    // Rebalance priorities in DB
     for item in &items {
         let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
             .bind(item.priority)
@@ -204,9 +446,39 @@ pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<S
     }
 
     let incoming_total = get_user_incoming_total(pool, &resolved).await;
+    let outgoing_total = get_user_outgoing_total(pool, &resolved).await;
+    let max_surplus = (incoming_total - outgoing_total).max(0.0);
     let target_amount = (savings_percentage as f32 / 100.0) * incoming_total;
     let total_allocated: f32 = items.iter().map(|it| it.monthly_amount).sum();
     let unallocated_amount = target_amount - total_allocated;
+
+    // Previous plans (archived)
+    let previous_rows = sqlx::query(
+        r#"
+        SELECT sp.id, sp.name, sp.savingspercentage, COALESCE(sp.createdat, 0) AS createdat,
+               (SELECT COUNT(*) FROM savings_plan_item spi WHERE spi.savings_plan_id = sp.id AND spi.archived = false) AS items_count
+        FROM savings_plan sp
+        WHERE (sp.userid = $1 OR sp.user_id = $1)
+          AND sp.archived = true
+        ORDER BY sp.createdat DESC NULLS LAST
+        LIMIT 10
+        "#,
+    )
+    .bind(&resolved)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let previous_plans = previous_rows
+        .into_iter()
+        .map(|r| SavingsPlanSummaryDto {
+            id: r.get("id"),
+            name: r.get("name"),
+            savings_percentage: r.get("savingspercentage"),
+            created_at: r.get("createdat"),
+            items_count: r.get("items_count"),
+        })
+        .collect();
 
     Ok(SavingsPlanDto {
         id: plan_id,
@@ -217,12 +489,16 @@ pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<S
         target_amount: (target_amount * 100.0).round() / 100.0,
         total_allocated: (total_allocated * 100.0).round() / 100.0,
         unallocated_amount: (unallocated_amount * 100.0).round() / 100.0,
-        max_surplus: incoming_total, // Default representation
+        max_surplus: (max_surplus * 100.0).round() / 100.0,
         items,
+        previous_plans,
     })
 }
 
+// -------------------------------------------------------------
 // JSON API Handlers
+// -------------------------------------------------------------
+
 pub async fn get_savings_plan_api(
     State(state): State<Arc<AppState>>,
     Query(q): Query<SavingsPlanQuery>,
@@ -285,6 +561,12 @@ pub async fn create_savings_plan_item_api(
         item_type: row.get("type"),
         account_id: row.get("account_id"),
         account_name: None,
+        account_type: None,
+        account_limit: None,
+        current_balance: None,
+        debt_owed: 0.0,
+        remaining_to_target: 0.0,
+        rough_months: None,
         target_amount: row.get("targetamount"),
         monthly_amount: row.get("monthlyamount"),
         priority: row.get("priority"),
@@ -306,20 +588,16 @@ pub async fn move_item_up_api(
     if let Some(idx) = plan.items.iter().position(|it| it.id == id) {
         if idx > 0 {
             let prev = &plan.items[idx - 1];
-            // Swap priorities
-            sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
+            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
                 .bind(prev.priority)
                 .bind(id)
                 .execute(&state.pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-            sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
+                .await;
+            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
                 .bind(plan.items[idx].priority)
                 .bind(prev.id)
                 .execute(&state.pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                .await;
         }
     }
 
@@ -339,20 +617,16 @@ pub async fn move_item_down_api(
     if let Some(idx) = plan.items.iter().position(|it| it.id == id) {
         if idx + 1 < plan.items.len() {
             let next = &plan.items[idx + 1];
-            // Swap priorities
-            sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
+            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
                 .bind(next.priority)
                 .bind(id)
                 .execute(&state.pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-            sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
+                .await;
+            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
                 .bind(plan.items[idx].priority)
                 .bind(next.id)
                 .execute(&state.pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                .await;
         }
     }
 
@@ -384,6 +658,12 @@ pub async fn toggle_lock_api(
         item_type: row.get("type"),
         account_id: row.get("account_id"),
         account_name: None,
+        account_type: None,
+        account_limit: None,
+        current_balance: None,
+        debt_owed: 0.0,
+        remaining_to_target: 0.0,
+        rough_months: None,
         target_amount: row.get("targetamount"),
         monthly_amount: row.get("monthlyamount"),
         priority: row.get("priority"),
@@ -402,18 +682,15 @@ pub async fn delete_item_api(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Find the item to delete
     let deleted_item = plan.items.iter().find(|it| it.id == id);
     let amount_to_roll_over = deleted_item.map(|it| it.monthly_amount).unwrap_or(0.0);
 
-    // Soft delete
     sqlx::query("UPDATE savings_plan_item SET archived = true, monthlyamount = 0.0, monthly_amount = 0.0 WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Rebalance remaining items
     let remaining_items: Vec<_> = plan.items.into_iter().filter(|it| it.id != id).collect();
     if !remaining_items.is_empty() {
         let top_id = remaining_items[0].id;
@@ -436,7 +713,10 @@ pub async fn delete_item_api(
     Ok(Json(serde_json::json!({ "success": true, "deleted": id })))
 }
 
-// HTML Form / Page Handlers
+// -------------------------------------------------------------
+// HTML Form / Page Handlers (Form submissions matching Java routes)
+// -------------------------------------------------------------
+
 #[derive(Debug, Deserialize)]
 pub struct FormAddItem {
     pub name: String,
@@ -450,6 +730,14 @@ pub struct FormAddItem {
     pub account_id: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FormUpdatePercentage {
+    #[serde(rename = "planId")]
+    pub plan_id: Option<i64>,
+    #[serde(rename = "savingsPercentage")]
+    pub savings_percentage: i32,
+}
+
 pub async fn get_savings_plan_page(
     State(state): State<Arc<AppState>>,
 ) -> Result<Html<String>, (StatusCode, String)> {
@@ -459,7 +747,12 @@ pub async fn get_savings_plan_page(
 
     let accounts_rows = sqlx::query(
         r#"
-        SELECT id, name, type, COALESCE(latestbalancevalue, 0.0)::real AS balance, COALESCE(availablelimit, 0.0)::real AS limit
+        SELECT 
+            id, 
+            name, 
+            type, 
+            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance, 
+            COALESCE(account_limit, 0.0)::real AS limit
         FROM account
         WHERE (userid = $1 OR user_id = $1)
           AND (archived IS NULL OR archived = false)
@@ -505,4 +798,416 @@ pub async fn add_item_form_handler(
 
     let _ = create_savings_plan_item_api(State(state), Json(payload)).await?;
     Ok(Redirect::to("/savingsPlan#sliced-items-card"))
+}
+
+pub async fn move_up_form_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let q = SavingsPlanQuery { user_id: Some("demo".to_string()) };
+    let _ = move_item_up_api(State(state), Path(id), Query(q)).await;
+    Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
+}
+
+pub async fn move_down_form_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let q = SavingsPlanQuery { user_id: Some("demo".to_string()) };
+    let _ = move_item_down_api(State(state), Path(id), Query(q)).await;
+    Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
+}
+
+pub async fn move_to_top_form_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let plan = get_or_create_active_plan(&state.pool, "demo")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if let Some(target_item) = plan.items.iter().find(|it| it.id == id) {
+        let old_priority = target_item.priority;
+        let _ = sqlx::query("UPDATE savings_plan_item SET priority = 1 WHERE id = $1")
+            .bind(id)
+            .execute(&state.pool)
+            .await;
+
+        for it in plan.items.iter().filter(|it| it.id != id && it.priority < old_priority) {
+            let _ = sqlx::query("UPDATE savings_plan_item SET priority = priority + 1 WHERE id = $1")
+                .bind(it.id)
+                .execute(&state.pool)
+                .await;
+        }
+    }
+
+    Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
+}
+
+pub async fn move_to_bottom_form_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let plan = get_or_create_active_plan(&state.pool, "demo")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let max_priority = plan.items.len() as i32;
+    if let Some(target_item) = plan.items.iter().find(|it| it.id == id) {
+        let old_priority = target_item.priority;
+        let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
+            .bind(max_priority)
+            .bind(id)
+            .execute(&state.pool)
+            .await;
+
+        for it in plan.items.iter().filter(|it| it.id != id && it.priority > old_priority) {
+            let _ = sqlx::query("UPDATE savings_plan_item SET priority = priority - 1 WHERE id = $1")
+                .bind(it.id)
+                .execute(&state.pool)
+                .await;
+        }
+    }
+
+    Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
+}
+
+pub async fn toggle_lock_form_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let q = SavingsPlanQuery { user_id: Some("demo".to_string()) };
+    let _ = toggle_lock_api(State(state), Path(id), Query(q)).await;
+    Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
+}
+
+pub async fn update_percentage_form_handler(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<FormUpdatePercentage>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let plan = get_or_create_active_plan(&state.pool, "demo")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let plan_id = form.plan_id.unwrap_or(plan.id);
+    let new_percent = form.savings_percentage.clamp(0, 100);
+
+    let _ = sqlx::query("UPDATE savings_plan SET savingspercentage = $1 WHERE id = $2")
+        .bind(new_percent)
+        .bind(plan_id)
+        .execute(&state.pool)
+        .await;
+
+    let incoming = plan.incoming_total;
+    let new_target_pot = (new_percent as f32 / 100.0) * incoming;
+
+    let mut items = plan.items;
+    scale_items_proportionally(&mut items, new_target_pot);
+
+    for it in &items {
+        let _ = sqlx::query("UPDATE savings_plan_item SET monthlyamount = $1, monthly_amount = $1 WHERE id = $2")
+            .bind(it.monthly_amount)
+            .bind(it.id)
+            .execute(&state.pool)
+            .await;
+    }
+
+    Ok(Redirect::to("/savingsPlan"))
+}
+
+pub async fn balance_evenly_form_handler(
+    State(state): State<Arc<AppState>>,
+    Path(_plan_id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let plan = get_or_create_active_plan(&state.pool, "demo")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut items = plan.items;
+    balance_items_evenly(&mut items, plan.target_amount);
+
+    for it in &items {
+        let _ = sqlx::query("UPDATE savings_plan_item SET monthlyamount = $1, monthly_amount = $1 WHERE id = $2")
+            .bind(it.monthly_amount)
+            .bind(it.id)
+            .execute(&state.pool)
+            .await;
+    }
+
+    Ok(Redirect::to("/savingsPlan#sliced-items-card"))
+}
+
+pub async fn trim_deficit_form_handler(
+    State(state): State<Arc<AppState>>,
+    Path(_plan_id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let plan = get_or_create_active_plan(&state.pool, "demo")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut items = plan.items;
+    trim_items_deficit(&mut items, plan.target_amount);
+
+    for it in &items {
+        let _ = sqlx::query("UPDATE savings_plan_item SET monthlyamount = $1, monthly_amount = $1 WHERE id = $2")
+            .bind(it.monthly_amount)
+            .bind(it.id)
+            .execute(&state.pool)
+            .await;
+    }
+
+    Ok(Redirect::to("/savingsPlan#sliced-items-card"))
+}
+
+pub async fn bin_item_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let q = SavingsPlanQuery { user_id: Some("demo".to_string()) };
+    let _ = delete_item_api(State(state), Path(id), Query(q)).await;
+    Ok(Redirect::to("/savingsPlan#sliced-items-card"))
+}
+
+pub async fn bin_plan_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let _ = sqlx::query("UPDATE savings_plan SET archived = true WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await;
+
+    Ok(Redirect::to("/savingsPlan"))
+}
+
+// -------------------------------------------------------------
+// Unit Tests (Translating Java SavingsPlanTest.java)
+// -------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_credit_payoff_calculates_rough_months() {
+        // Limit: 2000, Available balance: 1400 -> Debt: 600
+        let debt = calculate_debt_owed(Some("CREDIT"), Some(2000.0), Some(1400.0), 0.0);
+        assert_eq!(debt, 600.0);
+        // 600 / 200 = 3 months
+        let months = calculate_rough_months_to_payoff(debt, 200.0);
+        assert_eq!(months, Some(3));
+    }
+
+    #[test]
+    fn test_credit_payoff_rounds_up_fractional_months() {
+        // Limit: 1000, Available balance: 650 -> Debt: 350
+        let debt = calculate_debt_owed(Some("CREDIT"), Some(1000.0), Some(650.0), 0.0);
+        assert_eq!(debt, 350.0);
+        // 350 / 150 = 2.333... -> 3 months
+        let months = calculate_rough_months_to_payoff(debt, 150.0);
+        assert_eq!(months, Some(3));
+    }
+
+    #[test]
+    fn test_credit_payoff_when_already_paid_off_returns_zero_months() {
+        // Limit: 1000, Available balance: 1000 -> Debt: 0
+        let debt = calculate_debt_owed(Some("CREDIT"), Some(1000.0), Some(1000.0), 0.0);
+        assert_eq!(debt, 0.0);
+        let months = calculate_rough_months_to_payoff(debt, 100.0);
+        assert_eq!(months, Some(0));
+    }
+
+    #[test]
+    fn test_credit_payoff_without_monthly_allocation_returns_none() {
+        let debt = calculate_debt_owed(Some("CREDIT"), Some(1000.0), Some(700.0), 0.0);
+        assert_eq!(debt, 300.0);
+        let months = calculate_rough_months_to_payoff(debt, 0.0);
+        assert_eq!(months, None);
+    }
+
+    #[test]
+    fn test_savings_target_calculates_rough_months() {
+        // Current balance: 250, Target: 1000 -> Remaining: 750
+        let remaining = calculate_remaining_to_target(Some(250.0), 1000.0);
+        assert_eq!(remaining, 750.0);
+        // 750 / 250 = 3 months
+        let months = calculate_rough_months_to_target(remaining, 250.0, 1000.0);
+        assert_eq!(months, Some(3));
+    }
+
+    #[test]
+    fn test_savings_target_when_achieved_returns_zero_months() {
+        let remaining = calculate_remaining_to_target(Some(1200.0), 1000.0);
+        assert_eq!(remaining, 0.0);
+        let months = calculate_rough_months_to_target(remaining, 200.0, 1000.0);
+        assert_eq!(months, Some(0));
+    }
+
+    #[test]
+    fn test_debit_overdraft_payoff_calculates_debt_and_rough_months() {
+        // Debit account with £500 overdraft limit, currently at -£300 balance
+        let debt = calculate_debt_owed(Some("DEBIT"), Some(500.0), Some(-300.0), 0.0);
+        assert_eq!(debt, 300.0);
+        let months = calculate_rough_months_to_payoff(debt, 100.0);
+        assert_eq!(months, Some(3));
+    }
+
+    #[test]
+    fn test_debit_positive_balance_has_zero_debt_owed() {
+        let debt = calculate_debt_owed(Some("DEBIT"), Some(500.0), Some(250.0), 0.0);
+        assert_eq!(debt, 0.0);
+        let months = calculate_rough_months_to_payoff(debt, 50.0);
+        assert_eq!(months, Some(0));
+    }
+
+    #[test]
+    fn test_scale_items_proportionally_preserves_weights() {
+        let mut items = vec![
+            SavingsPlanItemDto {
+                id: 1,
+                savings_plan_id: 1,
+                name: "Credit Card".to_string(),
+                item_type: "DEBT_PAYOFF".to_string(),
+                account_id: None,
+                account_name: None,
+                account_type: None,
+                account_limit: None,
+                current_balance: None,
+                debt_owed: 500.0,
+                remaining_to_target: 0.0,
+                rough_months: Some(2),
+                target_amount: 0.0,
+                monthly_amount: 100.0,
+                priority: 1,
+                locked: false,
+                archived: false,
+            },
+            SavingsPlanItemDto {
+                id: 2,
+                savings_plan_id: 1,
+                name: "Holiday Pot".to_string(),
+                item_type: "SAVINGS_TARGET".to_string(),
+                account_id: None,
+                account_name: None,
+                account_type: None,
+                account_limit: None,
+                current_balance: None,
+                debt_owed: 0.0,
+                remaining_to_target: 1000.0,
+                rough_months: Some(4),
+                target_amount: 1000.0,
+                monthly_amount: 300.0,
+                priority: 2,
+                locked: false,
+                archived: false,
+            },
+        ];
+
+        // Total allocated = 400. Item 1 has 25% share, Item 2 has 75% share.
+        scale_items_proportionally(&mut items, 600.0);
+        assert_eq!(items[0].monthly_amount, 150.0);
+        assert_eq!(items[1].monthly_amount, 450.0);
+
+        scale_items_proportionally(&mut items, 200.0);
+        assert_eq!(items[0].monthly_amount, 50.0);
+        assert_eq!(items[1].monthly_amount, 150.0);
+    }
+
+    #[test]
+    fn test_balance_evenly_divides_target_pot() {
+        let mut items = vec![
+            SavingsPlanItemDto {
+                id: 1,
+                savings_plan_id: 1,
+                name: "Item 1".to_string(),
+                item_type: "SAVINGS_TARGET".to_string(),
+                account_id: None,
+                account_name: None,
+                account_type: None,
+                account_limit: None,
+                current_balance: None,
+                debt_owed: 0.0,
+                remaining_to_target: 500.0,
+                rough_months: None,
+                target_amount: 500.0,
+                monthly_amount: 50.0,
+                priority: 1,
+                locked: false,
+                archived: false,
+            },
+            SavingsPlanItemDto {
+                id: 2,
+                savings_plan_id: 1,
+                name: "Item 2".to_string(),
+                item_type: "SAVINGS_TARGET".to_string(),
+                account_id: None,
+                account_name: None,
+                account_type: None,
+                account_limit: None,
+                current_balance: None,
+                debt_owed: 0.0,
+                remaining_to_target: 500.0,
+                rough_months: None,
+                target_amount: 500.0,
+                monthly_amount: 150.0,
+                priority: 2,
+                locked: false,
+                archived: false,
+            },
+        ];
+
+        balance_items_evenly(&mut items, 400.0);
+        assert_eq!(items[0].monthly_amount, 200.0);
+        assert_eq!(items[1].monthly_amount, 200.0);
+    }
+
+    #[test]
+    fn test_trim_deficit_removes_from_lower_priority() {
+        let mut items = vec![
+            SavingsPlanItemDto {
+                id: 1,
+                savings_plan_id: 1,
+                name: "High Priority P1".to_string(),
+                item_type: "DEBT_PAYOFF".to_string(),
+                account_id: None,
+                account_name: None,
+                account_type: None,
+                account_limit: None,
+                current_balance: None,
+                debt_owed: 500.0,
+                remaining_to_target: 0.0,
+                rough_months: None,
+                target_amount: 0.0,
+                monthly_amount: 300.0,
+                priority: 1,
+                locked: false,
+                archived: false,
+            },
+            SavingsPlanItemDto {
+                id: 2,
+                savings_plan_id: 1,
+                name: "Low Priority P2".to_string(),
+                item_type: "SAVINGS_TARGET".to_string(),
+                account_id: None,
+                account_name: None,
+                account_type: None,
+                account_limit: None,
+                current_balance: None,
+                debt_owed: 0.0,
+                remaining_to_target: 500.0,
+                rough_months: None,
+                target_amount: 500.0,
+                monthly_amount: 200.0,
+                priority: 2,
+                locked: false,
+                archived: false,
+            },
+        ];
+
+        // Total allocated is 500. Target pot is 350. Deficit is 150.
+        // It should trim 150 from P2 (low priority), leaving P1 untouched!
+        trim_items_deficit(&mut items, 350.0);
+        assert_eq!(items[0].monthly_amount, 300.0); // P1 intact
+        assert_eq!(items[1].monthly_amount, 50.0);  // P2 trimmed from 200 down to 50
+    }
 }

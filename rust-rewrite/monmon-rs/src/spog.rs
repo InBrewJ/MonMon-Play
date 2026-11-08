@@ -1,4 +1,4 @@
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, Local};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 

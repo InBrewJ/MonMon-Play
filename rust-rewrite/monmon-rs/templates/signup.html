@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>MonMon — Create Account</title>
+    {% include "nav_head.html" %}
+</head>
+<body style="min-height: 100vh; display: flex; flex-direction: column; background: var(--bg-main); color: var(--text-main);">
+    <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;">
+        <div class="w3-card w3-round" style="max-width: 440px; width: 100%; background: var(--card-bg); border: 1px solid var(--border-color); padding: 2rem; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
+            <div style="text-align: center; margin-bottom: 1.5rem;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, var(--primary), #a855f7); color: #fff; font-size: 1.6rem; margin-bottom: 0.75rem;">
+                    <i class="fas fa-wallet"></i>
+                </div>
+                <h2 style="font-weight: 800; font-size: 1.6rem; margin: 0 0 0.4rem 0;">Create Account</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">Gain total clarity over your daily spending pot and finances.</p>
+            </div>
+
+            <form method="POST" action="/signup" id="signup-form">
+                <div style="margin-bottom: 1rem;">
+                    <label for="signup-username" style="display: block; font-weight: 700; font-size: 0.85rem; margin-bottom: 4px; color: var(--text-main);">Username</label>
+                    <input type="text" id="signup-username" name="username" required placeholder="Choose a username (e.g. alice)" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main); font-size: 0.95rem;" autofocus />
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label for="signup-email" style="display: block; font-weight: 700; font-size: 0.85rem; margin-bottom: 4px; color: var(--text-main);">Email</label>
+                    <input type="email" id="signup-email" name="email" required placeholder="name@example.com" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main); font-size: 0.95rem;" />
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <label for="signup-password" style="display: block; font-weight: 700; font-size: 0.85rem; margin-bottom: 4px; color: var(--text-main);">Password</label>
+                    <input type="password" id="signup-password" name="password" required placeholder="••••••••" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main); font-size: 0.95rem;" />
+                </div>
+
+                <button type="submit" id="signup-submit-btn" class="w3-button w3-round" style="width: 100%; padding: 12px; background: var(--primary); color: #fff; font-weight: 700; font-size: 1rem; border-radius: 8px; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);">
+                    <i class="fas fa-user-plus" style="margin-right: 6px;"></i> Sign Up &amp; Get Started
+                </button>
+            </form>
+
+            <div style="margin-top: 1.5rem; text-align: center; font-size: 0.88rem; color: var(--text-muted);">
+                Already have an account? <a href="/login" id="link-to-login" style="color: var(--primary); font-weight: 700;">Sign In</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

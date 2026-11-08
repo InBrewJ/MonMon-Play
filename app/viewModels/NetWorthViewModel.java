@@ -157,25 +157,40 @@ public class NetWorthViewModel {
         return totalLiabilities;
     }
 
-    public Double getAssetToDebtRatio() {
-        if (totalLiabilities == null || totalLiabilities <= 0.0) {
-            return null;
-        }
+    public Double getDebtToAssetRatio() {
         if (totalAssets == null || totalAssets <= 0.0) {
+            return (totalLiabilities != null && totalLiabilities > 0.0) ? 1.0 : 0.0;
+        }
+        if (totalLiabilities == null || totalLiabilities <= 0.0) {
             return 0.0;
         }
-        return round2(totalAssets / totalLiabilities);
+        return round2(totalLiabilities / totalAssets);
+    }
+
+    public String getDebtToAssetRatioFormatted() {
+        if (totalLiabilities == null || totalLiabilities <= 0.0) {
+            return "0.00 (0.0% — Debt Free)";
+        }
+        if (totalAssets == null || totalAssets <= 0.0) {
+            return ">1.0 (>100%)";
+        }
+        double ratio = round2(totalLiabilities / totalAssets);
+        double pct = round2(ratio * 100.0);
+        return String.format(java.util.Locale.UK, "%.2f (%.1f%%)", ratio, pct);
+    }
+
+    public boolean isHealthyRatio() {
+        if (isDebtFree()) return true;
+        Double r = getDebtToAssetRatio();
+        return r != null && r <= 1.0;
+    }
+
+    public Double getAssetToDebtRatio() {
+        return getDebtToAssetRatio();
     }
 
     public String getAssetToDebtRatioFormatted() {
-        if (totalLiabilities == null || totalLiabilities <= 0.0) {
-            if (totalAssets != null && totalAssets > 0.0) {
-                return "Debt Free (∞)";
-            }
-            return "—";
-        }
-        double ratio = round2(totalAssets / totalLiabilities);
-        return ratio + " : 1";
+        return getDebtToAssetRatioFormatted();
     }
 
     public boolean isDebtFree() {

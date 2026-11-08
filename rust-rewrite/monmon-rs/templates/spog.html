@@ -1,55 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MonMon SPOG</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-    <style>
-        :root {
-            --primary: #2563eb;
-            --primary-light: #dbeafe;
-            --card-bg-subtle: #f8fafc;
-            --border-color: #e2e8f0;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-        }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f1f5f9; color: var(--text-main); margin: 0; padding: 0; }
-        .spog-deck-nav { display: none; margin-bottom: 1rem; gap: 0.5rem; overflow-x: auto; padding: 0.5rem 0; }
-        .spog-nav-pill { background: #fff; border: 1px solid var(--border-color); border-radius: 9999px; padding: 6px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-        .spog-nav-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-        .spog-layout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
-        .spog-column-left, .spog-column-right { display: flex; flex-direction: column; gap: 1.5rem; }
-        .spog-deck-card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .badge-pill { border-radius: 9999px; padding: 3px 10px; font-weight: 600; }
-        .badge-success { background: #dcfce7; color: #166534; }
-        .badge-warning { background: #fef3c7; color: #92400e; }
-        .metric-box { background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; }
-        .spog-details-accordion { border: 1px solid var(--border-color); border-radius: 8px; margin-top: 1rem; }
-        .spog-details-accordion summary { padding: 8px 12px; font-weight: 600; cursor: pointer; }
-        .spog-details-content { padding: 10px 12px; border-top: 1px solid var(--border-color); }
-        @media (max-width: 900px) {
-            .spog-deck-nav { display: flex; }
-            .spog-layout-grid { display: block; position: relative; }
-            .spog-column-left, .spog-column-right { display: contents; }
-            .spog-deck-card { display: none; width: 100%; }
-            .spog-deck-card.deck-card-active { display: block; }
-        }
-    </style>
+    {% include "nav_head.html" %}
 </head>
 <body>
 
-<div style="background: #fff; border-bottom: 1px solid var(--border-color); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
-    <div style="font-weight: 800; font-size: 1.2rem; color: var(--primary);">
-        <i class="fas fa-chart-pie"></i> MonMon SPOG
-    </div>
-    <div style="font-size: 0.85rem; color: var(--text-muted);">
-        Signed in as <b>{{ username }}</b>
-    </div>
-</div>
+{% include "nav_header.html" %}
 
-<div class="w3-content" style="max-width: 1400px; padding: 1rem;">
+<div class="w3-content" style="max-width: 1400px; padding: 0 1rem 3rem 1rem;">
     <!-- Mobile Navigation Pills for Swipable Cards -->
     <div class="spog-deck-nav" id="spog-nav" role="tablist" aria-label="SPOG Sections">
         <button type="button" class="spog-nav-pill active" data-target="spog-card-pot" role="tab" aria-selected="true">
@@ -104,14 +63,17 @@
                     </span>
                 </div>
 
-                <hr style="margin: 1rem 0;">
+                <hr style="margin: 1rem 0; border: 0; border-top: 1px solid var(--border-color);">
 
                 <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.75rem;">
                     <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i>
                     This cycle: <b>{{ metrics.days_between_paydays }}</b> days between paydays
                 </div>
 
-                <div class="metric-box" style="text-align: left; font-size: 0.92rem;" id="allowances-box">
+                <div class="metric-box" style="text-align: left; font-size: 0.92rem;" id="allowances-box"
+                     data-incoming="{{ metrics.incoming_total }}"
+                     data-outgoing="{{ metrics.outgoing_total }}"
+                     data-days="{{ metrics.days_between_paydays }}">
                     <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">
                         <i class="fas fa-wallet" style="color: var(--primary); margin-right: 6px;"></i>Daily & Monthly Allowances
                     </div>
@@ -119,6 +81,15 @@
                         <div>• <b>MAX / day</b>: £<span id="dyn-max-day">{{ metrics.max_per_day }}</span></div>
                         <div>• <b>MAX / week</b>: £<span id="dyn-max-week">{{ metrics.max_per_week }}</span></div>
                         <div>• <b>MAX / month</b>: £<span id="dyn-max-month">{{ metrics.max_per_month }}</span></div>
+                    </div>
+                    <div style="margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">
+                            <i class="fas fa-utensils" style="color: var(--primary); margin-right: 4px;"></i> Food budget (~£50/wk)
+                        </span>
+                        <a href="/nommon" class="btn-action" style="font-size: 0.82rem; padding: 4px 10px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-main); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+                            <span>NomMon Meal Plan</span>
+                            <i class="fas fa-arrow-right" style="font-size: 0.75rem; color: var(--primary);"></i>
+                        </a>
                     </div>
                 </div>
 
@@ -139,13 +110,28 @@
             </div>
 
             <!-- Card 3: Savings Goals -->
-            <div class="w3-card w3-padding spog-deck-card" id="spog-card-savings">
-                <h4 style="margin: 0 0 1rem 0; font-weight: 700;"><i class="fas fa-piggy-bank" style="color: var(--primary); margin-right: 8px;"></i>Savings & Emergency Runway</h4>
-                <div class="metric-box">
+            <div class="w3-card w3-padding spog-deck-card" id="spog-card-savings" style="text-align: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                    <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-piggy-bank" style="color: var(--primary);"></i> Savings Plan
+                    </span>
+                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); border: 1px solid var(--border-color);">
+                        Next Pay: <span id="next-payday-ddmmyyyy">{{ metrics.next_pay_day }}th</span>
+                    </span>
+                </div>
+
+                <div class="metric-box" style="text-align: left;">
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                         <div>• <b>Liquid Savings Pot</b>: £{{ metrics.liquid_savings_pot }}</div>
                         <div>• <b>Total Savings Pot</b>: £{{ metrics.total_savings_pot }}</div>
                     </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 0.85rem; padding-top: 0.5rem; border-top: 1px dashed var(--border-color);">
+                    <a href="/savingsPlan" class="btn-action" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-main); text-decoration: none; font-weight: 600;" title="Expand Savings & Payoff Plan">
+                        <span>Expand Plan</span>
+                        <i class="fas fa-expand-alt" style="color: var(--primary);"></i>
+                    </a>
                 </div>
             </div>
         </div>
@@ -154,59 +140,265 @@
         <div class="spog-column-right">
             <!-- Card 2: Spent so far & Spending Pace -->
             <div class="w3-card w3-padding spog-deck-card" id="spog-card-spent">
-                <h4 style="margin: 0 0 1rem 0; font-weight: 700;"><i class="fas fa-chart-line" style="color: var(--primary); margin-right: 8px;"></i>Spending Pace</h4>
-                <div class="metric-box">
-                    <div>• <b>Spent this month</b>: £{{ pace.spent_this_month }}</div>
-                    <div>• <b>Actual daily spend</b>: £{{ pace.actual_daily_spend }}/day</div>
-                    <div>• <b>Baseline comparison</b>: £{{ pace.absolute_baseline_diff_total }}</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem;">
+                    <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
+                        <i class="fas fa-chart-line" style="color: var(--primary); margin-right: 6px;"></i> Spent This Month
+                    </span>
+                    <a href="/spendingPace" title="Spending history" aria-label="Spending history"
+                       style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); color: var(--primary);">
+                        <i class="fas fa-history"></i>
+                    </a>
+                </div>
+
+                <div style="margin: 0.5rem 0 0.25rem 0;">
+                    <span style="font-size: 1.85rem; font-weight: 800; color: var(--text-main);">
+                        £{{ pace.spent_this_month }}
+                    </span>
+                    <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">
+                        / £{{ metrics.surplus }} monthly pot
+                    </span>
+                </div>
+
+                <div style="font-size: 0.95rem; margin-bottom: 0.65rem; display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        Current pace: <b>£{{ pace.actual_daily_spend }} / day</b>
+                    </div>
+                    <a href="/spendingPace" title="View spending pace histogram" aria-label="View spending pace histogram"
+                       style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); color: var(--primary); text-decoration: none;">
+                        <i class="fas fa-chart-bar" style="font-size: 0.85rem;"></i>
+                    </a>
+                </div>
+
+                <div class="w3-panel w3-round {% if pace.is_behind_baseline %}w3-pale-red w3-border-red{% else %}w3-pale-green w3-border-green{% endif %}" style="margin: 0; padding: 8px 12px; font-size: 0.9em; border-left: 4px solid;">
+                    {% if pace.is_behind_baseline %}
+                        <span>
+                            <i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 4px;"></i>
+                            Overspent by <b>£{{ pace.absolute_baseline_diff_total }}</b> based on baseline allowance
+                        </span>
+                    {% else %}
+                        <span>
+                            <i class="fas fa-check-circle" style="color: #10b981; margin-right: 4px;"></i>
+                            <b>£{{ pace.absolute_baseline_diff_total }}</b> under baseline allowance
+                        </span>
+                    {% endif %}
                 </div>
             </div>
 
             <!-- Card 4: Accounts Overview -->
             <div class="w3-card w3-padding spog-deck-card" id="spog-card-accounts">
-                <h4 style="margin: 0 0 1rem 0; font-weight: 700;"><i class="fas fa-university" style="color: var(--primary); margin-right: 8px;"></i>Account Overview</h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem;">
+                <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    <i class="fas fa-university" style="color: var(--primary); margin-right: 6px;"></i> Account Overview
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1rem; font-size: 0.92rem;">
                     <div class="metric-box">
                         <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Debit Available</div>
-                        <div style="font-size: 1.4rem; font-weight: 800; color: #16a34a;">£{{ metrics.total_available_debit }}</div>
+                        <div style="font-size: 1.3rem; font-weight: 800; color: #10b981;">£{{ metrics.total_available_debit }}</div>
                     </div>
                     <div class="metric-box">
                         <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Credit Available</div>
-                        <div style="font-size: 1.4rem; font-weight: 800; color: var(--primary);">£{{ metrics.total_available_credit }}</div>
+                        <div style="font-size: 1.3rem; font-weight: 800; color: var(--primary);">£{{ metrics.total_available_credit }}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Credit Balance / Limit</div>
+                        <div style="font-size: 1rem; font-weight: 600;">£{{ metrics.credit_balance }} / £{{ metrics.credit_limit }}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Credit Usage</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: {% if metrics.credit_usage > 50.0 %}#ef4444{% else %}#10b981{% endif %};">
+                            {{ metrics.credit_usage }}%
+                        </div>
+                    </div>
+                    <div class="metric-box">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Liquid Savings</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: #10b981;">£{{ metrics.liquid_savings_pot }}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Total Savings</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary);">£{{ metrics.total_savings_pot }}</div>
                     </div>
                 </div>
-                <div class="metric-box">
-                    <div>• <b>Credit Balance / Limit</b>: £{{ metrics.credit_balance }} / £{{ metrics.credit_limit }}</div>
-                    <div>• <b>Credit Usage</b>: {{ metrics.credit_usage }}%</div>
+
+                <div style="margin-top: 0.75rem;">
+                    <a href="/netWorth" class="w3-button w3-round w3-small w3-border" style="width: 100%; text-align: center; background: var(--card-bg-subtle);">
+                        <i class="fas fa-landmark" style="margin-right: 6px; color: var(--primary);"></i> View Net Worth & Capital Assets &rarr;
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-    // Tab switching for mobile swipe deck primitive
-    document.querySelectorAll('.spog-nav-pill').forEach(pill => {
-        pill.addEventListener('click', () => {
-            const targetId = pill.getAttribute('data-target');
-            document.querySelectorAll('.spog-nav-pill').forEach(p => {
-                p.classList.remove('active');
-                p.setAttribute('aria-selected', 'false');
-            });
-            pill.classList.add('active');
-            pill.setAttribute('aria-selected', 'true');
+<!-- Floating "Can I Afford This?" Action Button (Bottom Right) -->
+<button id="btn-afford-fab" class="fab-afford" type="button" aria-label="Can I afford this?" title="Can I afford this? Instant budget simulator">
+    <i class="fas fa-calculator" style="font-size: 1.1rem;"></i>
+    <span class="afford-fab-label">Can I Afford This?</span>
+</button>
 
-            document.querySelectorAll('.spog-deck-card').forEach(card => {
-                card.classList.remove('deck-card-active');
-            });
-            const targetCard = document.getElementById(targetId);
-            if (targetCard) {
-                targetCard.classList.add('deck-card-active');
-                targetCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+{% include "ed_fab_modal.html" %}
+
+<!-- Affordability Scratchpad Modal -->
+<div id="afford-modal" class="afford-modal-backdrop" style="display: none;">
+    <div class="afford-modal-card">
+        <div class="afford-modal-header">
+            <h3><i class="fas fa-calculator" style="color: var(--primary); margin-right: 8px;"></i> Can I Afford This?</h3>
+            <button id="afford-close-btn" type="button" class="afford-close-btn" aria-label="Close modal">&times;</button>
+        </div>
+        <div class="afford-modal-body">
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0;">
+                Simulate the real-time impact of an expense on your daily spending allowance between now and next payday.
+            </p>
+            <div style="margin-bottom: 1rem;">
+                <label for="afford-cost-input" style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Expense Cost (£)</label>
+                <input type="number" id="afford-cost-input" placeholder="0.00" step="0.50" min="0" style="width: 100%; font-size: 1.5rem; font-weight: 800; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main); margin-top: 4px;" />
+            </div>
+            <div id="afford-result-box" style="display: none; padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg-subtle);">
+                <div id="afford-verdict-banner" style="font-weight: 800; font-size: 1.1rem; margin-bottom: 0.5rem;"></div>
+                <div id="afford-verdict-desc" style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if is_fresh_account %}
+<!-- Fresh Account Onboarding Hints Modal -->
+<div id="fresh-account-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-content-card" style="max-width: 560px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 1.4rem; border-bottom: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 1.2rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.4rem;">👋</span>
+                <span>Welcome to MonMon!</span>
+            </div>
+            <button type="button" id="fresh-modal-close-btn" style="background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+        </div>
+
+        <div style="padding: 1.4rem;">
+            <p style="margin-top: 0; color: var(--text-main); font-size: 0.95rem; line-height: 1.5;">
+                MonMon gives you a live <strong>Single Pane of Glass (SPOG)</strong> over your daily spending pot, debt payoff roadmap, and weekly food budget.
+            </p>
+            <p style="font-weight: 700; color: var(--text-main); font-size: 0.9rem; margin-bottom: 0.75rem;">
+                Here is what to set up first:
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <a href="/myAccounts" class="onboarding-step-card" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg-subtle); transition: border-color 0.15s ease;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">1</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.92rem;">Add Bank Accounts</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Current debit accounts, credit cards, overdraft limits &amp; savings</div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: var(--primary); font-size: 0.85rem;"></i>
+                </a>
+                <a href="/myIncomings" class="onboarding-step-card" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg-subtle); transition: border-color 0.15s ease;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">2</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.92rem;">Add Income &amp; Payday</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Monthly takehome wage and the day of month you get paid</div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: var(--primary); font-size: 0.85rem;"></i>
+                </a>
+                <a href="/myOutgoings" class="onboarding-step-card" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg-subtle); transition: border-color 0.15s ease;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">3</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.92rem;">Add Regular Outgoings</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Rent, council tax, energy bills, and subscriptions</div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: var(--primary); font-size: 0.85rem;"></i>
+                </a>
+                <a href="/myMonthlyPot" class="onboarding-step-card" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg-subtle); transition: border-color 0.15s ease;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0;">4</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--text-main); font-size: 0.92rem;">Assign Daily Pot &amp; Savings Plan</div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem;">Select your day-to-day spending account and savings slider target</div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: var(--primary); font-size: 0.85rem;"></i>
+                </a>
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="fresh-modal-dismiss-btn" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.88rem; font-weight: 600;">
+                    Dismiss
+                </button>
+                <a href="/myAccounts" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; font-size: 0.88rem; box-shadow: 0 3px 10px rgba(79, 70, 229, 0.4);">
+                    <i class="fas fa-arrow-right" style="margin-right: 4px;"></i> Start with Accounts
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    (function() {
+        try {
+            var dismissed = localStorage.getItem('monmon-fresh-dismissed');
+            var modal = document.getElementById('fresh-account-modal');
+            if (modal && !dismissed) {
+                modal.style.display = 'flex';
             }
-        });
+            function dismissModal() {
+                if (modal) modal.style.display = 'none';
+                try { localStorage.setItem('monmon-fresh-dismissed', 'true'); } catch (e) {}
+            }
+            var closeBtn = document.getElementById('fresh-modal-close-btn');
+            var dismissBtn = document.getElementById('fresh-modal-dismiss-btn');
+            if (closeBtn) closeBtn.addEventListener('click', dismissModal);
+            if (dismissBtn) dismissBtn.addEventListener('click', dismissModal);
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) dismissModal();
+                });
+            }
+        } catch (e) {}
+    })();
+</script>
+{% endif %}
+
+{% include "nav_scripts.html" %}
+
+<!-- Afford Scratchpad Script -->
+<script>
+$(function() {
+    var monthlyPotLeftPerDay = parseFloat("{{ metrics.monthly_pot_left_per_day }}") || 0;
+    var maxPerDay = parseFloat("{{ metrics.max_per_day }}") || 0;
+    var daysUntilPayday = Math.max(1, parseInt("{{ metrics.days_between_paydays }}") || 30);
+    var totalAvailablePot = monthlyPotLeftPerDay * daysUntilPayday;
+
+    $('#btn-afford-fab').on('click', function() {
+        $('#afford-modal').css('display', 'flex');
+        $('#afford-cost-input').focus();
     });
+    $('#afford-close-btn').on('click', function() {
+        $('#afford-modal').hide();
+    });
+    $('#afford-modal').on('click', function(e) {
+        if (e.target === this) $('#afford-modal').hide();
+    });
+
+    $('#afford-cost-input').on('input keyup change', function() {
+        var cost = parseFloat($(this).val());
+        if (isNaN(cost) || cost <= 0) {
+            $('#afford-result-box').hide();
+            return;
+        }
+        $('#afford-result-box').show();
+        var newAvailable = totalAvailablePot - cost;
+        var newLeftPerDay = newAvailable / daysUntilPayday;
+        var banner = $('#afford-verdict-banner');
+        var desc = $('#afford-verdict-desc');
+
+        if (newAvailable >= 0) {
+            if (newLeftPerDay >= maxPerDay) {
+                banner.html('<i class="fas fa-check-circle" style="color: #10b981;"></i> <span style="color: #10b981;">YES, comfortably affordable!</span>');
+                desc.html('You can afford this £' + cost.toFixed(2) + ' expense. Daily allowance drops to <strong>£' + newLeftPerDay.toFixed(2) + '/day</strong>, remaining above baseline (£' + maxPerDay.toFixed(2) + '/day).');
+            } else {
+                banner.html('<i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i> <span style="color: #f59e0b;">YES, but drops below baseline</span>');
+                desc.html('Affordable, but daily allowance drops from £' + monthlyPotLeftPerDay.toFixed(2) + '/day to <strong>£' + newLeftPerDay.toFixed(2) + '/day</strong> (below target baseline £' + maxPerDay.toFixed(2) + '/day).');
+            }
+        } else {
+            banner.html('<i class="fas fa-times-circle" style="color: #ef4444;"></i> <span style="color: #ef4444;">NO, exceeds monthly pot</span>');
+            desc.html('This purchase exceeds your remaining monthly pot by £' + Math.abs(newAvailable).toFixed(2) + '.');
+        }
+    });
+});
 </script>
 
+<script src="/assets/javascripts/ed-says.js" type="text/javascript"></script>
 </body>
 </html>

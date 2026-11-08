@@ -46,10 +46,22 @@ test.describe('Authenticated Outgoings & Pause Modal E2E', () => {
     if (isMobile) {
       const vpsCard = page.locator('.item-card').filter({ hasText: 'boom.dryark.uk' });
       await expect(vpsCard).toBeVisible();
+      // If it was left paused by a previous test run, unpause it first
+      const unpauseBtn = vpsCard.locator('a', { hasText: 'Unpause' });
+      if (await unpauseBtn.isVisible()) {
+        await unpauseBtn.click();
+        await page.waitForLoadState('networkidle');
+      }
       pauseBtn = vpsCard.locator('button', { hasText: 'Pause' });
     } else {
       const vpsRow = page.locator('tr').filter({ hasText: 'boom.dryark.uk' });
       await expect(vpsRow).toBeVisible();
+      // If it was left paused by a previous test run, unpause it first
+      const unpauseBtn = vpsRow.locator('a', { hasText: 'Unpause' });
+      if (await unpauseBtn.isVisible()) {
+        await unpauseBtn.click();
+        await page.waitForLoadState('networkidle');
+      }
       pauseBtn = vpsRow.locator('a[title="Pause outgoing"]');
     }
 

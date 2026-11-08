@@ -1,27 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MonMon - Settings</title>
-    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-    <link rel="stylesheet" href="/assets/stylesheets/main.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    {% include "nav_head.html" %}
 </head>
-<body class="w3-light-grey">
-    <header class="w3-top">
-        <div class="w3-bar w3-white w3-padding w3-card" style="letter-spacing:1px; display:flex; align-items:center; justify-content:space-between;">
-            <a href="/spog" class="w3-bar-item w3-button" style="font-weight:800; font-size:1.15rem; color:var(--primary, #4f46e5); display:inline-flex; align-items:center; gap:8px;">
-                <img src="/assets/images/monmon-monster.svg" alt="MonMon" style="width:24px; height:24px;"> MonMon
-            </a>
-            <div class="w3-right">
-                <a href="/settings" class="w3-bar-item w3-button active" title="Settings"><i class="fas fa-cog"></i></a>
-                <a href="/login" class="w3-bar-item w3-button" title="User Profile"><i class="fas fa-user-circle"></i> demo</a>
-            </div>
-        </div>
-    </header>
+<body>
 
-    <main class="w3-content" style="max-width: 900px; margin-top: 80px; padding: 1rem 1rem 3rem 1rem;">
+{% include "nav_header.html" %}
+
+    <main class="w3-content" style="max-width: 900px; padding: 0 1rem 3rem 1rem;">
         <!-- Waiting List & User Approvals -->
         <div class="w3-card w3-padding w3-margin-bottom w3-round w3-white" id="waiting-list-card" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 8px;">
@@ -136,5 +123,7 @@
             </div>
         </div>
     </main>
+
+    {% include "nav_scripts.html" %}
 </body>
 </html>

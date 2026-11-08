@@ -40,6 +40,8 @@ services:
       - AUTH_URL=http://localhost:8085/auth/v1/oidc/authorize
       - REDIRECT_URI=http://localhost:9001/callback
       - LEGMON_URL=http://legmon-rs:9005
+    volumes:
+      - ./public:/app/public:ro
     ports:
       - "9001:9001"
     depends_on:

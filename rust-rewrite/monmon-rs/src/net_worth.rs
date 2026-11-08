@@ -68,6 +68,9 @@ pub struct NetWorthDto {
     pub monthly_food_cost: f64,
     pub food_covered_percent: i64,
     pub asset_to_debt_ratio: Option<f64>,
+    pub debt_to_asset_ratio: Option<f64>,
+    pub debt_to_asset_ratio_formatted: String,
+    pub is_healthy_ratio: bool,
     pub is_debt_free: bool,
     pub custom_assets: Vec<NetWorthAssetDto>,
     pub pension_accounts: Vec<AccountItemDto>,
@@ -258,6 +261,16 @@ pub async fn calculate_net_worth(
         None
     };
 
+    let (debt_to_asset_ratio, debt_to_asset_ratio_formatted, is_healthy_ratio) = if is_debt_free {
+        (Some(0.0), "0.00 (0.0% — Debt Free)".to_string(), true)
+    } else if total_assets <= 0.0 {
+        (Some(1.0), ">1.0 (>100%)".to_string(), false)
+    } else {
+        let r = round2(total_liabilities / total_assets);
+        let pct = round2(r * 100.0);
+        (Some(r), format!("{:.2} ({:.1}%)", r, pct), r <= 1.0)
+    };
+
     let investable_portfolio = round2(cash_total + pension_total);
     let annual_safe_withdrawal = round2(investable_portfolio * 0.04);
     let monthly_safe_withdrawal = round2(annual_safe_withdrawal / 12.0);
@@ -305,6 +318,9 @@ pub async fn calculate_net_worth(
         monthly_food_cost: round2(monthly_food_cost),
         food_covered_percent,
         asset_to_debt_ratio,
+        debt_to_asset_ratio,
+        debt_to_asset_ratio_formatted,
+        is_healthy_ratio,
         is_debt_free,
         custom_assets,
         pension_accounts,

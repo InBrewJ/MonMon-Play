@@ -1,13 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MonMon - Monzo Dig (Monzo Spending Heatmap &amp; Histogram)</title>
-    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-    <link rel="stylesheet" href="/assets/stylesheets/main.css">
-    <link rel="stylesheet" href="/assets/stylesheets/spog-deck.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    {% include "nav_head.html" %}
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <style>
         :root {
@@ -182,22 +177,9 @@
 </head>
 <body>
 
-    <header class="navbar">
-        <div style="font-weight: 800; font-size: 1.2rem; color: var(--primary); display: flex; align-items: center; gap: 8px;">
-            <i class="fas fa-coins"></i> MonMon
-        </div>
-        <nav style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <a href="/spog"><i class="fas fa-chart-pie"></i> SPOG</a>
-            <a href="/savingsPlan"><i class="fas fa-layer-group"></i> Savings Plan</a>
-            <a href="/spendingPace"><i class="fas fa-tachometer-alt"></i> Spending Pace</a>
-            <a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a>
-            <a href="/bank"><i class="fas fa-university"></i> Bank Sync</a>
-            <a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a>
-            <a href="/dig" class="active"><i class="fas fa-search-location"></i> Monzo Dig</a>
-        </nav>
-    </header>
+{% include "nav_header.html" %}
 
-    <main class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
+    <main class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 0 16px 3rem 16px;">
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
             <div>
@@ -375,6 +357,7 @@
     <script id="dig-data" type="application/json">
         {{ json_payload|safe }}
     </script>
+    {% include "nav_scripts.html" %}
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="/assets/javascripts/leaflet-heat.js"></script>
     <script src="/assets/javascripts/dig.js"></script>

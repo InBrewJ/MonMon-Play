@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>MonMon — Sign In</title>
+    {% include "nav_head.html" %}
+</head>
+<body style="min-height: 100vh; display: flex; flex-direction: column; background: var(--bg-main); color: var(--text-main);">
+    <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;">
+        <div class="w3-card w3-round" style="max-width: 440px; width: 100%; background: var(--card-bg); border: 1px solid var(--border-color); padding: 2rem; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
+            <div style="text-align: center; margin-bottom: 1.5rem;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, var(--primary), #a855f7); color: #fff; font-size: 1.6rem; margin-bottom: 0.75rem;">
+                    <i class="fas fa-wallet"></i>
+                </div>
+                <h2 style="font-weight: 800; font-size: 1.6rem; margin: 0 0 0.4rem 0;">Welcome Back</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">Sign in to view your live Single Pane of Glass.</p>
+            </div>
+
+            <form method="POST" action="/login" id="login-form">
+                <div style="margin-bottom: 1rem;">
+                    <label for="username" style="display: block; font-weight: 700; font-size: 0.85rem; margin-bottom: 4px; color: var(--text-main);">Username or Email</label>
+                    <input type="text" id="username" name="username" value="demo" required placeholder="demo" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main); font-size: 0.95rem;" autofocus />
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <label for="password" style="display: block; font-weight: 700; font-size: 0.85rem; margin-bottom: 4px; color: var(--text-main);">Password</label>
+                    <input type="password" id="password" name="password" value="demo123" required placeholder="••••••••" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main); font-size: 0.95rem;" />
+                </div>
+
+                <button type="submit" id="kc-login" class="w3-button w3-round login-submit-btn" style="width: 100%; padding: 12px; background: var(--primary); color: #fff; font-weight: 700; font-size: 1rem; border-radius: 8px; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);">
+                    <i class="fas fa-sign-in-alt" style="margin-right: 6px;"></i> Sign In to SPOG
+                </button>
+            </form>
+
+            <div style="margin-top: 1.5rem; text-align: center; font-size: 0.88rem; color: var(--text-muted);">
+                Don't have an account yet? <a href="/signup" id="link-to-signup" style="color: var(--primary); font-weight: 700;">Create Account</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

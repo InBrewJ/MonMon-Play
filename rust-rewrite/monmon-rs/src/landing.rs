@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
-    http::StatusCode,
-    response::{Html, Json, Redirect},
+    http::{HeaderMap, StatusCode},
+    response::{Html, IntoResponse, Json, Redirect, Response},
 };
 use serde_json::Value;
 
@@ -9,10 +9,13 @@ use serde_json::Value;
 #[template(path = "landing.html")]
 pub struct LandingTemplate {}
 
-pub async fn get_landing_page() -> Result<Html<String>, (StatusCode, String)> {
+pub async fn get_landing_page(headers: HeaderMap) -> Result<Response, (StatusCode, String)> {
+    if crate::management::is_authenticated(&headers) {
+        return Ok(Redirect::temporary("/spog").into_response());
+    }
     let tmpl = LandingTemplate {};
     tmpl.render()
-        .map(Html)
+        .map(|h| Html(h).into_response())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
