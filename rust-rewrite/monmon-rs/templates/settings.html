@@ -84,6 +84,26 @@
             </div>
         </div>
 
+        <!-- Authentication & Passkeys Card -->
+        <div class="w3-card w3-padding w3-margin-bottom w3-round w3-white" id="passkey-settings-card" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main, #1e293b);">
+                    <i class="fas fa-fingerprint" style="color: var(--primary, #4f46e5); margin-right: 8px;"></i> Authentication & Passkey Options
+                </div>
+                <button type="button" id="btn-add-passkey-settings" class="w3-button w3-round" style="background: var(--primary, #4f46e5); color: #fff; font-weight: 700; font-size: 0.85rem; padding: 6px 14px; border-radius: 6px; cursor: pointer;">
+                    <i class="fas fa-plus"></i> Add Passkey
+                </button>
+            </div>
+            <p style="font-size: 0.88rem; color: #64748b; margin-top: 0; margin-bottom: 1rem;">
+                Passkeys let you sign in securely to MonMon using your fingerprint, face (Touch ID, Face ID, Windows Hello), or a security key without typing a password.
+            </p>
+            <div id="passkeys-list-container">
+                <div style="text-align: center; padding: 1.25rem 0; color: #64748b; font-size: 0.88rem;">
+                    <i class="fas fa-spinner fa-spin" style="margin-right: 6px;"></i> Loading enrolled passkeys...
+                </div>
+            </div>
+        </div>
+
         <!-- Regional Settings Card -->
         <div class="w3-card w3-padding w3-margin-bottom w3-round w3-white" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
             <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main, #1e293b); margin-bottom: 1rem;">
@@ -125,5 +145,6 @@
     </main>
 
     {% include "nav_scripts.html" %}
+    <script src="/assets/javascripts/passkey-auth.js"></script>
 </body>
 </html>

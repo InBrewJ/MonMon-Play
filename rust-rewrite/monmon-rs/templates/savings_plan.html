@@ -379,6 +379,11 @@
                                                     <i class="fas {% if item.locked %}fa-lock{% else %}fa-lock-open{% endif %}"></i>
                                                 </button>
                                             </form>
+                                            <a href="/editSavingsPlanItem/{{ item.id }}#edit-form"
+                                               class="btn-action btn-edit"
+                                               title="Edit item details">
+                                                <i class="fas fa-pen"></i>
+                                            </a>
                                             <a href="/binSavingsPlanItem/{{ item.id }}"
                                                class="btn-action btn-delete"
                                                onclick="return confirm('Are you sure you want to remove this item? Its monthly amount will roll into the queue head.');"
@@ -501,6 +506,11 @@
                                         <i class="fas {% if item.locked %}fa-lock{% else %}fa-lock-open{% endif %}"></i> {% if item.locked %}Unlock{% else %}Lock{% endif %}
                                     </button>
                                 </form>
+                                <a href="/editSavingsPlanItem/{{ item.id }}#edit-form"
+                                   class="btn-action btn-edit"
+                                   title="Edit item details">
+                                    <i class="fas fa-pen"></i> Edit
+                                </a>
                                 <a href="/binSavingsPlanItem/{{ item.id }}"
                                    class="btn-action btn-delete"
                                    onclick="return confirm('Are you sure you want to remove this item?');">
@@ -513,25 +523,25 @@
             {% endif %}
         </div>
 
-        <!-- Add Item Form -->
+        <!-- Add / Amend Item Form -->
         <div class="w3-card w3-padding w3-margin-bottom deck-card" id="edit-form" style="border-radius: 8px;">
             <h3 style="margin: 0 0 1rem; font-size: 1.15rem; font-weight: 700;">
-                <i class="fas fa-plus-circle" style="color: var(--primary); margin-right: 6px;"></i>
-                Add Sliced Savings or Payoff Target
+                <i class="fas {% if editing %}fa-pen{% else %}fa-plus-circle{% endif %}" style="color: var(--primary); margin-right: 6px;"></i>
+                {% if editing %}Amend Savings Plan Item{% else %}Add Sliced Savings or Payoff Target{% endif %}
             </h3>
 
-            <form method="POST" action="/savingsPlan/addItem">
+            <form method="POST" action="{% if let Some(it) = editing_item %}/savingsPlan/updateItem/{{ it.id }}{% else %}/savingsPlan/addItem{% endif %}">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
                     <div>
                         <label for="name" style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">Target Name</label>
-                        <input type="text" id="name" name="name" required placeholder="e.g. Barclaycard Payoff, Holiday Pot" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main);">
+                        <input type="text" id="name" name="name" required value="{% if let Some(it) = editing_item %}{{ it.name }}{% endif %}" placeholder="e.g. Barclaycard Payoff, Holiday Pot" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main);">
                     </div>
 
                     <div>
                         <label for="type" style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">Target Type</label>
                         <select id="type" name="type" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main);">
-                            <option value="DEBT_PAYOFF">Debt Payoff (Credit Card, Overdraft)</option>
-                            <option value="SAVINGS_TARGET" selected>Savings Target (Pots, Investments)</option>
+                            <option value="DEBT_PAYOFF" {% if let Some(it) = editing_item %}{% if it.item_type == "DEBT_PAYOFF" %}selected{% endif %}{% endif %}>Debt Payoff (Credit Card, Overdraft)</option>
+                            <option value="SAVINGS_TARGET" {% if let Some(it) = editing_item %}{% if it.item_type == "SAVINGS_TARGET" %}selected{% endif %}{% else %}selected{% endif %}>Savings Target (Pots, Investments)</option>
                         </select>
                     </div>
 
@@ -540,26 +550,31 @@
                         <select id="accountId" name="accountId" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main);">
                             <option value="">None / External</option>
                             {% for a in accounts %}
-                                <option value="{{ a.id }}">{{ a.name }} ({{ a.account_type }})</option>
+                                <option value="{{ a.id }}" {% if self.is_selected_account(a.id) %}selected{% endif %}>{{ a.name }} ({{ a.account_type }})</option>
                             {% endfor %}
                         </select>
                     </div>
 
                     <div>
                         <label for="targetAmount" style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">Target Total Pot (£)</label>
-                        <input type="number" step="0.01" min="0" id="targetAmount" name="targetAmount" placeholder="e.g. 1000.00" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main);">
+                        <input type="number" step="0.01" min="0" id="targetAmount" name="targetAmount" value="{% if let Some(it) = editing_item %}{{ it.target_amount }}{% endif %}" placeholder="e.g. 1000.00" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main);">
                     </div>
 
                     <div>
-                        <label for="monthlyAmount" style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">Initial Monthly Allocation (£)</label>
-                        <input type="number" step="0.01" min="0" id="monthlyAmount" name="monthlyAmount" placeholder="e.g. 150.00" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main);">
+                        <label for="monthlyAmount" style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">Monthly Allocation (£)</label>
+                        <input type="number" step="0.01" min="0" id="monthlyAmount" name="monthlyAmount" value="{% if let Some(it) = editing_item %}{{ it.monthly_amount }}{% endif %}" placeholder="e.g. 150.00" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-main);">
                     </div>
                 </div>
 
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; padding: 8px 18px;">
-                        <i class="fas fa-plus"></i> Add Item
+                    <button type="submit" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; padding: 8px 18px; border-radius: 6px; cursor: pointer;">
+                        <i class="fas {% if editing %}fa-save{% else %}fa-plus{% endif %}"></i> {% if editing %}Save Changes{% else %}Add Item{% endif %}
                     </button>
+                    {% if editing %}
+                        <a href="/savingsPlan#sliced-items-card" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 16px; border-radius: 6px; text-decoration: none;">
+                            Cancel
+                        </a>
+                    {% endif %}
                 </div>
             </form>
         </div>

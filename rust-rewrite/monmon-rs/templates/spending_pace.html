@@ -28,45 +28,183 @@
     <!-- At a Glance Upfront Stat Cards -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
         <!-- Constant Target Pace (MAX/day) -->
-        <div class="w3-card w3-padding" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; border-left: 4px solid #0284c7;">
-            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700;">
-                <i class="fas fa-bullseye" style="color: #0284c7; margin-right: 4px;"></i> Constant Target Pace (MAX)
+        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; border-left: 4px solid var(--primary);">
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700;">
+                <i class="fas fa-bullseye" style="color: var(--primary); margin-right: 4px;"></i> Constant Target Pace (MAX)
             </div>
-            <div style="font-size: 1.6rem; font-weight: 800; color: #0284c7; margin: 4px 0 2px 0;">
-                £{{ max_per_day }} <span style="font-size: 0.9rem; font-weight: 500; color: #64748b;">/ day</span>
+            <div style="font-size: 1.6rem; font-weight: 800; color: var(--primary); margin: 4px 0 2px 0;">
+                £{{ max_per_day }} <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-muted);">/ day</span>
             </div>
-            <div style="font-size: 0.8rem; color: #64748b;">
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
                 Monthly pot: <b>£{{ monthly_budget }}</b> over {{ days_in_cycle }} days
             </div>
         </div>
 
         <!-- Overall Current Spending Pace -->
-        <div class="w3-card w3-padding" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; border-left: 4px solid #16a34a;">
-            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700;">
-                <i class="fas fa-tachometer-alt" style="color: #16a34a; margin-right: 4px;"></i> Average Cycle Pace
+        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; border-left: 4px solid {% if is_behind_baseline %}#ef4444{% else %}#16a34a{% endif %};">
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700;">
+                <i class="fas fa-tachometer-alt" style="color: {% if is_behind_baseline %}#ef4444{% else %}#16a34a{% endif %}; margin-right: 4px;"></i> Average Cycle Pace
             </div>
-            <div style="font-size: 1.6rem; font-weight: 800; color: #16a34a; margin: 4px 0 2px 0;">
-                £{{ actual_daily_spend }} <span style="font-size: 0.9rem; font-weight: 500; color: #64748b;">/ day</span>
+            <div style="font-size: 1.6rem; font-weight: 800; color: {% if is_behind_baseline %}#ef4444{% else %}#16a34a{% endif %}; margin: 4px 0 2px 0;">
+                £{{ actual_daily_spend }} <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-muted);">/ day</span>
             </div>
-            <div style="font-size: 0.8rem; color: #64748b;">
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
                 Total spent: <b>£{{ spent_this_month }}</b> ({{ days_elapsed }} days elapsed)
             </div>
         </div>
 
         <!-- Variance vs Target Pace -->
-        <div class="w3-card w3-padding" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; border-left: 4px solid #16a34a;">
-            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700;">
-                <i class="fas fa-balance-scale" style="color: #16a34a; margin-right: 4px;"></i> Status vs Target
+        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; border-left: 4px solid {% if is_behind_baseline %}#ef4444{% else %}#16a34a{% endif %};">
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700;">
+                <i class="fas fa-balance-scale" style="color: {% if is_behind_baseline %}#ef4444{% else %}#16a34a{% endif %}; margin-right: 4px;"></i> Status vs Target
             </div>
             <div style="font-size: 1.6rem; font-weight: 800; margin: 4px 0 2px 0;">
-                <span style="color: #16a34a;"><i class="fas fa-arrow-down" style="font-size: 1.1rem;"></i> -£{{ absolute_baseline_diff_total }} <span style="font-size: 0.9rem; font-weight: 500; color: #64748b;">/ day</span></span>
+                {% if is_behind_baseline %}
+                    <span style="color: #ef4444;"><i class="fas fa-arrow-up" style="font-size: 1.1rem;"></i> +£{{ absolute_baseline_diff_total }} <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-muted);">/ day</span></span>
+                {% else %}
+                    <span style="color: #16a34a;"><i class="fas fa-arrow-down" style="font-size: 1.1rem;"></i> -£{{ absolute_baseline_diff_total }} <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-muted);">/ day</span></span>
+                {% endif %}
             </div>
-            <div style="font-size: 0.8rem; color: #64748b;">
-                Ahead of baseline pace by <b>£{{ absolute_baseline_diff_total }}</b>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                {% if is_behind_baseline %}
+                    Exceeding MAX target pace
+                {% else %}
+                    Safely within MAX target pace
+                {% endif %}
             </div>
         </div>
     </div>
+
+    <!-- Interactive Histogram Chart Card -->
+    <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+            <div>
+                <h4 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-main);">
+                    <i class="fas fa-chart-line" style="color: var(--primary); margin-right: 6px;"></i>Spending Pace by 5-Day Chunks
+                </h4>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+                    Histogram shows daily spending pace across each 5-day chunk vs flat target MAX baseline.
+                </div>
+            </div>
+
+            <!-- View Mode Switcher -->
+            <div class="pace-filter-group" style="display: inline-flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; background: var(--card-bg-subtle);">
+                <button type="button" class="btn-pace-filter active" data-mode="chunk"
+                        style="padding: 6px 12px; font-size: 0.78rem; font-weight: 600; border: none; cursor: pointer; background: var(--primary); color: #ffffff;">
+                    5-Day Chunk Pace
+                </button>
+                <button type="button" class="btn-pace-filter" data-mode="cumulative"
+                        style="padding: 6px 12px; font-size: 0.78rem; font-weight: 600; border: none; cursor: pointer; background: transparent; color: var(--text-muted); border-left: 1px solid var(--border-color);">
+                    Cumulative Pace
+                </button>
+                <button type="button" class="btn-pace-filter" data-mode="spent"
+                        style="padding: 6px 12px; font-size: 0.78rem; font-weight: 600; border: none; cursor: pointer; background: transparent; color: var(--text-muted); border-left: 1px solid var(--border-color);">
+                    Total Spend (£)
+                </button>
+            </div>
+        </div>
+
+        <!-- Legend and Target Line Badge -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 0.75rem; font-size: 0.78rem; color: var(--text-muted);">
+            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #10b981;"></span> Within Target
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #ef4444;"></span> Over Target
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                    <span style="display: inline-block; width: 16px; height: 2px; border-top: 2px dashed #8b5cf6;"></span> Flat Target MAX Pace (£{{ max_per_day }}/d)
+                </span>
+            </div>
+            <div id="chart-mode-caption" style="font-weight: 600; color: var(--text-main);">
+                Showing 5-Day Chunk Spending Pace
+            </div>
+        </div>
+
+        <!-- Interactive HTML5 Canvas -->
+        <div id="pace-chart-container" style="position: relative; width: 100%; height: 320px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; margin-top: 0.75rem;">
+            <canvas id="pace-chart" style="width: 100%; height: 100%; display: block;"></canvas>
+            <div id="pace-chart-tooltip" style="display: none; position: absolute; background: var(--card-bg); color: var(--text-main); padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; pointer-events: none; border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; white-space: nowrap; line-height: 1.5;"></div>
+        </div>
+    </div>
+
+    <!-- Granular 5-Day Breakdown Table -->
+    <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
+        <h4 style="margin: 0 0 0.75rem 0; font-size: 1.05rem; font-weight: 700; color: var(--text-main);">
+            <i class="fas fa-table" style="color: var(--primary); margin-right: 6px;"></i>5-Day Interval Details
+        </h4>
+
+        <div class="w3-responsive" style="border: 1px solid var(--border-color); border-radius: 6px;">
+            <table class="w3-table w3-bordered w3-hoverable" style="font-size: 0.88rem;">
+                <thead>
+                    <tr style="background: var(--card-bg-subtle); color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <th>Interval</th>
+                        <th>Dates</th>
+                        <th>Days Elapsed</th>
+                        <th>Total Spent</th>
+                        <th>5-Day Pace</th>
+                        <th>Cumulative Pace</th>
+                        <th>Status vs MAX (£{{ max_per_day }}/d)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in chunks %}
+                        <tr style="{% if c.is_current %}background: rgba(99, 102, 241, 0.08); font-weight: 600;{% endif %}">
+                            <td>
+                                <b>{{ c.label }}</b>
+                                {% if c.is_current %}
+                                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.7rem; margin-left: 4px;">Current</span>
+                                {% else if c.is_future %}
+                                    <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); font-size: 0.7rem; margin-left: 4px;">Upcoming</span>
+                                {% endif %}
+                            </td>
+                            <td style="color: var(--text-muted);">{{ c.date_range }}</td>
+                            <td>
+                                {% if c.is_future %}
+                                    <span style="color: var(--text-muted);">0 / {{ c.days_in_chunk }}</span>
+                                {% else %}
+                                    <span>{{ c.days_elapsed }} / {{ c.days_in_chunk }} days</span>
+                                {% endif %}
+                            </td>
+                            <td style="font-weight: 700;">£{{ c.total_spent }}</td>
+                            <td>
+                                {% if c.is_future %}
+                                    <span style="color: var(--text-muted);">—</span>
+                                {% else %}
+                                    <span style="font-weight: 700; color: {% if c.is_over_target %}#ef4444{% else %}#10b981{% endif %};">
+                                        £{{ c.pace }}/d
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if c.is_future %}
+                                    <span style="color: var(--text-muted);">—</span>
+                                {% else %}
+                                    <span>£{{ c.cumulative_pace }}/d</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if c.is_future %}
+                                    <span style="color: var(--text-muted);">Upcoming</span>
+                                {% else if c.is_over_target %}
+                                    <span class="badge-pill badge-danger" style="font-size: 0.72rem;">Exceeding</span>
+                                {% else %}
+                                    <span class="badge-pill badge-success" style="font-size: 0.72rem;">Within Target</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
+
+<script>
+    window.spendingPaceData = {{ chart_json|safe }};
+</script>
+<script src="/assets/javascripts/spending-pace-chart.js"></script>
 
 {% include "nav_scripts.html" %}
 </body>

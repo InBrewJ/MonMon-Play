@@ -3,11 +3,13 @@ mod bank_sync;
 mod db;
 mod dig;
 mod ed;
+mod historic_spent;
 mod landing;
 mod management;
 mod models;
 mod net_worth;
 mod nommon;
+mod passkey;
 mod savings_plan;
 mod search;
 mod spog;
@@ -131,8 +133,17 @@ async fn main() {
         .route("/settings/rejectUser/:id", post(admin::reject_user_handler))
         .route("/waitinglist", get(admin::get_waiting_list))
         .route("/myOutgoings", get(management::get_outgoings_page))
+        .route("/editOutgoing/:id", get(management::get_edit_outgoing_page))
+        .route("/updateOutgoing/:id", post(management::post_update_outgoing_form))
+        .route("/updateOutgoing", post(management::post_update_outgoing_form_direct))
         .route("/myAccounts", get(management::get_accounts_page))
+        .route("/editAccount/:id", get(management::get_edit_account_page))
+        .route("/updateAccount/:id", post(management::post_update_account_form))
+        .route("/updateAccount", post(management::post_update_account_form_direct))
         .route("/myIncomings", get(management::get_incomings_page))
+        .route("/editIncoming/:id", get(management::get_edit_incoming_page))
+        .route("/updateIncoming/:id", post(management::post_update_incoming_form))
+        .route("/updateIncoming", post(management::post_update_incoming_form_direct))
         .route("/myBalances", get(management::get_balances_page))
         .route("/account", post(management::post_account_form))
         .route("/incoming", post(management::post_incoming_form))
@@ -198,6 +209,7 @@ async fn main() {
         .route("/api/spog/spending-pace", get(get_spending_pace))
         .route("/spog", get(get_spog_page))
         .route("/spendingPace", get(get_spending_pace_page_handler))
+        .route("/historicSpent", get(historic_spent::get_historic_spent_page))
         // NomMon (Smart Grocery & Meal Planner)
         .route("/nommon", get(nommon::get_nommon_page))
         .route("/api/nommon/plan", get(nommon::get_nommon_plan_api))
@@ -254,8 +266,17 @@ async fn main() {
         .route("/savingsPlan/updatePercentage", post(savings_plan::update_percentage_form_handler))
         .route("/savingsPlan/balanceEvenly/:id", post(savings_plan::balance_evenly_form_handler))
         .route("/savingsPlan/trimDeficit/:id", post(savings_plan::trim_deficit_form_handler))
+        .route("/editSavingsPlanItem/:id", get(savings_plan::get_edit_savings_plan_item_page))
+        .route("/savingsPlan/editItem/:id", get(savings_plan::get_edit_savings_plan_item_page))
+        .route("/savingsPlan/updateItem/:id", post(savings_plan::update_item_form_handler))
         .route("/binSavingsPlanItem/:id", get(savings_plan::bin_item_handler))
         .route("/binSavingsPlan/:id", get(savings_plan::bin_plan_handler))
+        // Passkey / WebAuthn APIs
+        .route("/api/auth/passkey/options", get(passkey::get_passkey_options_api))
+        .route("/api/auth/passkey/register", post(passkey::register_passkey_api))
+        .route("/api/auth/passkey/login", post(passkey::login_passkey_api))
+        .route("/api/auth/passkey/list", get(passkey::list_user_passkeys_api))
+        .route("/api/auth/passkey/:id", delete(passkey::delete_passkey_api))
         // Net Worth & Capital Assets
         .route("/netWorth", get(net_worth::get_net_worth_page))
         .route("/api/networth", get(net_worth::get_net_worth_api))
@@ -547,6 +568,7 @@ pub struct AuthForm {
     pub username: String,
     pub email: Option<String>,
     pub password: Option<String>,
+    pub return_to: Option<String>,
 }
 
 #[derive(Template)]
@@ -555,7 +577,9 @@ struct SignupTemplate {}
 
 #[derive(Template)]
 #[template(path = "login.html")]
-struct LoginTemplate {}
+struct LoginTemplate {
+    pub return_to: String,
+}
 
 async fn get_signup_page() -> Html<String> {
     SignupTemplate {}
@@ -564,8 +588,11 @@ async fn get_signup_page() -> Html<String> {
         .unwrap_or_else(|_| Html(String::new()))
 }
 
-async fn get_login_page() -> Html<String> {
-    LoginTemplate {}
+async fn get_login_page(
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> Html<String> {
+    let return_to = query.get("return_to").cloned().unwrap_or_default();
+    LoginTemplate { return_to }
         .render()
         .map(Html)
         .unwrap_or_else(|_| Html(String::new()))
@@ -616,7 +643,11 @@ async fn login_form_handler(
     let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
     let auth_val = "authenticated=true; Path=/; SameSite=Lax";
 
-    let mut response = axum::response::Redirect::to("/spog").into_response();
+    let target = form.return_to
+        .filter(|t| !t.trim().is_empty() && t.starts_with('/'))
+        .unwrap_or_else(|| "/spog".to_string());
+
+    let mut response = axum::response::Redirect::to(&target).into_response();
     let headers = response.headers_mut();
     headers.append(axum::http::header::SET_COOKIE, cookie_val.parse().unwrap());
     headers.append(axum::http::header::SET_COOKIE, session_val.parse().unwrap());

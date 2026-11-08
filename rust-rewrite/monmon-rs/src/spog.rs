@@ -269,6 +269,21 @@ pub async fn calculate_spending_pace(
     })
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SpendingPaceChunkDto {
+    pub label: String,
+    pub date_range: String,
+    pub days_in_chunk: i32,
+    pub days_elapsed: i32,
+    pub total_spent: f32,
+    pub pace: f32,
+    pub cumulative_spent: f32,
+    pub cumulative_pace: f32,
+    pub is_current: bool,
+    pub is_future: bool,
+    pub is_over_target: bool,
+}
+
 #[derive(askama::Template)]
 #[template(path = "spending_pace.html")]
 pub struct SpendingPaceTemplate {
@@ -280,6 +295,8 @@ pub struct SpendingPaceTemplate {
     pub spent_this_month: f32,
     pub absolute_baseline_diff_total: f32,
     pub is_behind_baseline: bool,
+    pub chunks: Vec<SpendingPaceChunkDto>,
+    pub chart_json: String,
 }
 
 pub async fn get_spending_pace_page(
@@ -293,17 +310,108 @@ pub async fn get_spending_pace_page(
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let today = Local::now().date_naive();
-    let days_elapsed = (today.day() as i32).clamp(1, spog.days_between_paydays);
+    let days_in_cycle = spog.days_between_paydays.max(28);
+    let days_elapsed = (today.day() as i32).clamp(1, days_in_cycle);
+
+    // Build 5-day chunks
+    let mut chunks = Vec::new();
+    let mut cumulative_spent = 0.0f32;
+    let mut cumulative_days = 0i32;
+
+    let month_str = today.format("%b").to_string();
+    let mut start_day = 1;
+    let mut chunk_idx = 1;
+
+    while start_day <= days_in_cycle {
+        let end_day = (start_day + 4).min(days_in_cycle);
+        let days_in_chunk = end_day - start_day + 1;
+
+        let is_current = days_elapsed >= start_day && days_elapsed <= end_day;
+        let is_future = days_elapsed < start_day;
+        let chunk_elapsed = if is_future {
+            0
+        } else if is_current {
+            days_elapsed - start_day + 1
+        } else {
+            days_in_chunk
+        };
+
+        // Calculate chunk spent based on pace and elapsed
+        let chunk_spent = if chunk_elapsed > 0 {
+            let chunk_ratio = chunk_elapsed as f32 / days_elapsed as f32;
+            ((pace.spent_this_month * chunk_ratio * 100.0).round() / 100.0).max(0.0)
+        } else {
+            0.0
+        };
+
+        let chunk_pace = if chunk_elapsed > 0 {
+            ((chunk_spent / chunk_elapsed as f32) * 100.0).round() / 100.0
+        } else {
+            0.0
+        };
+
+        cumulative_spent += chunk_spent;
+        cumulative_days += chunk_elapsed;
+
+        let cumulative_pace = if cumulative_days > 0 {
+            ((cumulative_spent / cumulative_days as f32) * 100.0).round() / 100.0
+        } else {
+            0.0
+        };
+
+        let is_over_target = chunk_pace > spog.max_per_day;
+
+        chunks.push(SpendingPaceChunkDto {
+            label: format!("Chunk {}", chunk_idx),
+            date_range: format!("{} {} – {} {}", start_day, month_str, end_day, month_str),
+            days_in_chunk,
+            days_elapsed: chunk_elapsed,
+            total_spent: chunk_spent,
+            pace: chunk_pace,
+            cumulative_spent,
+            cumulative_pace,
+            is_current,
+            is_future,
+            is_over_target,
+        });
+
+        start_day += 5;
+        chunk_idx += 1;
+    }
+
+    let chart_data = serde_json::json!({
+        "maxPerDay": spog.max_per_day,
+        "monthlyBudget": spog.surplus,
+        "chunks": chunks.iter().map(|c| {
+            serde_json::json!({
+                "label": c.label,
+                "dateRange": c.date_range,
+                "daysInChunk": c.days_in_chunk,
+                "daysElapsed": c.days_elapsed,
+                "totalSpent": c.total_spent,
+                "pace": c.pace,
+                "cumulativeSpent": c.cumulative_spent,
+                "cumulativePace": c.cumulative_pace,
+                "isCurrent": c.is_current,
+                "isFuture": c.is_future,
+                "isOverTarget": c.is_over_target,
+            })
+        }).collect::<Vec<_>>()
+    });
+
+    let chart_json = serde_json::to_string(&chart_data).unwrap_or_else(|_| "{}".to_string());
 
     let tmpl = SpendingPaceTemplate {
         days_elapsed,
-        days_in_cycle: spog.days_between_paydays,
+        days_in_cycle,
         max_per_day: spog.max_per_day,
         monthly_budget: spog.surplus,
         actual_daily_spend: pace.actual_daily_spend,
         spent_this_month: pace.spent_this_month,
         absolute_baseline_diff_total: pace.absolute_baseline_diff_total,
         is_behind_baseline: pace.is_behind_baseline,
+        chunks,
+        chart_json,
     };
 
     use askama::Template;

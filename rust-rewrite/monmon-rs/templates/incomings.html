@@ -28,11 +28,12 @@
                             <th>Net Value</th>
                             <th>Payday</th>
                             <th>Day of Month</th>
+                            <th style="text-align: right;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% if incomings.is_empty() %}
-                            <tr><td colspan="4" style="text-align: center; color: #64748b; padding: 2rem;">No incomings configured.</td></tr>
+                            <tr><td colspan="5" style="text-align: center; color: #64748b; padding: 2rem;">No incomings configured.</td></tr>
                         {% else %}
                             {% for inc in incomings %}
                                 <tr id="incoming-{{ inc.id }}">
@@ -46,6 +47,11 @@
                                         {% endif %}
                                     </td>
                                     <td>Day {{ inc.incoming_month_day }}</td>
+                                    <td style="text-align: right;">
+                                        <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" title="Edit" style="color: var(--primary); text-decoration: none;">
+                                            <i class="fas fa-pen"></i>
+                                        </a>
+                                    </td>
                                 </tr>
                             {% endfor %}
                         {% endif %}
@@ -71,35 +77,41 @@
                                 <div class="stat-cell-val">{% if inc.payday.unwrap_or(false) %}Yes{% else %}No{% endif %}</div>
                             </div>
                         </div>
+                        <div class="item-card-actions" style="border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 8px;">
+                            <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-block;">
+                                <i class="fas fa-pen"></i> Edit
+                            </a>
+                        </div>
                     </div>
                 {% endfor %}
             </div>
         </div>
     </main>
 
-    <!-- Modal Dialog for Add Incoming -->
-    <div id="incoming-modal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100;">
-        <div class="modal-content-card" style="background: #fff; padding: 1.5rem; border-radius: 12px; max-width: 500px; width: 90%; position: relative;">
-            <button type="button" onclick="closeIncomingModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; cursor: pointer;">&times;</button>
-            <div style="font-weight: 700; font-size: 1.1rem; color: #1e293b; margin-bottom: 1rem;">
-                <i class="fas fa-plus-circle" style="color: #10b981; margin-right: 6px;"></i> Add New Incoming
+    <!-- Add / Edit Incoming Modal -->
+    <div id="incoming-modal" class="modal-backdrop" style="display: {% if editing %}flex{% else %}none{% endif %}; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100;">
+        <div class="modal-content-card" style="background: var(--card-bg); color: var(--text-main); padding: 1.5rem; border-radius: 12px; max-width: 500px; width: 90%; position: relative; border: 1px solid var(--border-color);">
+            <button type="button" onclick="closeIncomingModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 1rem;">
+                <i class="fas {% if editing %}fa-edit{% else %}fa-plus-circle{% endif %}" style="color: #10b981; margin-right: 6px;"></i>
+                {% if editing %}Amend Incoming{% else %}Add New Incoming{% endif %}
             </div>
-            <form id="incoming-modal-form" method="POST" action="/incoming">
+            <form id="incoming-modal-form" method="POST" action="{% if let Some(i) = editing_incoming %}/updateIncoming/{{ i.id }}{% else %}/incoming{% endif %}">
                 <div style="margin-bottom: 0.75rem;">
-                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Incoming Name</label>
-                    <input id="incoming-name" name="name" type="text" required style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Incoming Name</label>
+                    <input id="incoming-name" name="name" type="text" required value="{% if let Some(i) = editing_incoming %}{{ i.name }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
                 <div style="margin-bottom: 0.75rem;">
-                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Net Value (£)</label>
-                    <input name="netValue" type="number" step="0.01" required style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Net Value (£)</label>
+                    <input name="netValue" type="number" step="0.01" required value="{% if let Some(i) = editing_incoming %}{{ i.net_value }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
                 <div style="margin-bottom: 1rem;">
-                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Day of Month</label>
-                    <input name="incomingMonthDay" type="number" min="1" max="31" required style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month</label>
+                    <input name="incomingMonthDay" type="number" min="1" max="31" required value="{% if let Some(i) = editing_incoming %}{{ i.incoming_month_day }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                    <button type="button" onclick="closeIncomingModal()" style="padding: 8px 16px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">Cancel</button>
-                    <button type="submit" style="padding: 8px 16px; background: #10b981; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">Add Incoming</button>
+                    <button type="button" onclick="closeIncomingModal()" style="padding: 8px 16px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main); border-radius: 6px; cursor: pointer;">Cancel</button>
+                    <button type="submit" style="padding: 8px 16px; background: #10b981; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">{% if editing %}Save Changes{% else %}Add Incoming{% endif %}</button>
                 </div>
             </form>
         </div>
@@ -112,7 +124,11 @@
             document.getElementById('incoming-modal').style.display = 'flex';
         }
         function closeIncomingModal() {
-            document.getElementById('incoming-modal').style.display = 'none';
+            {% if editing %}
+                window.location.href = '/myIncomings';
+            {% else %}
+                document.getElementById('incoming-modal').style.display = 'none';
+            {% endif %}
         }
     </script>
 </body>

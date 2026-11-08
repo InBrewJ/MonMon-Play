@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>MonMon - Spending History</title>
+    {% include "nav_head.html" %}
+</head>
+<body>
+
+{% include "nav_header.html" %}
+
+<div class="w3-content" style="max-width: 1100px; padding: 0 1rem 3rem 1rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin: 1.5rem 0 1rem 0;">
+        <h3 style="margin: 0; font-weight: 800; font-size: 1.4rem;">
+            <i class="fas fa-history" style="color: var(--primary); margin-right: 8px;"></i>Spent This Month — History
+        </h3>
+        <a href="/spog" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600;">
+            <i class="fas fa-arrow-left"></i> Back to SPOG
+        </a>
+    </div>
+
+    {% if !has_history %}
+        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
+            <p style="color: var(--text-muted); margin: 0;">No spending history recorded yet.</p>
+        </div>
+    {% else %}
+        <div class="w3-row-padding" style="margin: 0 -8px 1.25rem -8px;">
+            <div class="w3-third">
+                <div class="w3-card w3-padding" style="text-align: center; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Avg per completed cycle</div>
+                    <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-main); margin-top: 4px;">£{{ average_monthly_spend }}</div>
+                </div>
+            </div>
+            <div class="w3-third">
+                <div class="w3-card w3-padding" style="text-align: center; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Highest Spend Cycle</div>
+                    {% if let Some(high) = highest_spent %}
+                        <div style="font-size: 1.6rem; font-weight: 800; color: #ef4444; margin-top: 4px;">£{{ high }}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">{{ highest_spent_range.as_deref().unwrap_or("") }}</div>
+                    {% else %}
+                        <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-muted); margin-top: 4px;">—</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="w3-third">
+                <div class="w3-card w3-padding" style="text-align: center; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Lowest Spend Cycle</div>
+                    {% if let Some(low) = lowest_spent %}
+                        <div style="font-size: 1.6rem; font-weight: 800; color: #10b981; margin-top: 4px;">£{{ low }}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">{{ lowest_spent_range.as_deref().unwrap_or("") }}</div>
+                    {% else %}
+                        <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-muted); margin-top: 4px;">—</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0; margin-bottom: 1rem;">
+                One row per pay cycle tracking total monthly spending vs income (excluding transfers into savings),
+                alongside how much you spent from your designated monthly pot against its allowance.
+            </p>
+
+            {% for c in cycles %}
+                <details class="history-cycle-item" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; background: var(--card-bg); {% if c.is_current_cycle %}border-left: 4px solid var(--primary);{% endif %}">
+                    <summary style="cursor: pointer; list-style: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <div>
+                                <b style="font-size: 0.95rem; color: var(--text-main);">{{ c.cycle_date_range }}</b>
+                                {% if c.is_current_cycle %}
+                                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); margin-left: 6px; font-weight: 700; font-size: 0.75rem;">
+                                        Day {{ c.days_elapsed }} of {{ c.days_in_cycle }}
+                                    </span>
+                                {% endif %}
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">£{{ c.total_spent }}</span>
+                                <span style="font-size: 0.85rem; color: var(--text-muted);">/ £{{ c.monthly_income }}</span>
+                                {% if c.pot_allowance > 0.0 %}
+                                    <span class="badge-pill {% if c.is_over_pot_allowance %}badge-danger{% else %}badge-success{% endif %}" style="font-size: 0.75rem; font-weight: 700;">
+                                        {% if c.is_over_pot_allowance %}
+                                            £{{ c.absolute_pot_overspend }} over allowance
+                                        {% else %}
+                                            £{{ c.absolute_pot_overspend }} under allowance
+                                        {% endif %}
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div style="height: 6px; background: var(--card-bg-subtle); border-radius: 3px; margin-top: 0.65rem; overflow: hidden;">
+                            <div style="height: 100%; width: {{ c.budget_utilization_percent }}%; background: {% if c.is_over_pot_allowance %}#ef4444{% else %}#10b981{% endif %};"></div>
+                        </div>
+                    </summary>
+
+                    <div style="font-size: 0.85rem; margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.75rem;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;">
+                            <div style="background: var(--card-bg-subtle); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Total Spent</span>
+                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.total_spent }}</div>
+                            </div>
+                            <div style="background: var(--card-bg-subtle); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Monthly Income</span>
+                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.monthly_income }}</div>
+                            </div>
+                            <div style="background: var(--card-bg-subtle); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Pot Spent</span>
+                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.pot_spent }}</div>
+                            </div>
+                            <div style="background: var(--card-bg-subtle); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Pot Allowance</span>
+                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.pot_allowance }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>
+
+{% include "nav_scripts.html" %}
+</body>
+</html>

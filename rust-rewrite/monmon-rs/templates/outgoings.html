@@ -58,6 +58,9 @@
                                         {% endif %}
                                     </td>
                                     <td style="text-align: right;">
+                                        <a href="/editOutgoing/{{ o.id }}#outgoing-modal" class="btn-action btn-edit" title="Edit" style="margin-right: 8px; color: var(--primary); text-decoration: none;">
+                                            <i class="fas fa-pen"></i>
+                                        </a>
                                         {% if o.paused.unwrap_or(false) %}
                                             <a href="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="color: #10b981; text-decoration: none; font-weight: 600; font-size: 0.85rem;">
                                                 <i class="fas fa-play-circle"></i> Unpause
@@ -93,7 +96,8 @@
                                 <div class="stat-cell-val">{% if o.paused.unwrap_or(false) %}Paused{% else %}Active{% endif %}</div>
                             </div>
                         </div>
-                        <div class="item-card-actions" style="border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                        <div class="item-card-actions" style="display: flex; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                            <a href="/editOutgoing/{{ o.id }}#outgoing-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-block;"><i class="fas fa-pen"></i> Edit</a>
                             {% if o.paused.unwrap_or(false) %}
                                 <a href="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="padding: 4px 12px; background: #dcfce7; color: #166534; border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-block;">
                                     <i class="fas fa-play"></i> Unpause
@@ -110,29 +114,30 @@
         </div>
     </main>
 
-    <!-- Add Outgoing Modal -->
-    <div id="outgoing-modal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100;">
-        <div class="modal-content-card" style="background: #fff; padding: 1.5rem; border-radius: 12px; max-width: 500px; width: 90%; position: relative;">
-            <button type="button" onclick="closeOutgoingModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; cursor: pointer;">&times;</button>
-            <div style="font-weight: 700; font-size: 1.1rem; color: #1e293b; margin-bottom: 1rem;">
-                <i class="fas fa-plus-circle" style="color: #4f46e5; margin-right: 6px;"></i> Add New Outgoing
+    <!-- Add / Edit Outgoing Modal -->
+    <div id="outgoing-modal" class="modal-backdrop" style="display: {% if editing %}flex{% else %}none{% endif %}; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100;">
+        <div class="modal-content-card" style="background: var(--card-bg); color: var(--text-main); padding: 1.5rem; border-radius: 12px; max-width: 500px; width: 90%; position: relative; border: 1px solid var(--border-color);">
+            <button type="button" onclick="closeOutgoingModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 1rem;">
+                <i class="fas {% if editing %}fa-edit{% else %}fa-plus-circle{% endif %}" style="color: var(--primary); margin-right: 6px;"></i>
+                {% if editing %}Amend Outgoing{% else %}Add New Outgoing{% endif %}
             </div>
-            <form id="outgoing-modal-form" method="POST" action="/outgoing">
+            <form id="outgoing-modal-form" method="POST" action="{% if let Some(o) = editing_outgoing %}/updateOutgoing/{{ o.id }}{% else %}/outgoing{% endif %}">
                 <div style="margin-bottom: 0.75rem;">
-                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Outgoing Name</label>
-                    <input id="outgoing-name" name="name" type="text" required style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Outgoing Name</label>
+                    <input id="outgoing-name" name="name" type="text" required value="{% if let Some(o) = editing_outgoing %}{{ o.name }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
                 <div style="margin-bottom: 0.75rem;">
-                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Cost (£)</label>
-                    <input id="outgoing-cost" name="cost" type="number" step="0.01" required style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Cost (£)</label>
+                    <input id="outgoing-cost" name="cost" type="number" step="0.01" required value="{% if let Some(o) = editing_outgoing %}{{ o.cost }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
                 <div style="margin-bottom: 1rem;">
-                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Day of Month</label>
-                    <input name="outgoingDay" type="number" min="1" max="31" required style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month</label>
+                    <input name="outgoingDay" type="number" min="1" max="31" required value="{% if let Some(o) = editing_outgoing %}{{ o.outgoing_day }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                    <button type="button" onclick="closeOutgoingModal()" style="padding: 8px 16px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">Cancel</button>
-                    <button type="submit" style="padding: 8px 16px; background: #4f46e5; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">Add Outgoing</button>
+                    <button type="button" onclick="closeOutgoingModal()" style="padding: 8px 16px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main); border-radius: 6px; cursor: pointer;">Cancel</button>
+                    <button type="submit" style="padding: 8px 16px; background: var(--primary); color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">{% if editing %}Save Changes{% else %}Add Outgoing{% endif %}</button>
                 </div>
             </form>
         </div>
@@ -140,9 +145,9 @@
 
     <!-- Pause Outgoing Modal -->
     <div id="pause-outgoing-modal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100;">
-        <div class="modal-content-card" style="background: #fff; padding: 1.5rem; border-radius: 12px; max-width: 450px; width: 90%; position: relative;">
-            <button type="button" onclick="closePauseModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; cursor: pointer;">&times;</button>
-            <div style="font-weight: 700; font-size: 1.1rem; color: #1e293b; margin-bottom: 1rem;">
+        <div class="modal-content-card" style="background: var(--card-bg); color: var(--text-main); padding: 1.5rem; border-radius: 12px; max-width: 450px; width: 90%; position: relative; border: 1px solid var(--border-color);">
+            <button type="button" onclick="closePauseModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 1rem;">
                 <i class="fas fa-pause-circle" style="color: #f59e0b; margin-right: 6px;"></i> Pause Outgoing
             </div>
             <div style="margin-bottom: 1rem; font-size: 0.95rem;">
@@ -150,11 +155,11 @@
             </div>
             <form id="pause-outgoing-form" method="POST" action="">
                 <div style="margin-bottom: 1rem;">
-                    <label style="font-size: 0.85rem; font-weight: 600; color: #475569;">Reason for pausing *</label>
-                    <input id="pause-reason-input" name="reason" type="text" placeholder="e.g. Free trial, holiday pause" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Reason for pausing *</label>
+                    <input id="pause-reason-input" name="reason" type="text" placeholder="e.g. Free trial, holiday pause" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                    <button type="button" onclick="closePauseModal()" style="padding: 8px 16px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">Cancel</button>
+                    <button type="button" onclick="closePauseModal()" style="padding: 8px 16px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main); border-radius: 6px; cursor: pointer;">Cancel</button>
                     <button type="submit" style="padding: 8px 16px; background: #f59e0b; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">Confirm Pause</button>
                 </div>
             </form>
@@ -169,8 +174,25 @@
             document.getElementById('outgoing-modal').style.display = 'flex';
         }
         function closeOutgoingModal() {
-            document.getElementById('outgoing-modal').style.display = 'none';
+            {% if editing %}
+                window.location.href = '/myOutgoings';
+            {% else %}
+                document.getElementById('outgoing-modal').style.display = 'none';
+            {% endif %}
         }
+        function openPauseModal(el) {
+            var id = el.getAttribute('data-id');
+            var name = el.getAttribute('data-name');
+            var cost = el.getAttribute('data-cost');
+            document.getElementById('pause-outgoing-name').textContent = name;
+            document.getElementById('pause-outgoing-cost').textContent = '£' + cost;
+            document.getElementById('pause-outgoing-form').action = '/pauseOutgoing/' + id;
+            document.getElementById('pause-outgoing-modal').style.display = 'flex';
+        }
+        function closePauseModal() {
+            document.getElementById('pause-outgoing-modal').style.display = 'none';
+        }
+    </script>
         function openPauseModal(el) {
             var id = el.getAttribute('data-id');
             var name = el.getAttribute('data-name');

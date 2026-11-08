@@ -37,22 +37,10 @@ pub async fn get_access_status_api() -> Json<Value> {
 }
 
 pub async fn auth_redirect(target_path: Option<&str>) -> Redirect {
-    let auth_base = std::env::var("AUTH_URL").unwrap_or_else(|_| {
-        "http://localhost:8080/auth/realms/monmon/protocol/openid-connect/auth".to_string()
-    });
-    let port = std::env::var("PORT").unwrap_or_else(|_| "9001".to_string());
-    let redirect_uri = std::env::var("REDIRECT_URI").unwrap_or_else(|_| {
-        format!("http://localhost:{}/callback", port)
-    });
-    let state = target_path.unwrap_or("/myOutgoings");
-    let sep = if auth_base.contains('?') { "&" } else { "?" };
-    let full_url = format!(
-        "{}{}client_id=monmon-web&response_type=code&redirect_uri={}&state={}&scope=openid+profile+email",
-        auth_base,
-        sep,
-        urlencoding::encode(&redirect_uri),
-        urlencoding::encode(state)
-    );
-    Redirect::temporary(&full_url)
+    if let Some(target) = target_path {
+        Redirect::temporary(&format!("/login?return_to={}", urlencoding::encode(target)))
+    } else {
+        Redirect::temporary("/login")
+    }
 }
 

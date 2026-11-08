@@ -36,6 +36,23 @@
                 </button>
             </form>
 
+            <div style="margin-top: 1.25rem; padding: 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                    <div>
+                        <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-main);">
+                            <i class="fas fa-fingerprint" style="color: var(--primary); margin-right: 4px;"></i> Passkey Security
+                        </div>
+                        <div style="font-size: 0.78rem; color: var(--text-muted);">
+                            Sign up instantly with biometric or hardware key
+                        </div>
+                    </div>
+                    <button type="button" id="btn-add-passkey-signup" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                        <i class="fas fa-plus"></i> Add Passkey
+                    </button>
+                </div>
+                <div id="signup-passkey-status" style="margin-top: 8px; font-size: 0.8rem; display: none;"></div>
+            </div>
+
             <div style="margin-top: 1.5rem; text-align: center; font-size: 0.88rem; color: var(--text-muted);">
                 Already have an account? <a href="/login" id="link-to-login" style="color: var(--primary); font-weight: 700;">Sign In</a>
             </div>

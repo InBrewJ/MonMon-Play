@@ -132,6 +132,18 @@ pub struct CreateItemPayload {
 pub struct SavingsPlanTemplate {
     pub plan: SavingsPlanDto,
     pub accounts: Vec<AccountSimple>,
+    pub editing: bool,
+    pub editing_item: Option<SavingsPlanItemDto>,
+}
+
+impl SavingsPlanTemplate {
+    pub fn is_selected_account(&self, acc_id: &i64) -> bool {
+        if let Some(ref item) = self.editing_item {
+            item.account_id == Some(*acc_id)
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -775,10 +787,97 @@ pub async fn get_savings_plan_page(
         })
         .collect();
 
-    let tmpl = SavingsPlanTemplate { plan, accounts };
+    let tmpl = SavingsPlanTemplate {
+        plan,
+        accounts,
+        editing: false,
+        editing_item: None,
+    };
     tmpl.render()
         .map(Html)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+pub async fn get_edit_savings_plan_item_page(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(item_id): axum::extract::Path<i64>,
+) -> Result<Html<String>, (StatusCode, String)> {
+    let plan = get_or_create_active_plan(&state.pool, "demo")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let editing_item = plan.items.iter().find(|i| i.id == item_id).cloned();
+    let editing = editing_item.is_some();
+
+    let accounts_rows = sqlx::query(
+        r#"
+        SELECT 
+            id, 
+            name, 
+            type, 
+            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance, 
+            COALESCE(account_limit, 0.0)::real AS limit
+        FROM account
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+        ORDER BY name ASC
+        "#,
+    )
+    .bind(&plan.user_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let accounts = accounts_rows
+        .into_iter()
+        .map(|r| AccountSimple {
+            id: r.get("id"),
+            name: r.get("name"),
+            account_type: r.get("type"),
+            balance: r.get("balance"),
+            limit: r.get("limit"),
+        })
+        .collect();
+
+    let tmpl = SavingsPlanTemplate {
+        plan,
+        accounts,
+        editing,
+        editing_item,
+    };
+    tmpl.render()
+        .map(Html)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+pub async fn update_item_form_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(item_id): axum::extract::Path<i64>,
+    Form(form): Form<FormAddItem>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let target_amount = form.target_amount.unwrap_or(0.0);
+    let monthly_amount = form.monthly_amount.unwrap_or(0.0);
+    let priority = form.priority.unwrap_or(1);
+    let account_id = form.account_id;
+
+    let _ = sqlx::query(
+        r#"
+        UPDATE savings_plan_item
+        SET name = $1, target_amount = $2, monthly_amount = $3, priority = $4, account_id = $5
+        WHERE id = $6
+        "#,
+    )
+    .bind(&form.name)
+    .bind(target_amount)
+    .bind(monthly_amount)
+    .bind(priority)
+    .bind(account_id)
+    .bind(item_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Redirect::to("/savingsPlan#sliced-items-card"))
 }
 
 pub async fn add_item_form_handler(
