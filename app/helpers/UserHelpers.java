@@ -44,7 +44,6 @@ public class UserHelpers {
         if (allProfiles != null && !allProfiles.isEmpty()) {
             UserProfile firstUp = allProfiles.get(0);
             String id = firstUp.getId();
-            sup.setUserId(id != null ? id : "default-user");
 
             String username = firstUp.getUsername();
             if (username == null || username.trim().isEmpty()) {
@@ -56,6 +55,19 @@ public class UserHelpers {
             Object emailObj = firstUp.getAttribute("email");
             String email = emailObj != null ? emailObj.toString() : "";
             sup.setUserEmail(email);
+
+            // Resolve userId against user_access table: first by id, fallback by username or email
+            models.JPAUserAccessRepository repo = models.JPAUserAccessRepository.getInstance();
+            if (repo != null) {
+                models.UserAccess access = repo.getOrCreateSync(id != null ? id : "default-user", username, email);
+                if (access != null && access.getUserId() != null) {
+                    sup.setUserId(access.getUserId());
+                } else {
+                    sup.setUserId(id != null ? id : "default-user");
+                }
+            } else {
+                sup.setUserId(id != null ? id : "default-user");
+            }
         } else {
             sup.setUserId("guest");
             sup.setUsername("Guest");

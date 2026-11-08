@@ -1,10 +1,12 @@
 mod db;
 mod models;
+mod spog;
 
+use askama::Template;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Json,
+    response::{Html, IntoResponse, Json},
     routing::{get, post, put},
     Router,
 };
@@ -121,6 +123,10 @@ async fn main() {
             get(list_balances_handler).post(create_balance_handler),
         )
         .route("/internal/balances/erratic", get(erratic_balances_handler))
+        // SPOG (Single Point of Glass)
+        .route("/api/spog/metrics", get(get_spog_metrics))
+        .route("/api/spog/spending-pace", get(get_spending_pace))
+        .route("/spog", get(get_spog_page))
         .with_state(state);
 
     let port: u16 = env::var("PORT")
@@ -376,5 +382,75 @@ async fn erratic_balances_handler(
     db::find_erratic_balances(&state.pool, &query.user_id, threshold)
         .await
         .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[derive(Template)]
+#[template(path = "spog.html")]
+struct SpogTemplate {
+    username: String,
+    metrics: spog::SpogMetrics,
+    pace: spog::SpendingPaceMetrics,
+}
+
+// SPOG Handlers
+async fn get_spog_metrics(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<spog::SpogMetrics>, (StatusCode, String)> {
+    let user_id = query
+        .get("userId")
+        .or_else(|| query.get("user_id"))
+        .cloned()
+        .unwrap_or_else(|| "demo".to_string());
+
+    spog::calculate_spog(&state.pool, &user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn get_spending_pace(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<spog::SpendingPaceMetrics>, (StatusCode, String)> {
+    let user_id = query
+        .get("userId")
+        .or_else(|| query.get("user_id"))
+        .cloned()
+        .unwrap_or_else(|| "demo".to_string());
+
+    spog::calculate_spending_pace(&state.pool, &user_id)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn get_spog_page(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> Result<Html<String>, (StatusCode, String)> {
+    let user_id = query
+        .get("userId")
+        .or_else(|| query.get("user_id"))
+        .cloned()
+        .unwrap_or_else(|| "demo".to_string());
+
+    let metrics = spog::calculate_spog(&state.pool, &user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let pace = spog::calculate_spending_pace(&state.pool, &user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let tmpl = SpogTemplate {
+        username: user_id,
+        metrics,
+        pace,
+    };
+
+    tmpl.render()
+        .map(Html)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }

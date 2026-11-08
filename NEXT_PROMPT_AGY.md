@@ -1,10 +1,35 @@
-## next up
+# Current Migration Progress & Next Up
 
-0. Something about the NS&I statement and why it won't parse - it would be nice if NS&I and pension statements would parse and be added as available balances
+## Completed:
+1. **Rauthy OIDC Identity Provider**:
+   - Switched from bespoke `monmon-auth` to Rauthy.
+   - Configured declarative bootstrapping (`clients.json` with client `monmon-web`, RS256 token signing, `users.json` for `demo`).
+   - Adapted `UserHelpers.java` and `JPAUserAccessRepository.java` to resolve `userId` dynamically against existing PostgreSQL records by username/email/sub, maintaining 100% backward compatibility with existing user data.
+   - Automated test coverage: `rust-rewrite/tests-contract/rauthy.contract.test.mjs` (5/5 passing).
 
-------------DO NOT DO THIS, the below text, NOW, do it later------------
+2. **SPOG (Single Point of Glass) Ported to monmon-rs**:
+   - Migrated core domain logic: financial projections, surplus calculations, allowances, completed vs pending outgoings, debit/credit available, spending pace.
+   - Fast PostgreSQL aggregations replacing heavy in-memory crunching.
+   - Askama server-side HTML rendering (`rust-rewrite/monmon-rs/templates/spog.html`) preserving the 4-card hierarchy, dot indicators, and mobile swipe deck (`spog-deck.js`).
+   - Behavioral test verification:
+     - Contract suite: `rust-rewrite/tests-contract/spog.contract.test.mjs` (2/2 passing).
+     - Playwright E2E suite: `rust-rewrite/tests-e2e/specs/spog-deck.spec.js` (4/4 passing on both Java port 9000 and Rust port 9001).
+     - Full Playwright suite: 18/18 tests passing.
 
-4. I've added bank statements that seem to be parsed correctly to record the income - but for a given month it still doesn't show up in spending. What is the exact window for each? Do I need to re-upload the statements to recapture the correct timestamp for the incoming?
+---
 
-5. (take a psql backup of the inbrewj account on live) With this as a golden and quite messy
-   dataset, let's dig into the /historicSpent tab - it's no obvious to me how the auto injected payday fund influences this - maybe this is always a manual thing like 'did payday happen'? If the live incoming for that time period (which may be soft deleted) isn't seen in the list of availables. It's also not clear to me why the starting balance is nearly always £32k - is the loan being seen as available cash? It's also no clear to me where the second number in £5195.15 / £1300.0 e.g. in 28 Aug 2026 - 30 Sep 2026 comes from
+## Next Up:
+1. **Savings Plan (Priority 2 Domain)**:
+   - Behavioral tests first (database system test + Playwright test for priority queue operations `P1..P15`, `moveUp`, `moveDown`, `moveToTop`, `moveToBottom`, cascaded value reallocation on deletion).
+   - Port Savings Plan domain engine to `monmon-rs`.
+   - Askama template for `/savingsPlan`.
+   - Verify parity against Java and Rust implementations.
+
+2. **Spending Plan & NomMon Meal Plan (Priority 3 Domain)**:
+   - 5-day chunk calculation and Mistral AI plan solver.
+
+3. **Monzo OAuth & Webhooks (Priority 4 Domain)**:
+   - Ingestion and token refresh.
+
+4. **Net Worth (Priority 5 Domain)**:
+   - Asset valuation timeline.

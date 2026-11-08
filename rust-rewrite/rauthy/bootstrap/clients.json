@@ -1,0 +1,42 @@
+[
+  {
+    "id": "monmon-web",
+    "name": "MonMon Web",
+    "secret": {
+      "Plain": "01c283f569ff42e4a080971629656fbb01c283f569ff42e4a080971629656fbb"
+    },
+    "redirect_uris": [
+      "http://localhost:9000/callback",
+      "https://monmon.dryark.uk/callback"
+    ],
+    "post_logout_redirect_uris": [
+      "http://localhost:9000/?defaulturlafterlogout",
+      "https://monmon.dryark.uk/?defaulturlafterlogout"
+    ],
+    "allowed_origins": [
+      "http://localhost:9000",
+      "http://localhost:8085",
+      "https://monmon.dryark.uk"
+    ],
+    "enabled": true,
+    "flows_enabled": [
+      "authorization_code",
+      "refresh_token"
+    ],
+    "access_token_alg": "RS256",
+    "id_token_alg": "RS256",
+    "auth_code_lifetime": 60,
+    "access_token_lifetime": 3600,
+    "scopes": [
+      "openid",
+      "profile",
+      "email"
+    ],
+    "default_scopes": [
+      "openid",
+      "profile",
+      "email"
+    ],
+    "force_mfa": false
+  }
+]

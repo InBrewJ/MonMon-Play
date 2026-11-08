@@ -53,10 +53,36 @@ public class JPAUserAccessRepository implements UserAccessRepository {
 
     private UserAccess getOrCreateInternal(EntityManager em, String userId, String username, String email) {
         try {
-            UserAccess existing = em.createQuery(
-                    "SELECT u FROM UserAccess u WHERE u.userId = :userId", UserAccess.class)
-                    .setParameter("userId", userId)
-                    .getSingleResult();
+            UserAccess existing = null;
+            try {
+                existing = em.createQuery(
+                        "SELECT u FROM UserAccess u WHERE u.userId = :userId", UserAccess.class)
+                        .setParameter("userId", userId)
+                        .getSingleResult();
+            } catch (NoResultException nre) {
+                // If not found by userId, check by username or email
+                if (username != null && !username.trim().isEmpty()) {
+                    List<UserAccess> byUsername = em.createQuery(
+                            "SELECT u FROM UserAccess u WHERE u.username = :username", UserAccess.class)
+                            .setParameter("username", username)
+                            .getResultList();
+                    if (!byUsername.isEmpty()) {
+                        existing = byUsername.get(0);
+                    }
+                }
+                if (existing == null && email != null && !email.trim().isEmpty()) {
+                    List<UserAccess> byEmail = em.createQuery(
+                            "SELECT u FROM UserAccess u WHERE u.email = :email", UserAccess.class)
+                            .setParameter("email", email)
+                            .getResultList();
+                    if (!byEmail.isEmpty()) {
+                        existing = byEmail.get(0);
+                    }
+                }
+                if (existing == null) {
+                    throw nre;
+                }
+            }
 
             boolean updated = false;
             if (username != null && !username.trim().isEmpty() && !username.equals(existing.getUsername())) {

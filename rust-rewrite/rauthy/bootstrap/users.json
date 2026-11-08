@@ -1,0 +1,22 @@
+[
+  {
+    "id": "9aee56db733a457caa7474fe",
+    "email": "demo@demo.com",
+    "preferred_username": "demo",
+    "given_name": "Demo",
+    "family_name": "User",
+    "password": {
+      "Plain": "demo"
+    },
+    "roles": [
+      "admin",
+      "user"
+    ],
+    "groups": [
+      "admin",
+      "user"
+    ],
+    "enabled": true,
+    "email_verified": true
+  }
+]

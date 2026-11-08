@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MonMon SPOG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-light: #dbeafe;
+            --card-bg-subtle: #f8fafc;
+            --border-color: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f1f5f9; color: var(--text-main); margin: 0; padding: 0; }
+        .spog-deck-nav { display: none; margin-bottom: 1rem; gap: 0.5rem; overflow-x: auto; padding: 0.5rem 0; }
+        .spog-nav-pill { background: #fff; border: 1px solid var(--border-color); border-radius: 9999px; padding: 6px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+        .spog-nav-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .spog-layout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        .spog-column-left, .spog-column-right { display: flex; flex-direction: column; gap: 1.5rem; }
+        .spog-deck-card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .badge-pill { border-radius: 9999px; padding: 3px 10px; font-weight: 600; }
+        .badge-success { background: #dcfce7; color: #166534; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .metric-box { background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; }
+        .spog-details-accordion { border: 1px solid var(--border-color); border-radius: 8px; margin-top: 1rem; }
+        .spog-details-accordion summary { padding: 8px 12px; font-weight: 600; cursor: pointer; }
+        .spog-details-content { padding: 10px 12px; border-top: 1px solid var(--border-color); }
+        @media (max-width: 900px) {
+            .spog-deck-nav { display: flex; }
+            .spog-layout-grid { display: block; position: relative; }
+            .spog-column-left, .spog-column-right { display: contents; }
+            .spog-deck-card { display: none; width: 100%; }
+            .spog-deck-card.deck-card-active { display: block; }
+        }
+    </style>
+</head>
+<body>
+
+<div style="background: #fff; border-bottom: 1px solid var(--border-color); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
+    <div style="font-weight: 800; font-size: 1.2rem; color: var(--primary);">
+        <i class="fas fa-chart-pie"></i> MonMon SPOG
+    </div>
+    <div style="font-size: 0.85rem; color: var(--text-muted);">
+        Signed in as <b>{{ username }}</b>
+    </div>
+</div>
+
+<div class="w3-content" style="max-width: 1400px; padding: 1rem;">
+    <!-- Mobile Navigation Pills for Swipable Cards -->
+    <div class="spog-deck-nav" id="spog-nav" role="tablist" aria-label="SPOG Sections">
+        <button type="button" class="spog-nav-pill active" data-target="spog-card-pot" role="tab" aria-selected="true">
+            <i class="fas fa-coins"></i> Daily Pot
+        </button>
+        <button type="button" class="spog-nav-pill" data-target="spog-card-spent" role="tab" aria-selected="false">
+            <i class="fas fa-chart-line"></i> Spent
+        </button>
+        <button type="button" class="spog-nav-pill" data-target="spog-card-savings" role="tab" aria-selected="false">
+            <i class="fas fa-piggy-bank"></i> Savings
+        </button>
+        <button type="button" class="spog-nav-pill" data-target="spog-card-accounts" role="tab" aria-selected="false">
+            <i class="fas fa-university"></i> Accounts
+        </button>
+    </div>
+
+    <div class="spog-layout-grid">
+        <!-- Left Column (Desktop) / Cards 1 & 3 (Mobile) -->
+        <div class="spog-column-left">
+            <!-- Card 1: Monthly Pot & Daily Budget -->
+            <div class="w3-card w3-padding spog-deck-card deck-card-active" id="spog-card-pot" style="text-align: center;">
+                <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.5rem;">
+                    Single Pane of Glass
+                </div>
+                <h3 style="margin: 0 0 0.5rem 0; font-size: 1.35rem;">
+                    Left per day in your
+                    <a href="/myMonthlyPot" style="font-weight: 800; color: var(--primary);">'monthly pot'</a>:
+                    <span style="font-size: 1.55rem; color: var(--primary);">£{{ metrics.monthly_pot_left_per_day }}</span>
+                </h3>
+
+                <!-- Baseline Difference Box -->
+                <div class="w3-panel w3-round {% if pace.is_behind_baseline %}w3-pale-red w3-border-red{% else %}w3-pale-green w3-border-green{% endif %}" style="margin: 0.75rem auto; max-width: 360px; padding: 8px 14px; font-size: 0.95em; border-left: 4px solid;">
+                    {% if pace.is_behind_baseline %}
+                        <span>
+                            <i class="fas fa-exclamation-circle" style="color: #ef4444; margin-right: 4px;"></i>
+                            <b>£{{ pace.absolute_baseline_diff_total }}</b> to get back to baseline
+                        </span>
+                    {% else %}
+                        <span>
+                            <i class="fas fa-check-circle" style="color: #10b981; margin-right: 4px;"></i>
+                            <b>£{{ pace.absolute_baseline_diff_total }}</b> surplus above baseline
+                        </span>
+                    {% endif %}
+                </div>
+
+                <div style="display: flex; justify-content: center; gap: 1rem; margin: 1rem 0; font-size: 0.9rem;">
+                    <span class="badge-pill badge-success">
+                        <i class="fas fa-check"></i> Paid: £{{ metrics.completed_outgoings }}
+                    </span>
+                    <span class="badge-pill badge-warning">
+                        <i class="fas fa-clock"></i> Pending: £{{ metrics.pending_outgoings }}
+                    </span>
+                </div>
+
+                <hr style="margin: 1rem 0;">
+
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i>
+                    This cycle: <b>{{ metrics.days_between_paydays }}</b> days between paydays
+                </div>
+
+                <div class="metric-box" style="text-align: left; font-size: 0.92rem;" id="allowances-box">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">
+                        <i class="fas fa-wallet" style="color: var(--primary); margin-right: 6px;"></i>Daily & Monthly Allowances
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem;">
+                        <div>• <b>MAX / day</b>: £<span id="dyn-max-day">{{ metrics.max_per_day }}</span></div>
+                        <div>• <b>MAX / week</b>: £<span id="dyn-max-week">{{ metrics.max_per_week }}</span></div>
+                        <div>• <b>MAX / month</b>: £<span id="dyn-max-month">{{ metrics.max_per_month }}</span></div>
+                    </div>
+                </div>
+
+                <details class="spog-details-accordion">
+                    <summary>
+                        <span><i class="fas fa-home" style="color: var(--primary); margin-right: 6px;"></i>Rent & Bills Split</span>
+                    </summary>
+                    <div class="spog-details-content" style="text-align: left;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                            <div>• Rent: £{{ metrics.rent_cost }}</div>
+                            <div>• Bills: £{{ metrics.bills_cost }}</div>
+                            <div style="grid-column: span 2; font-weight: 600; padding-top: 4px; border-top: 1px dashed var(--border-color);">
+                                • Total Outgoings: £{{ metrics.outgoing_total }}
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Card 3: Savings Goals -->
+            <div class="w3-card w3-padding spog-deck-card" id="spog-card-savings">
+                <h4 style="margin: 0 0 1rem 0; font-weight: 700;"><i class="fas fa-piggy-bank" style="color: var(--primary); margin-right: 8px;"></i>Savings & Emergency Runway</h4>
+                <div class="metric-box">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                        <div>• <b>Liquid Savings Pot</b>: £{{ metrics.liquid_savings_pot }}</div>
+                        <div>• <b>Total Savings Pot</b>: £{{ metrics.total_savings_pot }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column (Desktop) / Cards 2 & 4 (Mobile) -->
+        <div class="spog-column-right">
+            <!-- Card 2: Spent so far & Spending Pace -->
+            <div class="w3-card w3-padding spog-deck-card" id="spog-card-spent">
+                <h4 style="margin: 0 0 1rem 0; font-weight: 700;"><i class="fas fa-chart-line" style="color: var(--primary); margin-right: 8px;"></i>Spending Pace</h4>
+                <div class="metric-box">
+                    <div>• <b>Spent this month</b>: £{{ pace.spent_this_month }}</div>
+                    <div>• <b>Actual daily spend</b>: £{{ pace.actual_daily_spend }}/day</div>
+                    <div>• <b>Baseline comparison</b>: £{{ pace.absolute_baseline_diff_total }}</div>
+                </div>
+            </div>
+
+            <!-- Card 4: Accounts Overview -->
+            <div class="w3-card w3-padding spog-deck-card" id="spog-card-accounts">
+                <h4 style="margin: 0 0 1rem 0; font-weight: 700;"><i class="fas fa-university" style="color: var(--primary); margin-right: 8px;"></i>Account Overview</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem;">
+                    <div class="metric-box">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Debit Available</div>
+                        <div style="font-size: 1.4rem; font-weight: 800; color: #16a34a;">£{{ metrics.total_available_debit }}</div>
+                    </div>
+                    <div class="metric-box">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Credit Available</div>
+                        <div style="font-size: 1.4rem; font-weight: 800; color: var(--primary);">£{{ metrics.total_available_credit }}</div>
+                    </div>
+                </div>
+                <div class="metric-box">
+                    <div>• <b>Credit Balance / Limit</b>: £{{ metrics.credit_balance }} / £{{ metrics.credit_limit }}</div>
+                    <div>• <b>Credit Usage</b>: {{ metrics.credit_usage }}%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Tab switching for mobile swipe deck primitive
+    document.querySelectorAll('.spog-nav-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+            const targetId = pill.getAttribute('data-target');
+            document.querySelectorAll('.spog-nav-pill').forEach(p => {
+                p.classList.remove('active');
+                p.setAttribute('aria-selected', 'false');
+            });
+            pill.classList.add('active');
+            pill.setAttribute('aria-selected', 'true');
+
+            document.querySelectorAll('.spog-deck-card').forEach(card => {
+                card.classList.remove('deck-card-active');
+            });
+            const targetCard = document.getElementById(targetId);
+            if (targetCard) {
+                targetCard.classList.add('deck-card-active');
+                targetCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        });
+    });
+</script>
+
+</body>
+</html>
