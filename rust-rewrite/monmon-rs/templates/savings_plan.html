@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MonMon — Savings Plan</title>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+    <link rel="stylesheet" href="/assets/stylesheets/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="w3-light-grey">
+
+<header class="w3-container w3-white w3-border-bottom" style="padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+    <h1 style="margin: 0; font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+        <a href="/spog" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
+            <img src="/assets/images/favicon.png" alt="MonMon" style="height: 28px; width: 28px;">
+            <span>MonMon</span>
+        </a>
+    </h1>
+    <div style="font-size: 0.85rem; color: #666;">
+        <i class="fas fa-user-circle"></i> demo (demo@demo.com)
+    </div>
+</header>
+
+<div class="w3-content" style="max-width: 1200px; padding: 0 1rem 3rem;">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1rem;">
+        <div>
+            <h2 style="margin: 0; font-weight: 800; display: inline-flex; align-items: center; gap: 10px;">
+                <i class="fas fa-piggy-bank" style="color: var(--primary, #0284c7);"></i>
+                Monthly Savings & Payoff Plan
+            </h2>
+            <div style="color: #64748b; font-size: 0.9rem; margin-top: 0.25rem;">
+                Set your savings target percentage and slice it up into debt payoffs and savings pots.
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="/spog" class="w3-button w3-round" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155; font-size: 0.85rem;">
+                <i class="fas fa-arrow-left"></i> Back to SPOG
+            </a>
+        </div>
+    </div>
+
+    <!-- Active Savings Plan Summary & Slider -->
+    <div class="w3-card w3-padding w3-margin-bottom deck-card" id="savings-plan-{{ plan.id }}" style="border-radius: 8px; background: #fff;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.75rem;">
+            <div>
+                <span class="badge-pill" style="background: #e0f2fe; color: #0284c7; font-weight: 700; margin-right: 6px; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem;">ACTIVE PLAN</span>
+                <strong style="font-size: 1.1rem;">{{ plan.name }}</strong>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+            <div class="metric-box" style="padding: 12px; background: #f8fafc; border-radius: 6px; border-left: 3px solid #64748b;">
+                <div style="font-size: 0.8rem; color: #64748b;">Monthly Income</div>
+                <div style="font-size: 1.3rem; font-weight: 700; color: #0f172a;">£{{ plan.incoming_total }}</div>
+            </div>
+            <div class="metric-box" style="padding: 12px; background: #f8fafc; border-radius: 6px; border-left: 3px solid #0284c7;">
+                <div style="font-size: 0.8rem; color: #64748b;">Savings Target Pot</div>
+                <div style="font-size: 1.3rem; font-weight: 700; color: #0284c7;">
+                    £{{ plan.target_amount }}
+                    <span style="font-size: 0.85rem; font-weight: 400; color: #64748b;">({{ plan.savings_percentage }}%)</span>
+                </div>
+            </div>
+            <div class="metric-box" style="border-left: 3px solid #16a34a; padding: 12px; background: #f8fafc; border-radius: 6px;">
+                <div style="font-size: 0.8rem; color: #64748b;">Living Allowance</div>
+                <div style="font-size: 1.3rem; font-weight: 700; color: #16a34a;">£{{ plan.max_surplus }}</div>
+            </div>
+            <div class="metric-box" style="border-left: 3px solid #8b5cf6; padding: 12px; background: #f8fafc; border-radius: 6px;">
+                <div style="font-size: 0.8rem; color: #64748b;">Sliced / Allocated</div>
+                <div style="font-size: 1.3rem; font-weight: 700; color: #8b5cf6;">£{{ plan.total_allocated }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slices Card -->
+    <div class="w3-card w3-padding w3-margin-bottom deck-card" id="sliced-items-card" style="border-radius: 8px; background: #fff;">
+        <h3 style="margin: 0 0 1rem; font-size: 1.15rem; font-weight: 700;">
+            <i class="fas fa-list-ul" style="color: #0284c7; margin-right: 6px;"></i>
+            Sliced Savings & Payoff Items ({{ plan.items.len() }})
+        </h3>
+
+        {% if plan.items.is_empty() %}
+            <div style="text-align: center; padding: 2rem; color: #64748b;">
+                <i class="fas fa-piggy-bank" style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #cbd5e1;"></i>
+                <p>No items sliced up yet.</p>
+                <p style="font-size: 0.85rem;">Use the form below to allocate your monthly savings pot into debt payoffs and savings accounts.</p>
+            </div>
+        {% else %}
+            <!-- Desktop Table View -->
+            <table class="w3-table w3-striped w3-bordered w3-hoverable desktop-table-view" style="width: 100%;">
+                <thead>
+                    <tr style="background: #f1f5f9; color: #475569; font-size: 0.82rem; text-transform: uppercase;">
+                        <th>Pri</th>
+                        <th>Slice Name</th>
+                        <th>Target Pot</th>
+                        <th>Monthly Amount</th>
+                        <th>Lock</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in plan.items %}
+                    <tr id="savings-item-{{ item.id }}">
+                        <td>
+                            <span class="badge-pill" style="background: #0284c7; color: #fff; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">P{{ item.priority }}</span>
+                        </td>
+                        <td>
+                            <strong>{{ item.name }}</strong>
+                            {% if let Some(acc) = item.account_name %}
+                                <div style="font-size: 0.75rem; color: #64748b;"><i class="fas fa-university"></i> {{ acc }}</div>
+                            {% endif %}
+                        </td>
+                        <td>£{{ item.target_amount }}</td>
+                        <td style="font-weight: 700; color: #0284c7;">£{{ item.monthly_amount }}</td>
+                        <td>
+                            {% if item.locked %}
+                                <i class="fas fa-lock" style="color: #ef4444;" title="Locked"></i>
+                            {% else %}
+                                <i class="fas fa-lock-open" style="color: #94a3b8;" title="Unlocked"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 4px;">
+                                <form method="POST" action="/savingsPlan/moveUp/{{ item.id }}" style="display: inline;">
+                                    <button type="submit" class="w3-button w3-tiny w3-round" style="background: #e2e8f0;"><i class="fas fa-chevron-up"></i></button>
+                                </form>
+                                <form method="POST" action="/savingsPlan/moveDown/{{ item.id }}" style="display: inline;">
+                                    <button type="submit" class="w3-button w3-tiny w3-round" style="background: #e2e8f0;"><i class="fas fa-chevron-down"></i></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- Mobile Stacked Action Card Pattern -->
+            <div class="mobile-cards-view" style="display: flex; flex-direction: column; gap: 10px; margin-top: 1rem;">
+                {% for item in plan.items %}
+                <div class="item-card" id="savings-card-{{ item.id }}" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span class="item-card-title" style="font-weight: 700; font-size: 0.95rem;">
+                            <span class="badge-pill" style="background: #0284c7; color: #fff; padding: 1px 5px; border-radius: 3px; font-size: 0.75rem; margin-right: 4px;">P{{ item.priority }}</span>
+                            {{ item.name }}
+                        </span>
+                        <span style="font-weight: 700; color: #0284c7;">£{{ item.monthly_amount }}/mo</span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 8px;">
+                        Target: £{{ item.target_amount }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Add / Amend Item Form Card -->
+    <div class="w3-card w3-padding w3-margin-bottom deck-card" id="edit-form" style="border-radius: 8px; background: #fff;">
+        <h3 style="margin: 0 0 1rem; font-size: 1.15rem; font-weight: 700;">
+            <i class="fas fa-plus-circle" style="color: #0284c7; margin-right: 6px;"></i>
+            Slice up Target: Add Item
+        </h3>
+
+        <form method="POST" action="/savingsPlan/addItem" id="add-item-form">
+            <input type="hidden" name="planId" value="{{ plan.id }}">
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                    <label for="item-name" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Item Description</label>
+                    <input type="text" id="item-name" name="name" required
+                           placeholder="e.g. Barclaycard Payoff, Overdraft Clearout, Holiday Pot"
+                           style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #fff;" />
+                </div>
+
+                <div>
+                    <label for="item-type-select" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Aim / Plan Type</label>
+                    <select id="item-type-select" name="type" required
+                            style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #fff;">
+                        <option value="DEBT_PAYOFF">Pay off Debt (Credit Account / Overdraft)</option>
+                        <option value="SAVINGS_TARGET" selected>Save to Savings Account (with Defined Target)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="item-account-select" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Target Account</label>
+                    <select id="item-account-select" name="accountId"
+                            style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #fff;">
+                        <option value="0">-- Select Account (Optional) --</option>
+                        {% for a in accounts %}
+                            <option value="{{ a.id }}">{{ a.name }} ({{ a.account_type }} - Bal: £{{ a.balance }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label for="item-target-amount" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Defined Target (£)</label>
+                    <input type="number" step="0.01" min="0" id="item-target-amount" name="targetAmount"
+                           placeholder="e.g. 1000.00"
+                           style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #fff;" />
+                </div>
+
+                <div>
+                    <label for="item-monthly-amount" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Monthly Sliced Amount (£)</label>
+                    <input type="number" step="0.01" min="0" id="item-monthly-amount" name="monthlyAmount" required
+                           placeholder="e.g. 150.00 or 0.00 for future plan"
+                           style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #fff;" />
+                </div>
+
+                <div>
+                    <label for="item-priority" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Queue Priority (1 = Highest)</label>
+                    <input type="number" step="1" min="1" id="item-priority" name="priority" required
+                           value="{{ plan.items.len() + 1 }}"
+                           style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #fff;" />
+                </div>
+            </div>
+
+            <div style="margin-top: 1rem;">
+                <button type="submit" class="w3-button w3-round" style="background: #0284c7; color: #fff; font-weight: 600;">
+                    <i class="fas fa-plus-circle"></i> Add Item to Plan
+                </button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+</body>
+</html>

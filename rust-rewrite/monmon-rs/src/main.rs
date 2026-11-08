@@ -1,5 +1,6 @@
 mod db;
 mod models;
+mod savings_plan;
 mod spog;
 
 use askama::Template;
@@ -7,7 +8,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Json},
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 use models::{
@@ -21,6 +22,7 @@ use sqlx::PgPool;
 use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tower_http::services::ServeDir;
 use tracing::info;
 
 #[derive(Clone)]
@@ -127,6 +129,46 @@ async fn main() {
         .route("/api/spog/metrics", get(get_spog_metrics))
         .route("/api/spog/spending-pace", get(get_spending_pace))
         .route("/spog", get(get_spog_page))
+        // Savings Plan & Priority Queue
+        .route(
+            "/api/savings-plan",
+            get(savings_plan::get_savings_plan_api),
+        )
+        .route(
+            "/api/savings-plan/item",
+            post(savings_plan::create_savings_plan_item_api),
+        )
+        .route(
+            "/api/savings-plan/item/:id",
+            delete(savings_plan::delete_item_api),
+        )
+        .route(
+            "/api/savings-plan/item/:id/move-up",
+            post(savings_plan::move_item_up_api),
+        )
+        .route(
+            "/api/savings-plan/item/:id/move-down",
+            post(savings_plan::move_item_down_api),
+        )
+        .route(
+            "/api/savings-plan/item/:id/toggle-lock",
+            post(savings_plan::toggle_lock_api),
+        )
+        .route("/savingsPlan", get(savings_plan::get_savings_plan_page))
+        .route("/savingsPlans", get(savings_plan::get_savings_plan_page))
+        .route("/mySavingsPlan", get(savings_plan::get_savings_plan_page))
+        .route(
+            "/savingsPlan/addItem",
+            post(savings_plan::add_item_form_handler),
+        )
+        .nest_service(
+            "/assets",
+            ServeDir::new(if std::path::Path::new("public").exists() {
+                "public"
+            } else {
+                "../../public"
+            }),
+        )
         .with_state(state);
 
     let port: u16 = env::var("PORT")
