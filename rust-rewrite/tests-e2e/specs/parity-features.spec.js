@@ -377,4 +377,92 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
     await expect(page.locator('#spog-card-spent')).toBeVisible();
     await expect(page.locator('#spog-card-spent').locator('text=Spent This Month')).toBeVisible();
   });
+
+  test('14. Yearly and N-Yearly Outgoings: Frequency options, filter tabs, frequency badges & next due calculation', async ({ page }) => {
+    // 1. Authenticate
+    await page.context().addCookies([
+      { name: 'user_session', value: 'authenticated-user-token', domain: 'localhost', path: '/' },
+      { name: 'monmon_session', value: 'authenticated-user-token', domain: 'localhost', path: '/' },
+    ]);
+
+    // 2. Navigate to /myOutgoings
+    await page.goto('/myOutgoings');
+    await expect(page).toHaveTitle(/MonMon Outgoings/);
+
+    // Filter tabs should exist on the page
+    const tabsBar = page.locator('.outgoings-tabs-bar');
+    await expect(tabsBar).toBeVisible();
+    await expect(page.locator('.outgoings-tab-btn[data-tab="active"]')).toBeVisible();
+    await expect(page.locator('.outgoings-tab-btn[data-tab="yearly"]')).toBeVisible();
+    await expect(page.locator('.outgoings-tab-btn[data-tab="paused"]')).toBeVisible();
+    await expect(page.locator('.outgoings-tab-btn[data-tab="all"]')).toBeVisible();
+
+    // 3. Open Add Outgoing Modal
+    await page.click('button:has-text("Add Outgoing")');
+    await expect(page.locator('#outgoing-modal')).toBeVisible();
+
+    // Frequency selector and yearly fields
+    const freqSelect = page.locator('#outgoingFrequency');
+    await expect(freqSelect).toBeVisible();
+
+    // Fill form for Yearly outgoing
+    const uniqueYearlyName = `Yearly Home Insurance ${Date.now()}`;
+    await page.fill('#outgoing-name', uniqueYearlyName);
+    await page.fill('#outgoing-cost', '420.00');
+    await page.fill('input[name="outgoingDay"]', '18');
+    await freqSelect.selectOption('yearly');
+
+    // Yearly options should now be visible
+    const yearlyGroup = page.locator('#yearly-month-group');
+    await expect(yearlyGroup).toBeVisible();
+    await page.selectOption('#outgoingMonth', '11'); // November
+    await page.fill('#yearInterval', '1');
+    await page.fill('#startingYear', '2025');
+
+    // Submit form
+    await page.click('#outgoing-modal button[type="submit"]');
+    await expect(page.locator('#outgoing-modal')).toBeHidden();
+
+    const isMobile = (page.viewportSize()?.width || 1280) < 768;
+    const getItem = (name) => isMobile
+      ? page.locator('.item-card').filter({ hasText: name })
+      : page.locator('tr').filter({ hasText: name });
+
+    // 4. Verify outgoing appears with Yearly badge and month
+    const yearlyRow = getItem(uniqueYearlyName);
+    await page.click('.outgoings-tab-btn[data-tab="all"]');
+    await expect(yearlyRow).toBeVisible();
+    await expect(yearlyRow).toContainText('Yearly (November)');
+
+    // 5. Create an N-Yearly outgoing (Every 3 years in March)
+    await page.click('button:has-text("Add Outgoing")');
+    const uniqueNYearlyName = `N-Yearly Passport Renewal ${Date.now()}`;
+    await page.fill('#outgoing-name', uniqueNYearlyName);
+    await page.fill('#outgoing-cost', '85.00');
+    await page.fill('input[name="outgoingDay"]', '5');
+    await page.selectOption('#outgoingFrequency', 'yearly');
+    await page.selectOption('#outgoingMonth', '3'); // March
+    await page.fill('#yearInterval', '3');
+    await page.fill('#startingYear', '2023');
+
+    await page.click('#outgoing-modal button[type="submit"]');
+    await expect(page.locator('#outgoing-modal')).toBeHidden();
+
+    // 6. Verify N-yearly badge
+    await page.click('.outgoings-tab-btn[data-tab="all"]');
+    const nYearlyRow = getItem(uniqueNYearlyName);
+    await expect(nYearlyRow).toBeVisible();
+    await expect(nYearlyRow).toContainText('Every 3 yrs (March started 2023)');
+
+    // 7. Verify Filter Tabs functionality
+    // Switch to "Yearly Bills" tab
+    await page.click('.outgoings-tab-btn[data-tab="yearly"]');
+    await expect(yearlyRow).toBeVisible();
+    await expect(nYearlyRow).toBeVisible();
+
+    // Switch to "Monthly and due now" tab
+    await page.click('.outgoings-tab-btn[data-tab="active"]');
+    // If current month is November (month 11), yearlyRow should be visible; March row (3) is not due in Nov 2026
+    await expect(nYearlyRow).toBeHidden();
+  });
 });

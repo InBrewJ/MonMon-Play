@@ -162,17 +162,43 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     // 2. Calendar logic
     let today = Local::now().date_naive();
     let today_day = today.day() as i32;
+    let current_month = today.month() as i32;
+    let current_year = today.year();
     let days_between_paydays = 31; // Standard monthly cycle representation
 
-    // 3. Outgoings with Rent & Bill Breakdown
+    // 3. Outgoings with Rent & Bill Breakdown (only counting outgoings due this month)
     let outgoings_row = sqlx::query(
         r#"
         SELECT 
-            COALESCE(SUM(CASE WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) AND (paused IS NULL OR paused = false) THEN cost ELSE 0 END), 0.0)::real AS total_cost,
-            COALESCE(SUM(CASE WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) AND (paused IS NULL OR paused = false) AND bill = true THEN cost ELSE 0 END), 0.0)::real AS bills_cost,
-            COALESCE(SUM(CASE WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) AND (paused IS NULL OR paused = false) AND rent = true THEN cost ELSE 0 END), 0.0)::real AS rent_cost,
-            COALESCE(SUM(CASE WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) AND (paused IS NULL OR paused = false) AND outgoingday <= $2 THEN cost ELSE 0 END), 0.0)::real AS completed_cost,
-            COALESCE(SUM(CASE WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) AND (paused IS NULL OR paused = false) AND outgoingday > $2 THEN cost ELSE 0 END), 0.0)::real AS pending_cost
+            COALESCE(SUM(CASE 
+                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
+                 AND (paused IS NULL OR paused = false) 
+                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
+                THEN cost ELSE 0 END), 0.0)::real AS total_cost,
+            COALESCE(SUM(CASE 
+                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
+                 AND (paused IS NULL OR paused = false) 
+                 AND bill = true 
+                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
+                THEN cost ELSE 0 END), 0.0)::real AS bills_cost,
+            COALESCE(SUM(CASE 
+                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
+                 AND (paused IS NULL OR paused = false) 
+                 AND rent = true 
+                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
+                THEN cost ELSE 0 END), 0.0)::real AS rent_cost,
+            COALESCE(SUM(CASE 
+                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
+                 AND (paused IS NULL OR paused = false) 
+                 AND outgoingday <= $2 
+                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
+                THEN cost ELSE 0 END), 0.0)::real AS completed_cost,
+            COALESCE(SUM(CASE 
+                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
+                 AND (paused IS NULL OR paused = false) 
+                 AND outgoingday > $2 
+                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
+                THEN cost ELSE 0 END), 0.0)::real AS pending_cost
         FROM outgoing
         WHERE (userid = $1 OR user_id = $1)
           AND (archived IS NULL OR archived = false)
@@ -180,6 +206,8 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     )
     .bind(&user_id)
     .bind(today_day)
+    .bind(current_month)
+    .bind(current_year)
     .fetch_one(pool)
     .await?;
 

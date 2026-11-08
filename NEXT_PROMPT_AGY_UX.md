@@ -23,8 +23,14 @@ next up:
 
 4. on spog, the mini spending plan should also have a note about the _actual_ sum left in the monthly pot
 
----- above was sent
+
 
 0. If I do this: /myBalances?accountId=19, is there any authz checking on that id? Or can I plausibly update the balance in any account on the platform? Is there any authz checking at all on the rust platform at large?
 
 1. In the java version, we have monthly outgoings but also yearly and n-yearly outgoings. Do this one TDD style, get the behaviour from the java code, write some failing rust tests, then reach feature parity
+
+---- above was sent
+
+0. The 'In-Store Checked Items' function on /nommon doesn't work properly - it seems to always say 0/N however many items I check
+
+1. The date picker at the top of each page 'flashes' in which changes the viewport size. While this date loads, can we add a placeholder div to keep the page from flashing? Also, when are scripts being loaded? presumably last, but I think we can deal with loading this script for the ticker before anything, perhaps?

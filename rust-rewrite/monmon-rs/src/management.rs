@@ -57,9 +57,35 @@ pub struct AccountsTemplate {
 #[derive(Template)]
 #[template(path = "outgoings.html")]
 pub struct OutgoingsTemplate {
-    pub outgoings: Vec<Outgoing>,
+    pub outgoings: Vec<OutgoingViewDto>,
+    pub accounts: Vec<Account>,
+    pub outgoing_total: f32,
+    pub current_year: i32,
+    pub current_month_name: String,
     pub editing: bool,
     pub editing_outgoing: Option<Outgoing>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutgoingViewDto {
+    pub id: i64,
+    pub name: String,
+    pub cost: f32,
+    pub outgoing_day: i32,
+    pub outgoing_month: Option<i32>,
+    pub year_interval: Option<i32>,
+    pub starting_year: Option<i32>,
+    pub bill: bool,
+    pub rent: bool,
+    pub hidden_from_total: bool,
+    pub paused: bool,
+    pub pause_reason: Option<String>,
+    pub account_id: Option<i64>,
+    pub account_name: Option<String>,
+    pub is_yearly: bool,
+    pub is_due_now: bool,
+    pub frequency_label: String,
+    pub next_due_label: String,
 }
 
 #[derive(Template)]
@@ -157,6 +183,17 @@ where
     }
 }
 
+fn deserialize_empty_as_none_i32<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    match opt.as_deref() {
+        None | Some("") => Ok(None),
+        Some(s) => s.trim().parse::<i32>().map(Some).map_err(serde::de::Error::custom),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct IncomingForm {
     pub id: Option<i64>,
@@ -180,6 +217,14 @@ pub struct OutgoingForm {
     pub outgoing_day: i32,
     #[serde(default, alias = "accountId", alias = "account_id", deserialize_with = "deserialize_empty_as_none")]
     pub account_id: Option<i64>,
+    #[serde(default, alias = "outgoingMonth", alias = "outgoing_month", deserialize_with = "deserialize_empty_as_none_i32")]
+    pub outgoing_month: Option<i32>,
+    #[serde(default, alias = "yearInterval", alias = "year_interval", deserialize_with = "deserialize_empty_as_none_i32")]
+    pub year_interval: Option<i32>,
+    #[serde(default, alias = "startingYear", alias = "starting_year", deserialize_with = "deserialize_empty_as_none_i32")]
+    pub starting_year: Option<i32>,
+    #[serde(default)]
+    pub frequency: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -306,9 +351,61 @@ pub async fn get_outgoings_page(
     let outgoings = db::list_outgoings(&state.pool, &user_id)
         .await
         .unwrap_or_default();
+    let accounts = db::list_accounts(&state.pool, &user_id)
+        .await
+        .unwrap_or_default();
+
+    let today = chrono::Local::now().date_naive();
+    let current_year = today.year();
+    let current_month_name = match today.month() {
+        1 => "January", 2 => "February", 3 => "March", 4 => "April",
+        5 => "May", 6 => "June", 7 => "July", 8 => "August",
+        9 => "September", 10 => "October", 11 => "November", 12 => "December",
+        _ => "",
+    }.to_string();
+
+    let outgoing_dtos: Vec<OutgoingViewDto> = outgoings.iter().map(|o| {
+        let is_yearly = o.is_yearly();
+        let is_due_now = o.is_due_in_month(today);
+        let next_due_year = o.get_next_due_year(today);
+        let next_due_label = if is_yearly {
+            format!("{} {}", o.get_month_name(), next_due_year)
+        } else {
+            "Monthly".to_string()
+        };
+        OutgoingViewDto {
+            id: o.id,
+            name: o.name.clone(),
+            cost: o.cost,
+            outgoing_day: o.outgoing_day,
+            outgoing_month: o.outgoing_month,
+            year_interval: o.year_interval,
+            starting_year: o.starting_year,
+            bill: o.bill.unwrap_or(false),
+            rent: o.rent.unwrap_or(false),
+            hidden_from_total: o.hidden_from_total.unwrap_or(false),
+            paused: o.paused.unwrap_or(false),
+            pause_reason: o.pause_reason.clone(),
+            account_id: o.account_id,
+            account_name: o.account_name.clone(),
+            is_yearly,
+            is_due_now,
+            frequency_label: o.get_frequency_label(),
+            next_due_label,
+        }
+    }).collect();
+
+    let outgoing_total: f32 = outgoing_dtos.iter()
+        .filter(|o| !o.paused && !o.hidden_from_total && o.is_due_now)
+        .map(|o| o.cost)
+        .sum();
 
     let tmpl = OutgoingsTemplate {
-        outgoings,
+        outgoings: outgoing_dtos,
+        accounts,
+        outgoing_total,
+        current_year,
+        current_month_name,
         editing: false,
         editing_outgoing: None,
     };
@@ -329,11 +426,63 @@ pub async fn get_edit_outgoing_page(
     let outgoings = db::list_outgoings(&state.pool, &user_id)
         .await
         .unwrap_or_default();
+    let accounts = db::list_accounts(&state.pool, &user_id)
+        .await
+        .unwrap_or_default();
     let editing_outgoing = outgoings.iter().find(|o| o.id == id).cloned();
     let editing = editing_outgoing.is_some();
 
+    let today = chrono::Local::now().date_naive();
+    let current_year = today.year();
+    let current_month_name = match today.month() {
+        1 => "January", 2 => "February", 3 => "March", 4 => "April",
+        5 => "May", 6 => "June", 7 => "July", 8 => "August",
+        9 => "September", 10 => "October", 11 => "November", 12 => "December",
+        _ => "",
+    }.to_string();
+
+    let outgoing_dtos: Vec<OutgoingViewDto> = outgoings.iter().map(|o| {
+        let is_yearly = o.is_yearly();
+        let is_due_now = o.is_due_in_month(today);
+        let next_due_year = o.get_next_due_year(today);
+        let next_due_label = if is_yearly {
+            format!("{} {}", o.get_month_name(), next_due_year)
+        } else {
+            "Monthly".to_string()
+        };
+        OutgoingViewDto {
+            id: o.id,
+            name: o.name.clone(),
+            cost: o.cost,
+            outgoing_day: o.outgoing_day,
+            outgoing_month: o.outgoing_month,
+            year_interval: o.year_interval,
+            starting_year: o.starting_year,
+            bill: o.bill.unwrap_or(false),
+            rent: o.rent.unwrap_or(false),
+            hidden_from_total: o.hidden_from_total.unwrap_or(false),
+            paused: o.paused.unwrap_or(false),
+            pause_reason: o.pause_reason.clone(),
+            account_id: o.account_id,
+            account_name: o.account_name.clone(),
+            is_yearly,
+            is_due_now,
+            frequency_label: o.get_frequency_label(),
+            next_due_label,
+        }
+    }).collect();
+
+    let outgoing_total: f32 = outgoing_dtos.iter()
+        .filter(|o| !o.paused && !o.hidden_from_total && o.is_due_now)
+        .map(|o| o.cost)
+        .sum();
+
     let tmpl = OutgoingsTemplate {
-        outgoings,
+        outgoings: outgoing_dtos,
+        accounts,
+        outgoing_total,
+        current_year,
+        current_month_name,
         editing,
         editing_outgoing,
     };
@@ -342,21 +491,39 @@ pub async fn get_edit_outgoing_page(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
+fn resolve_frequency_fields(form: &OutgoingForm) -> (Option<i32>, Option<i32>, Option<i32>) {
+    if form.frequency.as_deref() == Some("monthly") {
+        (None, None, None)
+    } else if form.frequency.as_deref() == Some("yearly") || form.outgoing_month.map_or(false, |m| m > 0) {
+        let month = form.outgoing_month.filter(|&m| m > 0 && m <= 12).or_else(|| {
+            Some(chrono::Local::now().date_naive().month() as i32)
+        });
+        let interval = form.year_interval.map(|y| y.max(1)).or(Some(1));
+        let start_year = form.starting_year.filter(|&y| y >= 1900).or_else(|| {
+            Some(chrono::Local::now().date_naive().year())
+        });
+        (month, interval, start_year)
+    } else {
+        (None, None, None)
+    }
+}
+
 pub async fn post_update_outgoing_form(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<i64>,
     Form(form): Form<OutgoingForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
     let user_id = resolve_user_id(&state.pool, "demo").await;
+    let (outgoing_month, year_interval, starting_year) = resolve_frequency_fields(&form);
     let update = crate::models::UpdateOutgoing {
         name: form.name,
         cost: form.cost,
         outgoing_day: form.outgoing_day,
         user_id: Some(user_id),
         account_id: form.account_id,
-        outgoing_month: None,
-        year_interval: None,
-        starting_year: None,
+        outgoing_month,
+        year_interval,
+        starting_year,
         bill: Some(true),
         rent: Some(false),
         hidden_from_total: Some(false),
@@ -374,15 +541,16 @@ pub async fn post_update_outgoing_form_direct(
 ) -> Result<Redirect, (StatusCode, String)> {
     if let Some(id) = form.id {
         let user_id = resolve_user_id(&state.pool, "demo").await;
+        let (outgoing_month, year_interval, starting_year) = resolve_frequency_fields(&form);
         let update = crate::models::UpdateOutgoing {
             name: form.name,
             cost: form.cost,
             outgoing_day: form.outgoing_day,
             user_id: Some(user_id),
             account_id: form.account_id,
-            outgoing_month: None,
-            year_interval: None,
-            starting_year: None,
+            outgoing_month,
+            year_interval,
+            starting_year,
             bill: Some(true),
             rent: Some(false),
             hidden_from_total: Some(false),
@@ -399,13 +567,14 @@ pub async fn post_outgoing_form(
     Form(form): Form<OutgoingForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
     let user_id = resolve_user_id(&state.pool, "demo").await;
+    let (outgoing_month, year_interval, starting_year) = resolve_frequency_fields(&form);
     let new_out = NewOutgoing {
         name: form.name,
         cost: form.cost,
         outgoing_day: form.outgoing_day,
-        outgoing_month: None,
-        year_interval: None,
-        starting_year: None,
+        outgoing_month,
+        year_interval,
+        starting_year,
         bill: Some(true),
         rent: Some(false),
         hidden_from_total: Some(false),

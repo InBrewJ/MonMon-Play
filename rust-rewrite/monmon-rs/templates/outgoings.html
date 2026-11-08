@@ -11,23 +11,42 @@
     <main class="w3-content" style="max-width: 1200px; padding: 0 1rem 3rem 1rem;">
         <div class="w3-card w3-padding w3-round" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
-                <div style="font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
-                    <i class="fas fa-credit-card" style="color: var(--primary); margin-right: 6px;"></i> Recurring Outgoings ({{ outgoings.len() }})
+                <div style="font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+                    <span><i class="fas fa-credit-card" style="color: var(--primary); margin-right: 6px;"></i> Recurring Outgoings ({{ outgoings.len() }})</span>
+                    <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-size: 0.8rem; text-transform: none; font-weight: 600; color: var(--text-main);">
+                        This Month: £{{ outgoing_total }}
+                    </span>
                 </div>
                 <button type="button" class="btn-action" onclick="openOutgoingModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: #4f46e5; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
                     <i class="fas fa-plus"></i> Add Outgoing
                 </button>
             </div>
 
+            <!-- Filter Tabs: Monthly & Due vs Yearly vs Paused vs All -->
+            <div class="outgoings-tabs-bar" style="display: flex; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; flex-wrap: wrap;">
+                <button type="button" class="outgoings-tab-btn active" data-tab="active" onclick="filterTab('active')" style="background: none; border: none; border-bottom: 2px solid var(--primary); padding: 6px 12px; font-weight: 700; color: var(--primary); cursor: pointer; font-size: 0.85rem;">
+                    <i class="fas fa-calendar-check" style="margin-right: 4px;"></i> Monthly and due now
+                </button>
+                <button type="button" class="outgoings-tab-btn" data-tab="yearly" onclick="filterTab('yearly')" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
+                    <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i> Yearly Bills
+                </button>
+                <button type="button" class="outgoings-tab-btn" data-tab="paused" onclick="filterTab('paused')" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
+                    <i class="fas fa-pause-circle" style="margin-right: 4px; color: #f59e0b;"></i> Paused
+                </button>
+                <button type="button" class="outgoings-tab-btn" data-tab="all" onclick="filterTab('all')" style="background: none; border: none; padding: 6px 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">
+                    <i class="fas fa-list" style="margin-right: 4px;"></i> All Outgoings
+                </button>
+            </div>
+
             <!-- Desktop View -->
             <div class="desktop-view" style="overflow-x: auto;">
-                <table class="w3-table w3-striped">
+                <table class="w3-table w3-striped" id="outgoings-table">
                     <thead>
                         <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
                             <th>Name</th>
                             <th>Cost</th>
                             <th>Day of Month</th>
-                            <th>Type</th>
+                            <th>Type / Frequency</th>
                             <th>Status</th>
                             <th style="text-align: right;">Action</th>
                         </tr>
@@ -37,21 +56,36 @@
                             <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No outgoings configured.</td></tr>
                         {% else %}
                             {% for o in outgoings %}
-                                <tr id="outgoing-{{ o.id }}">
-                                    <td class="col-name"><b>{{ o.name }}</b></td>
+                                <tr id="outgoing-{{ o.id }}"
+                                    data-is-yearly="{% if o.is_yearly %}true{% else %}false{% endif %}"
+                                    data-is-paused="{% if o.paused %}true{% else %}false{% endif %}"
+                                    data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
+                                    style="{% if o.paused %}opacity: 0.75; background: rgba(245, 158, 11, 0.05);{% endif %}{% if o.is_yearly && !o.is_due_now %}display: none;{% endif %}">
+                                    <td class="col-name">
+                                        <b>{{ o.name }}</b>
+                                        {% if o.is_yearly %}
+                                            <div style="margin-top: 3px;">
+                                                <span class="badge-pill" style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;">{{ o.frequency_label }}</span>
+                                                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 4px;">Next due: {{ o.next_due_label }}</span>
+                                            </div>
+                                        {% endif %}
+                                    </td>
                                     <td>£{{ o.cost }}</td>
                                     <td>Day {{ o.outgoing_day }}</td>
                                     <td>
-                                        {% if o.rent.unwrap_or(false) %}
+                                        {% if o.rent %}
                                             <span class="badge-pill" style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Rent</span>
-                                        {% else if o.bill.unwrap_or(false) %}
+                                        {% else if o.bill %}
                                             <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Bill</span>
                                         {% else %}
                                             <span class="badge-pill" style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Subscription</span>
                                         {% endif %}
+                                        {% if !o.is_yearly %}
+                                            <span class="badge-pill" style="background:var(--card-bg-subtle); color:var(--text-muted); border: 1px solid var(--border-color); padding:2px 6px; border-radius:4px; font-size:0.75rem;">Monthly</span>
+                                        {% endif %}
                                     </td>
                                     <td>
-                                        {% if o.paused.unwrap_or(false) %}
+                                        {% if o.paused %}
                                             <span class="badge-pill" style="background:#fee2e2; color:#991b1b; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Paused</span>
                                         {% else %}
                                             <span class="badge-pill" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Active</span>
@@ -61,7 +95,7 @@
                                         <a href="/editOutgoing/{{ o.id }}#outgoing-modal" class="btn-action btn-edit" title="Edit" style="margin-right: 8px; color: var(--primary); text-decoration: none;">
                                             <i class="fas fa-pen"></i>
                                         </a>
-                                        {% if o.paused.unwrap_or(false) %}
+                                        {% if o.paused %}
                                             <a href="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="color: #10b981; text-decoration: none; font-weight: 600; font-size: 0.85rem;">
                                                 <i class="fas fa-play-circle"></i> Unpause
                                             </a>
@@ -81,24 +115,35 @@
             <!-- Mobile Stacked Action Cards View -->
             <div class="mobile-cards-view" style="display: none;">
                 {% for o in outgoings %}
-                    <div class="item-card" id="card-outgoing-{{ o.id }}" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                    <div class="item-card" id="card-outgoing-{{ o.id }}"
+                         data-is-yearly="{% if o.is_yearly %}true{% else %}false{% endif %}"
+                         data-is-paused="{% if o.paused %}true{% else %}false{% endif %}"
+                         data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
+                         style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.is_yearly && !o.is_due_now %}display: none;{% endif %}">
                         <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <div class="item-card-title col-name" style="font-weight: 700; color: #1e293b;"><b>{{ o.name }}</b></div>
+                            <div class="item-card-title col-name" style="font-weight: 700; color: var(--text-main);">
+                                <b>{{ o.name }}</b>
+                                {% if o.is_yearly %}
+                                    <div style="margin-top: 2px;">
+                                        <span class="badge-pill" style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;">{{ o.frequency_label }}</span>
+                                    </div>
+                                {% endif %}
+                            </div>
                             <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem;">Day {{ o.outgoing_day }}</span>
                         </div>
                         <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; margin-bottom: 10px;">
                             <div class="stat-cell">
-                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Cost</div>
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">Cost</div>
                                 <div class="stat-cell-val" style="font-weight: 600; color: #ef4444;">£{{ o.cost }}</div>
                             </div>
                             <div class="stat-cell">
-                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Status</div>
-                                <div class="stat-cell-val">{% if o.paused.unwrap_or(false) %}Paused{% else %}Active{% endif %}</div>
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">Status</div>
+                                <div class="stat-cell-val">{% if o.paused %}Paused{% else %}Active{% endif %}</div>
                             </div>
                         </div>
-                        <div class="item-card-actions" style="display: flex; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                        <div class="item-card-actions" style="display: flex; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 8px;">
                             <a href="/editOutgoing/{{ o.id }}#outgoing-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-block;"><i class="fas fa-pen"></i> Edit</a>
-                            {% if o.paused.unwrap_or(false) %}
+                            {% if o.paused %}
                                 <a href="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="padding: 4px 12px; background: #dcfce7; color: #166534; border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-block;">
                                     <i class="fas fa-play"></i> Unpause
                                 </a>
@@ -131,9 +176,52 @@
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Cost (£)</label>
                     <input id="outgoing-cost" name="cost" type="number" step="0.01" required value="{% if let Some(o) = editing_outgoing %}{{ o.cost }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
                 </div>
-                <div style="margin-bottom: 1rem;">
+                <div style="margin-bottom: 0.75rem;">
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month</label>
                     <input name="outgoingDay" type="number" min="1" max="31" required value="{% if let Some(o) = editing_outgoing %}{{ o.outgoing_day }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Account (Optional)</label>
+                    <select name="accountId" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                        <option value="">-- No Account Linked --</option>
+                        {% for a in accounts %}
+                            <option value="{{ a.id }}" {% if let Some(o) = editing_outgoing %}{% if a.is_selected(o.account_id) %}selected{% endif %}{% endif %}>{{ a.name }} ({{ a.account_type }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Frequency</label>
+                    <select id="outgoingFrequency" name="frequency" onchange="toggleYearlyGroup()" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                        <option value="monthly" {% if let Some(o) = editing_outgoing %}{% if !o.is_yearly() %}selected{% endif %}{% else %}selected{% endif %}>Monthly (Occurs every month)</option>
+                        <option value="yearly" {% if let Some(o) = editing_outgoing %}{% if o.is_yearly() %}selected{% endif %}{% endif %}>Yearly (Occurs once a year)</option>
+                    </select>
+                </div>
+                <div id="yearly-month-group" style="{% if let Some(o) = editing_outgoing %}{% if o.is_yearly() %}display: block;{% else %}display: none;{% endif %}{% else %}display: none;{% endif %} margin-bottom: 0.75rem; padding: 10px; background: var(--card-bg-subtle); border-radius: 6px; border: 1px solid var(--border-color);">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Due Month</label>
+                    <select id="outgoingMonth" name="outgoingMonth" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px; margin-bottom: 8px;">
+                        <option value="1" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(1) %}selected{% endif %}{% endif %}>January</option>
+                        <option value="2" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(2) %}selected{% endif %}{% endif %}>February</option>
+                        <option value="3" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(3) %}selected{% endif %}{% endif %}>March</option>
+                        <option value="4" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(4) %}selected{% endif %}{% endif %}>April</option>
+                        <option value="5" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(5) %}selected{% endif %}{% endif %}>May</option>
+                        <option value="6" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(6) %}selected{% endif %}{% endif %}>June</option>
+                        <option value="7" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(7) %}selected{% endif %}{% endif %}>July</option>
+                        <option value="8" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(8) %}selected{% endif %}{% endif %}>August</option>
+                        <option value="9" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(9) %}selected{% endif %}{% endif %}>September</option>
+                        <option value="10" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(10) %}selected{% endif %}{% endif %}>October</option>
+                        <option value="11" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(11) %}selected{% endif %}{% endif %}>November</option>
+                        <option value="12" {% if let Some(o) = editing_outgoing %}{% if o.outgoing_month == Some(12) %}selected{% endif %}{% endif %}>December</option>
+                    </select>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">Repeats Every (Years)</label>
+                            <input type="number" min="1" max="20" step="1" name="yearInterval" id="yearInterval" placeholder="1" value="{% if let Some(o) = editing_outgoing %}{% if let Some(yi) = o.year_interval %}{{ yi }}{% else %}1{% endif %}{% else %}1{% endif %}" style="width: 100%; padding: 7px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">Starting Year</label>
+                            <input type="number" min="1990" max="2100" step="1" name="startingYear" id="startingYear" placeholder="2025" value="{% if let Some(o) = editing_outgoing %}{% if let Some(sy) = o.starting_year %}{{ sy }}{% else %}{{ current_year }}{% endif %}{% else %}{{ current_year }}{% endif %}" style="width: 100%; padding: 7px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                        </div>
+                    </div>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 8px;">
                     <button type="button" onclick="closeOutgoingModal()" style="padding: 8px 16px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main); border-radius: 6px; cursor: pointer;">Cancel</button>
@@ -192,18 +280,43 @@
         function closePauseModal() {
             document.getElementById('pause-outgoing-modal').style.display = 'none';
         }
-    </script>
-        function openPauseModal(el) {
-            var id = el.getAttribute('data-id');
-            var name = el.getAttribute('data-name');
-            var cost = el.getAttribute('data-cost');
-            document.getElementById('pause-outgoing-name').textContent = name;
-            document.getElementById('pause-outgoing-cost').textContent = '£' + cost;
-            document.getElementById('pause-outgoing-form').action = '/pauseOutgoing/' + id;
-            document.getElementById('pause-outgoing-modal').style.display = 'flex';
+        function toggleYearlyGroup() {
+            var freq = document.getElementById('outgoingFrequency').value;
+            var grp = document.getElementById('yearly-month-group');
+            if (freq === 'yearly') {
+                grp.style.display = 'block';
+            } else {
+                grp.style.display = 'none';
+            }
         }
-        function closePauseModal() {
-            document.getElementById('pause-outgoing-modal').style.display = 'none';
+        function filterTab(tab) {
+            document.querySelectorAll('.outgoings-tab-btn').forEach(function(btn) {
+                btn.classList.remove('active');
+                btn.style.borderBottom = 'none';
+                btn.style.color = 'var(--text-muted)';
+                btn.style.fontWeight = '500';
+                if (btn.getAttribute('data-tab') === tab) {
+                    btn.classList.add('active');
+                    btn.style.borderBottom = '2px solid var(--primary)';
+                    btn.style.color = 'var(--primary)';
+                    btn.style.fontWeight = '700';
+                }
+            });
+            var rows = document.querySelectorAll('tr[data-is-yearly], .item-card[data-is-yearly]');
+            rows.forEach(function(el) {
+                var isYearly = el.getAttribute('data-is-yearly') === 'true';
+                var isPaused = el.getAttribute('data-is-paused') === 'true';
+                var isDueNow = el.getAttribute('data-is-due-now') === 'true';
+                if (tab === 'active') {
+                    el.style.display = (!isPaused && (!isYearly || isDueNow)) ? '' : 'none';
+                } else if (tab === 'yearly') {
+                    el.style.display = isYearly ? '' : 'none';
+                } else if (tab === 'paused') {
+                    el.style.display = isPaused ? '' : 'none';
+                } else {
+                    el.style.display = '';
+                }
+            });
         }
     </script>
     <script src="/assets/javascripts/edOutgoings.js" type="text/javascript"></script>
