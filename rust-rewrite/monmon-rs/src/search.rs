@@ -31,7 +31,7 @@ pub struct SearchQuery {
 
 pub async fn search_api(
     State(state): State<Arc<AppState>>,
-    _headers: HeaderMap,
+    headers: HeaderMap,
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, (StatusCode, String)> {
     let query_str = params.q.unwrap_or_default().trim().to_string();
@@ -39,9 +39,7 @@ pub async fn search_api(
         return Ok(Json(vec![]));
     }
 
-    let user_id = params
-        .user_id
-        .unwrap_or_else(|| "demo".to_string());
+    let user_id = crate::pot::get_user_id_from_headers_or_default(&headers, params.user_id.as_deref());
 
     let resolved_user = crate::spog::resolve_user_id(&state.pool, &user_id).await;
     let limit = params.limit.unwrap_or(25).clamp(1, 50);

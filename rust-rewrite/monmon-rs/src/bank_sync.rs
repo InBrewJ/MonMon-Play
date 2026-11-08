@@ -3,7 +3,7 @@ use crate::AppState;
 use askama::Template;
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, Json},
 };
 use serde::{Deserialize, Serialize};
@@ -58,8 +58,11 @@ pub struct BankSyncTemplate {
 
 pub async fn get_bank_sync_page(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<BankSyncQuery>,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, query.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
     // Check Monzo connection
     let conn_row = sqlx::query(
@@ -147,9 +150,11 @@ async fn list_bank_transactions_internal(
 
 pub async fn list_bank_transactions_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(q): Query<BankSyncQuery>,
 ) -> Result<Json<Vec<BankTransactionDto>>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     list_bank_transactions_internal(&state.pool, &resolved)
         .await
         .map(Json)

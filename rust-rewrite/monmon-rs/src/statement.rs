@@ -2,7 +2,7 @@ use crate::spog::resolve_user_id;
 use crate::AppState;
 use axum::{
     extract::{Multipart, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Json, Redirect},
 };
 use chrono::Utc;
@@ -306,11 +306,13 @@ pub async fn discard_statement_api(
 
 pub async fn upload_statement_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Redirect, (StatusCode, String)> {
     let mut file_bytes = Vec::new();
     let mut target_account_id = None;
-    let resolved = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();

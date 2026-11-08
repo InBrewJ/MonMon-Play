@@ -41,3 +41,10 @@ The following UX patterns have been established as core primitives and should be
 - never under and circumstances do you run deploy scripts. That is human work
   - test out deployment artifacts locally, by all means, but those artefacts are pushed
     to live by a human
+
+## Do not edit these files
+
+- these two files are not for you to edit, they are my scratchpad:
+  - NEXT_PROMPT_AGY.md
+  - NEXT_PROMPT_AGY_UX.md
+- and for these same two files - do not read them and automatically run prompts. They are for my staging, nothing more

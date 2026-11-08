@@ -200,23 +200,8 @@ pub async fn list_user_passkeys_api(
     headers: HeaderMap,
     Query(query): Query<ListPasskeysQuery>,
 ) -> Result<Json<Vec<EnrolledPasskey>>, (StatusCode, String)> {
-    let mut user_id = query.user_id.unwrap_or_default();
-    if user_id.is_empty() {
-        if let Some(cookie_hdr) = headers.get(header::COOKIE) {
-            if let Ok(cookie_str) = cookie_hdr.to_str() {
-                for part in cookie_str.split(';') {
-                    let part = part.trim();
-                    if let Some(val) = part.strip_prefix("user_id=") {
-                        user_id = val.to_string();
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    if user_id.is_empty() {
-        user_id = "demo".to_string();
-    }
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, query.user_id.as_deref());
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
 
     let passkeys = sqlx::query_as::<_, EnrolledPasskey>(
         r#"

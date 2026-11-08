@@ -2,7 +2,7 @@ use crate::spog::resolve_user_id;
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, Json, Redirect},
     Form,
 };
@@ -524,9 +524,10 @@ pub async fn get_savings_plan_api(
 
 pub async fn create_savings_plan_item_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(payload): Json<CreateItemPayload>,
 ) -> Result<Json<SavingsPlanItemDto>, (StatusCode, String)> {
-    let user_id = payload.user_id.clone().unwrap_or_else(|| "demo".to_string());
+    let user_id = crate::pot::get_user_id_from_headers_or_default(&headers, payload.user_id.as_deref());
     let plan = get_or_create_active_plan(&state.pool, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -590,9 +591,10 @@ pub async fn create_savings_plan_item_api(
 pub async fn move_item_up_api(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
+    headers: HeaderMap,
     Query(q): Query<SavingsPlanQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let user_id = q.get_user_id();
+    let user_id = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
     let plan = get_or_create_active_plan(&state.pool, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -619,9 +621,10 @@ pub async fn move_item_up_api(
 pub async fn move_item_down_api(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
+    headers: HeaderMap,
     Query(q): Query<SavingsPlanQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let user_id = q.get_user_id();
+    let user_id = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
     let plan = get_or_create_active_plan(&state.pool, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -687,9 +690,10 @@ pub async fn toggle_lock_api(
 pub async fn delete_item_api(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
+    headers: HeaderMap,
     Query(q): Query<SavingsPlanQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let user_id = q.get_user_id();
+    let user_id = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
     let plan = get_or_create_active_plan(&state.pool, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -752,8 +756,11 @@ pub struct FormUpdatePercentage {
 
 pub async fn get_savings_plan_page(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<SavingsPlanQuery>,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    let plan = get_or_create_active_plan(&state.pool, "demo")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, query.user_id.as_deref());
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -800,9 +807,11 @@ pub async fn get_savings_plan_page(
 
 pub async fn get_edit_savings_plan_item_page(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     axum::extract::Path(item_id): axum::extract::Path<i64>,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    let plan = get_or_create_active_plan(&state.pool, "demo")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -882,8 +891,10 @@ pub async fn update_item_form_handler(
 
 pub async fn add_item_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<FormAddItem>,
 ) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let payload = CreateItemPayload {
         name: form.name,
         item_type: form.r#type,
@@ -891,37 +902,43 @@ pub async fn add_item_form_handler(
         monthly_amount: form.monthly_amount,
         priority: form.priority,
         account_id: form.account_id,
-        user_id: Some("demo".to_string()),
+        user_id: Some(raw_uid),
         plan_id: None,
     };
 
-    let _ = create_savings_plan_item_api(State(state), Json(payload)).await?;
+    let _ = create_savings_plan_item_api(State(state), headers, Json(payload)).await?;
     Ok(Redirect::to("/savingsPlan#sliced-items-card"))
 }
 
 pub async fn move_up_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let q = SavingsPlanQuery { user_id: Some("demo".to_string()) };
-    let _ = move_item_up_api(State(state), Path(id), Query(q)).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let q = SavingsPlanQuery { user_id: Some(raw_uid) };
+    let _ = move_item_up_api(State(state), Path(id), headers, Query(q)).await;
     Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
 }
 
 pub async fn move_down_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let q = SavingsPlanQuery { user_id: Some("demo".to_string()) };
-    let _ = move_item_down_api(State(state), Path(id), Query(q)).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let q = SavingsPlanQuery { user_id: Some(raw_uid) };
+    let _ = move_item_down_api(State(state), Path(id), headers, Query(q)).await;
     Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
 }
 
 pub async fn move_to_top_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let plan = get_or_create_active_plan(&state.pool, "demo")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -945,9 +962,11 @@ pub async fn move_to_top_form_handler(
 
 pub async fn move_to_bottom_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let plan = get_or_create_active_plan(&state.pool, "demo")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -973,18 +992,22 @@ pub async fn move_to_bottom_form_handler(
 
 pub async fn toggle_lock_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let q = SavingsPlanQuery { user_id: Some("demo".to_string()) };
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let q = SavingsPlanQuery { user_id: Some(raw_uid) };
     let _ = toggle_lock_api(State(state), Path(id), Query(q)).await;
     Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
 }
 
 pub async fn update_percentage_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<FormUpdatePercentage>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let plan = get_or_create_active_plan(&state.pool, "demo")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -1016,9 +1039,11 @@ pub async fn update_percentage_form_handler(
 
 pub async fn balance_evenly_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(_plan_id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let plan = get_or_create_active_plan(&state.pool, "demo")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -1038,9 +1063,11 @@ pub async fn balance_evenly_form_handler(
 
 pub async fn trim_deficit_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(_plan_id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let plan = get_or_create_active_plan(&state.pool, "demo")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -1060,10 +1087,12 @@ pub async fn trim_deficit_form_handler(
 
 pub async fn bin_item_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let q = SavingsPlanQuery { user_id: Some("demo".to_string()) };
-    let _ = delete_item_api(State(state), Path(id), Query(q)).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let q = SavingsPlanQuery { user_id: Some(raw_uid) };
+    let _ = delete_item_api(State(state), Path(id), headers, Query(q)).await;
     Ok(Redirect::to("/savingsPlan#sliced-items-card"))
 }
 

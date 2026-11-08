@@ -1,6 +1,6 @@
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -38,9 +38,11 @@ fn is_mistral_configured() -> bool {
 
 pub async fn ed_says_spog_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(q): Query<EdQuery>,
 ) -> Result<Json<EdSaysResponse>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let metrics = crate::spog::calculate_spog(&state.pool, &resolved)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

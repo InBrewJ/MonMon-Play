@@ -3,7 +3,7 @@ use crate::AppState;
 use askama::Template;
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, Json},
 };
 use serde::{Deserialize, Serialize};
@@ -49,8 +49,11 @@ pub struct NomMonTemplate {
 
 pub async fn get_nommon_page(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<NomMonQuery>,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, query.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
     // Check active pot for weekly budget if configured
     let row = sqlx::query(
@@ -404,9 +407,11 @@ fn build_fallback_plan(budget: f32, people: i32) -> Value {
 
 pub async fn get_nommon_plan_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(q): Query<NomMonQuery>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let budget = q.budget.unwrap_or(50.0);
     let people = q.people.unwrap_or(1);
     let postcode = q.postcode.as_deref();
@@ -525,9 +530,10 @@ pub async fn get_nommon_plan_api(
 
 pub async fn lock_nommon_plan_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(payload): Json<LockPlanRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let raw_uid = payload.user_id.unwrap_or_else(|| "demo".to_string());
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, payload.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
     let plan_str = serde_json::to_string(&payload.plan).unwrap_or_default();

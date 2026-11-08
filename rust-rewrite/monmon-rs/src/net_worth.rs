@@ -3,7 +3,7 @@ use crate::AppState;
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, Json, Redirect},
 };
 use chrono::{TimeZone, Utc};
@@ -332,8 +332,11 @@ pub async fn calculate_net_worth(
 
 pub async fn get_net_worth_page(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<NetWorthQuery>,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let vm = calculate_net_worth(&state.pool, &resolved)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -346,9 +349,11 @@ pub async fn get_net_worth_page(
 
 pub async fn get_net_worth_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(q): Query<NetWorthQuery>,
 ) -> Result<Json<NetWorthDto>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     calculate_net_worth(&state.pool, &resolved)
         .await
         .map(Json)
@@ -369,9 +374,10 @@ pub struct AddAssetForm {
 
 pub async fn add_asset_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(form): Json<AddAssetForm>,
 ) -> Result<Json<NetWorthAssetDto>, (StatusCode, String)> {
-    let raw_uid = form.user_id.unwrap_or_else(|| "demo".to_string());
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, form.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
     let now_ms = Utc::now().timestamp_millis();
@@ -436,9 +442,10 @@ pub async fn add_asset_api(
 
 pub async fn add_asset_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     axum::extract::Form(form): axum::extract::Form<AddAssetForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let _ = add_asset_api(State(state), Json(form)).await?;
+    let _ = add_asset_api(State(state), headers, Json(form)).await?;
     Ok(Redirect::to("/netWorth"))
 }
 

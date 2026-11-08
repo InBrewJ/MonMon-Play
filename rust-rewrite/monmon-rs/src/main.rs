@@ -20,7 +20,7 @@ mod statement;
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json, Response},
     routing::{delete, get, post},
     Router,
@@ -64,31 +64,128 @@ pub struct UnpausePayload {
     pub user_id: String,
 }
 
+fn base64_url_decode(input: &str) -> Option<Vec<u8>> {
+    let mut s = input.replace('-', "+").replace('_', "/");
+    match s.len() % 4 {
+        2 => s.push_str("=="),
+        3 => s.push('='),
+        _ => {}
+    }
+    const B64_TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut lookup = [255u8; 256];
+    for (i, &b) in B64_TABLE.iter().enumerate() {
+        lookup[b as usize] = i as u8;
+    }
+    let bytes = s.as_bytes();
+    if bytes.len() % 4 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity((bytes.len() / 4) * 3);
+    for chunk in bytes.chunks(4) {
+        let b0 = lookup[chunk[0] as usize];
+        let b1 = lookup[chunk[1] as usize];
+        let b2 = if chunk[2] == b'=' { 0 } else { lookup[chunk[2] as usize] };
+        let b3 = if chunk[3] == b'=' { 0 } else { lookup[chunk[3] as usize] };
+        if b0 == 255 || b1 == 255 || (chunk[2] != b'=' && b2 == 255) || (chunk[3] != b'=' && b3 == 255) {
+            return None;
+        }
+        let triple = ((b0 as u32) << 18) | ((b1 as u32) << 12) | ((b2 as u32) << 6) | (b3 as u32);
+        out.push(((triple >> 16) & 0xFF) as u8);
+        if chunk[2] != b'=' {
+            out.push(((triple >> 8) & 0xFF) as u8);
+        }
+        if chunk[3] != b'=' {
+            out.push((triple & 0xFF) as u8);
+        }
+    }
+    Some(out)
+}
+
+fn extract_username_from_id_token(id_token: &str) -> Option<String> {
+    let parts: Vec<&str> = id_token.split('.').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let decoded = base64_url_decode(parts[1])?;
+    let val: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+    val.get("preferred_username")
+        .and_then(|v| v.as_str())
+        .or_else(|| val.get("email").and_then(|v| v.as_str()))
+        .or_else(|| val.get("sub").and_then(|v| v.as_str()))
+        .map(|s| s.to_string())
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CallbackQuery {
     pub code: Option<String>,
     pub state: Option<String>,
+    pub user_id: Option<String>,
+    pub username: Option<String>,
 }
 
 pub async fn callback_handler(Query(params): Query<CallbackQuery>) -> Response {
-    let target = params.state.unwrap_or_else(|| "/myOutgoings".to_string());
+    let target = params.state.unwrap_or_else(|| "/spog".to_string());
     let clean_target = if target.starts_with('/') {
         target
     } else {
-        "/myOutgoings".to_string()
+        "/spog".to_string()
     };
+
+    let mut username = params.user_id.or(params.username).unwrap_or_default();
+
+    if username.is_empty() {
+        if let Some(ref code) = params.code {
+            let client = reqwest::Client::new();
+            let rauthy_hosts = [
+                "http://rauthy:8085",
+                "http://127.0.0.1:8085",
+                "http://localhost:8085",
+            ];
+            let redirect_uri = std::env::var("REDIRECT_URI")
+                .unwrap_or_else(|_| "http://localhost:9001/callback".to_string());
+            let client_secret = std::env::var("OIDC_CLIENT_SECRET")
+                .unwrap_or_else(|_| "aaa6a201a8a41810e2e33118bed1bddaba722902e89e959cb6cc0a2949445d78".to_string());
+
+            for host in rauthy_hosts {
+                let token_url = format!("{}/auth/v1/oidc/token", host);
+                let form = [
+                    ("grant_type", "authorization_code"),
+                    ("code", code.as_str()),
+                    ("redirect_uri", redirect_uri.as_str()),
+                    ("client_id", "monmon-web"),
+                    ("client_secret", client_secret.as_str()),
+                ];
+                if let Ok(res) = client.post(&token_url).form(&form).send().await {
+                    if res.status().is_success() {
+                        if let Ok(json) = res.json::<serde_json::Value>().await {
+                            if let Some(id_token) = json.get("id_token").and_then(|v| v.as_str()) {
+                                if let Some(extracted) = extract_username_from_id_token(id_token) {
+                                    username = extracted;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if username.is_empty() {
+        username = "inbrewj".to_string();
+    }
+
+    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
+    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
+    let auth_val = "authenticated=true; Path=/; SameSite=Lax";
 
     Response::builder()
         .status(StatusCode::SEE_OTHER)
         .header(header::LOCATION, clean_target)
-        .header(
-            header::SET_COOKIE,
-            "monmon_session=authenticated; Path=/; HttpOnly; SameSite=Lax",
-        )
-        .header(
-            header::SET_COOKIE,
-            "PLAY_SESSION=authenticated; Path=/",
-        )
+        .header(header::SET_COOKIE, cookie_val)
+        .header(header::SET_COOKIE, session_val)
+        .header(header::SET_COOKIE, auth_val)
+        .header(header::SET_COOKIE, "PLAY_SESSION=authenticated; Path=/")
         .body(axum::body::Body::empty())
         .unwrap()
 }
@@ -657,7 +754,7 @@ async fn login_form_handler(
     axum::extract::Form(form): axum::extract::Form<AuthForm>,
 ) -> Result<Response, (StatusCode, String)> {
     let username = if form.username.trim().is_empty() {
-        "demo".to_string()
+        "inbrewj".to_string()
     } else {
         form.username.trim().to_string()
     };
@@ -701,13 +798,13 @@ struct SpogTemplate {
 // SPOG Handlers
 async fn get_spog_metrics(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<spog::SpogMetrics>, (StatusCode, String)> {
-    let user_id = query
-        .get("userId")
-        .or_else(|| query.get("user_id"))
-        .cloned()
-        .unwrap_or_else(|| "demo".to_string());
+    let user_id = crate::pot::get_user_id_from_headers_or_default(
+        &headers,
+        query.get("userId").or_else(|| query.get("user_id")).map(|s| s.as_str()),
+    );
 
     spog::calculate_spog(&state.pool, &user_id)
         .await
@@ -717,13 +814,13 @@ async fn get_spog_metrics(
 
 async fn get_spending_pace(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<spog::SpendingPaceMetrics>, (StatusCode, String)> {
-    let user_id = query
-        .get("userId")
-        .or_else(|| query.get("user_id"))
-        .cloned()
-        .unwrap_or_else(|| "demo".to_string());
+    let user_id = crate::pot::get_user_id_from_headers_or_default(
+        &headers,
+        query.get("userId").or_else(|| query.get("user_id")).map(|s| s.as_str()),
+    );
 
     spog::calculate_spending_pace(&state.pool, &user_id)
         .await
@@ -743,38 +840,10 @@ async fn get_spog_page(
         return Ok(crate::landing::auth_redirect(Some("/spog")).await.into_response());
     }
 
-    let mut user_id = query
-        .get("userId")
-        .or_else(|| query.get("user_id"))
-        .cloned()
-        .unwrap_or_default();
-
-    if user_id.trim().is_empty() {
-        if let Some(cookie_hdr) = headers.get(axum::http::header::COOKIE) {
-            if let Ok(cookie_str) = cookie_hdr.to_str() {
-                for part in cookie_str.split(';') {
-                    let part = part.trim();
-                    if let Some(val) = part.strip_prefix("user_id=") {
-                        let val = val.trim();
-                        if !val.is_empty() {
-                            user_id = val.to_string();
-                            break;
-                        }
-                    }
-                    if let Some(val) = part.strip_prefix("monmon_session=") {
-                        let val = val.trim();
-                        if !val.is_empty() && val != "authenticated" {
-                            user_id = val.to_string();
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if user_id.trim().is_empty() {
-        user_id = "demo".to_string();
-    }
+    let user_id = crate::pot::get_user_id_from_headers_or_default(
+        &headers,
+        query.get("userId").or_else(|| query.get("user_id")).map(|s| s.as_str()),
+    );
 
     let metrics = spog::calculate_spog(&state.pool, &user_id)
         .await
@@ -806,6 +875,12 @@ async fn get_spog_page(
 
 async fn get_spending_pace_page_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    spog::get_spending_pace_page(&state).await
+    let user_id = crate::pot::get_user_id_from_headers_or_default(
+        &headers,
+        query.get("userId").or_else(|| query.get("user_id")).map(|s| s.as_str()),
+    );
+    spog::get_spending_pace_page(&state, &user_id).await
 }

@@ -15,6 +15,7 @@ use crate::db;
 use crate::models::{
     Account, Incoming, NewAccount, NewBalance, NewIncoming, NewOutgoing, Outgoing,
 };
+use crate::pot::get_user_id_from_headers_or_default;
 use crate::spog::resolve_user_id;
 
 pub fn is_authenticated(headers: &HeaderMap) -> bool {
@@ -242,7 +243,8 @@ pub async fn get_accounts_page(
     if !is_authenticated(&headers) {
         return Ok(crate::landing::auth_redirect(Some("/myAccounts")).await.into_response());
     }
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let accounts = db::list_accounts(&state.pool, &user_id)
         .await
         .unwrap_or_default();
@@ -265,7 +267,8 @@ pub async fn get_edit_account_page(
     if !is_authenticated(&headers) {
         return Ok(crate::landing::auth_redirect(Some(&format!("/editAccount/{}", id))).await.into_response());
     }
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let accounts = db::list_accounts(&state.pool, &user_id)
         .await
         .unwrap_or_default();
@@ -322,9 +325,11 @@ pub async fn post_update_account_form_direct(
 
 pub async fn post_account_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<AccountForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let new_acc = NewAccount {
         name: form.name,
         nickname: form.nickname,
@@ -347,7 +352,8 @@ pub async fn get_outgoings_page(
     if !is_authenticated(&headers) {
         return Ok(crate::landing::auth_redirect(Some("/myOutgoings")).await.into_response());
     }
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let outgoings = db::list_outgoings(&state.pool, &user_id)
         .await
         .unwrap_or_default();
@@ -422,7 +428,8 @@ pub async fn get_edit_outgoing_page(
     if !is_authenticated(&headers) {
         return Ok(crate::landing::auth_redirect(Some(&format!("/editOutgoing/{}", id))).await.into_response());
     }
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let outgoings = db::list_outgoings(&state.pool, &user_id)
         .await
         .unwrap_or_default();
@@ -510,10 +517,12 @@ fn resolve_frequency_fields(form: &OutgoingForm) -> (Option<i32>, Option<i32>, O
 
 pub async fn post_update_outgoing_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<i64>,
     Form(form): Form<OutgoingForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let (outgoing_month, year_interval, starting_year) = resolve_frequency_fields(&form);
     let update = crate::models::UpdateOutgoing {
         name: form.name,
@@ -537,10 +546,12 @@ pub async fn post_update_outgoing_form(
 
 pub async fn post_update_outgoing_form_direct(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<OutgoingForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
     if let Some(id) = form.id {
-        let user_id = resolve_user_id(&state.pool, "demo").await;
+        let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+        let user_id = resolve_user_id(&state.pool, &raw_uid).await;
         let (outgoing_month, year_interval, starting_year) = resolve_frequency_fields(&form);
         let update = crate::models::UpdateOutgoing {
             name: form.name,
@@ -564,9 +575,11 @@ pub async fn post_update_outgoing_form_direct(
 
 pub async fn post_outgoing_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<OutgoingForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let (outgoing_month, year_interval, starting_year) = resolve_frequency_fields(&form);
     let new_out = NewOutgoing {
         name: form.name,
@@ -595,7 +608,8 @@ pub async fn get_incomings_page(
     if !is_authenticated(&headers) {
         return Ok(crate::landing::auth_redirect(Some("/myIncomings")).await.into_response());
     }
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let incomings = db::list_incomings(&state.pool, &user_id)
         .await
         .unwrap_or_default();
@@ -622,7 +636,8 @@ pub async fn get_edit_incoming_page(
     if !is_authenticated(&headers) {
         return Ok(crate::landing::auth_redirect(Some(&format!("/editIncoming/{}", id))).await.into_response());
     }
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let incomings = db::list_incomings(&state.pool, &user_id)
         .await
         .unwrap_or_default();
@@ -645,10 +660,12 @@ pub async fn get_edit_incoming_page(
 
 pub async fn post_update_incoming_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<i64>,
     Form(form): Form<IncomingForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let update = crate::models::UpdateIncoming {
         name: form.name,
         net_value: form.net_value,
@@ -667,10 +684,12 @@ pub async fn post_update_incoming_form(
 
 pub async fn post_update_incoming_form_direct(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<IncomingForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
     if let Some(id) = form.id {
-        let user_id = resolve_user_id(&state.pool, "demo").await;
+        let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+        let user_id = resolve_user_id(&state.pool, &raw_uid).await;
         let update = crate::models::UpdateIncoming {
             name: form.name,
             net_value: form.net_value,
@@ -689,9 +708,11 @@ pub async fn post_update_incoming_form_direct(
 
 pub async fn post_incoming_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<IncomingForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let new_inc = NewIncoming {
         name: form.name,
         net_value: form.net_value,
@@ -736,7 +757,8 @@ pub async fn get_balances_page(
         };
         return Ok(crate::landing::auth_redirect(Some(&return_to)).await.into_response());
     }
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
 
     // 1. Fetch active accounts
     let accounts = db::list_accounts(&state.pool, &user_id)
@@ -906,9 +928,11 @@ pub async fn get_balances_page(
 
 pub async fn post_balance_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<BalanceForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let new_bal = NewBalance {
         account_id: form.account_id,
         value: form.balance,
@@ -935,9 +959,11 @@ pub async fn post_delete_balance(
 
 pub async fn get_erratic_balances_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<Vec<crate::models::ErraticBalance>>, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, params.get("userId").or_else(|| params.get("user_id")).map(|s| s.as_str()));
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let threshold: f32 = params
         .get("threshold")
         .and_then(|t| t.parse().ok())
@@ -955,10 +981,12 @@ pub struct PauseForm {
 
 pub async fn pause_outgoing_web(
     axum::extract::Path(id): axum::extract::Path<i64>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
     Form(form): Form<PauseForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let reason = form.reason.unwrap_or_else(|| "User requested pause".to_string());
     db::pause_outgoing(&state.pool, id, &user_id, &reason)
         .await
@@ -969,9 +997,11 @@ pub async fn pause_outgoing_web(
 
 pub async fn unpause_outgoing_web(
     axum::extract::Path(id): axum::extract::Path<i64>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let user_id = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     db::unpause_outgoing(&state.pool, id, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

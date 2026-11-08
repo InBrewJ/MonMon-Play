@@ -677,11 +677,12 @@ pub struct SpendingPaceTemplate {
 
 pub async fn get_spending_pace_page(
     state: &std::sync::Arc<crate::AppState>,
+    raw_user_id: &str,
 ) -> Result<axum::response::Html<String>, (axum::http::StatusCode, String)> {
-    let spog = calculate_spog(&state.pool, "demo")
+    let spog = calculate_spog(&state.pool, raw_user_id)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let pace = calculate_spending_pace(&state.pool, "demo")
+    let pace = calculate_spending_pace(&state.pool, raw_user_id)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

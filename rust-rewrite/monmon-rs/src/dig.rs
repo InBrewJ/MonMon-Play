@@ -3,7 +3,7 @@ use crate::AppState;
 use askama::Template;
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, Json},
 };
 use chrono::{Datelike, Local, NaiveDate};
@@ -294,8 +294,11 @@ pub async fn build_dig_data(
 
 pub async fn get_dig_page(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<DigQuery>,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, "demo").await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, query.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let data_limit = 2000;
     let dig_data = build_dig_data(&state.pool, &resolved, data_limit)
         .await
@@ -337,9 +340,11 @@ pub async fn get_dig_page(
 
 pub async fn get_dig_data_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(q): Query<DigQuery>,
 ) -> Result<Json<DigDataResponse>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let dig_data = build_dig_data(&state.pool, &resolved, 2000)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
