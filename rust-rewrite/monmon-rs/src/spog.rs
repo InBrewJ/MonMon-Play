@@ -268,3 +268,46 @@ pub async fn calculate_spending_pace(
         absolute_baseline_diff_total,
     })
 }
+
+#[derive(askama::Template)]
+#[template(path = "spending_pace.html")]
+pub struct SpendingPaceTemplate {
+    pub days_elapsed: i32,
+    pub days_in_cycle: i32,
+    pub max_per_day: f32,
+    pub monthly_budget: f32,
+    pub actual_daily_spend: f32,
+    pub spent_this_month: f32,
+    pub absolute_baseline_diff_total: f32,
+    pub is_behind_baseline: bool,
+}
+
+pub async fn get_spending_pace_page(
+    state: &std::sync::Arc<crate::AppState>,
+) -> Result<axum::response::Html<String>, (axum::http::StatusCode, String)> {
+    let spog = calculate_spog(&state.pool, "demo")
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let pace = calculate_spending_pace(&state.pool, "demo")
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let today = Local::now().date_naive();
+    let days_elapsed = (today.day() as i32).clamp(1, spog.days_between_paydays);
+
+    let tmpl = SpendingPaceTemplate {
+        days_elapsed,
+        days_in_cycle: spog.days_between_paydays,
+        max_per_day: spog.max_per_day,
+        monthly_budget: spog.surplus,
+        actual_daily_spend: pace.actual_daily_spend,
+        spent_this_month: pace.spent_this_month,
+        absolute_baseline_diff_total: pace.absolute_baseline_diff_total,
+        is_behind_baseline: pace.is_behind_baseline,
+    };
+
+    use askama::Template;
+    tmpl.render()
+        .map(axum::response::Html)
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}

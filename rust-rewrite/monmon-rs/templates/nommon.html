@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MonMon — NomMon Meal Planner</title>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+    <link rel="stylesheet" href="/assets/stylesheets/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="w3-light-grey">
+
+<header class="w3-container w3-white w3-border-bottom" style="padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+    <h1 style="margin: 0; font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+        <a href="/spog" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
+            <img src="/assets/images/favicon.png" alt="MonMon" style="height: 28px; width: 28px;">
+            <span>MonMon</span>
+        </a>
+    </h1>
+    <div style="font-size: 0.85rem; color: #666;">
+        <i class="fas fa-user-circle"></i> demo (demo@demo.com)
+    </div>
+</header>
+
+<div class="w3-container" style="max-width: 1200px; margin: 0 auto; padding: 1rem;" id="nommon-container"
+     data-budget="{{ weekly_food_budget }}"
+     data-configured="{{ is_configured }}">
+
+    <!-- Top Hero Card -->
+    <div class="w3-card w3-padding w3-margin-bottom" style="border-radius: 8px; background: #fff;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <img src="/assets/images/favicon.png" alt="NomMon" style="width: 36px; height: 36px; vertical-align: middle;" />
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <h2 style="margin: 0; font-size: 1.35rem; font-weight: 800; color: #0f172a;">NomMon</h2>
+                        <span class="badge-pill" style="background: rgba(249, 115, 22, 0.15); color: #ea580c; border: 1px solid #ea580c; font-weight: 700; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px;">
+                            <i class="fas fa-shopping-basket"></i> Sainsbury's Weekly Planner
+                        </span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">
+                        Budget-adherent meal planning & smart grocery checklist powered by Mistral AI
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div id="nommon-lock-wrapper" style="display: none; align-items: center; gap: 6px;"></div>
+                <button type="button" id="btn-regenerate-nommon" class="w3-button w3-round w3-small" style="background: #0284c7; color: #fff; font-weight: 600; cursor: pointer;">
+                    <i class="fas fa-sync-alt" id="nommon-refresh-icon"></i> Regenerate Plan
+                </button>
+                <a href="/spog" class="w3-button w3-round w3-small" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155;">
+                    <i class="fas fa-arrow-left"></i> Back to SPOG
+                </a>
+            </div>
+        </div>
+
+        <!-- Budget & Basket Metrics -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
+            <div class="metric-box" style="padding: 12px; background: #f8fafc; border-radius: 6px;">
+                <div style="font-size: 0.78rem; color: #64748b; display: flex; justify-content: space-between; align-items: center;">
+                    <span>Weekly Food Budget</span>
+                    <span id="nommon-budget-tier-badge" class="badge-pill" style="font-size: 0.68rem; padding: 2px 6px; font-weight: 600;"></span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px;">
+                    <div style="display: flex; align-items: center; gap: 2px;">
+                        <span style="font-size: 1.25rem; font-weight: 700; color: #0284c7;">£</span>
+                        <input type="number" id="nommon-budget-input" step="1.00" min="5" max="2000"
+                               value="{{ weekly_food_budget }}"
+                               style="width: 85px; font-size: 1.25rem; font-weight: 700; color: #0284c7; background: transparent; border: 1px dashed #cbd5e1; border-radius: 4px; padding: 1px 4px;"
+                               title="Adjust weekly food budget" />
+                    </div>
+                </div>
+                <div id="nommon-budget-subtext" style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">From active spending plan</div>
+            </div>
+            <div class="metric-box" style="padding: 12px; background: #f8fafc; border-radius: 6px;">
+                <div style="font-size: 0.78rem; color: #64748b;">Estimated Basket Cost</div>
+                <div id="nommon-basket-val" style="font-size: 1.3rem; font-weight: 700; color: #0f172a;">
+                    £42.50
+                </div>
+                <div id="nommon-basket-subtitle" style="font-size: 0.72rem; color: #64748b;">Sainsbury's groceries</div>
+            </div>
+            <div class="metric-box" style="border-left: 3px solid #16a34a; padding: 12px; background: #f8fafc; border-radius: 6px;">
+                <div style="font-size: 0.78rem; color: #64748b;">Safety Buffer</div>
+                <div id="nommon-buffer-val" style="font-size: 1.3rem; font-weight: 700; color: #16a34a;">
+                    £7.50
+                </div>
+                <div style="font-size: 0.72rem; color: #64748b;">Buffer for checkout fluctuations</div>
+            </div>
+            <div class="metric-box" style="padding: 12px; background: #f8fafc; border-radius: 6px;">
+                <div style="font-size: 0.78rem; color: #64748b;">In-Store Checked Items</div>
+                <div id="nommon-checked-count" style="font-size: 1.3rem; font-weight: 700; color: #0f172a;">
+                    0 / 8
+                </div>
+                <div style="font-size: 0.72rem; color: #64748b;">Check off as you shop</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

@@ -1,5 +1,6 @@
 mod db;
 mod models;
+mod nommon;
 mod savings_plan;
 mod spog;
 
@@ -125,10 +126,16 @@ async fn main() {
             get(list_balances_handler).post(create_balance_handler),
         )
         .route("/internal/balances/erratic", get(erratic_balances_handler))
-        // SPOG (Single Point of Glass)
+        // SPOG (Single Point of Glass) & Spending Pace
         .route("/api/spog/metrics", get(get_spog_metrics))
         .route("/api/spog/spending-pace", get(get_spending_pace))
         .route("/spog", get(get_spog_page))
+        .route("/spendingPace", get(get_spending_pace_page_handler))
+        // NomMon (Smart Grocery & Meal Planner)
+        .route("/nommon", get(nommon::get_nommon_page))
+        .route("/api/nommon/plan", get(nommon::get_nommon_plan_api))
+        .route("/api/nommon/lock", post(nommon::lock_nommon_plan_api))
+        .route("/api/nommon/unlock", post(nommon::unlock_nommon_plan_api))
         // Savings Plan & Priority Queue
         .route(
             "/api/savings-plan",
@@ -495,4 +502,10 @@ async fn get_spog_page(
     tmpl.render()
         .map(Html)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn get_spending_pace_page_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Html<String>, (StatusCode, String)> {
+    spog::get_spending_pace_page(&state).await
 }
