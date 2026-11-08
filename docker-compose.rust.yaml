@@ -1,37 +1,19 @@
 version: '3.8'
 
 services:
-  postgres:
-    container_name: postgres-monmon
-    image: postgres:11
+  rauthy:
+    container_name: rauthy
+    image: ghcr.io/sebadob/rauthy:latest
+    command: ["serve", "-c", "/app/rauthy.cfg"]
     environment:
-      - POSTGRES_PASSWORD=docker
-      - POSTGRES_DB=monmon-play
-    ports:
-      - "5432:5432"
+      - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     volumes:
-      - db-data:/var/lib/postgresql/data
-    restart: always
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  monmon-auth:
-    container_name: monmon-auth
-    build:
-      context: ./rust-rewrite/monmon-auth
-      dockerfile: Dockerfile
-    environment:
-      - PORT=8080
-      - DB_URL=postgres://postgres:docker@postgres:5432/monmon-play
-      - ISSUER_URL=http://localhost:8080/auth/realms/monmon
+      - ./rust-rewrite/rauthy/config.toml:/app/rauthy.cfg:ro
+      - ./rust-rewrite/rauthy/bootstrap:/app/bootstrap:ro
+      - ./rust-rewrite/rauthy/data:/app/data
     ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - "8085:8085"
+      - "8443:8443"
     restart: always
 
   legmon:
@@ -41,8 +23,8 @@ services:
       dockerfile: Dockerfile
     environment:
       - PORT=9005
-      - MONMON_HOST=monmon
-      - MONMON_PORT=9000
+      - MONMON_HOST=monmon-rs
+      - MONMON_PORT=9001
     ports:
       - "9005:9005"
     restart: always
@@ -53,22 +35,19 @@ services:
       context: ./rust-rewrite/monmon-rs
       dockerfile: Dockerfile
     environment:
-      - PORT=9000
-      - DB_URL=postgres://postgres:docker@postgres:5432/monmon-play
-      - AUTH_URL=http://localhost:8080/auth/realms/monmon/protocol/openid-connect/auth
-      - REDIRECT_URI=http://localhost:9000/callback
-      - LEGMON_URL=http://legmon:9005
+      - PORT=9001
+      - DB_URL=postgres://postgres:docker@postgres:5432/monmon-rust
+      - AUTH_URL=http://localhost:8085/auth/v1/oidc/authorize
+      - REDIRECT_URI=http://localhost:9001/callback
+      - LEGMON_URL=http://legmon-rs:9005
     ports:
-      - "9000:9000"
+      - "9001:9001"
     depends_on:
-      postgres:
-        condition: service_healthy
-      monmon-auth:
-        condition: service_started
-      legmon:
-        condition: service_started
+      - rauthy
+      - legmon
     restart: always
 
-volumes:
-  db-data:
-    driver: local
+networks:
+  default:
+    name: monmon-play_default
+    external: true

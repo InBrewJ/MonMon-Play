@@ -1,101 +1,55 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/home/circle/app"
+APP_DIR="${APP_DIR:-$(pwd)}"
 cd "$APP_DIR"
 
-echo "=== MonMon Dockerized Deployment & Startup ==="
+echo "=== MonMon Rust & Rauthy Production Deployment & Startup ==="
 
-# 1. Stop any legacy non-docker MonMon processes
-PID_FILE="$APP_DIR/monmon-play/monmon-play-java--1.0-SNAPSHOT/RUNNING_PID"
-if [ -f "$PID_FILE" ]; then
-    PREV_PID=$(cat "$PID_FILE" 2>/dev/null || true)
-    if [ -n "$PREV_PID" ] && kill -0 "$PREV_PID" 2>/dev/null; then
-        echo "Found legacy MonMon process PID $PREV_PID. Stopping..."
-        kill -15 "$PREV_PID" 2>/dev/null || true
-        sleep 2
-        kill -9 "$PREV_PID" 2>/dev/null || true
-    fi
-    rm -f "$PID_FILE"
-fi
-
-FALLBACK_PIDS=$(pgrep -f "monmon-play-java-" || true)
-if [ -n "$FALLBACK_PIDS" ]; then
-    echo "Found running legacy monmon-play processes: $FALLBACK_PIDS. Stopping..."
-    kill -15 $FALLBACK_PIDS 2>/dev/null || true
-    sleep 2
-    kill -9 $FALLBACK_PIDS 2>/dev/null || true
-fi
-
-# 2. Stop and remove existing monmon Docker container
-if docker ps -q -f name=^monmon$ | grep -q .; then
-    echo "Stopping existing monmon container..."
-    docker stop monmon || true
-fi
-
-if docker ps -a -q -f name=^monmon$ | grep -q .; then
-    echo "Removing previous monmon container..."
-    docker rm monmon || true
-fi
-
-# 3. Environment configuration from single root .env
+# 1. Environment configuration
 ENV_FILE="$APP_DIR/.env"
-ENV_ARG=""
 if [ -f "$ENV_FILE" ]; then
-    ENV_ARG="--env-file $ENV_FILE"
-    echo "Found $ENV_FILE - loading environment into MonMon container."
+    echo "Found $ENV_FILE - loading environment."
     chmod 600 "$ENV_FILE" || true
 else
-    echo "⚠️ WARNING: No $ENV_FILE found at $APP_DIR/.env. Container will use internal defaults."
+    echo "⚠️ WARNING: No $ENV_FILE found at $APP_DIR/.env. Containers will use defaults."
 fi
 
-# 4. Start new MonMon Docker container with host networking and log rotation
-mkdir -p "$APP_DIR/logs"
-echo "Starting new MonMon container on host network (port 9000) with log rotation..."
-docker run -d \
-    --name monmon \
-    --restart always \
-    --network host \
-    --log-driver json-file \
-    --log-opt max-size=10m \
-    --log-opt max-file=5 \
-    -v "$APP_DIR/logs:/app/logs" \
-    $ENV_ARG \
-    monmon:latest
+# 2. Start unified Rust stack (monmon-rs, legmon-rs, rauthy) via docker compose
+echo "Starting MonMon Rust stack via docker compose..."
+docker compose -f docker-compose.rust.yaml up -d
 
-# 5. Wait for MonMon to become healthy via HTTP health check probe
-echo "Waiting for MonMon service to become healthy (probing http://127.0.0.1:9000/health)..."
-MAX_ATTEMPTS=30
+# 3. Wait for services to become healthy via HTTP health checks
+echo "Waiting for monmon-rs service (probing http://127.0.0.1:9001/health)..."
+MAX_ATTEMPTS=20
 ATTEMPT=1
 HEALTHY=false
 
 while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
-    # Check if container stopped or died
-    RUNNING=$(docker inspect -f '{{.State.Running}}' monmon 2>/dev/null || echo "false")
-    if [ "$RUNNING" != "true" ]; then
-        echo "❌ ERROR: MonMon container is not running (State.Running=$RUNNING)!" >&2
-        docker logs --tail 40 monmon || true
-        exit 1
-    fi
-
-    # Probe /health endpoint
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9000/health 2>/dev/null || true)
-    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "303" ]; then
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9001/health 2>/dev/null || true)
+    if [ "$HTTP_CODE" = "200" ]; then
         HEALTHY=true
         break
     fi
-
-    echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: MonMon JVM starting up (HTTP probe: $HTTP_CODE)... waiting 2s"
+    echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Waiting for monmon-rs (HTTP probe: $HTTP_CODE)..."
     sleep 2
     ATTEMPT=$((ATTEMPT + 1))
 done
 
 if [ "$HEALTHY" = true ]; then
-    echo "✅ MonMon is healthy and accepting traffic (HTTP $HTTP_CODE)!"
-    docker ps -f name=^monmon$
-    exit 0
+    echo "✅ monmon-rs is healthy and accepting traffic (HTTP 200)!"
 else
-    echo "❌ ERROR: MonMon health check failed after $((MAX_ATTEMPTS * 2)) seconds! Container logs:" >&2
-    docker logs --tail 40 monmon || true
+    echo "❌ ERROR: monmon-rs health check failed after $((MAX_ATTEMPTS * 2)) seconds! Container logs:" >&2
+    docker compose -f docker-compose.rust.yaml logs --tail 40 monmon || true
     exit 1
 fi
+
+# 4. Verify Rauthy status
+RAUTHY_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8085/auth/v1/ping 2>/dev/null || true)
+if [ "$RAUTHY_CODE" = "200" ]; then
+    echo "✅ Rauthy Auth service is healthy (HTTP 200)!"
+else
+    echo "⚠️ Warning: Rauthy probe returned $RAUTHY_CODE - check docker compose logs if auth fails."
+fi
+
+docker compose -f docker-compose.rust.yaml ps

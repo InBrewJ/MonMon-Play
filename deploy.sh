@@ -16,26 +16,52 @@ GREENSTREET_HOST="${1:-greenstreet@greenstreet.local}"
 REMOTE_USER="${GREENSTREET_HOST%@*}"
 REMOTE_DIR="/home/${REMOTE_USER}/app"
 
-ZIP_FILE="target/universal/monmon-play-java--1.0-SNAPSHOT.zip"
-if [[ ! -f "$ZIP_FILE" ]]; then
-    echo -e "${RED}${BOLD}❌ ERROR: $ZIP_FILE not found!${NC}" >&2
+# 1. Verify build artifacts
+if [[ ! -f "rust-rewrite/monmon-rs/target/release/monmon-rs" ]] || [[ ! -f "rust-rewrite/legmon-rs/target/release/legmon-rs" ]]; then
+    echo -e "${RED}${BOLD}❌ ERROR: Rust release binaries not found!${NC}" >&2
     echo -e "${YELLOW}Please run ./build.sh first.${NC}" >&2
     exit 1
 fi
 
-echo -e "${BLUE}${BOLD}==> [1/3] Preparing remote directory ${REMOTE_DIR}/build-context on ${GREENSTREET_HOST}...${NC}"
-ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/build-context/target/universal ${REMOTE_DIR}/logs"
+echo -e "${BLUE}${BOLD}==> [1/4] Preparing remote directories on ${GREENSTREET_HOST}...${NC}"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/rust-rewrite/monmon-rs ${REMOTE_DIR}/rust-rewrite/legmon-rs ${REMOTE_DIR}/rust-rewrite/rauthy/bootstrap ${REMOTE_DIR}/rust-rewrite/rauthy/data ${REMOTE_DIR}/logs"
 
-echo -e "${BLUE}${BOLD}==> [2/3] Copying universal zip, Dockerfile, docker-compose.yaml, run_prod.sh, and .env to ${GREENSTREET_HOST}...${NC}"
-scp "$ZIP_FILE" "${GREENSTREET_HOST}:${REMOTE_DIR}/build-context/target/universal/"
-scp Dockerfile "${GREENSTREET_HOST}:${REMOTE_DIR}/build-context/"
-
-COMPOSE_FILE="/home/inbrewj/workshop/frontdown/backup/inbrewj/workshop/oz.urawizard.com/monmon/app/docker-compose.yaml"
-if [[ -f "$COMPOSE_FILE" ]]; then
-    scp "$COMPOSE_FILE" "${GREENSTREET_HOST}:${REMOTE_DIR}/docker-compose.yaml"
+echo -e "${BLUE}${BOLD}==> [2/4] A/B Database Isolation: Ensuring monmon-rust copy exists on ${GREENSTREET_HOST}...${NC}"
+ssh "$GREENSTREET_HOST" "
+if docker ps -f name=postgres --format '{{.Names}}' | grep -q postgres; then
+    docker exec -i postgres bash -c '
+        if ! psql -U postgres -lqt | cut -d \| -f 1 | grep -qw monmon-rust; then
+            echo \"Creating isolated monmon-rust database cloned from monmon-play...\"
+            psql -U postgres -c \"CREATE DATABASE \\\"monmon-rust\\\";\"
+            pg_dump -U postgres -d \"monmon-play\" | psql -U postgres -d \"monmon-rust\" -q
+            echo \"✅ Database monmon-rust cloned successfully for A/B parallel execution.\"
+        else
+            echo \"✅ Database monmon-rust already exists. Preserving data.\"
+        fi
+    '
+else
+    echo \"⚠️ PostgreSQL container not found yet; skipping DB clone step.\"
 fi
+"
 
-# Adapt APP_DIR in run_prod.sh from /home/circle/app to /home/greenstreet/app on the remote host
+echo -e "${BLUE}${BOLD}==> [3/4] Copying Rust deployment artifacts, Rauthy config, and compose file...${NC}"
+# Copy monmon-rs
+scp rust-rewrite/monmon-rs/Dockerfile "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/monmon-rs/"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/rust-rewrite/monmon-rs/target/release"
+scp rust-rewrite/monmon-rs/target/release/monmon-rs "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/monmon-rs/target/release/"
+scp -r rust-rewrite/monmon-rs/public "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/monmon-rs/"
+
+# Copy legmon-rs
+scp rust-rewrite/legmon-rs/Dockerfile "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/legmon-rs/"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/rust-rewrite/legmon-rs/target/release"
+scp rust-rewrite/legmon-rs/target/release/legmon-rs "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/legmon-rs/target/release/"
+
+# Copy rauthy configuration
+scp rust-rewrite/rauthy/config.toml "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/rauthy/"
+scp -r rust-rewrite/rauthy/bootstrap "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/rauthy/"
+
+# Copy compose and run script
+scp docker-compose.rust.yaml "${GREENSTREET_HOST}:${REMOTE_DIR}/"
 sed "s|/home/circle/app|${REMOTE_DIR}|g" run_prod.sh | ssh "$GREENSTREET_HOST" "cat > ${REMOTE_DIR}/run_prod.sh && chmod +x ${REMOTE_DIR}/run_prod.sh"
 
 if [[ -f .env ]]; then
@@ -43,7 +69,7 @@ if [[ -f .env ]]; then
     ssh "$GREENSTREET_HOST" "chmod 600 ${REMOTE_DIR}/.env"
 fi
 
-echo -e "${BLUE}${BOLD}==> [3/3] Building monmon:latest natively on ${GREENSTREET_HOST} and executing run_prod.sh...${NC}"
-ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR}/build-context && docker build -t monmon:latest . && cd ${REMOTE_DIR} && ./run_prod.sh"
+echo -e "${BLUE}${BOLD}==> [4/4] Starting Rust stack on ${GREENSTREET_HOST} via run_prod.sh...${NC}"
+ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && ./run_prod.sh"
 
-echo -e "${GREEN}${BOLD}🎉 MonMon deployment to ${GREENSTREET_HOST} completed successfully!${NC}"
+echo -e "${GREEN}${BOLD}🎉 MonMon Rust & Rauthy A/B deployment to ${GREENSTREET_HOST} completed successfully!${NC}"

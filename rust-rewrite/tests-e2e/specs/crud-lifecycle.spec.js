@@ -5,12 +5,25 @@ test.describe('Rust-through-Java Ship of Theseus: Core Primitives CRUD E2E', () 
 
   async function loginIfRequired(page) {
     if (page.url().includes('auth') || page.url().includes('login')) {
-      await page.fill('#username', 'demo');
-      await page.fill('#password', 'demo');
-      await Promise.all([
-        page.waitForNavigation(),
-        page.click('#kc-login')
-      ]);
+      const isRauthy = await page.locator('input[type="email"]').isVisible({ timeout: 1500 }).catch(() => false);
+      if (isRauthy) {
+        await page.fill('input[type="email"]', 'demo@demo.com');
+        await page.click('button:has-text("Login")');
+        const pwd = page.locator('input[type="password"]');
+        await pwd.waitFor({ state: 'visible', timeout: 3000 });
+        await pwd.fill('demo');
+        await Promise.all([
+          page.waitForNavigation(),
+          page.click('button:has-text("Login")')
+        ]);
+      } else {
+        await page.fill('#username', 'demo');
+        await page.fill('#password', 'demo');
+        await Promise.all([
+          page.waitForNavigation(),
+          page.click('#kc-login')
+        ]);
+      }
     }
   }
 

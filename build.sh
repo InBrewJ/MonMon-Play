@@ -12,37 +12,17 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if ! command -v sbt >/dev/null 2>&1 && [ -d "$HOME/.sdkman/candidates/sbt/current/bin" ]; then
-    export PATH="$HOME/.sdkman/candidates/sbt/current/bin:$HOME/.sdkman/candidates/java/current/bin:$PATH"
+if ! command -v cargo >/dev/null 2>&1 && [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
-echo -e "${BLUE}${BOLD}==> [1/2] Generating build metadata in conf/build.properties...${NC}"
-BUILD_TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || echo "1")
+echo -e "${BLUE}${BOLD}==> [1/3] Building monmon-rs native release binary...${NC}"
+(cd rust-rewrite/monmon-rs && cargo build --release)
 
-cat <<EOF > conf/build.properties
-build.number=${BUILD_NUMBER}
-build.timestamp=${BUILD_TIMESTAMP}
-build.commit=${BUILD_COMMIT}
-EOF
-echo -e "${GREEN}Build info generated: #${BUILD_NUMBER} (${BUILD_COMMIT}) at ${BUILD_TIMESTAMP}${NC}"
+echo -e "${BLUE}${BOLD}==> [2/3] Building legmon-rs native release binary...${NC}"
+(cd rust-rewrite/legmon-rs && cargo build --release)
 
-echo -e "${BLUE}${BOLD}==> [2/2] Building universal JVM zip via sbt dist...${NC}"
+echo -e "${BLUE}${BOLD}==> [3/3] Building Docker container images via docker compose...${NC}"
+docker compose -f docker-compose.rust.yaml build
 
-# Remove any stale zip before building so we never deploy an old artifact on failure
-ZIP_FILE="target/universal/monmon-play-java--1.0-SNAPSHOT.zip"
-rm -f "$ZIP_FILE"
-
-if ! sbt dist; then
-    echo -e "${RED}${BOLD}❌ ERROR: 'sbt dist' failed! Build aborted.${NC}" >&2
-    exit 1
-fi
-
-if [[ ! -f "$ZIP_FILE" ]] || [[ ! -s "$ZIP_FILE" ]]; then
-    echo -e "${RED}${BOLD}❌ ERROR: Distribution artifact $ZIP_FILE was not created or is empty!${NC}" >&2
-    exit 1
-fi
-
-ZIP_SIZE=$(du -h "$ZIP_FILE" | cut -f1)
-echo -e "${GREEN}${BOLD}✅ Universal JVM package ready:${NC} ${ZIP_FILE} (${ZIP_SIZE})"
+echo -e "${GREEN}${BOLD}🎉 Build completed successfully! Rust deployment artifacts ready.${NC}"

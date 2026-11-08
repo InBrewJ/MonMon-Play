@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%">
+  <defs>
+    <!-- Monster skin gradient with 3/4 lighting from upper-left -->
+    <radialGradient id="monsterSkin" cx="40%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#9368f8" />
+      <stop offset="45%" stop-color="#7332df" />
+      <stop offset="80%" stop-color="#50189c" />
+      <stop offset="100%" stop-color="#2a0a54" />
+    </radialGradient>
+
+    <!-- Cap crown gradient tilted toward monster's left -->
+    <linearGradient id="capGrad" x1="20%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#4c2270" />
+      <stop offset="50%" stop-color="#2f1146" />
+      <stop offset="100%" stop-color="#180524" />
+    </linearGradient>
+
+    <!-- Cap brim gradient projecting forward/down towards monster's left -->
+    <linearGradient id="brimGrad" x1="10%" y1="10%" x2="95%" y2="90%">
+      <stop offset="0%" stop-color="#5a2484" />
+      <stop offset="55%" stop-color="#3b1158" />
+      <stop offset="100%" stop-color="#1b052a" />
+    </linearGradient>
+
+    <!-- Glowing chartreuse/lime eyes -->
+    <radialGradient id="eyeGlow" cx="45%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="35%" stop-color="#bef264" />
+      <stop offset="75%" stop-color="#84cc16" />
+      <stop offset="100%" stop-color="#365314" />
+    </radialGradient>
+
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- 1. Tree Stalks / Branches on BOTH sides of the head -->
+  <g id="tree-stalks" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Monster's right tree stalks (viewer's left) -->
+    <path d="M 26 40 Q 14 26 7 16" fill="none" stroke="#2a1040" stroke-width="3.6" />
+    <path d="M 18 30 Q 9 34 3 31" fill="none" stroke="#2a1040" stroke-width="2.2" />
+    <path d="M 19 20 Q 17 11 12 6" fill="none" stroke="#2a1040" stroke-width="2.2" />
+    <!-- Leaves on viewer's left -->
+    <path d="M 7 16 Q 10 9 15 12 Q 11 18 7 16 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.8" />
+    <path d="M 3 31 Q 1 25 6 26 Q 7 32 3 31 Z" fill="#4ade80" stroke="#14532d" stroke-width="0.8" />
+    <path d="M 12 6 Q 16 2 18 8 Q 14 11 12 6 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.8" />
+    <path d="M 21 25 Q 25 20 27 24 Q 23 28 21 25 Z" fill="#86efac" stroke="#14532d" stroke-width="0.8" />
+
+    <!-- Monster's left tree stalk (viewer's right: bright and prominent) -->
+    <path d="M 88 34 Q 99 22 108 14" fill="none" stroke="#2a1040" stroke-width="3.4" />
+    <path d="M 98 24 Q 108 26 114 22" fill="none" stroke="#2a1040" stroke-width="2.2" />
+    <path d="M 103 18 Q 107 10 112 7" fill="none" stroke="#2a1040" stroke-width="2.0" />
+    <!-- Bright vibrant leaves on monster's left side -->
+    <path d="M 108 14 Q 113 8 116 14 Q 111 18 108 14 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.8" />
+    <path d="M 114 22 Q 119 18 118 25 Q 113 27 114 22 Z" fill="#4ade80" stroke="#14532d" stroke-width="0.8" />
+    <path d="M 112 7 Q 117 4 118 9 Q 114 12 112 7 Z" fill="#86efac" stroke="#14532d" stroke-width="0.8" />
+    <path d="M 100 21 Q 105 16 108 19 Q 104 24 100 21 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.8" />
+  </g>
+
+  <!-- 2. Monster's Left Ear (Viewer's right: attached to head in Z-space) -->
+  <g id="far-ear">
+    <path d="M 100 59 C 106 57, 108 62, 107 67 C 106 72, 102 74, 99 71 Z" fill="#581c87" stroke="#220a3a" stroke-width="2.0" />
+    <path d="M 103 62 C 105 64, 105 68, 103 70" fill="none" stroke="#220a3a" stroke-width="1.1" />
+  </g>
+
+  <!-- 3. Head Silhouette: Extra Squarer, Blocky Golem Jawline Extended on Bottom Center & Right -->
+  <path d="M 24 38
+           C 18 52, 19 72, 22 84
+           C 23 92, 26 98, 34 100
+           Q 64 104 93 100
+           C 101 100, 103 93, 103 82
+           C 103 70, 101 50, 96 38
+           Z"
+        fill="url(#monsterSkin)"
+        stroke="#220a3a"
+        stroke-width="3.4" />
+
+  <!-- Bark Wood Texture & Golem Creases -->
+  <g stroke="#240542" stroke-linecap="round" fill="none">
+    <path d="M 26 55 Q 31 66 28 78" stroke-width="1.8" opacity="0.6" />
+    <path d="M 27 90 L 34 97 Q 64 101 91 97 L 99 89" stroke-width="1.8" opacity="0.7" />
+  </g>
+
+  <!-- 4. Monster's Right Ear (Viewer's left: smaller jug ear on near side of head) -->
+  <g id="near-ear">
+    <path d="M 22 59 C 16 57, 14 62, 15 67 C 16 72, 20 74, 23 71 Z" fill="url(#monsterSkin)" stroke="#220a3a" stroke-width="2.0" />
+    <path d="M 19 62 C 17 64, 17 68, 19 70" fill="none" stroke="#220a3a" stroke-width="1.1" />
+  </g>
+
+  <!-- 5. Central Visual Hook: Forehead Crack shifted to Monster's Left (x ~ 72-75) -->
+  <g id="forehead-centerline" stroke="#240542" stroke-linecap="round">
+    <path d="M 74 44 L 72 50 L 75 55 L 71 60" fill="none" stroke-width="2.4" />
+    <path d="M 72 50 L 67 53" fill="none" stroke-width="1.6" />
+  </g>
+
+  <!-- 6. Sinister Gaze Eyes (Looking down and towards monster's left) -->
+  <!-- Monster's Right Eye (Viewer's left: wide, intense, menacing) -->
+  <g id="left-eye">
+    <path d="M 36 62 C 40 52, 54 51, 63 60 C 61 68, 48 70, 36 62 Z" fill="#140424" stroke="#090114" stroke-width="2.2" />
+    <ellipse cx="53" cy="63.5" rx="6.2" ry="5.2" fill="url(#eyeGlow)" filter="url(#neonGlow)" />
+    <ellipse cx="54.5" cy="64" rx="1.8" ry="4.3" transform="rotate(12 54.5 64)" fill="#06010d" />
+    <circle cx="51.5" cy="61" r="1.4" fill="#ffffff" />
+  </g>
+
+  <!-- Monster's Left Eye (Viewer's right: shifted, narrowed squint, with temple separation before ear) -->
+  <g id="right-eye">
+    <path d="M 74 61 C 79 53, 87 55, 90 62 C 87 67, 78 68, 74 61 Z" fill="#140424" stroke="#090114" stroke-width="2.2" />
+    <ellipse cx="83" cy="63" rx="5.0" ry="3.4" fill="url(#eyeGlow)" filter="url(#neonGlow)" />
+    <ellipse cx="84.2" cy="63.5" rx="1.4" ry="3.0" transform="rotate(12 84.2 63.5)" fill="#06010d" />
+    <circle cx="81.5" cy="61.5" r="1.1" fill="#ffffff" />
+  </g>
+
+  <!-- 7. Tight Monster Smile: Reflected so the wide open jaws are on OUR right -->
+  <g id="mouth">
+    <!-- Dark cavity strictly matching the open jaws -->
+    <polygon points="92.26,80.00 90.21,95.05 83.15,96.07 75.91,96.32 68.48,95.80 60.87,94.52 53.07,92.47 45.09,89.65 36.92,86.07 33.00,77.72 32.49,75.00 36.23,84.43 44.84,84.25 53.26,83.92 61.48,83.44 69.51,82.80 77.34,82.02 84.94,81.08 92.26,80.00" fill="#12011f" />
+    
+    <!-- Upper sharp teeth pointing down (not touching lower teeth) -->
+    <polygon points="84.94,81.08 88.63,84.09 92.26,80.00" fill="#ffffff" />
+    <polygon points="77.34,82.02 81.17,85.27 84.94,81.08" fill="#ffffff" />
+    <polygon points="69.51,82.80 73.45,86.29 77.34,82.02" fill="#ffffff" />
+    <polygon points="61.48,83.44 65.52,87.16 69.51,82.80" fill="#ffffff" />
+    <polygon points="53.26,83.92 57.40,87.87 61.48,83.44" fill="#ffffff" />
+    <polygon points="44.84,84.25 49.08,88.42 53.26,83.92" fill="#ffffff" />
+    <polygon points="36.23,84.43 40.56,88.82 44.84,84.25" fill="#ffffff" />
+    <polygon points="32.49,75.00 33.87,85.05 36.23,84.43" fill="#ffffff" />
+    
+    <!-- Lower sharp teeth pointing up (not touching upper teeth) -->
+    <polygon points="83.15,96.07 86.73,89.54 90.21,95.05" fill="#ffffff" />
+    <polygon points="75.91,96.32 79.58,90.49 83.15,96.07" fill="#ffffff" />
+    <polygon points="68.48,95.80 72.25,90.87 75.91,96.32" fill="#ffffff" />
+    <polygon points="60.87,94.52 64.73,90.69 68.48,95.80" fill="#ffffff" />
+    <polygon points="53.07,92.47 57.03,89.94 60.87,94.52" fill="#ffffff" />
+    <polygon points="45.09,89.65 49.13,88.63 53.07,92.47" fill="#ffffff" />
+    <polygon points="36.92,86.07 41.06,86.76 45.09,89.65" fill="#ffffff" />
+    <polygon points="33.00,77.72 34.96,82.00 36.92,86.07" fill="#ffffff" />
+    
+    <!-- Smirk creases framing the mouth -->
+    <path d="M 32 74 C 29 76, 26 80, 28 84" fill="none" stroke="#220a3a" stroke-width="2.4" stroke-linecap="round" />
+    <path d="M 93 80 C 96 81, 97 83, 96 85" fill="none" stroke="#220a3a" stroke-width="1.8" stroke-linecap="round" />
+  </g>
+
+  <!-- 8. Ed Gein Hunter Cap: Peak flipped/upturned towards Monster's Left -->
+  <g id="ed-gein-cap">
+    <!-- Cap Crown tilted firmly towards monster's left -->
+    <path d="M 23 37 C 22 21, 46 8, 70 8 C 88 8, 97 20, 96 36 Z" fill="url(#capGrad)" stroke="#11031c" stroke-width="2.5" />
+
+    <!-- Tartan / Stitching lines wrapping with strong perspective around dome -->
+    <g stroke="#581c87" stroke-width="1" opacity="0.6" stroke-dasharray="3,2">
+      <path d="M 30 24 Q 68 16 92 23" fill="none" />
+      <path d="M 26 32 Q 70 25 94 31" fill="none" />
+      <path d="M 48 11 Q 46 23 44 35" fill="none" />
+      <path d="M 68 8 Q 67 22 66 35" fill="none" />
+      <path d="M 84 11 Q 85 23 86 35" fill="none" />
+    </g>
+
+    <!-- Top Cap Button: Shifted towards Monster's Left (cx: 74, cy: 9) -->
+    <ellipse cx="74" cy="9" rx="4" ry="2.5" transform="rotate(8 74 9)" fill="#581c87" stroke="#11031c" stroke-width="1.5" />
+
+    <!-- Left Ear flap (back side) -->
+    <path d="M 22 35 C 18 37, 17 43, 21 46 C 24 45, 26 41, 26 36 Z" fill="#200a32" stroke="#11031c" stroke-width="1.8" />
+    <!-- Right Ear flap (front side) -->
+    <path d="M 94 34 C 98 36, 100 42, 96 46 C 93 45, 91 40, 90 35 Z" fill="#200a32" stroke="#11031c" stroke-width="1.8" />
+
+    <!-- Cap Visor / Brim: Peak flipped/upturned like it's popped towards Monster's Left -->
+    <path d="M 18 41
+             C 40 33, 76 30, 95 34
+             C 102 35, 107 33, 109 37
+             C 110 41, 104 45, 96 46
+             C 76 48, 54 47, 18 41 Z"
+          fill="url(#brimGrad)"
+          stroke="#090112"
+          stroke-width="2.6" />
+
+    <!-- Visor stitching highlight following the popped upturn -->
+    <path d="M 23 41 Q 65 34 94 37 Q 102 38 106 36" fill="none" stroke="#8b5cf6" stroke-width="0.9" opacity="0.75" />
+  </g>
+</svg>

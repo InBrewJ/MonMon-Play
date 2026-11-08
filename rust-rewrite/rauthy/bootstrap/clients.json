@@ -7,14 +7,17 @@
     },
     "redirect_uris": [
       "http://localhost:9000/callback",
+      "http://localhost:9001/callback",
       "https://monmon.dryark.uk/callback"
     ],
     "post_logout_redirect_uris": [
       "http://localhost:9000/?defaulturlafterlogout",
+      "http://localhost:9001/?defaulturlafterlogout",
       "https://monmon.dryark.uk/?defaulturlafterlogout"
     ],
     "allowed_origins": [
       "http://localhost:9000",
+      "http://localhost:9001",
       "http://localhost:8085",
       "https://monmon.dryark.uk"
     ],
