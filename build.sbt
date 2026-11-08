@@ -39,25 +39,7 @@ lazy val root = (project in file("."))
     scalacOptions ++= List("-encoding", "utf8", "-deprecation", "-feature", "-unchecked"),
     javacOptions ++= List("-Xlint:unchecked", "-Xlint:deprecation", "-Werror"),
     PlayKeys.externalizeResourcesExcludes += baseDirectory.value / "conf" / "META-INF" / "persistence.xml",
-    pipelineStages := Seq(digest),
-    Universal / javaOptions ++= Seq(
-      "--add-opens=java.base/java.lang=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-      "--add-opens=java.base/java.io=ALL-UNNAMED",
-      "--add-opens=java.base/java.net=ALL-UNNAMED",
-      "--add-opens=java.base/java.nio=ALL-UNNAMED",
-      "--add-opens=java.base/java.util=ALL-UNNAMED",
-      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
-      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
-      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
-      "--add-opens=java.base/sun.security.ssl=ALL-UNNAMED",
-      "--add-opens=java.base/sun.security.util=ALL-UNNAMED",
-      "--add-opens=java.base/sun.net.www.protocol.file=ALL-UNNAMED",
-      "--add-opens=java.base/sun.net.www.protocol.jar=ALL-UNNAMED",
-      "--add-exports=java.base/sun.net.www.protocol.file=ALL-UNNAMED",
-      "--add-exports=java.base/sun.net.www.protocol.jar=ALL-UNNAMED"
-    )
+    pipelineStages := Seq(digest)
   )
 
 resolvers ++= Seq(
