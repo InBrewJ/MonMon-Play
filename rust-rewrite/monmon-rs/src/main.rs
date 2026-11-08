@@ -6,6 +6,7 @@ mod net_worth;
 mod nommon;
 mod savings_plan;
 mod spog;
+mod statement;
 
 use askama::Template;
 use axum::{
@@ -191,6 +192,15 @@ async fn main() {
         .route("/monzo-dig", get(dig::get_dig_page))
         .route("/api/dig/data", get(dig::get_dig_data_api))
         .route("/api/monzo-dig/data", get(dig::get_dig_data_api))
+        // LegMon & Statement Upload Bridge
+        .route("/api/legmon/status", get(statement::get_legmon_status_api))
+        .route("/api/legmon/logs", get(statement::get_legmon_logs_api))
+        .route("/api/statement/webhook", post(statement::handle_statement_webhook_api))
+        .route("/api/bank/statement/:id/preview", get(statement::get_statement_preview_api))
+        .route("/api/bank/statement/:id/confirm", post(statement::confirm_statement_api))
+        .route("/bank/statement/upload", post(statement::upload_statement_form))
+        .route("/bank/statement/:id/confirm", post(statement::confirm_statement_api))
+        .route("/bank/statement/:id/discard", post(statement::discard_statement_api))
         .route("/mySavingsPlan", get(savings_plan::get_savings_plan_page))
         .route(
             "/savingsPlan/addItem",
