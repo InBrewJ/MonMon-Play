@@ -255,8 +255,17 @@ pub async fn callback_handler(
         .header(header::SET_COOKIE, auth_val)
         .header(header::SET_COOKIE, "PLAY_SESSION=authenticated; Path=/");
 
+    let is_prod = clean_target.contains("dryark.uk") || host_header.contains("dryark.uk");
+
+    let mut builder = Response::builder()
+        .status(StatusCode::SEE_OTHER)
+        .header(header::LOCATION, &clean_target) // <-- borrow here
+        .header(header::SET_COOKIE, cookie_val)
+        .header(header::SET_COOKIE, session_val)
+        .header(header::SET_COOKIE, auth_val)
+        .header(header::SET_COOKIE, "PLAY_SESSION=authenticated; Path=/");
+
     if let Some(id_token) = raw_id_token {
-        let is_prod = clean_target.contains("dryark.uk") || host_header.contains("dryark.uk");
         let secure_flag = if is_prod { "; Secure" } else { "" };
         let id_token_cookie = format!(
             "id_token={}; Path=/; HttpOnly; SameSite=Lax{}",
