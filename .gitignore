@@ -23,6 +23,7 @@ keys/
 
 # Rauthy runtime data and state
 rust-rewrite/rauthy/data/
+rust-rewrite/monmon-rs/build.properties
 backups/
 __pycache__/
 *.pyc
