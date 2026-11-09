@@ -296,6 +296,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     .await?;
 
     let mut total_available_debit = 0.0f32;
+    let mut total_available_credit = 0.0f32;
     let mut credit_balance = 0.0f32;
     let mut credit_limit = 0.0f32;
     let mut liquid_savings_pot = 0.0f32;
@@ -419,7 +420,9 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
             }
             "CREDIT" => {
                 credit_limit += limit_val;
-                credit_balance += latest_balance;
+                let used = (limit_val - latest_balance).max(0.0);
+                credit_balance += used;
+                total_available_credit += adjusted_available;
             }
             "SAVINGS" | "SHORT_TERM_SAVINGS" => {
                 liquid_savings_pot += latest_balance;
@@ -491,7 +494,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         });
     }
 
-    let total_available_credit = (credit_limit - credit_balance).max(0.0);
+    let total_available_credit = total_available_credit.max(0.0);
     let credit_usage = if credit_limit > 0.0 {
         ((credit_balance / credit_limit) * 100.0).clamp(0.0, 100.0)
     } else {

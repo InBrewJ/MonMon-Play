@@ -39,7 +39,6 @@ services:
       - .env
     environment:
       - PORT=9000
-      - DB_URL=postgres://postgres:sKKUq3fLRtgp8vQeR8AJX9YHR6rPmbgd8eR@127.0.0.1:5433/monmon-play
       - LEGMON_URL=http://127.0.0.1:9005
     volumes:
       - ./public:/app/public:ro
