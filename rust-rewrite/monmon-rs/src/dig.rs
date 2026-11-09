@@ -85,7 +85,13 @@ pub struct DigTemplate {
     pub data_limit: usize,
     pub total_geotagged: usize,
     pub total_spent: f64,
+    pub total_spent_str: String,
     pub top_category: String,
+    pub histogram: Vec<DigHistogramDto>,
+    pub this_month_start_date: String,
+    pub this_month_date_range_label: String,
+    pub last_2_cycles_date_range_label: String,
+    pub last_6_cycles_date_range_label: String,
     pub json_payload: String,
 }
 
@@ -261,6 +267,33 @@ pub async fn build_dig_data(
         });
     }
 
+    // Fallback: If category query was empty, build fallback histogram from geotagged transactions (parity with Java)
+    if histogram.is_empty() && !transactions.is_empty() {
+        let mut map: std::collections::HashMap<String, (i64, f64)> = std::collections::HashMap::new();
+        let mut grand_total = 0.0;
+        for t in &transactions {
+            if t.amount <= 0.0 { continue; }
+            let cat = if t.category.trim().is_empty() { "general" } else { t.category.trim() };
+            let entry = map.entry(cat.to_string()).or_insert((0, 0.0));
+            entry.0 += 1;
+            entry.1 += t.amount as f64;
+            grand_total += t.amount as f64;
+        }
+        for (raw_cat, (cnt, total)) in map {
+            let pct = if grand_total > 0.0 { ((total / grand_total * 100.0) * 10.0).round() / 10.0 } else { 0.0 };
+            let avg = if cnt > 0 { ((total / cnt as f64) * 100.0).round() / 10.0 } else { 0.0 };
+            histogram.push(DigHistogramDto {
+                category: format_category_name(&raw_cat),
+                raw_category: raw_cat,
+                count: cnt,
+                total: (total * 100.0).round() / 100.0,
+                average: avg,
+                percentage: pct,
+            });
+        }
+        histogram.sort_by(|a, b| b.total.partial_cmp(&a.total).unwrap_or(std::cmp::Ordering::Equal));
+    }
+
     // 3. Resolve nominal payday
     let payday_row = sqlx::query(
         "SELECT incomingmonthday FROM incoming WHERE (userid = $1 OR user_id = $1) AND archived = false AND payday = true ORDER BY id ASC LIMIT 1"
@@ -314,11 +347,18 @@ pub async fn get_dig_page(
 
     let total_spent = dig_data.histogram.iter().map(|h| h.total).sum::<f64>();
     let total_spent = (total_spent * 100.0).round() / 100.0;
+    let total_spent_str = format!("{:.2}", total_spent);
     let top_category = dig_data
         .histogram
         .first()
         .map(|h| h.category.clone())
         .unwrap_or_else(|| "None".to_string());
+
+    let this_month_start_date = dig_data.cycles.this_month.start_date.clone();
+    let this_month_date_range_label = dig_data.cycles.this_month.label.clone();
+    let last_2_cycles_date_range_label = dig_data.cycles.last_2_cycles.label.clone();
+    let last_6_cycles_date_range_label = dig_data.cycles.last_6_cycles.label.clone();
+    let histogram = dig_data.histogram.clone();
 
     let json_payload = serde_json::to_string(&dig_data)
         .unwrap_or_else(|_| "{}".to_string());
@@ -329,7 +369,13 @@ pub async fn get_dig_page(
         data_limit,
         total_geotagged: dig_data.total_transactions,
         total_spent,
+        total_spent_str,
         top_category,
+        histogram,
+        this_month_start_date,
+        this_month_date_range_label,
+        last_2_cycles_date_range_label,
+        last_6_cycles_date_range_label,
         json_payload,
     };
 

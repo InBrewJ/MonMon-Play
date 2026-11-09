@@ -28,7 +28,7 @@
             <div class="desktop-view" style="overflow-x: auto;">
                 <table class="w3-table w3-striped">
                     <thead>
-                        <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
+                        <tr style="text-align: left; color: var(--text-muted); font-size: 0.85rem;">
                             <th>Name</th>
                             <th>Nickname</th>
                             <th>Type</th>
@@ -39,21 +39,29 @@
                     </thead>
                     <tbody>
                         {% if accounts.is_empty() %}
-                            <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No accounts found. Click <b>+ Add Account</b> above to get started.</td></tr>
+                            <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No accounts found. Click <b>+ Add Account</b> above to get started.</td></tr>
                         {% else %}
                             {% for a in accounts %}
                                 <tr id="account-{{ a.id }}">
                                     <td><b>{{ a.name }}</b></td>
-                                    <td>{{ a.nickname.as_deref().unwrap_or("-") }}</td>
-                                    <td><span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.8rem;">{{ a.account_type }}</span></td>
-                                    <td>£{{ a.account_limit.unwrap_or(0.0) }}</td>
+                                    <td><span style="color: var(--text-muted);">{{ a.nickname.as_deref().unwrap_or("-") }}</span></td>
+                                    <td>
+                                        {% if a.account_type == "LOAN" %}
+                                            <span class="badge-pill badge-danger" style="font-size: 0.8rem;">LOAN</span>
+                                        {% else if a.account_type == "PENSION" %}
+                                            <span class="badge-pill badge-primary" style="font-size: 0.8rem;">PENSION</span>
+                                        {% else %}
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.8rem;">{{ a.account_type }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="font-weight: 600;">£{{ a.account_limit.unwrap_or(0.0) }}</td>
                                     <td>{{ a.interest_rate.unwrap_or(0.0) }}%</td>
                                     <td style="text-align: right;">
                                         <a href="/editAccount/{{ a.id }}#account-modal" class="btn-action btn-edit" title="Edit" style="margin-right: 8px; color: var(--primary); text-decoration: none;">
                                             <i class="fas fa-pen"></i>
                                         </a>
-                                        <form method="POST" action="/binAccount/{{ a.id }}" style="display: inline;">
-                                            <button type="submit" class="btn-action btn-delete" style="background:none; border:none; color:#ef4444; cursor:pointer;">
+                                        <form method="POST" action="/binAccount/{{ a.id }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this account?');">
+                                            <button type="submit" class="btn-action btn-delete" style="background:none; border:none; color:var(--danger); cursor:pointer;">
                                                 <i class="fas fa-trash-alt"></i>
                                             </button>
                                         </form>
@@ -68,30 +76,36 @@
             <!-- Mobile Stacked Action Cards View -->
             <div class="mobile-cards-view" style="display: none;">
                 {% for a in accounts %}
-                    <div class="item-card" id="card-account-{{ a.id }}" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                    <div class="item-card" id="card-account-{{ a.id }}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px;">
                         <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <div class="item-card-title" style="font-weight: 700; color: #1e293b;">{{ a.name }}</div>
-                            <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem;">{{ a.account_type }}</span>
+                            <div class="item-card-title" style="font-weight: 700; color: var(--text-main);">{{ a.name }}</div>
+                            {% if a.account_type == "LOAN" %}
+                                <span class="badge-pill badge-danger" style="font-size: 0.75rem;">LOAN</span>
+                            {% else if a.account_type == "PENSION" %}
+                                <span class="badge-pill badge-primary" style="font-size: 0.75rem;">PENSION</span>
+                            {% else %}
+                                <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.75rem;">{{ a.account_type }}</span>
+                            {% endif %}
                         </div>
-                        <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 0.85rem; margin-bottom: 10px;">
+                        <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 0.85rem; margin-bottom: 10px; background: var(--card-bg-subtle); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
                             <div class="stat-cell">
-                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Limit</div>
-                                <div class="stat-cell-val" style="font-weight: 600;">£{{ a.account_limit.unwrap_or(0.0) }}</div>
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">{% if a.account_type == "LOAN" %}Drawdown{% else %}Limit{% endif %}</div>
+                                <div class="stat-cell-val" style="font-weight: 600; color: var(--text-main);">£{{ a.account_limit.unwrap_or(0.0) }}</div>
                             </div>
                             <div class="stat-cell">
-                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Interest</div>
-                                <div class="stat-cell-val" style="font-weight: 600;">{{ a.interest_rate.unwrap_or(0.0) }}%</div>
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">Interest</div>
+                                <div class="stat-cell-val" style="font-weight: 600; color: var(--text-main);">{{ a.interest_rate.unwrap_or(0.0) }}%</div>
                             </div>
                             <div class="stat-cell">
-                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Nickname</div>
-                                <div class="stat-cell-val" style="font-weight: 600;">{{ a.nickname.as_deref().unwrap_or("-") }}</div>
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">Nickname</div>
+                                <div class="stat-cell-val" style="font-weight: 600; color: var(--text-main);">{{ a.nickname.as_deref().unwrap_or("-") }}</div>
                             </div>
                         </div>
-                        <div class="item-card-actions" style="display: flex; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-                            <a href="/bank?uploadAccount={{ a.id }}#statement-upload" class="btn-action" style="padding: 4px 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.8rem; text-decoration: none;"><i class="fas fa-file-pdf"></i> Statement</a>
+                        <div class="item-card-actions" style="display: flex; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 8px;">
+                            <a href="/bank?uploadAccount={{ a.id }}#statement-upload" class="btn-action" style="padding: 4px 10px; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; font-size: 0.8rem; text-decoration: none;"><i class="fas fa-file-pdf"></i> Statement</a>
                             <a href="/editAccount/{{ a.id }}#account-modal" class="btn-action btn-edit" style="padding: 4px 10px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.8rem; text-decoration: none;"><i class="fas fa-pen"></i> Edit</a>
-                            <form method="POST" action="/binAccount/{{ a.id }}" style="display: inline;">
-                                <button type="submit" class="btn-action btn-delete" style="padding: 4px 10px; background: #f1f5f9; color: #ef4444; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.8rem; cursor: pointer;"><i class="fas fa-trash-alt"></i> Delete</button>
+                            <form method="POST" action="/binAccount/{{ a.id }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this account?');">
+                                <button type="submit" class="btn-action btn-delete" style="padding: 4px 10px; background: var(--danger-light); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); border-radius: 4px; font-size: 0.8rem; cursor: pointer;"><i class="fas fa-trash-alt"></i> Delete</button>
                             </form>
                         </div>
                     </div>

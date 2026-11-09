@@ -77,6 +77,10 @@
         var drawerLinks = navDrawer.querySelectorAll('a');
         for (var i = 0; i < drawerLinks.length; i++) {
             drawerLinks[i].addEventListener('click', function() {
+                var href = this.getAttribute('href');
+                if (href && href !== '#' && !href.startsWith('javascript:')) {
+                    if (window.showMonmonLoader) window.showMonmonLoader();
+                }
                 closeDrawer();
             });
         }

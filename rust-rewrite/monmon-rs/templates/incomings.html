@@ -23,7 +23,7 @@
             <div class="desktop-view" style="overflow-x: auto;">
                 <table class="w3-table w3-striped">
                     <thead>
-                        <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
+                        <tr style="text-align: left; color: var(--text-muted); font-size: 0.85rem;">
                             <th>Name</th>
                             <th>Target Account</th>
                             <th>Net Value</th>
@@ -34,32 +34,32 @@
                     </thead>
                     <tbody>
                         {% if incomings.is_empty() %}
-                            <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 2rem;">No incomings configured. Click <b>+ Add Incoming</b> above.</td></tr>
+                            <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No incomings configured. Click <b>+ Add Incoming</b> above.</td></tr>
                         {% else %}
                             {% for inc in incomings %}
                                 <tr id="incoming-{{ inc.id }}">
                                     <td><b>{{ inc.name }}</b></td>
                                     <td>
                                         {% if let Some(acc) = inc.account_name %}
-                                            <span class="badge-pill" style="background: var(--card-bg-subtle, #f1f5f9); color: var(--primary, #6366f1); font-weight: 600; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--primary); font-weight: 600; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; border: 1px solid var(--border-color);">
                                                 <i class="fas fa-university" style="margin-right: 4px;"></i>{{ acc }}
                                             </span>
                                         {% else %}
                                             <span style="color: var(--text-muted); font-size: 0.85rem;">—</span>
                                         {% endif %}
                                     </td>
-                                    <td style="color: #10b981; font-weight: 600;">£{{ inc.net_value }}</td>
+                                    <td style="color: var(--success); font-weight: 600;">£{{ inc.net_value }}</td>
                                     <td>
                                         {% if inc.payday.unwrap_or(false) %}
-                                            <span class="badge-pill badge-payday-yes" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.8rem; font-weight: 600;"><i class="fas fa-check"></i> Primary Payday</span>
+                                            <span class="badge-pill badge-payday-yes" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); padding:2px 8px; border-radius:4px; font-size:0.8rem; font-weight: 600;"><i class="fas fa-check"></i> Primary Payday</span>
                                         {% else %}
-                                            <span class="badge-pill badge-payday-no" style="background:var(--card-bg-subtle, #f1f5f9); color:var(--text-muted, #475569); padding:2px 8px; border-radius:4px; font-size:0.8rem;">Secondary</span>
+                                            <span class="badge-pill badge-payday-no" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding:2px 8px; border-radius:4px; font-size:0.8rem;">Secondary</span>
                                         {% endif %}
                                     </td>
                                     <td>
                                         {% if inc.is_adjusted %}
                                             <span title="Adjusted from {{ inc.incoming_month_day }} for this month{% if inc.payday.unwrap_or(false) %} (working day anchoring){% endif %}">
-                                                <b>Day {{ inc.effective_day }}</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                                <b>Day {{ inc.effective_day }}</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: var(--danger);"></i></sup>
                                             </span>
                                         {% else %}
                                             Day {{ inc.incoming_month_day }}
@@ -69,7 +69,7 @@
                                         <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" title="Edit" style="color: var(--primary); text-decoration: none; margin-right: 12px;">
                                             <i class="fas fa-pen"></i>
                                         </a>
-                                        <a href="/binIncoming/{{ inc.id }}" class="btn-action btn-delete" title="Delete" style="color: var(--danger, #ef4444); text-decoration: none;">
+                                        <a href="/binIncoming/{{ inc.id }}" class="btn-action btn-delete" title="Delete" style="color: var(--danger); text-decoration: none;" onclick="return confirm('Are you sure you want to delete this incoming?');">
                                             <i class="fas fa-trash-alt"></i>
                                         </a>
                                     </td>
@@ -83,47 +83,47 @@
             <!-- Mobile View -->
             <div class="mobile-cards-view" style="display: none;">
                 {% for inc in incomings %}
-                    <div class="item-card" id="card-incoming-{{ inc.id }}" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                    <div class="item-card" id="card-incoming-{{ inc.id }}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px;">
                         <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <div class="item-card-title" style="font-weight: 700; color: #1e293b;">{{ inc.name }}</div>
+                            <div class="item-card-title" style="font-weight: 700; color: var(--text-main);">{{ inc.name }}</div>
                             <div style="text-align: right;">
-                                <span class="badge-pill" style="{% if inc.is_adjusted %}background: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);{% else %}background:#dcfce7; color:#166534;{% endif %} padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                                <span class="badge-pill" style="{% if inc.is_adjusted %}background: var(--danger-light); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3);{% else %}background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3);{% endif %} padding:2px 8px; border-radius:4px; font-size:0.75rem;">
                                     {% if inc.is_adjusted %}
-                                        Day {{ inc.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                        Day {{ inc.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: var(--danger);"></i></sup>
                                     {% else %}
                                         Day {{ inc.incoming_month_day }}
                                     {% endif %}
                                 </span>
                                 {% if inc.is_adjusted %}
                                     <div style="margin-top: 3px;">
-                                        <span class="badge-pill" style="background: #fee2e2; color: #b91c1c; font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;" title="Anchored from Day {{ inc.incoming_month_day }} to last working day">
+                                        <span class="badge-pill" style="background: var(--danger-light); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;" title="Anchored from Day {{ inc.incoming_month_day }} to last working day">
                                             <i class="fas fa-calendar-alt"></i> Anchored from {{ inc.incoming_month_day }}
                                         </span>
                                     </div>
                                 {% endif %}
                             </div>
                         </div>
-                        <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem;">
+                        <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; background: var(--card-bg-subtle); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); margin-bottom: 8px;">
                             <div class="stat-cell">
-                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Net</div>
-                                <div class="stat-cell-val" style="font-weight: 600; color: #10b981;">£{{ inc.net_value }}</div>
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">Net</div>
+                                <div class="stat-cell-val" style="font-weight: 600; color: var(--success);">£{{ inc.net_value }}</div>
                             </div>
                             <div class="stat-cell">
-                                <div class="stat-cell-label" style="color: #64748b; font-size: 0.75rem;">Payday</div>
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">Payday</div>
                                 <div class="stat-cell-val">
                                     {% if inc.payday.unwrap_or(false) %}
-                                        <span class="badge-pill badge-payday-yes" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;"><i class="fas fa-check"></i> Primary Payday</span>
+                                        <span class="badge-pill badge-payday-yes" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;"><i class="fas fa-check"></i> Primary Payday</span>
                                     {% else %}
-                                        <span class="badge-pill badge-payday-no" style="background:var(--card-bg-subtle, #f1f5f9); color:var(--text-muted, #475569); padding:2px 8px; border-radius:4px; font-size:0.75rem;">Secondary</span>
+                                        <span class="badge-pill badge-payday-no" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding:2px 8px; border-radius:4px; font-size:0.75rem;">Secondary</span>
                                     {% endif %}
                                 </div>
                             </div>
                         </div>
-                        <div class="item-card-actions" style="border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 8px; display: flex; gap: 8px;">
+                        <div class="item-card-actions" style="border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 8px; display: flex; gap: 8px;">
                             <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
                                 <i class="fas fa-pen"></i> Edit
                             </a>
-                            <a href="/binIncoming/{{ inc.id }}" class="btn-action btn-delete" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--danger, #ef4444); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                            <a href="/binIncoming/{{ inc.id }}" class="btn-action btn-delete" style="padding: 4px 12px; background: var(--danger-light); border: 1px solid rgba(248, 113, 113, 0.3); color: var(--danger); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" onclick="return confirm('Are you sure you want to delete this incoming?');">
                                 <i class="fas fa-trash-alt"></i> Delete
                             </a>
                         </div>
