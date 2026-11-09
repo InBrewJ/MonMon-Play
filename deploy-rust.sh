@@ -37,9 +37,9 @@ rsync -avz --delete \
     rust-rewrite/legmon-rs/ \
     "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/legmon-rs/"
 
-# Copy rauthy configuration and bootstrap
-scp rust-rewrite/rauthy/config.toml "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/rauthy/"
-rsync -avz rust-rewrite/rauthy/bootstrap/ "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/rauthy/bootstrap/"
+# Copy rauthy configuration template and bootstrap templates
+scp rust-rewrite/rauthy/config.toml.template "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/rauthy/"
+rsync -avz --exclude 'clients.json' --exclude 'users.json' rust-rewrite/rauthy/bootstrap/ "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/rauthy/bootstrap/"
 
 # Copy public static directory
 rsync -avz public/ "${GREENSTREET_HOST}:${REMOTE_DIR}/public/"

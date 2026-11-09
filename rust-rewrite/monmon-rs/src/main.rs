@@ -174,8 +174,7 @@ pub async fn callback_handler(
             } else {
                 "http://localhost:9000/callback".to_string()
             };
-            let client_secret = std::env::var("OIDC_CLIENT_SECRET")
-                .unwrap_or_else(|_| "aaa6a201a8a41810e2e33118bed1bddaba722902e89e959cb6cc0a2949445d78".to_string());
+            let client_secret = std::env::var("OIDC_CLIENT_SECRET").unwrap_or_default();
 
             let rauthy_hosts = [
                 std::env::var("RAUTHY_INTERNAL_URL").unwrap_or_default(),

@@ -24,7 +24,7 @@ def run_psql(db: str, query: str, host: str = "localhost", port: int = 5432, use
     """Execute a SQL query via psql and return stdout."""
     env = os.environ.copy()
     if "PGPASSWORD" not in env:
-        env["PGPASSWORD"] = "docker"
+        env["PGPASSWORD"] = os.environ.get("DB_PASSWORD", "")
 
     cmd = [
         "psql",
@@ -187,7 +187,7 @@ def generate_rauthy_bootstrap(users: list, output_dir: Path, env_passwords: dict
 
     # 4. Generate clients.json
     clients_path = output_dir / "clients.json"
-    raw_secret = env_passwords.get("OIDC_CLIENT_SECRET") or env_passwords.get("KEYCLOAK_MONMON_PLAY_CLIENT_SECRET") or "01c283f569ff42e4a080971629656fbb01c283f569ff42e4a080971629656fbb"
+    raw_secret = env_passwords.get("OIDC_CLIENT_SECRET") or env_passwords.get("KEYCLOAK_MONMON_PLAY_CLIENT_SECRET") or ""
     if len(raw_secret) < 64:
         import hashlib
         client_secret = hashlib.sha256(raw_secret.encode()).hexdigest()

@@ -21,9 +21,14 @@ keys/
 *.key
 **/target/
 
-# Rauthy runtime data and state
+# Rauthy runtime data, state, and rendered secret configs
 rust-rewrite/rauthy/data/
+rust-rewrite/rauthy/config.toml
+rust-rewrite/rauthy/bootstrap/clients.json
+rust-rewrite/rauthy/bootstrap/users.json
 rust-rewrite/monmon-rs/build.properties
+db/.pgpass
+.pgpass
 backups/
 __pycache__/
 *.pyc

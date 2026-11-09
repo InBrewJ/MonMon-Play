@@ -44,28 +44,54 @@ pub struct SeedUser {
     pub id: &'static str,
     pub username: &'static str,
     pub email: &'static str,
-    pub plain_password: &'static str,
     pub status: &'static str,
 }
 
 pub const SEED_USERS: &[SeedUser] = &[
-    SeedUser { id: "2ccc203f-a98c-488f-a5ba-8d20a384a9fc", username: "inbrewj", email: "jason@urawizard.com", plain_password: "G5YTPjgB3bbWrvrkbPPcpcmXPkupYC2QRVA", status: "APPROVED" },
-    SeedUser { id: "ed085f28-1b72-4485-8564-73671a0b406d", username: "admin", email: "admin@monmon.local", plain_password: "G5YTPjgB3bbWrvrkbPPcpcmXPkupYC2QRVA", status: "APPROVED" },
-    SeedUser { id: "434268bd-0c8a-41f6-b191-3768a7fe0048", username: "demo", email: "demo@urawizard.com", plain_password: "demo", status: "APPROVED" },
-    SeedUser { id: "2d81294f-7866-4337-8fe3-1a1170d371af", username: "demo2", email: "demo2@urawizard.com", plain_password: "demo2123", status: "APPROVED" },
-    SeedUser { id: "9f9c7b68-39e4-4088-b6e9-e33dd48e46e0", username: "caity", email: "c@d.com", plain_password: "CngELcybSQkS76MKUeEdQXZ8sr3XjexEVVM", status: "APPROVED" },
-    SeedUser { id: "a3077849-5e8c-41bb-893b-8e3f945a06fb", username: "demo3", email: "demo3@urawizard.com", plain_password: "demo3123", status: "APPROVED" },
-    SeedUser { id: "6d1c304f-8ebe-4620-bd28-4d56a5b3d59a", username: "rorywebber1000", email: "rorywebber1000@gmail.com", plain_password: "rorywebber1000@gmail.com123", status: "APPROVED" },
-    SeedUser { id: "7558b874-4cdf-43ab-8b97-a8a9cacf04f1", username: "norman", email: "norman-brewer@urawizard.com", plain_password: "norman123", status: "APPROVED" },
-    SeedUser { id: "04635238-dcae-4bcb-921e-3b9cecc7291e", username: "margotb", email: "margot.berrezaie5@gmail.com", plain_password: "margotb123", status: "APPROVED" },
-    SeedUser { id: "6ad83865-6bf5-4b06-a668-5ded561ebeed", username: "demo4", email: "demo4@4.com", plain_password: "demo4123", status: "APPROVED" },
-    SeedUser { id: "231f3a3b-34d9-4d14-94bd-9abfe62ffa96", username: "demo5", email: "demo5@5.com", plain_password: "demo5123", status: "APPROVED" },
-    SeedUser { id: "9f930b9f-a761-42e0-b9be-27dbddcbddac", username: "demo6", email: "demo6@6.com", plain_password: "demo6123", status: "APPROVED" },
-    SeedUser { id: "b8bfd89e-a4ae-4463-a6cc-7c2e1cd0e0aa", username: "demo10", email: "demo10@lalalalala.com", plain_password: "demo10123", status: "APPROVED" },
-    SeedUser { id: "b449472c-8bb3-4cea-87c1-2c2fc58899c6", username: "demoinflow", email: "demoinflow@urawizard.com", plain_password: "demoinflow123", status: "APPROVED" },
-    SeedUser { id: "1fe7548a-fdd3-4d25-b1f2-9e43dbaf8337", username: "newguy1000", email: "newguy@dryark.uk", plain_password: "newguy1000123", status: "APPROVED" },
-    SeedUser { id: "ebeae119-8dac-4175-a4fc-5906c5031780", username: "waitinglist", email: "waitinglist@dryark.uk", plain_password: "waitinglist123", status: "REJECTED" },
+    SeedUser { id: "2ccc203f-a98c-488f-a5ba-8d20a384a9fc", username: "inbrewj", email: "jason@urawizard.com", status: "APPROVED" },
+    SeedUser { id: "ed085f28-1b72-4485-8564-73671a0b406d", username: "admin", email: "admin@monmon.local", status: "APPROVED" },
+    SeedUser { id: "434268bd-0c8a-41f6-b191-3768a7fe0048", username: "demo", email: "demo@urawizard.com", status: "APPROVED" },
+    SeedUser { id: "2d81294f-7866-4337-8fe3-1a1170d371af", username: "demo2", email: "demo2@urawizard.com", status: "APPROVED" },
+    SeedUser { id: "9f9c7b68-39e4-4088-b6e9-e33dd48e46e0", username: "caity", email: "c@d.com", status: "APPROVED" },
+    SeedUser { id: "a3077849-5e8c-41bb-893b-8e3f945a06fb", username: "demo3", email: "demo3@urawizard.com", status: "APPROVED" },
+    SeedUser { id: "6d1c304f-8ebe-4620-bd28-4d56a5b3d59a", username: "rorywebber1000", email: "rorywebber1000@gmail.com", status: "APPROVED" },
+    SeedUser { id: "7558b874-4cdf-43ab-8b97-a8a9cacf04f1", username: "norman", email: "norman-brewer@urawizard.com", status: "APPROVED" },
+    SeedUser { id: "04635238-dcae-4bcb-921e-3b9cecc7291e", username: "margotb", email: "margot.berrezaie5@gmail.com", status: "APPROVED" },
+    SeedUser { id: "6ad83865-6bf5-4b06-a668-5ded561ebeed", username: "demo4", email: "demo4@4.com", status: "APPROVED" },
+    SeedUser { id: "231f3a3b-34d9-4d14-94bd-9abfe62ffa96", username: "demo5", email: "demo5@5.com", status: "APPROVED" },
+    SeedUser { id: "9f930b9f-a761-42e0-b9be-27dbddcbddac", username: "demo6", email: "demo6@6.com", status: "APPROVED" },
+    SeedUser { id: "b8bfd89e-a4ae-4463-a6cc-7c2e1cd0e0aa", username: "demo10", email: "demo10@lalalalala.com", status: "APPROVED" },
+    SeedUser { id: "b449472c-8bb3-4cea-87c1-2c2fc58899c6", username: "demoinflow", email: "demoinflow@urawizard.com", status: "APPROVED" },
+    SeedUser { id: "1fe7548a-fdd3-4d25-b1f2-9e43dbaf8337", username: "newguy1000", email: "newguy@dryark.uk", status: "APPROVED" },
+    SeedUser { id: "ebeae119-8dac-4175-a4fc-5906c5031780", username: "waitinglist", email: "waitinglist@dryark.uk", status: "REJECTED" },
 ];
+
+fn resolve_seed_password(username: &str) -> (String, bool) {
+    match username {
+        "inbrewj" => match std::env::var("INBREWJ_PASSWORD")
+            .or_else(|_| std::env::var("KEYCLOAK_ADMIN_PASSWORD"))
+        {
+            Ok(p) if !p.is_empty() => (p, true),
+            _ => (String::new(), false),
+        },
+        "admin" => match std::env::var("KEYCLOAK_ADMIN_PASSWORD") {
+            Ok(p) if !p.is_empty() => (p, true),
+            _ => (String::new(), false),
+        },
+        "caity" => match std::env::var("CAITY_PASSWORD") {
+            Ok(p) if !p.is_empty() => (p, true),
+            _ => (String::new(), false),
+        },
+        "demo" => (
+            std::env::var("DEMO_PASSWORD").unwrap_or_else(|_| "demo".to_string()),
+            false,
+        ),
+        other => (
+            std::env::var("DEMO_USER_PASSWORD").unwrap_or_else(|_| format!("{}123", other)),
+            false,
+        ),
+    }
+}
 
 pub async fn init_auth_db(pool: &PgPool) -> Result<(), sqlx::Error> {
     // 1. Create app_user table
@@ -103,15 +129,16 @@ pub async fn init_auth_db(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await;
 
-    // 3. Seed users into app_user if missing
+    // 3. Seed users into app_user if missing (or sync rotated password from .env)
     for u in SEED_USERS {
         let existing = sqlx::query("SELECT id FROM app_user WHERE username = $1 LIMIT 1")
             .bind(u.username)
             .fetch_optional(pool)
             .await?;
 
-        if existing.is_none() {
-            let hash = hash_password(u.plain_password).unwrap_or_else(|_| u.plain_password.to_string());
+        let (plain_password, from_env) = resolve_seed_password(u.username);
+        if existing.is_none() && !plain_password.is_empty() {
+            let hash = hash_password(&plain_password).unwrap_or(plain_password);
             let _ = sqlx::query(
                 r#"
                 INSERT INTO app_user (id, username, email, password_hash, roles, created_at)
@@ -126,6 +153,14 @@ pub async fn init_auth_db(pool: &PgPool) -> Result<(), sqlx::Error> {
             .execute(pool)
             .await;
             info!("Seeded app_user for {}", u.username);
+        } else if existing.is_some() && from_env && !plain_password.is_empty() {
+            if let Ok(hash) = hash_password(&plain_password) {
+                let _ = sqlx::query("UPDATE app_user SET password_hash = $1 WHERE username = $2")
+                    .bind(&hash)
+                    .bind(u.username)
+                    .execute(pool)
+                    .await;
+            }
         }
 
         // Ensure user_access has the matching approved entry

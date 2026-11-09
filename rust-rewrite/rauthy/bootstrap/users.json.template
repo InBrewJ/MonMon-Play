@@ -6,7 +6,7 @@
     "given_name": "admin",
     "family_name": "User",
     "password": {
-      "Plain": "G5YTPjgB3bbWrvrkbPPcpcmXPkupYC2QRVA"
+      "Plain": "__KEYCLOAK_ADMIN_PASSWORD__"
     },
     "roles": [
       "admin",
@@ -26,7 +26,7 @@
     "given_name": "Jason",
     "family_name": "Brewer",
     "password": {
-      "Plain": "G5YTPjgB3bbWrvrkbPPcpcmXPkupYC2QRVA"
+      "Plain": "__INBREWJ_PASSWORD__"
     },
     "roles": [
       "admin",
@@ -82,7 +82,7 @@
     "given_name": "Caity",
     "family_name": "D",
     "password": {
-      "Plain": "CngELcybSQkS76MKUeEdQXZ8sr3XjexEVVM"
+      "Plain": "__CAITY_PASSWORD__"
     },
     "roles": [
       "user"

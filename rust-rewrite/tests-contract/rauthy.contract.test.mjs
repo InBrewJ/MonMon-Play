@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 const RAUTHY_URL = process.env.RAUTHY_URL || 'http://localhost:8085';
 const CLIENT_ID = 'monmon-web';
-const CLIENT_SECRET = '01c283f569ff42e4a080971629656fbb01c283f569ff42e4a080971629656fbb';
+const CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || '';
 const REDIRECT_URI = 'http://localhost:9000/callback';
 
 describe('Rauthy OIDC Contract Tests', () => {
