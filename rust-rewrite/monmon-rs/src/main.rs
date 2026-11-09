@@ -243,9 +243,13 @@ pub async fn callback_handler(
     // Resolve canonical user UUID in Postgres
     let canonical_uid = crate::spog::resolve_user_id(&state.pool, &user_ident).await;
 
-    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", canonical_uid);
-    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", resolved_username);
-    let auth_val = "authenticated=true; Path=/; SameSite=Lax";
+    let is_prod = clean_target.contains("dryark.uk") || host_header.contains("dryark.uk");
+    let secure_flag = if is_prod { "; Secure" } else { "" };
+
+    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax{}", canonical_uid, secure_flag);
+    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax{}", resolved_username, secure_flag);
+    let auth_val = format!("authenticated=true; Path=/; SameSite=Lax{}", secure_flag);
+    let play_session_val = format!("PLAY_SESSION=authenticated; Path=/{}", secure_flag);
 
     let mut builder = Response::builder()
         .status(StatusCode::SEE_OTHER)
@@ -253,20 +257,9 @@ pub async fn callback_handler(
         .header(header::SET_COOKIE, cookie_val)
         .header(header::SET_COOKIE, session_val)
         .header(header::SET_COOKIE, auth_val)
-        .header(header::SET_COOKIE, "PLAY_SESSION=authenticated; Path=/");
-
-    let is_prod = clean_target.contains("dryark.uk") || host_header.contains("dryark.uk");
-
-    let mut builder = Response::builder()
-        .status(StatusCode::SEE_OTHER)
-        .header(header::LOCATION, &clean_target) // <-- borrow here
-        .header(header::SET_COOKIE, cookie_val)
-        .header(header::SET_COOKIE, session_val)
-        .header(header::SET_COOKIE, auth_val)
-        .header(header::SET_COOKIE, "PLAY_SESSION=authenticated; Path=/");
+        .header(header::SET_COOKIE, play_session_val);
 
     if let Some(id_token) = raw_id_token {
-        let secure_flag = if is_prod { "; Secure" } else { "" };
         let id_token_cookie = format!(
             "id_token={}; Path=/; HttpOnly; SameSite=Lax{}",
             id_token, secure_flag
