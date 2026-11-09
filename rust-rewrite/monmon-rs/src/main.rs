@@ -477,6 +477,8 @@ async fn main() {
         .route("/savingsPlan/updatePercentage", post(savings_plan::update_percentage_form_handler))
         .route("/savingsPlan/balanceEvenly/:id", post(savings_plan::balance_evenly_form_handler))
         .route("/savingsPlan/trimDeficit/:id", post(savings_plan::trim_deficit_form_handler))
+        .route("/savingsPlan/addAllOverdrafts", post(savings_plan::add_all_overdrafts_form_handler))
+        .route("/savingsPlan/addAllCreditCards", post(savings_plan::add_all_credit_cards_form_handler))
         .route("/editSavingsPlanItem/:id", get(savings_plan::get_edit_savings_plan_item_page))
         .route("/savingsPlan/editItem/:id", get(savings_plan::get_edit_savings_plan_item_page))
         .route("/savingsPlan/updateItem/:id", post(savings_plan::update_item_form_handler))

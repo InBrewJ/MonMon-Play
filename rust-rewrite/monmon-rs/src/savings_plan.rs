@@ -296,6 +296,76 @@ pub fn trim_items_deficit(items: &mut [SavingsPlanItemDto], target_pot: f32) {
     }
 }
 
+/// A debt-payoff slice proposed by one of the "Add all ..." bulk actions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DebtCandidate {
+    pub account_id: i64,
+    pub name: String,
+    pub debt: f32,
+}
+
+fn is_debit_type(t: &str) -> bool {
+    matches!(t.to_uppercase().as_str(), "DEBIT" | "DEBIT_SHARED_BILLS")
+}
+
+/// Mirrors Java `SavingsPlanController.addAllOverdrafts`: overdrawn debit accounts not yet in the
+/// plan; if none are overdrawn, falls back to debit accounts with a configured overdraft limit.
+pub fn select_overdraft_candidates(
+    accounts: &[AccountSimple],
+    already_linked: &[i64],
+) -> Vec<DebtCandidate> {
+    let free = |a: &&AccountSimple| is_debit_type(&a.account_type) && !already_linked.contains(&a.id);
+    let mut picked: Vec<&AccountSimple> =
+        accounts.iter().filter(free).filter(|a| a.balance < 0.0).collect();
+    if picked.is_empty() {
+        picked = accounts.iter().filter(free).filter(|a| a.limit > 0.0).collect();
+    }
+    picked
+        .into_iter()
+        .map(|a| DebtCandidate {
+            account_id: a.id,
+            name: format!("{} Overdraft", a.name),
+            debt: if a.balance < 0.0 { a.balance.abs() } else { a.limit },
+        })
+        .collect()
+}
+
+/// Mirrors Java `SavingsPlanController.addAllCreditCards`: credit cards with an outstanding
+/// balance that are not already in the plan.
+pub fn select_credit_card_candidates(
+    accounts: &[AccountSimple],
+    already_linked: &[i64],
+) -> Vec<DebtCandidate> {
+    accounts
+        .iter()
+        .filter(|a| a.account_type.eq_ignore_ascii_case("CREDIT") && !already_linked.contains(&a.id))
+        .filter_map(|a| {
+            let mut debt = (a.limit - a.balance).max(0.0);
+            if debt <= 0.0 && a.limit == 0.0 && a.balance > 0.0 {
+                debt = a.balance;
+            }
+            if debt > 0.0 {
+                Some(DebtCandidate { account_id: a.id, name: a.name.clone(), debt })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Mirrors the Java "Allocate max" button: the whole positive unallocated amount.
+pub fn allocate_max_amount(unallocated: f32) -> f32 {
+    unallocated.max(0.0)
+}
+
+/// Mirrors the Java "Take off deficit" button: reduce the slice by the over-allocation, never below zero.
+pub fn deduct_deficit_from_slice(current_slice: f32, unallocated: f32) -> f32 {
+    if unallocated >= 0.0 {
+        return current_slice;
+    }
+    ((current_slice + unallocated).max(0.0) * 100.0).round() / 100.0
+}
+
 // -------------------------------------------------------------
 // Database Helpers & Loaders
 // -------------------------------------------------------------
@@ -1112,6 +1182,90 @@ pub async fn trim_deficit_form_handler(
     Ok(Redirect::to("/savingsPlan#sliced-items-card"))
 }
 
+async fn load_account_simples(pool: &PgPool, user_id: &str) -> Vec<AccountSimple> {
+    sqlx::query(
+        r#"
+        SELECT id, name, type,
+            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance,
+            COALESCE(account_limit, 0.0)::real AS limit
+        FROM account
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+        ORDER BY name ASC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| AccountSimple {
+        id: r.get("id"),
+        name: r.get("name"),
+        account_type: r.get("type"),
+        balance: r.get("balance"),
+        limit: r.get("limit"),
+    })
+    .collect()
+}
+
+async fn add_debt_candidates(
+    pool: &PgPool,
+    plan: &SavingsPlanDto,
+    candidates: Vec<DebtCandidate>,
+) -> Result<(), (StatusCode, String)> {
+    let mut priority = plan.items.len() as i32;
+    for c in candidates {
+        priority += 1;
+        sqlx::query(
+            r#"
+            INSERT INTO savings_plan_item (
+                id, savings_plan_id, name, type, account_id, targetamount, target_amount,
+                monthlyamount, monthly_amount, priority, locked, archived
+            )
+            VALUES (nextval('hibernate_sequence'), $1, $2, 'DEBT_PAYOFF', $3, $4, $4, 0.0, 0.0, $5, false, false)
+            "#,
+        )
+        .bind(plan.id)
+        .bind(&c.name)
+        .bind(c.account_id)
+        .bind(c.debt)
+        .bind(priority)
+        .execute(pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+    Ok(())
+}
+
+pub async fn add_all_overdrafts_form_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let accounts = load_account_simples(&state.pool, &plan.user_id).await;
+    let linked: Vec<i64> = plan.items.iter().filter_map(|i| i.account_id).collect();
+    add_debt_candidates(&state.pool, &plan, select_overdraft_candidates(&accounts, &linked)).await?;
+    Ok(Redirect::to("/savingsPlan#sliced-items-card"))
+}
+
+pub async fn add_all_credit_cards_form_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let accounts = load_account_simples(&state.pool, &plan.user_id).await;
+    let linked: Vec<i64> = plan.items.iter().filter_map(|i| i.account_id).collect();
+    add_debt_candidates(&state.pool, &plan, select_credit_card_candidates(&accounts, &linked)).await?;
+    Ok(Redirect::to("/savingsPlan#sliced-items-card"))
+}
+
 pub async fn bin_item_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -1371,5 +1525,62 @@ mod tests {
         trim_items_deficit(&mut items, 350.0);
         assert_eq!(items[0].monthly_amount, 300.0); // P1 intact
         assert_eq!(items[1].monthly_amount, 50.0);  // P2 trimmed from 200 down to 50
+    }
+
+    fn acct(id: i64, name: &str, t: &str, balance: f32, limit: f32) -> AccountSimple {
+        AccountSimple { id, name: name.to_string(), account_type: t.to_string(), balance, limit }
+    }
+
+    #[test]
+    fn test_overdraft_candidates_picks_overdrawn_debit_accounts() {
+        let accounts = vec![
+            acct(1, "Current", "DEBIT", -120.5, 500.0),
+            acct(2, "Bills", "DEBIT_SHARED_BILLS", 40.0, 200.0),
+            acct(3, "Card", "CREDIT", -10.0, 1000.0),
+        ];
+        let c = select_overdraft_candidates(&accounts, &[]);
+        assert_eq!(c, vec![DebtCandidate { account_id: 1, name: "Current Overdraft".into(), debt: 120.5 }]);
+    }
+
+    #[test]
+    fn test_overdraft_candidates_falls_back_to_overdraft_limit() {
+        let accounts = vec![acct(1, "Current", "DEBIT", 10.0, 500.0), acct(2, "NoOD", "DEBIT", 10.0, 0.0)];
+        let c = select_overdraft_candidates(&accounts, &[]);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].debt, 500.0);
+    }
+
+    #[test]
+    fn test_overdraft_candidates_skips_already_linked() {
+        let accounts = vec![acct(1, "Current", "DEBIT", -50.0, 500.0)];
+        assert!(select_overdraft_candidates(&accounts, &[1]).is_empty());
+    }
+
+    #[test]
+    fn test_credit_card_candidates_debt_and_skips() {
+        let accounts = vec![
+            acct(1, "Barclaycard", "CREDIT", 1400.0, 2000.0),
+            acct(2, "Paid off", "CREDIT", 1000.0, 1000.0),
+            acct(3, "NoLimit", "CREDIT", 75.0, 0.0),
+            acct(4, "Linked", "CREDIT", 0.0, 500.0),
+            acct(5, "Debit", "DEBIT", -5.0, 0.0),
+        ];
+        let c = select_credit_card_candidates(&accounts, &[4]);
+        assert_eq!(c.len(), 2);
+        assert_eq!((c[0].account_id, c[0].debt), (1, 600.0));
+        assert_eq!((c[1].account_id, c[1].debt), (3, 75.0));
+    }
+
+    #[test]
+    fn test_allocate_max_amount_never_negative() {
+        assert_eq!(allocate_max_amount(42.5), 42.5);
+        assert_eq!(allocate_max_amount(-10.0), 0.0);
+    }
+
+    #[test]
+    fn test_deduct_deficit_from_slice() {
+        assert_eq!(deduct_deficit_from_slice(100.0, -30.0), 70.0);
+        assert_eq!(deduct_deficit_from_slice(20.0, -30.0), 0.0);
+        assert_eq!(deduct_deficit_from_slice(100.0, 15.0), 100.0);
     }
 }
