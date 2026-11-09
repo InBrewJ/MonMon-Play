@@ -839,17 +839,60 @@ pub async fn delete_item_api(
 // HTML Form / Page Handlers (Form submissions matching Java routes)
 // -------------------------------------------------------------
 
+/// HTML forms submit empty inputs as `""`; treat those (and whitespace) as "not provided"
+/// instead of failing to parse a number.
+fn empty_as_none<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let raw: Option<String> = Option::deserialize(d)?;
+    match raw {
+        None => Ok(None),
+        Some(v) if v.trim().is_empty() => Ok(None),
+        Some(v) => v.trim().parse::<T>().map(Some).map_err(serde::de::Error::custom),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FormAddItem {
     pub name: String,
     pub r#type: Option<String>,
-    #[serde(rename = "targetAmount")]
+    #[serde(rename = "targetAmount", default, deserialize_with = "empty_as_none")]
     pub target_amount: Option<f32>,
-    #[serde(rename = "monthlyAmount")]
+    #[serde(rename = "monthlyAmount", default, deserialize_with = "empty_as_none")]
     pub monthly_amount: Option<f32>,
+    #[serde(default, deserialize_with = "empty_as_none")]
     pub priority: Option<i32>,
-    #[serde(rename = "accountId")]
+    #[serde(rename = "accountId", default, deserialize_with = "empty_as_none")]
     pub account_id: Option<i64>,
+}
+
+impl FormAddItem {
+    /// The "-- Select Account --" option posts `0`; that is "no account", not a foreign key.
+    pub fn linked_account_id(&self) -> Option<i64> {
+        self.account_id.filter(|id| *id > 0)
+    }
+
+    /// `SAVINGS` is accepted as an alias; anything unknown falls back to a savings target.
+    pub fn normalized_type(&self) -> &'static str {
+        match self.r#type.as_deref() {
+            Some("DEBT_PAYOFF") => "DEBT_PAYOFF",
+            _ => "SAVINGS_TARGET",
+        }
+    }
+}
+
+/// Moves `moving_id` to 1-based `new_priority` within `ordered_ids` (current queue order) and
+/// returns the full renumbered queue as `(id, priority)`, shifting the others cleanly.
+pub fn reorder_priorities(ordered_ids: &[i64], moving_id: i64, new_priority: i32) -> Vec<(i64, i32)> {
+    let mut ids: Vec<i64> = ordered_ids.iter().copied().filter(|i| *i != moving_id).collect();
+    if ordered_ids.contains(&moving_id) {
+        let pos = (new_priority.max(1) as usize - 1).min(ids.len());
+        ids.insert(pos, moving_id);
+    }
+    ids.into_iter().enumerate().map(|(i, id)| (id, (i + 1) as i32)).collect()
 }
 
 #[derive(Debug, Deserialize)]
@@ -972,33 +1015,54 @@ pub async fn update_item_form_handler(
     Form(form): Form<FormAddItem>,
 ) -> Result<Redirect, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
-    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let target_amount = form.target_amount.unwrap_or(0.0);
-    let monthly_amount = form.monthly_amount.unwrap_or(0.0);
-    let priority = form.priority.unwrap_or(1);
-    let account_id = form.account_id;
+    let existing = plan.items.iter().find(|i| i.id == item_id).ok_or_else(|| {
+        (StatusCode::FORBIDDEN, format!("Access denied: Item #{} not found in user plan", item_id))
+    })?;
 
+    let target_amount = form.target_amount.unwrap_or(0.0).max(0.0);
+    let monthly_amount = form.monthly_amount.unwrap_or(existing.monthly_amount).max(0.0);
+    let account_id = form.linked_account_id();
+    let item_type = form.normalized_type();
+
+    // Both the legacy (targetamount/monthlyamount) and snake_case columns are kept in sync;
+    // the plan loader reads the legacy ones, so writing only snake_case silently loses edits.
     let res = sqlx::query(
         r#"
         UPDATE savings_plan_item
-        SET name = $1, target_amount = $2, monthly_amount = $3, priority = $4, account_id = $5
-        WHERE id = $6
-          AND savings_plan_id IN (SELECT id FROM savings_plan WHERE userid = $7 OR user_id = $7)
+        SET name = $1, type = $2, account_id = $3,
+            targetamount = $4, target_amount = $4,
+            monthlyamount = $5, monthly_amount = $5
+        WHERE id = $6 AND savings_plan_id = $7
         "#,
     )
     .bind(&form.name)
+    .bind(item_type)
+    .bind(account_id)
     .bind(target_amount)
     .bind(monthly_amount)
-    .bind(priority)
-    .bind(account_id)
     .bind(item_id)
-    .bind(&user_id)
+    .bind(plan.id)
     .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     crate::authz::Authz::verify_affected(res.rows_affected(), "Savings Plan Item", item_id)?;
+
+    if let Some(new_priority) = form.priority {
+        let order: Vec<i64> = plan.items.iter().map(|i| i.id).collect();
+        for (id, pri) in reorder_priorities(&order, item_id, new_priority) {
+            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2 AND savings_plan_id = $3")
+                .bind(pri)
+                .bind(id)
+                .bind(plan.id)
+                .execute(&state.pool)
+                .await;
+        }
+    }
 
     Ok(Redirect::to("/savingsPlan#sliced-items-card"))
 }
@@ -1636,5 +1700,41 @@ mod tests {
         form.insert("amount_7".to_string(), "abc".to_string());
         form.insert("csrfToken".to_string(), "t".to_string());
         assert_eq!(parse_allocation_amounts(&form), vec![(3, 0.0), (12, 150.5)]);
+    }
+
+    #[test]
+    fn test_form_empty_numeric_fields_are_none() {
+        let f: FormAddItem = serde_json::from_str(
+            r#"{"name":"Holiday","type":"SAVINGS_TARGET","targetAmount":"","monthlyAmount":" 25.50 ","priority":"","accountId":"0"}"#,
+        )
+        .unwrap();
+        assert_eq!(f.target_amount, None);
+        assert_eq!(f.monthly_amount, Some(25.5));
+        assert_eq!(f.priority, None);
+        assert_eq!(f.linked_account_id(), None);
+    }
+
+    #[test]
+    fn test_form_missing_fields_and_real_account() {
+        let f: FormAddItem = serde_json::from_str(r#"{"name":"x","accountId":"42","targetAmount":"1000"}"#).unwrap();
+        assert_eq!(f.linked_account_id(), Some(42));
+        assert_eq!(f.target_amount, Some(1000.0));
+        assert_eq!(f.monthly_amount, None);
+        assert_eq!(f.normalized_type(), "SAVINGS_TARGET");
+    }
+
+    #[test]
+    fn test_form_rejects_garbage_number() {
+        assert!(serde_json::from_str::<FormAddItem>(r#"{"name":"x","targetAmount":"abc"}"#).is_err());
+    }
+
+    #[test]
+    fn test_reorder_priorities_moves_and_shifts() {
+        let order = [10, 20, 30, 40];
+        assert_eq!(reorder_priorities(&order, 40, 1), vec![(40, 1), (10, 2), (20, 3), (30, 4)]);
+        assert_eq!(reorder_priorities(&order, 10, 3), vec![(20, 1), (30, 2), (10, 3), (40, 4)]);
+        assert_eq!(reorder_priorities(&order, 20, 99), vec![(10, 1), (30, 2), (40, 3), (20, 4)]);
+        assert_eq!(reorder_priorities(&order, 20, 0), vec![(20, 1), (10, 2), (30, 3), (40, 4)]);
+        assert_eq!(reorder_priorities(&order, 99, 2), vec![(10, 1), (20, 2), (30, 3), (40, 4)]);
     }
 }
