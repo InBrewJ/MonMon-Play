@@ -73,6 +73,8 @@ pub struct OutgoingViewDto {
     pub name: String,
     pub cost: f32,
     pub outgoing_day: i32,
+    pub effective_day: u32,
+    pub is_adjusted: bool,
     pub outgoing_month: Option<i32>,
     pub year_interval: Option<i32>,
     pub starting_year: Option<i32>,
@@ -89,10 +91,26 @@ pub struct OutgoingViewDto {
     pub next_due_label: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IncomingViewDto {
+    pub id: i64,
+    pub name: String,
+    pub net_value: f32,
+    pub gross_value: Option<f32>,
+    pub incoming_month_day: i32,
+    pub effective_day: u32,
+    pub is_adjusted: bool,
+    pub payday: Option<bool>,
+    pub incoming_type: Option<String>,
+    pub user_id: String,
+    pub account_id: Option<i64>,
+    pub account_name: Option<String>,
+}
+
 #[derive(Template)]
 #[template(path = "incomings.html")]
 pub struct IncomingsTemplate {
-    pub incomings: Vec<Incoming>,
+    pub incomings: Vec<IncomingViewDto>,
     pub accounts: Vec<Account>,
     pub editing: bool,
     pub editing_incoming: Option<Incoming>,
@@ -391,11 +409,15 @@ pub async fn get_outgoings_page(
         } else {
             "Monthly".to_string()
         };
+        let effective_day = crate::anchoring::get_effective_outgoing_day(o.outgoing_day, today);
+        let is_adjusted = crate::anchoring::is_outgoing_adjusted(o.outgoing_day, today);
         OutgoingViewDto {
             id: o.id,
             name: o.name.clone(),
             cost: o.cost,
             outgoing_day: o.outgoing_day,
+            effective_day,
+            is_adjusted,
             outgoing_month: o.outgoing_month,
             year_interval: o.year_interval,
             starting_year: o.starting_year,
@@ -469,11 +491,15 @@ pub async fn get_edit_outgoing_page(
         } else {
             "Monthly".to_string()
         };
+        let effective_day = crate::anchoring::get_effective_outgoing_day(o.outgoing_day, today);
+        let is_adjusted = crate::anchoring::is_outgoing_adjusted(o.outgoing_day, today);
         OutgoingViewDto {
             id: o.id,
             name: o.name.clone(),
             cost: o.cost,
             outgoing_day: o.outgoing_day,
+            effective_day,
+            is_adjusted,
             outgoing_month: o.outgoing_month,
             year_interval: o.year_interval,
             starting_year: o.starting_year,
@@ -635,8 +661,29 @@ pub async fn get_incomings_page(
         .await
         .unwrap_or_default();
 
+    let today = chrono::Local::now().date_naive();
+    let incoming_dtos: Vec<IncomingViewDto> = incomings.iter().map(|i| {
+        let is_payday = i.payday.unwrap_or(false);
+        let effective_day = crate::anchoring::get_effective_incoming_day(i.incoming_month_day, is_payday, today);
+        let is_adjusted = crate::anchoring::is_incoming_adjusted(i.incoming_month_day, is_payday, today);
+        IncomingViewDto {
+            id: i.id,
+            name: i.name.clone(),
+            net_value: i.net_value,
+            gross_value: i.gross_value,
+            incoming_month_day: i.incoming_month_day,
+            effective_day,
+            is_adjusted,
+            payday: i.payday,
+            incoming_type: i.incoming_type.clone(),
+            user_id: i.user_id.clone(),
+            account_id: i.account_id,
+            account_name: i.account_name.clone(),
+        }
+    }).collect();
+
     let tmpl = IncomingsTemplate {
-        incomings,
+        incomings: incoming_dtos,
         accounts,
         editing: false,
         editing_incoming: None,
@@ -665,8 +712,29 @@ pub async fn get_edit_incoming_page(
     let editing_incoming = incomings.iter().find(|i| i.id == id).cloned();
     let editing = editing_incoming.is_some();
 
+    let today = chrono::Local::now().date_naive();
+    let incoming_dtos: Vec<IncomingViewDto> = incomings.iter().map(|i| {
+        let is_payday = i.payday.unwrap_or(false);
+        let effective_day = crate::anchoring::get_effective_incoming_day(i.incoming_month_day, is_payday, today);
+        let is_adjusted = crate::anchoring::is_incoming_adjusted(i.incoming_month_day, is_payday, today);
+        IncomingViewDto {
+            id: i.id,
+            name: i.name.clone(),
+            net_value: i.net_value,
+            gross_value: i.gross_value,
+            incoming_month_day: i.incoming_month_day,
+            effective_day,
+            is_adjusted,
+            payday: i.payday,
+            incoming_type: i.incoming_type.clone(),
+            user_id: i.user_id.clone(),
+            account_id: i.account_id,
+            account_name: i.account_name.clone(),
+        }
+    }).collect();
+
     let tmpl = IncomingsTemplate {
-        incomings,
+        incomings: incoming_dtos,
         accounts,
         editing,
         editing_incoming,

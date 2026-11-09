@@ -56,7 +56,15 @@
                                             <span class="badge-pill badge-payday-no" style="background:var(--card-bg-subtle, #f1f5f9); color:var(--text-muted, #475569); padding:2px 8px; border-radius:4px; font-size:0.8rem;">Secondary</span>
                                         {% endif %}
                                     </td>
-                                    <td>Day {{ inc.incoming_month_day }}</td>
+                                    <td>
+                                        {% if inc.is_adjusted %}
+                                            <span title="Adjusted from {{ inc.incoming_month_day }} for this month{% if inc.payday.unwrap_or(false) %} (working day anchoring){% endif %}">
+                                                <b>Day {{ inc.effective_day }}</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                            </span>
+                                        {% else %}
+                                            Day {{ inc.incoming_month_day }}
+                                        {% endif %}
+                                    </td>
                                     <td style="text-align: right; white-space: nowrap;">
                                         <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" title="Edit" style="color: var(--primary); text-decoration: none; margin-right: 12px;">
                                             <i class="fas fa-pen"></i>
@@ -78,7 +86,13 @@
                     <div class="item-card" id="card-incoming-{{ inc.id }}" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
                         <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <div class="item-card-title" style="font-weight: 700; color: #1e293b;">{{ inc.name }}</div>
-                            <span class="badge-pill" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.75rem;">Day {{ inc.incoming_month_day }}</span>
+                            <span class="badge-pill" style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                                {% if inc.is_adjusted %}
+                                    Day {{ inc.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                {% else %}
+                                    Day {{ inc.incoming_month_day }}
+                                {% endif %}
+                            </span>
                         </div>
                         <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem;">
                             <div class="stat-cell">

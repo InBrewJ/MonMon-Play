@@ -12,61 +12,23 @@ use std::sync::Arc;
 use crate::AppState;
 
 pub fn is_weekend(d: NaiveDate) -> bool {
-    let weekday = d.weekday();
-    weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun
+    crate::anchoring::is_weekend(d)
 }
 
-pub fn get_last_working_day_on_or_before(mut d: NaiveDate) -> NaiveDate {
-    while is_weekend(d) {
-        d = d.pred_opt().unwrap_or(d);
-    }
-    d
+pub fn get_last_working_day_on_or_before(d: NaiveDate) -> NaiveDate {
+    crate::anchoring::get_last_working_day_on_or_before(d)
 }
 
 pub fn get_actual_payday_date(nominal_payday: i32, year: i32, month: u32) -> NaiveDate {
-    let max_days = match month {
-        4 | 6 | 9 | 11 => 30,
-        2 => {
-            if (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0) {
-                29
-            } else {
-                28
-            }
-        }
-        _ => 31,
-    };
-    let day = (nominal_payday as u32).clamp(1, max_days);
-    let pay_date = NaiveDate::from_ymd_opt(year, month, day)
-        .unwrap_or_else(|| NaiveDate::from_ymd_opt(year, month, 28).unwrap());
-    get_last_working_day_on_or_before(pay_date)
+    crate::anchoring::get_actual_payday_date(nominal_payday, year, month)
 }
 
 pub fn find_last_payday_date(as_of: NaiveDate, nominal_payday: i32) -> NaiveDate {
-    let current_month_payday = get_actual_payday_date(nominal_payday, as_of.year(), as_of.month());
-    if as_of >= current_month_payday {
-        current_month_payday
-    } else {
-        let (prev_year, prev_month) = if as_of.month() == 1 {
-            (as_of.year() - 1, 12)
-        } else {
-            (as_of.year(), as_of.month() - 1)
-        };
-        get_actual_payday_date(nominal_payday, prev_year, prev_month)
-    }
+    crate::anchoring::find_last_payday_date(as_of, nominal_payday)
 }
 
 pub fn find_next_payday_date(as_of: NaiveDate, nominal_payday: i32) -> NaiveDate {
-    let current_month_payday = get_actual_payday_date(nominal_payday, as_of.year(), as_of.month());
-    if as_of < current_month_payday {
-        current_month_payday
-    } else {
-        let (next_year, next_month) = if as_of.month() == 12 {
-            (as_of.year() + 1, 1)
-        } else {
-            (as_of.year(), as_of.month() + 1)
-        };
-        get_actual_payday_date(nominal_payday, next_year, next_month)
-    }
+    crate::anchoring::find_next_payday_date(as_of, nominal_payday)
 }
 
 /// Computes start balance of an account for a given cycle window matching Java HistoricSpentCalculator

@@ -481,6 +481,7 @@ pub async fn get_monthly_pot_page(
         outgoing_total: 0.0,
         surplus: 0.0,
         next_pay_day: 1,
+        next_pay_date: "".to_string(),
         days_between_paydays: 30,
         max_per_day: 0.0,
         max_per_week: 0.0,

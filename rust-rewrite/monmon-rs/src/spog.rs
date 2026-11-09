@@ -37,6 +37,7 @@ pub struct SpogMetrics {
     pub outgoing_total: f32,
     pub surplus: f32,
     pub next_pay_day: i32,
+    pub next_pay_date: String,
     pub days_between_paydays: i32,
     pub max_per_day: f32,
     pub max_per_week: f32,
@@ -199,56 +200,48 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     let days_until_next_payday = (cycle_end - today).num_days().max(1) as i32;
     let days_left = days_until_next_payday;
 
-    // 3. Outgoings with Rent & Bill Breakdown (only counting outgoings due this month)
-    let outgoings_row = sqlx::query(
+    // 3. Outgoings with Rent & Bill Breakdown (anchoring logic for actual outgoings due)
+    let outgoings_rows = sqlx::query(
         r#"
         SELECT 
-            COALESCE(SUM(CASE 
-                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
-                 AND (paused IS NULL OR paused = false) 
-                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
-                THEN cost ELSE 0 END), 0.0)::real AS total_cost,
-            COALESCE(SUM(CASE 
-                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
-                 AND (paused IS NULL OR paused = false) 
-                 AND bill = true 
-                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
-                THEN cost ELSE 0 END), 0.0)::real AS bills_cost,
-            COALESCE(SUM(CASE 
-                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
-                 AND (paused IS NULL OR paused = false) 
-                 AND rent = true 
-                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
-                THEN cost ELSE 0 END), 0.0)::real AS rent_cost,
-            COALESCE(SUM(CASE 
-                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
-                 AND (paused IS NULL OR paused = false) 
-                 AND outgoingday <= $2 
-                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
-                THEN cost ELSE 0 END), 0.0)::real AS completed_cost,
-            COALESCE(SUM(CASE 
-                WHEN (hiddenfromtotal IS NULL OR hiddenfromtotal = false) 
-                 AND (paused IS NULL OR paused = false) 
-                 AND outgoingday > $2 
-                 AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $3 AND (COALESCE(yearinterval, 1) <= 1 OR ($4 >= COALESCE(startingyear, $4) AND ($4 - COALESCE(startingyear, $4)) % COALESCE(yearinterval, 1) = 0))))
-                THEN cost ELSE 0 END), 0.0)::real AS pending_cost
+            cost, outgoingday, bill, rent
         FROM outgoing
         WHERE (userid = $1 OR user_id = $1)
           AND (archived IS NULL OR archived = false)
+          AND (hiddenfromtotal IS NULL OR hiddenfromtotal = false)
+          AND (paused IS NULL OR paused = false)
+          AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $2 AND (COALESCE(yearinterval, 1) <= 1 OR ($3 >= COALESCE(startingyear, $3) AND ($3 - COALESCE(startingyear, $3)) % COALESCE(yearinterval, 1) = 0))))
         "#,
     )
     .bind(&user_id)
-    .bind(today_day)
     .bind(current_month)
     .bind(current_year)
-    .fetch_one(pool)
+    .fetch_all(pool)
     .await?;
 
-    let outgoing_total: f32 = outgoings_row.get::<f32, _>("total_cost");
-    let bills_cost: f32 = outgoings_row.get::<f32, _>("bills_cost");
-    let rent_cost: f32 = outgoings_row.get::<f32, _>("rent_cost");
-    let completed_outgoings: f32 = outgoings_row.get::<f32, _>("completed_cost");
-    let pending_outgoings: f32 = outgoings_row.get::<f32, _>("pending_cost");
+    let mut outgoing_total = 0.0f32;
+    let mut bills_cost = 0.0f32;
+    let mut rent_cost = 0.0f32;
+    let mut completed_outgoings = 0.0f32;
+    let mut pending_outgoings = 0.0f32;
+
+    for row in outgoings_rows {
+        let cost: f32 = row.get("cost");
+        let out_day: i32 = row.get("outgoingday");
+        let bill: bool = row.get::<Option<bool>, _>("bill").unwrap_or(false);
+        let rent: bool = row.get::<Option<bool>, _>("rent").unwrap_or(false);
+
+        outgoing_total += cost;
+        if bill { bills_cost += cost; }
+        if rent { rent_cost += cost; }
+
+        let effective_day = crate::anchoring::get_effective_outgoing_day(out_day, today) as i32;
+        if effective_day <= today_day {
+            completed_outgoings += cost;
+        } else {
+            pending_outgoings += cost;
+        }
+    }
 
     // Surplus & Allowances (accounting for active Savings Plan percentage)
     let savings_plan_row = sqlx::query(
@@ -353,6 +346,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         let mut already_paid = 0.0f32;
         let mut pending = 0.0f32;
         let mut latest_due_day: Option<i32> = None;
+        let mut latest_due_date: Option<chrono::NaiveDate> = None;
         let mut latest_outgoing_name: Option<String> = None;
 
         for out in outgoings {
@@ -360,10 +354,14 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
             let out_day: i32 = out.get("outgoingday");
             let out_name: String = out.get("name");
 
-            if out_day <= today_day {
+            let eff_day = crate::anchoring::get_effective_outgoing_day(out_day, today) as i32;
+            let act_date = crate::anchoring::get_actual_outgoing_date(out_day, current_year, current_month as u32);
+
+            if eff_day <= today_day {
                 already_paid += cost;
-                if latest_due_day.map_or(true, |d| out_day >= d) {
-                    latest_due_day = Some(out_day);
+                if latest_due_day.map_or(true, |d| eff_day >= d) {
+                    latest_due_day = Some(eff_day);
+                    latest_due_date = Some(act_date);
                     latest_outgoing_name = Some(out_name);
                 }
             } else {
@@ -384,9 +382,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
                 "No balance recorded".to_string(),
             ),
             Some(bal_ts) => {
-                if let Some(due_day) = latest_due_day {
-                    let due_day_clamped = due_day.clamp(1, 28) as u32;
-                    let due_date = today.with_day(due_day_clamped).unwrap_or(today);
+                if let (Some(due_day), Some(due_date)) = (latest_due_day, latest_due_date) {
                     let due_ts = due_date.and_hms_opt(0, 0, 0).unwrap().and_local_timezone(chrono::Utc).unwrap().timestamp();
                     let out_name_str = latest_outgoing_name.unwrap_or_else(|| "payment".to_string());
                     if bal_ts >= due_ts {
@@ -733,6 +729,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         outgoing_total,
         surplus,
         next_pay_day,
+        next_pay_date: cycle_end.format("%Y-%m-%d").to_string(),
         days_between_paydays,
         max_per_day,
         max_per_week,

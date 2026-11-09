@@ -1,4 +1,5 @@
 mod admin;
+pub mod anchoring;
 pub mod auth;
 pub mod authz;
 mod bank_sync;

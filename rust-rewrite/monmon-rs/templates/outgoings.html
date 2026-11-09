@@ -71,7 +71,15 @@
                                         {% endif %}
                                     </td>
                                     <td>£{{ o.cost }}</td>
-                                    <td>Day {{ o.outgoing_day }}</td>
+                                    <td>
+                                        {% if o.is_adjusted %}
+                                            <span title="Adjusted from {{ o.outgoing_day }} to {{ o.effective_day }} for this month">
+                                                <b>Day {{ o.effective_day }}</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                            </span>
+                                        {% else %}
+                                            Day {{ o.outgoing_day }}
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         {% if o.rent %}
                                             <span class="badge-pill" style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:4px; font-size:0.8rem;">Rent</span>
@@ -129,7 +137,13 @@
                                     </div>
                                 {% endif %}
                             </div>
-                            <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem;">{{ o.outgoing_day }}</span>
+                            <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                                {% if o.is_adjusted %}
+                                    Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                {% else %}
+                                    Day {{ o.outgoing_day }}
+                                {% endif %}
+                            </span>
                         </div>
                         <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; margin-bottom: 10px;">
                             <div class="stat-cell">
