@@ -15,7 +15,7 @@ struct BankHolidayEvent {
 
 pub static UK_BANK_HOLIDAYS: LazyLock<HashSet<NaiveDate>> = LazyLock::new(|| {
     let mut set = HashSet::new();
-    let json_str = include_str!("../bank-holidays-uk.json");
+    let json_str = include_str!("bank-holidays-uk.json");
     if let Ok(parsed) = serde_json::from_str::<BankHolidayFile>(json_str) {
         for ev in parsed.events {
             if let Ok(d) = NaiveDate::parse_from_str(&ev.date, "%Y-%m-%d") {
