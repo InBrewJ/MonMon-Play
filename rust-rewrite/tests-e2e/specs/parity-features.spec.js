@@ -3,10 +3,11 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Historic Spent, Pace & CRUD Edits', () => {
 
+  const targetBaseUrl = process.env.BASE_URL || 'http://localhost:9000';
   const AUTH_COOKIES = [
-    { name: 'user_id', value: 'demo', domain: 'localhost', path: '/' },
-    { name: 'monmon_session', value: 'demo', domain: 'localhost', path: '/' },
-    { name: 'authenticated', value: 'true', domain: 'localhost', path: '/' }
+    { name: 'user_id', value: 'demo', url: targetBaseUrl },
+    { name: 'monmon_session', value: 'demo', url: targetBaseUrl },
+    { name: 'authenticated', value: 'true', url: targetBaseUrl }
   ];
 
   test('1. Unauthenticated /spog redirects to styled /login with return_to parameter', async ({ page }) => {
