@@ -68,7 +68,11 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
     await expect(page.locator('text=Lowest Spend Cycle')).toBeVisible();
 
     // History table / rows
-    await expect(page.locator('.history-cycle-item, details').first()).toBeVisible();
+    const firstCycle = page.locator('.history-cycle-item, details').first();
+    await expect(firstCycle).toBeVisible();
+    await firstCycle.click();
+    await expect(page.locator('text=Daily Spending Pace').first()).toBeVisible();
+    await expect(page.locator('text=Monthly Pots Configured in this Period').first()).toBeVisible();
   });
 
   test('5. /spendingPace page parity with histogram chart & 5-day intervals', async ({ page, context }) => {

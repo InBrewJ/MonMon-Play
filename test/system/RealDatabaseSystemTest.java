@@ -1211,6 +1211,122 @@ public class RealDatabaseSystemTest {
         }
     }
 
+    @Test
+    public void test12_historicSpentAccountBreakdownsAndPotsInPeriod() throws Exception {
+        String userId = "systest_historic_spent_parity";
+        BalanceRepository balanceRepo = app.injector().instanceOf(BalanceRepository.class);
+        PotRepository potRepo = app.injector().instanceOf(PotRepository.class);
+
+        // 1. Create Debit Account and Savings Account in PostgreSQL
+        Account currentAcc = new Account();
+        currentAcc.setUserId(userId);
+        currentAcc.setName("Parity Debit Account");
+        currentAcc.setType(Account.AccountType.DEBIT);
+        currentAcc.setAvailableLimit(500.0f);
+        currentAcc = accountRepo.add(currentAcc).toCompletableFuture().get();
+
+        Account savingsAcc = new Account();
+        savingsAcc.setUserId(userId);
+        savingsAcc.setName("Parity Savings Account");
+        savingsAcc.setType(Account.AccountType.SHORT_TERM_SAVINGS);
+        savingsAcc.setAvailableLimit(0.0f);
+        savingsAcc = accountRepo.add(savingsAcc).toCompletableFuture().get();
+
+        // 2. Insert balances for both accounts across pay cycle
+        long nowSec = System.currentTimeMillis() / 1000L;
+        long daySec = 86400L;
+
+        // Debit: start = 1200, end = 950 -> 250 spent
+        Balance b1 = new Balance();
+        b1.setUserId(userId);
+        b1.setAccount(currentAcc);
+        b1.setValue(1200.0f);
+        b1.setTimestamp(nowSec - 25 * daySec);
+        balanceRepo.add(b1).toCompletableFuture().get();
+
+        Balance b2 = new Balance();
+        b2.setUserId(userId);
+        b2.setAccount(currentAcc);
+        b2.setValue(950.0f);
+        b2.setTimestamp(nowSec - 2 * daySec);
+        balanceRepo.add(b2).toCompletableFuture().get();
+
+        // Savings: start = 3000, end = 3100 -> 100 deposit (-100 spent)
+        Balance s1 = new Balance();
+        s1.setUserId(userId);
+        s1.setAccount(savingsAcc);
+        s1.setValue(3000.0f);
+        s1.setTimestamp(nowSec - 25 * daySec);
+        balanceRepo.add(s1).toCompletableFuture().get();
+
+        Balance s2 = new Balance();
+        s2.setUserId(userId);
+        s2.setAccount(savingsAcc);
+        s2.setValue(3100.0f);
+        s2.setTimestamp(nowSec - 2 * daySec);
+        balanceRepo.add(s2).toCompletableFuture().get();
+
+        // 3. Create Monthly Pot linked to Debit Account
+        Pot pot = new Pot(userId, "Household Monthly Pot", Pot.PotType.MONTHLY);
+        pot.accounts = new ArrayList<>(Collections.singletonList(currentAcc));
+        pot.setSpendingPlanFood(200.0f);
+        pot.setSpendingPlanFuel(50.0f);
+        pot.setCreatedAt(nowSec - 26 * daySec);
+        pot = potRepo.createOrReplace(userId, pot).toCompletableFuture().get();
+
+        // 4. Calculate Historic Spent via HistoricSpentCalculator
+        List<Account> userAccounts = accountRepo.list(userId).toCompletableFuture().get();
+        List<Pot> userPots = potRepo.list(userId).toCompletableFuture().get();
+
+        viewModels.HistoricSpentViewModel vm = helpers.HistoricSpentCalculator.calculateHistoricSpent(
+                userAccounts,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                userPots,
+                28,
+                500.0f,
+                null
+        );
+
+        assertThat(vm.getCycles()).isNotEmpty();
+        viewModels.HistoricCycleSpent cycle = vm.getCycles().get(0);
+
+        // Verify account breakdowns table matches accounts involved
+        assertThat(cycle.getAccountBreakdowns()).isNotEmpty();
+        assertThat(cycle.getAccountBreakdowns()).hasSize(2);
+
+        viewModels.AccountSpentItem debitItem = cycle.getAccountBreakdowns().stream()
+                .filter(a -> a.getAccountName().equals("Parity Debit Account"))
+                .findFirst().orElse(null);
+        assertThat(debitItem).isNotNull();
+        assertThat(debitItem.getStartBalance()).isEqualTo(1200.0);
+        assertThat(debitItem.getEndBalance()).isEqualTo(950.0);
+        assertThat(debitItem.getAmountSpent()).isEqualTo(250.0);
+        assertThat(debitItem.isInPot()).isTrue();
+
+        viewModels.AccountSpentItem savingsItem = cycle.getAccountBreakdowns().stream()
+                .filter(a -> a.getAccountName().equals("Parity Savings Account"))
+                .findFirst().orElse(null);
+        assertThat(savingsItem).isNotNull();
+        assertThat(savingsItem.getStartBalance()).isEqualTo(3000.0);
+        assertThat(savingsItem.getEndBalance()).isEqualTo(3100.0);
+        assertThat(savingsItem.isInPot()).isFalse();
+
+        // Verify cycle totals across accounts
+        assertThat(cycle.getStartingTotalBalance()).isEqualTo(4200.0);
+        assertThat(cycle.getEndingTotalBalance()).isEqualTo(4050.0);
+
+        // Verify Pots in Period section
+        assertThat(cycle.getPotsInPeriod()).isNotEmpty();
+        viewModels.HistoricPotSnapshot potSnapshot = cycle.getPotsInPeriod().get(0);
+        assertThat(potSnapshot.getPot().getName()).isEqualTo("Household Monthly Pot");
+        assertThat(potSnapshot.getAccountSnapshots()).isNotEmpty();
+        viewModels.HistoricPotSnapshot.AccountBalanceSnapshot accSnap = potSnapshot.getAccountSnapshots().get(0);
+        assertThat(accSnap.getAccountName()).isEqualTo("Parity Debit Account");
+        assertThat(accSnap.getBalanceOnDate()).isEqualTo(950.0);
+    }
+
     private String resolveMistralApiKeyForSysTest() {
         String envKey = System.getenv("MISTRAL_API_KEY");
         if (envKey != null && !envKey.trim().isEmpty()) return envKey.trim();

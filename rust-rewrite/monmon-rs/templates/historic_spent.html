@@ -9,78 +9,79 @@
 {% include "nav_header.html" %}
 
 <div class="w3-content" style="max-width: 1100px; padding: 0 1rem 3rem 1rem;">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin: 1.5rem 0 1rem 0;">
-        <h3 style="margin: 0; font-weight: 800; font-size: 1.4rem;">
-            <i class="fas fa-history" style="color: var(--primary); margin-right: 8px;"></i>Spent This Month — History
-        </h3>
-        <a href="/spog" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600;">
-            <i class="fas fa-arrow-left"></i> Back to SPOG
-        </a>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 8px;">
+        <div>
+            <h3 style="margin: 0; font-weight: 800; display: inline-flex; align-items: center; gap: 10px;">
+                <i class="fas fa-history" style="color: var(--primary);"></i>
+                Spent This Month — History
+            </h3>
+            <div style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;">
+                Review what you spent across all past pay cycles compared to your monthly allowance.
+            </div>
+        </div>
+        <div>
+            <a href="/spog" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.85rem;">
+                <i class="fas fa-arrow-left"></i> Back to SPOG
+            </a>
+        </div>
+    </div>
+
+    <!-- Summary Statistics Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="metric-box" style="margin: 0;">
+            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600;">Avg per completed cycle</div>
+            <div style="font-size: 1.5rem; font-weight: 800; color: var(--primary); margin-top: 2px;">£{{ average_monthly_spend }}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Per completed pay cycle</div>
+        </div>
+
+        <div class="metric-box" style="margin: 0;">
+            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600;">Highest Spend Cycle</div>
+            <div style="font-size: 1.5rem; font-weight: 800; color: #ef4444; margin-top: 2px;">
+                {% if let Some(h) = highest_spent %}£{{ h }}{% else %}—{% endif %}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                {% if let Some(hr) = highest_spent_range %}{{ hr }}{% else %}—{% endif %}
+            </div>
+        </div>
+
+        <div class="metric-box" style="margin: 0;">
+            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600;">Lowest Spend Cycle</div>
+            <div style="font-size: 1.5rem; font-weight: 800; color: #10b981; margin-top: 2px;">
+                {% if let Some(l) = lowest_spent %}£{{ l }}{% else %}—{% endif %}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                {% if let Some(lr) = lowest_spent_range %}{{ lr }}{% else %}—{% endif %}
+            </div>
+        </div>
     </div>
 
     {% if !has_history %}
-        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
-            <p style="color: var(--text-muted); margin: 0;">No spending history recorded yet.</p>
+        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); text-align: center; padding: 3rem 1rem;">
+            <i class="fas fa-calendar-times" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 0.75rem;"></i>
+            <h3 style="font-weight: 700; margin: 0 0 0.5rem 0;">No Historic Spending Data Yet</h3>
+            <p style="color: var(--text-muted); margin: 0;">Once balance snapshots are recorded over your pay cycles, your historic spend timeline will show here.</p>
         </div>
     {% else %}
-        <div class="w3-row-padding" style="margin: 0 -8px 1.25rem -8px;">
-            <div class="w3-third">
-                <div class="w3-card w3-padding" style="text-align: center; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
-                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Avg per completed cycle</div>
-                    <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-main); margin-top: 4px;">£{{ average_monthly_spend }}</div>
-                </div>
-            </div>
-            <div class="w3-third">
-                <div class="w3-card w3-padding" style="text-align: center; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
-                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Highest Spend Cycle</div>
-                    {% if let Some(high) = highest_spent %}
-                        <div style="font-size: 1.6rem; font-weight: 800; color: #ef4444; margin-top: 4px;">£{{ high }}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">{{ highest_spent_range.as_deref().unwrap_or("") }}</div>
-                    {% else %}
-                        <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-muted); margin-top: 4px;">—</div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="w3-third">
-                <div class="w3-card w3-padding" style="text-align: center; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
-                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Lowest Spend Cycle</div>
-                    {% if let Some(low) = lowest_spent %}
-                        <div style="font-size: 1.6rem; font-weight: 800; color: #10b981; margin-top: 4px;">£{{ low }}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">{{ lowest_spent_range.as_deref().unwrap_or("") }}</div>
-                    {% else %}
-                        <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-muted); margin-top: 4px;">—</div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;">
-            <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0; margin-bottom: 1rem;">
-                One row per pay cycle tracking total monthly spending vs income (excluding transfers into savings),
-                alongside how much you spent from your designated monthly pot against its allowance.
-            </p>
-
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
             {% for c in cycles %}
-                <details class="history-cycle-item" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; background: var(--card-bg); {% if c.is_current_cycle %}border-left: 4px solid var(--primary);{% endif %}">
+                <details style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.75rem 1rem; margin-bottom: 0.75rem; background: var(--card-bg); {% if c.is_current_cycle %}border-left: 4px solid var(--primary);{% endif %}">
                     <summary style="cursor: pointer; list-style: none;">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                             <div>
-                                <b style="font-size: 0.95rem; color: var(--text-main);">{{ c.cycle_date_range }}</b>
+                                <b>{{ c.cycle_date_range }}</b>
                                 {% if c.is_current_cycle %}
-                                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); margin-left: 6px; font-weight: 700; font-size: 0.75rem;">
-                                        Day {{ c.days_elapsed }} of {{ c.days_in_cycle }}
-                                    </span>
+                                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); margin-left: 6px;">Day {{ c.days_elapsed }} of {{ c.days_in_cycle }}</span>
                                 {% endif %}
                             </div>
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                <span style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">£{{ c.total_spent }}</span>
-                                <span style="font-size: 0.85rem; color: var(--text-muted);">/ £{{ c.monthly_income }}</span>
+                            <div>
+                                <span style="font-size: 1.15rem; font-weight: 800;" title="Total spent in month">£{{ c.total_spent }}</span>
+                                <span style="font-size: 0.85rem; color: var(--text-muted);" title="Monthly income">/ £{{ c.monthly_income }}</span>
                                 {% if c.pot_allowance > 0.0 %}
-                                    <span class="badge-pill {% if c.is_over_pot_allowance %}badge-danger{% else %}badge-success{% endif %}" style="font-size: 0.75rem; font-weight: 700;">
+                                    <span class="badge-pill {% if c.is_over_pot_allowance %}badge-danger{% else %}badge-success{% endif %}" style="margin-left: 6px;" title="Based on last monthly pot: £{{ c.pot_spent }} spent vs £{{ c.pot_allowance }} allowance">
                                         {% if c.is_over_pot_allowance %}
-                                            £{{ c.absolute_pot_overspend }} over allowance
+                                            £{{ c.absolute_pot_overspend }} over allowance (last pot)
                                         {% else %}
-                                            £{{ c.absolute_pot_overspend }} under allowance
+                                            £{{ c.absolute_pot_overspend }} under allowance (last pot)
                                         {% endif %}
                                     </span>
                                 {% endif %}
@@ -91,25 +92,153 @@
                         </div>
                     </summary>
 
-                    <div style="font-size: 0.85rem; margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.75rem;">
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;">
-                            <div style="background: var(--card-bg-subtle); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.85rem; margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.6rem;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 0.6rem;">
+                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
                                 <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Total Spent</span>
                                 <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.total_spent }}</div>
                             </div>
-                            <div style="background: var(--card-bg-subtle); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
                                 <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Monthly Income</span>
                                 <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.monthly_income }}</div>
                             </div>
-                            <div style="background: var(--card-bg-subtle); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Pot Spent</span>
+                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Pot Spent (Last Pot)</span>
                                 <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.pot_spent }}</div>
                             </div>
-                            <div style="background: var(--card-bg-subtle); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
                                 <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Pot Allowance</span>
                                 <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.pot_allowance }}</div>
                             </div>
+                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Starting Balance</span>
+                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.starting_total_balance }}</div>
+                            </div>
+                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Ending Balance</span>
+                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.ending_total_balance }}</div>
+                            </div>
+                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Daily Spending Pace</span>
+                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.actual_daily_spend }} / day</div>
+                            </div>
                         </div>
+
+                        <!-- Monthly Pots Configured in this Period -->
+                        <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem 0.9rem; margin-bottom: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.4rem;">
+                                <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">
+                                    <i class="fas fa-archive" style="color: var(--primary); margin-right: 5px;"></i>Monthly Pots Configured in this Period
+                                    {% if c.has_multiple_pots %}
+                                        <span class="badge-pill" style="font-size: 0.72rem; background: var(--primary-light); color: var(--primary); margin-left: 6px;">{{ c.pots_in_period.len() }} configured (using LAST pot for allowance)</span>
+                                    {% endif %}
+                                </span>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">
+                                    Last Pot Spending: <b>£{{ c.pot_spent }}</b> / <b>£{{ c.pot_allowance }}</b>
+                                    ({% if c.is_over_pot_allowance %}<span style="color: var(--danger); font-weight: 700;">£{{ c.absolute_pot_overspend }} over allowance</span>{% else %}<span style="color: var(--success); font-weight: 700;">£{{ c.absolute_pot_overspend }} under allowance</span>{% endif %})
+                                </span>
+                            </div>
+
+                            {% if c.pots_in_period.is_empty() %}
+                                <div style="font-size: 0.82rem; color: var(--text-muted);">
+                                    No custom monthly pot configured; defaulted to active debit accounts.
+                                </div>
+                            {% else %}
+                                {% for pot_snap in c.pots_in_period %}
+                                    <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.4rem; background: var(--card-bg);">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+                                            <div>
+                                                <b>{{ pot_snap.plan_summary }}</b>
+                                                <span style="color: var(--text-muted); font-size: 0.75rem; margin-left: 4px;">(Created: {{ pot_snap.created_at_human_readable }})</span>
+                                                {% if pot_snap.is_first_pot && !pot_snap.is_last_pot %}
+                                                    <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">First Active Pot</span>
+                                                {% endif %}
+                                                {% if pot_snap.is_intermediary_pot %}
+                                                    <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px dashed var(--border-color); color: var(--text-muted); font-size: 0.7rem; margin-left: 4px;">Intermediary Pot</span>
+                                                {% endif %}
+                                                {% if pot_snap.is_last_pot %}
+                                                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">Last Monthly Pot (Allowance Tracking)</span>
+                                                {% endif %}
+                                                {% if pot_snap.is_archived_in_period %}
+                                                    <span class="badge-pill badge-warning" style="font-size: 0.7rem; margin-left: 4px;"><i class="fas fa-trash-alt"></i> Replaced / Ended on {{ pot_snap.archived_date_human_readable }}</span>
+                                                {% endif %}
+                                            </div>
+                                            <div>
+                                                <span style="font-size: 0.78rem; color: var(--text-muted);">Spent in pot window:</span>
+                                                <b style="color: var(--text-main);">£{{ pot_snap.pot_spent }}</b>
+                                            </div>
+                                        </div>
+
+                                        {% if !pot_snap.account_snapshots.is_empty() %}
+                                            <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.35rem;">
+                                                <thead>
+                                                    <tr style="color: var(--text-muted); border-bottom: 1px dashed var(--border-color); text-align: left;">
+                                                        <th style="padding: 2px 4px;">Pot Account</th>
+                                                        <th style="padding: 2px 4px; text-align: right;">
+                                                            {% if pot_snap.is_archived_in_period %}Balance on Replacement / Deletion ({{ pot_snap.archived_date_human_readable }}){% else %}Balance at Period End{% endif %}
+                                                        </th>
+                                                        <th style="padding: 2px 4px; text-align: right;">Spent in Pot Window</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for acc_snap in pot_snap.account_snapshots %}
+                                                        <tr>
+                                                            <td style="padding: 2px 4px;"><b>{{ acc_snap.account_name }}</b> <span style="color: var(--text-muted); font-size: 0.7rem;">({{ acc_snap.account_type }})</span></td>
+                                                            <td style="padding: 2px 4px; text-align: right;">£{{ acc_snap.balance_on_date }}</td>
+                                                            <td style="padding: 2px 4px; text-align: right; font-weight: 600;">£{{ acc_snap.amount_spent }}</td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+
+                        <!-- Per-Cycle Accounts Breakdown Table -->
+                        {% if c.account_breakdowns.is_empty() %}
+                            <div style="color: var(--text-muted);">No recorded spending in this cycle.</div>
+                        {% else %}
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.4rem;">
+                                <thead>
+                                    <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border-color); text-align: left;">
+                                        <th style="padding: 4px 6px;">Account</th>
+                                        <th style="padding: 4px 6px; text-align: right;">Start Value</th>
+                                        <th style="padding: 4px 6px; text-align: right;">End Value</th>
+                                        <th style="padding: 4px 6px; text-align: right;">Spent in Cycle</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in c.account_breakdowns %}
+                                        <tr style="border-bottom: 1px solid var(--border-color);">
+                                            <td style="padding: 6px;">
+                                                <b>{{ item.account_name }}</b>
+                                                <span style="color: var(--text-muted); font-size: 0.75rem;">({{ item.account_type }})</span>
+                                                {% if item.is_pot_account %}
+                                                    <span class="badge-pill" style="font-size: 0.68rem; background: var(--primary-light); color: var(--primary); padding: 1px 6px; margin-left: 4px;">Pot Account</span>
+                                                {% endif %}
+                                            </td>
+                                            <td style="padding: 6px; text-align: right;">£{{ item.start_balance }}</td>
+                                            <td style="padding: 6px; text-align: right;">£{{ item.end_balance }}</td>
+                                            <td style="padding: 6px; text-align: right; font-weight: 700; {% if item.amount_spent < 0.0 %}color: var(--success);{% endif %}">
+                                                {% if item.amount_spent < 0.0 %}
+                                                    -£{{ item.amount_spent.abs() }}
+                                                {% else %}
+                                                    £{{ item.amount_spent }}
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    <tr style="font-weight: 800; background: var(--card-bg-subtle);">
+                                        <td style="padding: 6px;">Total Across Accounts</td>
+                                        <td style="padding: 6px; text-align: right;">£{{ c.starting_total_balance }}</td>
+                                        <td style="padding: 6px; text-align: right;">£{{ c.ending_total_balance }}</td>
+                                        <td style="padding: 6px; text-align: right; color: var(--primary);">£{{ c.total_spent }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        {% endif %}
                     </div>
                 </details>
             {% endfor %}

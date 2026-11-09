@@ -10,32 +10,32 @@
 
     <main class="w3-content" style="max-width: 900px; padding: 0 1rem 3rem 1rem;">
         <!-- Waiting List & User Approvals -->
-        <div class="w3-card w3-padding w3-margin-bottom w3-round w3-white" id="waiting-list-card" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <div class="w3-card w3-padding w3-margin-bottom w3-round" id="waiting-list-card" style="background: var(--card-bg); border: 1px solid var(--border-color);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 8px;">
-                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main, #1e293b);">
-                    <i class="fas fa-user-clock" style="color: var(--primary, #4f46e5); margin-right: 8px;"></i> User Waiting List & Approvals
+                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                    <i class="fas fa-user-clock" style="color: var(--primary); margin-right: 8px;"></i> User Waiting List & Approvals
                 </div>
                 {% if pending_users.is_empty() %}
-                    <span class="badge-pill" style="background: #f1f5f9; color: #64748b; padding: 4px 10px; border-radius: 9999px; font-size: 0.85rem; border: 1px solid #cbd5e1;">
+                    <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); padding: 4px 10px; border-radius: 9999px; font-size: 0.85rem; border: 1px solid var(--border-color);">
                         0 pending
                     </span>
                 {% else %}
-                    <span class="badge-pill" style="background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
+                    <span class="badge-pill badge-warning" style="padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
                         <i class="fas fa-exclamation-circle"></i> {{ pending_users.len() }} pending approval
                     </span>
                 {% endif %}
             </div>
 
             {% if pending_users.is_empty() %}
-                <div style="text-align: center; color: #64748b; padding: 1.5rem 0; font-size: 0.92rem;">
-                    <i class="fas fa-check-circle" style="color: #10b981; font-size: 1.5rem; display: block; margin-bottom: 0.5rem;"></i>
+                <div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0; font-size: 0.92rem;">
+                    <i class="fas fa-check-circle" style="color: var(--success); font-size: 1.5rem; display: block; margin-bottom: 0.5rem;"></i>
                     No users currently waiting for approval.
                 </div>
             {% else %}
                 <div class="desktop-view" style="overflow-x: auto;">
                     <table class="w3-table w3-striped">
                         <thead>
-                            <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
+                            <tr style="text-align: left; color: var(--text-muted); font-size: 0.85rem;">
                                 <th>User</th>
                                 <th>Email</th>
                                 <th>Registered</th>
@@ -50,12 +50,12 @@
                                     <td>{{ u.createdat.format("%d %b %Y, %H:%M").to_string() }}</td>
                                     <td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
                                         <form method="POST" action="/settings/approveUser/{{ u.id }}">
-                                            <button type="submit" class="btn-action" style="background: #10b981; color: #fff; padding: 4px 12px; border: none; border-radius: 4px; font-size: 0.82rem; cursor: pointer;">
+                                            <button type="submit" class="btn-action" style="background: var(--success); color: #fff; padding: 4px 12px; border: none; border-radius: 4px; font-size: 0.82rem; cursor: pointer;">
                                                 <i class="fas fa-check"></i> Approve
                                             </button>
                                         </form>
                                         <form method="POST" action="/settings/rejectUser/{{ u.id }}">
-                                            <button type="submit" class="btn-action" style="background: #ef4444; color: #fff; padding: 4px 12px; border: none; border-radius: 4px; font-size: 0.82rem; cursor: pointer;">
+                                            <button type="submit" class="btn-action" style="background: var(--danger); color: #fff; padding: 4px 12px; border: none; border-radius: 4px; font-size: 0.82rem; cursor: pointer;">
                                                 <i class="fas fa-times"></i> Reject
                                             </button>
                                         </form>
@@ -68,16 +68,16 @@
             {% endif %}
 
             <!-- Approved Users Section -->
-            <div style="margin-top: 1.5rem; border-top: 1px solid #e2e8f0; padding-top: 1rem;">
-                <div style="font-weight: 700; font-size: 0.92rem; color: #475569; margin-bottom: 0.75rem;">
-                    <i class="fas fa-users-check" style="color: #10b981; margin-right: 6px;"></i> Active / Approved Users ({{ approved_users.len() }})
+            <div style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main); margin-bottom: 0.75rem;">
+                    <i class="fas fa-users-check" style="color: var(--success); margin-right: 6px;"></i> Active / Approved Users ({{ approved_users.len() }})
                 </div>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                     {% for a in approved_users %}
-                        <span style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-user-check" style="color: #10b981;"></i>
+                        <span style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; color: var(--text-main);">
+                            <i class="fas fa-user-check" style="color: var(--success);"></i>
                             <b>{{ a.username.as_deref().unwrap_or("User") }}</b>
-                            <span style="color: #94a3b8; font-size: 0.78rem;">({{ a.userid }})</span>
+                            <span style="color: var(--text-muted); font-size: 0.78rem;">({{ a.userid }})</span>
                         </span>
                     {% endfor %}
                 </div>
@@ -85,60 +85,60 @@
         </div>
 
         <!-- Authentication & Passkeys Card -->
-        <div class="w3-card w3-padding w3-margin-bottom w3-round w3-white" id="passkey-settings-card" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <div class="w3-card w3-padding w3-margin-bottom w3-round" id="passkey-settings-card" style="background: var(--card-bg); border: 1px solid var(--border-color);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
-                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main, #1e293b);">
-                    <i class="fas fa-fingerprint" style="color: var(--primary, #4f46e5); margin-right: 8px;"></i> Authentication & Passkey Options
+                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                    <i class="fas fa-fingerprint" style="color: var(--primary); margin-right: 8px;"></i> Authentication & Passkey Options
                 </div>
-                <button type="button" id="btn-add-passkey-settings" class="w3-button w3-round" style="background: var(--primary, #4f46e5); color: #fff; font-weight: 700; font-size: 0.85rem; padding: 6px 14px; border-radius: 6px; cursor: pointer;">
+                <button type="button" id="btn-add-passkey-settings" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; font-size: 0.85rem; padding: 6px 14px; border-radius: 6px; cursor: pointer;">
                     <i class="fas fa-plus"></i> Add Passkey
                 </button>
             </div>
-            <p style="font-size: 0.88rem; color: #64748b; margin-top: 0; margin-bottom: 1rem;">
+            <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0; margin-bottom: 1rem;">
                 Passkeys let you sign in securely to MonMon using your fingerprint, face (Touch ID, Face ID, Windows Hello), or a security key without typing a password.
             </p>
             <div id="passkeys-list-container">
-                <div style="text-align: center; padding: 1.25rem 0; color: #64748b; font-size: 0.88rem;">
+                <div style="text-align: center; padding: 1.25rem 0; color: var(--text-muted); font-size: 0.88rem;">
                     <i class="fas fa-spinner fa-spin" style="margin-right: 6px;"></i> Loading enrolled passkeys...
                 </div>
             </div>
         </div>
 
         <!-- Regional Settings Card -->
-        <div class="w3-card w3-padding w3-margin-bottom w3-round w3-white" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-            <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main, #1e293b); margin-bottom: 1rem;">
-                <i class="fas fa-globe" style="color: var(--primary, #4f46e5); margin-right: 8px;"></i> Regional Preferences
+        <div class="w3-card w3-padding w3-margin-bottom w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 1rem;">
+                <i class="fas fa-globe" style="color: var(--primary); margin-right: 8px;"></i> Regional Preferences
             </div>
-            <form method="POST" action="/settings" style="display: flex; gap: 12px; align-items: center;">
-                <label for="region" style="font-size: 0.9rem; font-weight: 600; color: #475569;">Bank Holiday Region:</label>
-                <select name="region" id="region" class="w3-select w3-border w3-round" style="width: auto; padding: 6px 12px; font-size: 0.9rem;">
+            <form method="POST" action="/settings" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <label for="region" style="font-size: 0.9rem; font-weight: 600; color: var(--text-main);">Bank Holiday Region:</label>
+                <select name="region" id="region" class="w3-select w3-border w3-round" style="width: auto; padding: 6px 12px; font-size: 0.9rem; background: var(--card-bg-subtle); color: var(--text-main); border-color: var(--border-color);">
                     <option value="UK" {% if region == "UK" %}selected{% endif %}>United Kingdom (England & Wales)</option>
                     <option value="SCOTLAND" {% if region == "SCOTLAND" %}selected{% endif %}>Scotland</option>
                     <option value="NI" {% if region == "NI" %}selected{% endif %}>Northern Ireland</option>
                 </select>
-                <button type="submit" class="btn-action" style="background: var(--primary, #4f46e5); color: #fff; padding: 7px 16px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
+                <button type="submit" class="btn-action" style="background: var(--primary); color: #fff; padding: 7px 16px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
                     Save
                 </button>
             </form>
         </div>
 
         <!-- System & Build Metadata -->
-        <div class="w3-card w3-padding w3-margin-bottom w3-round w3-white" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-            <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main, #1e293b); margin-bottom: 1rem;">
-                <i class="fas fa-server" style="color: var(--primary, #4f46e5); margin-right: 8px;"></i> System Architecture & Build
+        <div class="w3-card w3-padding w3-margin-bottom w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color);">
+            <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 1rem;">
+                <i class="fas fa-server" style="color: var(--primary); margin-right: 8px;"></i> System Architecture & Build
             </div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; font-size: 0.88rem;">
-                <div style="background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                    <div style="color: #64748b; font-size: 0.78rem; text-transform: uppercase;">Runtime</div>
-                    <div style="font-weight: 700; color: #1e293b;">Rust Axum (monmon-rs)</div>
+                <div style="background: var(--card-bg-subtle); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase;">Runtime</div>
+                    <div style="font-weight: 700; color: var(--text-main);">Rust Axum (monmon-rs)</div>
                 </div>
-                <div style="background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                    <div style="color: #64748b; font-size: 0.78rem; text-transform: uppercase;">Build Commit</div>
-                    <div style="font-weight: 700; font-family: monospace; color: #1e293b;">{{ build_commit }}</div>
+                <div style="background: var(--card-bg-subtle); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase;">Build Commit</div>
+                    <div style="font-weight: 700; font-family: monospace; color: var(--text-main);">{{ build_commit }}</div>
                 </div>
-                <div style="background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                    <div style="color: #64748b; font-size: 0.78rem; text-transform: uppercase;">Build Number</div>
-                    <div style="font-weight: 700; color: #1e293b;">{{ build_number }}</div>
+                <div style="background: var(--card-bg-subtle); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase;">Build Number</div>
+                    <div style="font-weight: 700; color: var(--text-main);">{{ build_number }}</div>
                 </div>
             </div>
         </div>

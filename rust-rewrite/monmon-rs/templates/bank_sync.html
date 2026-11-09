@@ -12,21 +12,21 @@
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
         <div>
-            <h1 style="margin: 0; font-size: 1.75rem; font-weight: 800; color: #0f172a;">
-                <i class="fas fa-satellite-dish" style="color: #0284c7; margin-right: 8px;"></i>
+            <h1 style="margin: 0; font-size: 1.75rem; font-weight: 800; color: var(--text-main);">
+                <i class="fas fa-satellite-dish" style="color: var(--primary); margin-right: 8px;"></i>
                 Accurate Mode &amp; Monzo Sync
             </h1>
-            <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.92rem;">
+            <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.92rem;">
                 Dual-ledger architecture: Monzo API (Debit &amp; Flex Credit Card) with Available-Based Ledger (ABL) fallback.
             </p>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             {% if is_monzo_connected %}
-                <span class="badge" style="background: #dcfce7; color: #16a34a; border: 1px solid rgba(52, 211, 153, 0.3); padding: 6px 12px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
+                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); padding: 6px 12px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
                     <i class="fas fa-check-circle"></i> Monzo Connected (Debit + Flex)
                 </span>
             {% else %}
-                <span class="badge" style="background: #fef3c7; color: #d97706; border: 1px solid rgba(251, 191, 36, 0.3); padding: 6px 12px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
+                <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); padding: 6px 12px; border-radius: 9999px; font-weight: 700; font-size: 0.85rem;">
                     <i class="fas fa-exclamation-circle"></i> Monzo Not Connected
                 </span>
             {% endif %}
@@ -35,51 +35,51 @@
 
     <!-- Mobile Navigation Pills for Swipable Cards -->
     <div class="deck-nav" id="bank-sync-nav" role="tablist" aria-label="Bank Sync Sections" style="display: flex; gap: 8px; margin-bottom: 1rem; overflow-x: auto;">
-        <button type="button" class="deck-nav-pill active" data-target="card-bank-monzo" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid #cbd5e1; background: #0284c7; color: #fff; font-weight: 600;">
+        <button type="button" class="deck-nav-pill active" data-target="card-bank-monzo" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border-color); background: var(--primary); color: #fff; font-weight: 600;">
             <i class="fas fa-bolt"></i> Monzo API
         </button>
-        <button type="button" class="deck-nav-pill" data-target="card-bank-accounts" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid #cbd5e1; background: #fff; color: #334155;">
+        <button type="button" class="deck-nav-pill" data-target="card-bank-accounts" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main);">
             <i class="fas fa-university"></i> Accounts ({{ accounts_count }})
         </button>
-        <button type="button" class="deck-nav-pill" data-target="card-bank-txs" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid #cbd5e1; background: #fff; color: #334155;">
+        <button type="button" class="deck-nav-pill" data-target="card-bank-txs" role="tab" style="padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main);">
             <i class="fas fa-list"></i> Transactions ({{ txs_count }})
         </button>
     </div>
 
     <div class="deck-layout-grid" style="display: flex; flex-direction: column; gap: 1rem;">
         <!-- LegMon Statement Sync Pipeline Card -->
-        <div class="deck-card w3-card w3-round" id="statement-upload" style="background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px;">
+        <div class="deck-card w3-card w3-round" id="statement-upload" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px; border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
                 <div>
-                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #0f172a;">
-                        <i class="fas fa-file-pdf" style="color: #ef4444; margin-right: 6px;"></i>
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                        <i class="fas fa-file-pdf" style="color: var(--danger); margin-right: 6px;"></i>
                         LegMon Statement Pipeline (PDF &rarr; OCR &rarr; Mistral &rarr; Monzo Webhook)
                     </h3>
-                    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.88rem;">
+                    <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.88rem;">
                         Upload a bank statement PDF to extract bank name, balances, and transactions via LegMon.
                     </p>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <span id="legmon-status-badge" class="badge" style="background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.8rem;">
+                    <span id="legmon-status-badge" class="badge" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.8rem;">
                         <i class="fas fa-circle-notch fa-spin"></i> Checking LegMon...
                     </span>
-                    <button type="button" class="w3-button w3-small w3-round" onclick="toggleLegmonLogs()" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155; font-weight: 600;">
+                    <button type="button" class="w3-button w3-small w3-round" onclick="toggleLegmonLogs()" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600;">
                         <i class="fas fa-terminal"></i> Service Logs
                     </button>
                 </div>
             </div>
 
-            <form action="/bank/statement/upload" method="POST" enctype="multipart/form-data" style="margin: 0; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 18px;">
+            <form action="/bank/statement/upload" method="POST" enctype="multipart/form-data" style="margin: 0; background: var(--card-bg-subtle); border: 2px dashed var(--border-color); border-radius: 8px; padding: 18px;">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; align-items: end;">
                     <div>
-                        <label style="display: block; font-weight: 600; font-size: 0.85rem; color: #0f172a; margin-bottom: 6px;">
+                        <label style="display: block; font-weight: 600; font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px;">
                             Select Bank Statement PDF:
                         </label>
-                        <input type="file" name="pdfFile" accept=".pdf,application/pdf" class="w3-input w3-border w3-round" required />
-                        <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">PDF is processed by LegMon and immediately deleted after extraction.</small>
+                        <input type="file" name="pdfFile" accept=".pdf,application/pdf" class="w3-input w3-border w3-round" required style="background: var(--card-bg); color: var(--text-main); border-color: var(--border-color);" />
+                        <small style="color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 4px;">PDF is processed by LegMon and immediately deleted after extraction.</small>
                     </div>
                     <div>
-                        <button type="submit" class="w3-button w3-round" style="background: #ef4444; color: #fff; font-weight: 700; width: 100%;">
+                        <button type="submit" class="w3-button w3-round" style="background: var(--danger); color: #fff; font-weight: 700; width: 100%;">
                             <i class="fas fa-upload"></i> Upload to LegMon
                         </button>
                     </div>
@@ -96,14 +96,14 @@
         </div>
 
         <!-- Monzo API Card -->
-        <div class="deck-card w3-card w3-round" id="card-bank-monzo" style="background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px;">
+        <div class="deck-card w3-card w3-round" id="card-bank-monzo" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px; border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
                 <div>
-                    <h3 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: #0f172a;">
-                        <i class="fas fa-bolt" style="color: #0284c7; margin-right: 6px;"></i>
+                    <h3 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--text-main);">
+                        <i class="fas fa-bolt" style="color: var(--primary); margin-right: 6px;"></i>
                         Monzo Direct Bank Feed (Accurate Mode / TBL)
                     </h3>
-                    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.88rem;">
+                    <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.88rem;">
                         100% free direct API. Connect your personal Monzo account to sync all transactions for your <strong>Debit account</strong> and <strong>Monzo Flex credit card</strong>.
                     </p>
                 </div>
@@ -116,13 +116,13 @@
                         </form>
                         {% if has_refresh_token %}
                             <form action="/bank/monzo/refresh" method="POST" style="margin: 0;">
-                                <button type="submit" class="w3-button w3-small w3-round" title="Manually rotate OAuth access_token & refresh_token now" style="background: #f8fafc; color: #334155; border: 1px solid #cbd5e1; font-weight: 600;">
-                                    <i class="fas fa-key" style="color: #10b981;"></i> Rotate Token
+                                <button type="submit" class="w3-button w3-small w3-round" title="Manually rotate OAuth access_token & refresh_token now" style="background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 600;">
+                                    <i class="fas fa-key" style="color: var(--success);"></i> Rotate Token
                                 </button>
                             </form>
                         {% endif %}
                         <form action="/bank/monzo/disconnect" method="POST" style="margin: 0;" onsubmit="return confirm('Disconnect Monzo integration?');">
-                            <button type="submit" class="w3-button w3-small w3-round" style="background: #fee2e2; color: #dc2626; border: 1px solid #f87171; font-weight: 600;">
+                            <button type="submit" class="w3-button w3-small w3-round" style="background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid var(--danger); font-weight: 600;">
                                 <i class="fas fa-unlink"></i> Disconnect
                             </button>
                         </form>
@@ -131,15 +131,15 @@
             </div>
 
             <!-- Live OAuth & TBL Verification Output Panel -->
-            <div id="monzo-verification-panel" style="display: none; margin-top: 12px; background: #f8fafc; border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 8px; padding: 14px 16px;"></div>
+            <div id="monzo-verification-panel" style="display: none; margin-top: 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px;"></div>
 
             {% if !is_monzo_connected %}
                 <!-- Confidential OAuth Client Setup -->
-                <div style="margin-top: 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px;">
-                    <div style="font-size: 0.88rem; color: #0f172a; margin-bottom: 10px;">
-                        <strong><i class="fas fa-shield-alt" style="color: #10b981; margin-right: 4px;"></i> Monzo Confidential OAuth Client (Auto-Refreshing)</strong>
-                        <ol style="margin: 6px 0 0 0; padding-left: 20px; font-size: 0.84rem; color: #64748b; line-height: 1.6;">
-                            <li>Sign in at <a href="https://developers.monzo.com/" target="_blank" rel="noopener" style="color: #0284c7; font-weight: 600; text-decoration: underline;">developers.monzo.com</a>, approve login in the Monzo app, and go to <strong>Clients &rarr; New OAuth Client</strong>.</li>
+                <div style="margin-top: 14px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px;">
+                    <div style="font-size: 0.88rem; color: var(--text-main); margin-bottom: 10px;">
+                        <strong><i class="fas fa-shield-alt" style="color: var(--success); margin-right: 4px;"></i> Monzo Confidential OAuth Client (Auto-Refreshing)</strong>
+                        <ol style="margin: 6px 0 0 0; padding-left: 20px; font-size: 0.84rem; color: var(--text-muted); line-height: 1.6;">
+                            <li>Sign in at <a href="https://developers.monzo.com/" target="_blank" rel="noopener" style="color: var(--primary); font-weight: 600; text-decoration: underline;">developers.monzo.com</a>, approve login in the Monzo app, and go to <strong>Clients &rarr; New OAuth Client</strong>.</li>
                             <li>Set <strong>Confidentiality</strong> to <strong><code>Confidential</code></strong> (so Monzo issues a rotating <code>refresh_token</code>) and set <strong>Redirect URL</strong> to <code>{{ redirect_uri }}</code>.</li>
                             <li>Click <strong>Authorize with Monzo OAuth</strong> below, follow the email link, and then <strong>tap Approve in the Monzo mobile app</strong> to unlock API permissions.</li>
                         </ol>
@@ -148,23 +148,23 @@
                     <form action="/bank/monzo/connect" method="POST" style="margin-top: 12px;">
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 10px;">
                             <div>
-                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #0f172a; margin-bottom: 4px;">OAuth Client ID</label>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">OAuth Client ID</label>
                                 <input type="text" name="clientId" class="w3-input w3-border w3-round"
                                        value="{% if let Some(cid) = client_id %}{{ cid }}{% endif %}"
                                        placeholder="oauth2client_0000..."
-                                       style="font-family: monospace; font-size: 0.83rem;" />
+                                       style="font-family: monospace; font-size: 0.83rem; background: var(--card-bg); color: var(--text-main); border-color: var(--border-color);" />
                             </div>
                             <div>
-                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #0f172a; margin-bottom: 4px;">OAuth Client Secret (Confidential)</label>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">OAuth Client Secret (Confidential)</label>
                                 <input type="password" name="clientSecret" class="w3-input w3-border w3-round"
                                        placeholder="mnzconf... (or loaded from MONZO_CLIENT_SECRET)"
-                                       style="font-family: monospace; font-size: 0.83rem;" />
+                                       style="font-family: monospace; font-size: 0.83rem; background: var(--card-bg); color: var(--text-main); border-color: var(--border-color);" />
                             </div>
                             <div>
-                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #0f172a; margin-bottom: 4px;">Redirect URI</label>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">Redirect URI</label>
                                 <input type="text" name="redirectUri" class="w3-input w3-border w3-round"
                                        value="{{ redirect_uri }}"
-                                       style="font-family: monospace; font-size: 0.83rem;" />
+                                       style="font-family: monospace; font-size: 0.83rem; background: var(--card-bg); color: var(--text-main); border-color: var(--border-color);" />
                             </div>
                         </div>
                         <button type="submit" class="w3-button w3-round btn-mobile-full" style="background: #ea580c; color: white; font-weight: 700; padding: 10px 18px;">
@@ -173,51 +173,51 @@
                     </form>
                 </div>
             {% else %}
-                <div id="monzo-status-card" style="margin-top: 14px; background: #f8fafc; border: 1px solid {% if has_active_webhooks %}rgba(52, 211, 153, 0.3){% else %}rgba(234, 179, 8, 0.4){% endif %}; border-radius: 8px; padding: 14px 16px;">
+                <div id="monzo-status-card" style="margin-top: 14px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
-                        <span id="monzo-webhook-badge" style="font-size: 0.95rem; font-weight: 700; color: {% if has_active_webhooks %}#10b981{% else %}#eab308{% endif %};">
+                        <span id="monzo-webhook-badge" style="font-size: 0.95rem; font-weight: 700; color: {% if has_active_webhooks %}var(--success){% else %}var(--warning){% endif %};">
                             {% if has_active_webhooks %}
-                                <i class="fas fa-satellite-dish" style="color: #10b981; margin-right: 4px;"></i> Live Webhooks Active on Monzo
+                                <i class="fas fa-satellite-dish" style="color: var(--success); margin-right: 4px;"></i> Live Webhooks Active on Monzo
                             {% else %}
                                 <i class="fas fa-exclamation-triangle" style="margin-right: 4px;"></i> Webhook Inactive / Not Registered
                             {% endif %}
                         </span>
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                            <span style="background: #dcfce7; color: #16a34a; border: 1px solid rgba(52, 211, 153, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 600;">
+                            <span style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 600;">
                                 <i class="fas fa-infinity"></i> OAuth Client Connected ({% if let Some(uid) = monzo_user_id %}{{ uid }}{% else %}Auto-Refresh{% endif %})
                             </span>
-                            <span id="monzo-received-pill" style="background: {% if has_active_webhooks %}#dcfce7{% else %}rgba(234, 179, 8, 0.15){% endif %}; color: {% if has_active_webhooks %}#16a34a{% else %}#d97706{% endif %}; border: 1px solid rgba(52, 211, 153, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
+                            <span id="monzo-received-pill" style="background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-color); padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
                                 <i class="fas fa-clock"></i> {{ last_received_text }}
                             </span>
-                            <button type="button" id="btn-refresh-webhooks" onclick="checkLiveWebhooks()" class="w3-button w3-tiny w3-round" title="Query Monzo API directly for registered webhooks" style="background: #fff; border: 1px solid #cbd5e1; color: #64748b; font-size: 0.78rem; padding: 4px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            <button type="button" id="btn-refresh-webhooks" onclick="checkLiveWebhooks()" class="w3-button w3-tiny w3-round" title="Query Monzo API directly for registered webhooks" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.78rem; padding: 4px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
                                 <i class="fas fa-sync-alt" id="refresh-webhooks-icon"></i> <span>Check Webhooks</span>
                             </button>
                         </div>
                     </div>
-                    <div style="color: #64748b; font-size: 0.85rem; line-height: 1.6;">
-                        <div><strong style="color: #0f172a;">Connected Accounts:</strong> Monzo Current (`uk_retail`) &amp; Monzo Flex Credit Card (`uk_monzo_flex`)</div>
+                    <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6;">
+                        <div><strong style="color: var(--text-main);">Connected Accounts:</strong> Monzo Current (`uk_retail`) &amp; Monzo Flex Credit Card (`uk_monzo_flex`)</div>
                         
                         <div id="monzo-status-alert">
                             {% if has_active_webhooks %}
-                                <div style="margin-top: 8px; color: #64748b; font-size: 0.82rem; background: #fff; border: 1px solid rgba(52, 211, 153, 0.25); border-radius: 6px; padding: 8px 12px; line-height: 1.5;">
-                                    <strong style="color: #0f172a;"><i class="fas fa-check-circle" style="color: #10b981;"></i> Webhooks exist on Monzo:</strong>
+                                <div style="margin-top: 8px; color: var(--text-muted); font-size: 0.82rem; background: var(--card-bg); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 8px 12px; line-height: 1.5;">
+                                    <strong style="color: var(--text-main);"><i class="fas fa-check-circle" style="color: var(--success);"></i> Webhooks exist on Monzo:</strong>
                                     Your webhooks are registered on Monzo and listening. Monzo streams transaction events automatically as you spend.
                                 </div>
                             {% else %}
-                                <div style="margin-top: 8px; color: #64748b; font-size: 0.82rem; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; line-height: 1.5;">
-                                    <strong style="color: #0f172a;"><i class="fas fa-info-circle" style="color: #ea580c;"></i> Webhooks not registered:</strong>
+                                <div style="margin-top: 8px; color: var(--text-muted); font-size: 0.82rem; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; line-height: 1.5;">
+                                    <strong style="color: var(--text-main);"><i class="fas fa-info-circle" style="color: #ea580c;"></i> Webhooks not registered:</strong>
                                     Click <strong>Re-register / Sync Webhooks</strong> below to register webhook endpoints for real-time transaction updates.
                                 </div>
                             {% endif %}
                         </div>
 
-                        <div id="monzo-webhook-url-wrap" style="{% if webhook_url.is_none() %}display: none;{% endif %} margin-top: 6px; font-family: monospace; font-size: 0.8rem; color: #64748b; word-break: break-all;">
+                        <div id="monzo-webhook-url-wrap" style="{% if webhook_url.is_none() %}display: none;{% endif %} margin-top: 6px; font-family: monospace; font-size: 0.8rem; color: var(--text-muted); word-break: break-all;">
                             <strong>Webhook URL:</strong> <span id="monzo-webhook-url-val">{% if let Some(w) = webhook_url %}{{ w }}{% endif %}</span>
                         </div>
 
                         <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                             <form action="/bank/monzo/webhooks/sync" method="POST" style="margin: 0;">
-                                <button type="submit" class="w3-button w3-small w3-round" style="background: #0284c7; color: white; font-weight: 600;">
+                                <button type="submit" class="w3-button w3-small w3-round" style="background: var(--primary); color: white; font-weight: 600;">
                                     <i class="fas fa-sync"></i> Re-register / Sync Webhooks
                                 </button>
                             </form>
@@ -228,50 +228,52 @@
         </div>
 
         <!-- Accounts Card -->
-        <div class="deck-card w3-card w3-round" id="card-bank-accounts" style="background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px;">
-            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700;">
-                <i class="fas fa-university" style="color: #0284c7; margin-right: 6px;"></i>
+        <div class="deck-card w3-card w3-round" id="card-bank-accounts" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px; border-radius: 8px;">
+            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700; color: var(--text-main);">
+                <i class="fas fa-university" style="color: var(--primary); margin-right: 6px;"></i>
                 Configured Ledger Accounts ({{ accounts_count }})
             </h3>
-            <p style="color: #64748b; font-size: 0.9rem;">
+            <p style="color: var(--text-muted); font-size: 0.9rem;">
                 Switch individual accounts between Transaction-Based Ledger (TBL) and Available-Based Ledger (ABL).
             </p>
         </div>
 
         <!-- Transactions Card -->
-        <div class="deck-card w3-card w3-round" id="card-bank-txs" style="background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px;">
-            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700;">
-                <i class="fas fa-list" style="color: #0284c7; margin-right: 6px;"></i>
+        <div class="deck-card w3-card w3-round" id="card-bank-txs" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px; border-radius: 8px;">
+            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700; color: var(--text-main);">
+                <i class="fas fa-list" style="color: var(--primary); margin-right: 6px;"></i>
                 Recent Synced Transactions ({{ recent_transactions.len() }})
             </h3>
 
             {% if recent_transactions.is_empty() %}
-                <div style="text-align: center; padding: 2rem; color: #64748b;">
+                <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
                     <p>No bank transactions recorded yet.</p>
                 </div>
             {% else %}
-                <table class="w3-table w3-striped" style="width: 100%;">
-                    <thead>
-                        <tr style="background: #f1f5f9; color: #475569;">
-                            <th>Date</th>
-                            <th>Description</th>
-                            <th>Merchant</th>
-                            <th>Category</th>
-                            <th>Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for tx in recent_transactions %}
-                        <tr>
-                            <td>{{ tx.date }}</td>
-                            <td>{{ tx.description }}</td>
-                            <td>{{ tx.merchant_name.as_deref().unwrap_or("—") }}</td>
-                            <td>{{ tx.category.as_deref().unwrap_or("General") }}</td>
-                            <td style="font-weight: 700; color: #0284c7;">£{{ tx.amount }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div style="overflow-x: auto;">
+                    <table class="w3-table w3-striped" style="width: 100%;">
+                        <thead>
+                            <tr style="background: var(--card-bg-subtle); color: var(--text-muted);">
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Merchant</th>
+                                <th>Category</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tx in recent_transactions %}
+                            <tr>
+                                <td>{{ tx.date }}</td>
+                                <td>{{ tx.description }}</td>
+                                <td>{{ tx.merchant_name.as_deref().unwrap_or("—") }}</td>
+                                <td>{{ tx.category.as_deref().unwrap_or("General") }}</td>
+                                <td style="font-weight: 700; color: var(--primary);">£{{ tx.amount }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             {% endif %}
         </div>
     </div>

@@ -7,6 +7,7 @@ mod ed;
 mod historic_spent;
 mod landing;
 mod management;
+pub mod money;
 mod models;
 mod net_worth;
 mod nommon;

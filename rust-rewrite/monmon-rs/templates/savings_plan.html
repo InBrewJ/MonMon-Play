@@ -412,9 +412,9 @@
                     </table>
                 </div>
 
-                <!-- Mobile Stacked Action Cards View -->
+                <!-- Mobile Stacked Action Cards View (Thumb-Friendly Queue) -->
                 <div class="mobile-cards-view savings-plan-mobile-cards">
-                    {% for item in plan.items %}
+                    {% for (idx, item) in plan.items.iter().enumerate() %}
                         <div class="item-card savings-plan-item-card savings-item-row"
                              id="savings-card-{{ item.id }}"
                              data-entity-id="savings-item-{{ item.id }}"
@@ -428,6 +428,7 @@
                              data-remaining="{{ item.remaining_to_target }}"
                              data-base-monthly="{{ item.monthly_amount }}">
 
+                            <!-- Header: Priority pill, Title, Account info, Badges -->
                             <div class="item-card-header">
                                 <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
                                     <span class="badge-pill" style="background: var(--primary); color: #fff; font-weight: 800; font-size: 0.85rem; padding: 3px 8px; border-radius: 6px; flex-shrink: 0;">
@@ -456,10 +457,11 @@
                                 </div>
                             </div>
 
+                            <!-- Stat Grid (Clean 3-column cells) -->
                             <div class="item-card-stats-grid" style="grid-template-columns: repeat(3, 1fr); padding: 0.6rem 0.5rem; gap: 0.35rem;">
                                 <div class="stat-cell">
                                     <div class="stat-cell-label">{% if item.item_type == "DEBT_PAYOFF" %}Debt Owed{% else %}Target{% endif %}</div>
-                                    <div class="stat-cell-val" style="font-size: 0.88rem; color: {% if item.item_type == "DEBT_PAYOFF" %}var(--danger){% else %}var(--text-main){% endif %};">
+                                    <div class="stat-cell-val" style="font-size: 0.85rem; color: {% if item.item_type == "DEBT_PAYOFF" %}var(--danger){% else %}var(--text-main){% endif %};">
                                         {% if item.item_type == "DEBT_PAYOFF" %}
                                             £{{ item.debt_owed }}
                                         {% else %}
@@ -467,25 +469,45 @@
                                         {% endif %}
                                     </div>
                                 </div>
+
                                 <div class="stat-cell">
                                     <div class="stat-cell-label">Monthly Slice</div>
-                                    <div class="stat-cell-val item-monthly-val" style="font-size: 0.88rem; color: var(--primary);">
-                                        £{{ item.monthly_amount }}
+                                    <div class="stat-cell-val item-monthly-cell" style="font-size: 0.95rem; font-weight: 700; color: var(--primary);">
+                                        £<span class="item-monthly-val">{{ item.monthly_amount }}</span>
                                     </div>
+                                    <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 1px;">/ month</div>
                                 </div>
+
                                 <div class="stat-cell">
                                     <div class="stat-cell-label">Duration</div>
-                                    <div class="stat-cell-val" style="font-size: 0.88rem; color: var(--text-main);">
-                                        {% if let Some(m) = item.rough_months %}
-                                            ~{{ m }} mo
+                                    <div class="stat-cell-val item-duration-cell" style="font-size: 0.82rem; font-weight: 600;">
+                                        {% if item.item_type == "DEBT_PAYOFF" %}
+                                            {% if item.is_debt_paid_off() %}
+                                                <span class="badge-pill badge-success" style="font-size: 0.72rem;">Paid off</span>
+                                            {% else if let Some(m) = item.rough_months %}
+                                                <span>~{{ m }} mo</span>
+                                            {% else %}
+                                                <span style="font-size: 0.75rem; color: var(--text-muted);">-</span>
+                                            {% endif %}
                                         {% else %}
-                                            —
+                                            {% if item.is_target_reached() %}
+                                                <span class="badge-pill badge-success" style="font-size: 0.72rem;">Reached</span>
+                                            {% else if let Some(m) = item.rough_months %}
+                                                <span>~{{ m }} mo</span>
+                                            {% else %}
+                                                <span style="font-size: 0.75rem; color: var(--text-muted);">Ongoing</span>
+                                            {% endif %}
                                         {% endif %}
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="item-card-slider-row" style="padding: 0 0.5rem 0.5rem;">
+                            <!-- Interactive Slice Slider on Mobile -->
+                            <div style="margin: 0.25rem 0 0.15rem 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">
+                                    <span>Adjust Monthly Slice:</span>
+                                    <span style="font-weight: 700; color: var(--primary);"><span class="item-monthly-val-label">£{{ item.monthly_amount }}</span> / mo</span>
+                                </div>
                                 <input type="range"
                                        min="0"
                                        max="{{ plan.target_amount }}"
@@ -493,20 +515,42 @@
                                        value="{{ item.monthly_amount }}"
                                        class="item-slice-slider"
                                        data-id="{{ item.id }}"
-                                       {% if item.locked %}disabled{% endif %}
-                                       style="width: 100%;">
+                                       {% if item.locked %}disabled title="Item is locked (fixed amount)"{% endif %}
+                                       style="width: 100%; height: 32px;">
                             </div>
 
-                            <div class="item-card-actions">
-                                <form method="POST" action="/savingsPlan/moveUp/{{ item.id }}" style="margin: 0; display: inline;">
-                                    <button type="submit" class="btn-action" title="Shunt Up"><i class="fas fa-chevron-up"></i> Up</button>
+                            <!-- Thumb-Friendly Priority Queue Shunt Bar -->
+                            <div class="priority-queue-bar" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 0.35rem;">
+                                <form method="POST" action="/savingsPlan/moveToTop/{{ item.id }}" style="margin: 0;">
+                                    <button type="submit" class="thumb-btn {% if idx == 0 %}thumb-btn-disabled{% endif %}" {% if idx == 0 %}disabled{% endif %} title="Send to Top (P1)" aria-label="Send to Top (P1)">
+                                        <i class="fas fa-angle-double-up"></i>
+                                    </button>
                                 </form>
-                                <form method="POST" action="/savingsPlan/moveDown/{{ item.id }}" style="margin: 0; display: inline;">
-                                    <button type="submit" class="btn-action" title="Shunt Down"><i class="fas fa-chevron-down"></i> Down</button>
+                                <form method="POST" action="/savingsPlan/moveUp/{{ item.id }}" style="margin: 0;">
+                                    <button type="submit" class="thumb-btn {% if idx == 0 %}thumb-btn-disabled{% endif %}" {% if idx == 0 %}disabled{% endif %} title="Move Up" aria-label="Move Up">
+                                        <i class="fas fa-chevron-up"></i>
+                                    </button>
                                 </form>
+                                <form method="POST" action="/savingsPlan/moveDown/{{ item.id }}" style="margin: 0;">
+                                    <button type="submit" class="thumb-btn {% if idx + 1 == plan.items.len() %}thumb-btn-disabled{% endif %}" {% if idx + 1 == plan.items.len() %}disabled{% endif %} title="Move Down" aria-label="Move Down">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                </form>
+                                <form method="POST" action="/savingsPlan/moveToBottom/{{ item.id }}" style="margin: 0;">
+                                    <button type="submit" class="thumb-btn {% if idx + 1 == plan.items.len() %}thumb-btn-disabled{% endif %}" {% if idx + 1 == plan.items.len() %}disabled{% endif %} title="Send to Bottom" aria-label="Send to Bottom">
+                                        <i class="fas fa-angle-double-down"></i>
+                                    </button>
+                                </form>
+                            </div>
+
+                            <!-- Item Management Actions (Lock, Edit, Delete) -->
+                            <div class="item-card-actions" style="margin-top: 0.35rem;">
                                 <form method="POST" action="/savingsPlan/toggleLock/{{ item.id }}" style="margin: 0; display: inline;">
-                                    <button type="submit" class="btn-action {% if item.locked %}btn-locked{% endif %}">
-                                        <i class="fas {% if item.locked %}fa-lock{% else %}fa-lock-open{% endif %}"></i> {% if item.locked %}Unlock{% else %}Lock{% endif %}
+                                    <button type="submit"
+                                            class="btn-action {% if item.locked %}btn-locked{% endif %}"
+                                            title="{% if item.locked %}Locked: amount is fixed during rebalancing. Click to unlock.{% else %}Unlocked: amount adjusts dynamically. Click to lock.{% endif %}">
+                                        <i class="fas {% if item.locked %}fa-lock{% else %}fa-lock-open{% endif %}"></i>
+                                        {% if item.locked %}Locked{% else %}Lock{% endif %}
                                     </button>
                                 </form>
                                 <a href="/editSavingsPlanItem/{{ item.id }}#edit-form"
@@ -516,12 +560,19 @@
                                 </a>
                                 <a href="/binSavingsPlanItem/{{ item.id }}"
                                    class="btn-action btn-delete"
-                                   onclick="return confirm('Are you sure you want to remove this item?');">
-                                    <i class="fas fa-trash-alt"></i>
+                                   onclick="return confirm('Are you sure you want to remove this item?');"
+                                   title="Remove item">
+                                    <i class="fas fa-trash-alt"></i> Delete
                                 </a>
                             </div>
                         </div>
                     {% endfor %}
+
+                    <div class="item-card" style="background: var(--card-bg-subtle); border: 1px dashed var(--border-color); text-align: center; padding: 0.75rem; margin-top: 0.5rem;">
+                        <div style="font-size: 0.82rem; color: var(--text-muted);">
+                            Total Monthly Sliced: <b style="color: var(--primary);" class="mobile-footer-total-allocated">£{{ plan.total_allocated }}</b> &bull; Target: <b>£{{ plan.target_amount }}</b>
+                        </div>
+                    </div>
                 </div>
             {% endif %}
         </div>

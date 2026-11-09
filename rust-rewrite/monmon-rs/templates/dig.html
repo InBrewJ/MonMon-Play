@@ -5,45 +5,6 @@
     {% include "nav_head.html" %}
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <style>
-        :root {
-            --primary: #4f46e5;
-            --primary-hover: #4338ca;
-            --primary-light: #eef2ff;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --card-bg: #ffffff;
-            --card-bg-subtle: #f9fafb;
-            --border-color: #e5e7eb;
-            --text-main: #111827;
-            --text-muted: #6b7280;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f3f4f6;
-            color: var(--text-main);
-            margin: 0;
-            padding: 0;
-        }
-        .navbar {
-            background-color: #ffffff;
-            border-bottom: 1px solid var(--border-color);
-            padding: 0.75rem 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .navbar a {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-weight: 500;
-            padding: 0.5rem 0.75rem;
-            border-radius: 6px;
-        }
-        .navbar a.active, .navbar a:hover {
-            color: var(--primary);
-            background-color: #f3f4f6;
-        }
         .dig-stat-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -77,7 +38,7 @@
         #dig-map {
             height: 500px;
             width: 100%;
-            background: #e5e7eb;
+            background: var(--bg-main);
             z-index: 1;
         }
         .dig-legend {
