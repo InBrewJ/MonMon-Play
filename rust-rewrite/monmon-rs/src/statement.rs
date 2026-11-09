@@ -2,8 +2,8 @@ use crate::spog::resolve_user_id;
 use crate::AppState;
 use axum::{
     extract::{Multipart, Path, Query, State},
-    http::{HeaderMap, StatusCode},
-    response::{Json, Redirect},
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Json, Redirect, Response},
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -160,6 +160,59 @@ pub async fn handle_statement_webhook_api(
     })))
 }
 
+pub async fn get_pending_statements_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<StatementQuery>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT id, COALESCE(job_id, '') AS job_id, COALESCE(bank_name, 'Unknown Bank') AS bank_name,
+               COALESCE(start_date, '') AS start_date, COALESCE(end_date, '') AS end_date,
+               opening_balance, closing_balance, COALESCE(transaction_count, 0) AS transaction_count,
+               total_paid_in, total_paid_out, matched_account_id, COALESCE(status, 'PENDING') AS status,
+               error_message
+        FROM pending_statement
+        WHERE (userid = $1 OR user_id = $1)
+        ORDER BY created_at DESC
+        LIMIT 10
+        "#,
+    )
+    .bind(&resolved)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let pending: Vec<Value> = rows.into_iter().map(|r| {
+        let bank: String = r.get("bank_name");
+        let is_tx_list = bank.to_lowercase().contains("transaction") || bank.to_lowercase().contains("txn");
+        serde_json::json!({
+            "id": r.get::<i64, _>("id"),
+            "jobId": r.get::<String, _>("job_id"),
+            "bankName": bank,
+            "startDate": r.get::<String, _>("start_date"),
+            "endDate": r.get::<String, _>("end_date"),
+            "openingBalance": r.get::<Option<f32>, _>("opening_balance"),
+            "closingBalance": r.get::<Option<f32>, _>("closing_balance"),
+            "transactionCount": r.get::<i32, _>("transaction_count"),
+            "totalPaidIn": r.get::<Option<f32>, _>("total_paid_in"),
+            "totalPaidOut": r.get::<Option<f32>, _>("total_paid_out"),
+            "matchedAccountId": r.get::<Option<i64>, _>("matched_account_id"),
+            "status": r.get::<String, _>("status"),
+            "errorMessage": r.get::<Option<String>, _>("error_message"),
+            "isTxList": is_tx_list,
+        })
+    }).collect();
+
+    Ok(Json(serde_json::json!({
+        "status": "ok",
+        "pendingStatements": pending
+    })))
+}
+
 pub async fn get_statement_preview_api(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -195,22 +248,66 @@ pub async fn get_statement_preview_api(
         .unwrap_or(serde_json::json!({}));
 
     let txs = parsed_json.get("transactions").cloned().unwrap_or(serde_json::json!([]));
+    let is_tx_list = bank.to_lowercase().contains("transaction") || bank.to_lowercase().contains("txn");
+
+    let mut points: Vec<Value> = Vec::new();
+    let mut net_delta = 0.0f32;
+    let anchor_val = closing.or(opening).unwrap_or(0.0);
+
+    if let Some(arr) = txs.as_array() {
+        let mut running = anchor_val;
+        for t in arr {
+            let amt = t.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            let date = t.get("date").and_then(|v| v.as_str()).unwrap_or("2026-10-01");
+            let desc = t.get("description").and_then(|v| v.as_str()).unwrap_or("Transaction");
+            let delta = -amt;
+            net_delta += delta;
+            running += delta;
+            points.push(serde_json::json!({
+                "timestamp": chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                    .map(|d| d.and_hms_opt(12, 0, 0).unwrap().and_utc().timestamp())
+                    .unwrap_or(Utc::now().timestamp()),
+                "dateStr": date,
+                "balance": (running * 100.0).round() / 100.0,
+                "delta": delta,
+                "description": desc,
+                "isAnchor": false
+            }));
+        }
+    }
 
     Ok(Json(serde_json::json!({
-        "id": id,
-        "bank": bank,
+        "status": "ok",
+        "statementId": id,
+        "bankName": bank,
         "startDate": start_date,
         "endDate": end_date,
-        "openingBalance": opening,
-        "closingBalance": closing,
+        "isTxList": is_tx_list,
+        "transactionCount": txs.as_array().map(|a| a.len()).unwrap_or(0),
+        "totalPaidIn": opening.unwrap_or(0.0),
+        "totalPaidOut": closing.unwrap_or(0.0),
+        "existingBalancesToOverwrite": 0,
+        "accountId": null,
+        "accountName": "Matched Account",
+        "hasAnchor": true,
+        "anchorBalance": anchor_val,
+        "anchorDateStr": end_date.clone().unwrap_or_default(),
+        "openingBalance": opening.unwrap_or(0.0),
+        "closingBalance": closing.unwrap_or(0.0),
+        "netDelta": (net_delta * 100.0).round() / 100.0,
+        "points": points,
         "transactions": txs
     })))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct ConfirmPayload {
     #[serde(alias = "accountId")]
     pub account_id: Option<i64>,
+    #[serde(alias = "anchorBalance")]
+    pub anchor_balance: Option<f32>,
+    #[serde(alias = "anchorDate")]
+    pub anchor_date: Option<String>,
 }
 
 pub async fn confirm_statement_api(
@@ -218,11 +315,27 @@ pub async fn confirm_statement_api(
     headers: HeaderMap,
     Path(id): Path<i64>,
     Query(q): Query<StatementQuery>,
-    payload: Option<Json<ConfirmPayload>>,
-) -> Result<Json<Value>, (StatusCode, String)> {
+    body: axum::body::Bytes,
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
-    let target_account_id = payload.and_then(|p| p.account_id);
+
+    let payload: ConfirmPayload = if let Ok(p) = serde_json::from_slice::<ConfirmPayload>(&body) {
+        p
+    } else {
+        let mut p = ConfirmPayload::default();
+        for (k, v) in form_urlencoded::parse(&body) {
+            if k == "accountId" || k == "account_id" {
+                p.account_id = v.parse::<i64>().ok();
+            } else if k == "anchorBalance" || k == "anchor_balance" {
+                p.anchor_balance = v.parse::<f32>().ok();
+            } else if k == "anchorDate" || k == "anchor_date" {
+                p.anchor_date = Some(v.to_string());
+            }
+        }
+        p
+    };
+    let target_account_id = payload.account_id;
 
     let row = sqlx::query(
         "SELECT raw_payload FROM pending_statement WHERE id = $1 AND (user_id = $2 OR userid = $2)"
@@ -279,8 +392,9 @@ pub async fn confirm_statement_api(
 
     let now_ms = Utc::now().timestamp_millis();
     let res = sqlx::query(
-        "UPDATE pending_statement SET status = 'CONFIRMED', applied_at = $1 WHERE id = $2 AND (user_id = $3 OR userid = $3)"
+        "UPDATE pending_statement SET status = 'CONFIRMED', matched_account_id = COALESCE($1, matched_account_id), applied_at = $2 WHERE id = $3 AND (user_id = $4 OR userid = $4)"
     )
+    .bind(target_account_id)
     .bind(now_ms)
     .bind(id)
     .bind(&resolved)
@@ -290,10 +404,21 @@ pub async fn confirm_statement_api(
 
     crate::authz::Authz::verify_affected(res.rows_affected(), "Statement", id)?;
 
-    Ok(Json(serde_json::json!({
-        "status": "confirmed",
-        "id": id
-    })))
+    let accepts_json = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("application/json"))
+        .unwrap_or(false);
+
+    if accepts_json {
+        Ok(Json(serde_json::json!({
+            "status": "confirmed",
+            "id": id
+        }))
+        .into_response())
+    } else {
+        Ok(Redirect::to("/bank?info=Statement+confirmed+and+balances+imported+successfully.").into_response())
+    }
 }
 
 pub async fn discard_statement_api(
@@ -301,7 +426,7 @@ pub async fn discard_statement_api(
     headers: HeaderMap,
     Path(id): Path<i64>,
     Query(q): Query<StatementQuery>,
-) -> Result<Json<Value>, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let now_ms = Utc::now().timestamp_millis();
@@ -317,14 +442,27 @@ pub async fn discard_statement_api(
 
     crate::authz::Authz::verify_affected(res.rows_affected(), "Statement", id)?;
 
-    Ok(Json(serde_json::json!({
-        "status": "discarded",
-        "id": id
-    })))
+    let accepts_json = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("application/json"))
+        .unwrap_or(false);
+
+    if accepts_json {
+        Ok(Json(serde_json::json!({
+            "status": "discarded",
+            "id": id
+        }))
+        .into_response())
+    } else {
+        Ok(Redirect::to("/bank?info=Statement+discarded.").into_response())
+    }
 }
 
 fn monmon_webhook_callback_url(resolved: &str) -> String {
-    let port = std::env::var("PORT").unwrap_or_else(|_| "9000".to_string());
+    let port = std::env::var("MONMON_PORT")
+        .or_else(|_| std::env::var("PORT"))
+        .unwrap_or_else(|_| "9000".to_string());
     let host = std::env::var("MONMON_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     format!("http://{}:{}/api/statement/webhook?userId={}", host, port, resolved)
 }
@@ -333,11 +471,18 @@ pub async fn upload_statement_form(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     mut multipart: Multipart,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let mut file_bytes = Vec::new();
     let mut target_account_id = None;
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let accepts_json = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("application/json"))
+        .unwrap_or(false)
+        || headers.contains_key("x-requested-with");
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
@@ -355,7 +500,10 @@ pub async fn upload_statement_form(
     }
 
     if file_bytes.is_empty() {
-        return Ok(Redirect::to("/bank?error=Please+select+a+PDF+statement+file+to+upload."));
+        if accepts_json {
+            return Err((StatusCode::BAD_REQUEST, "Please select a PDF statement file to upload.".to_string()));
+        }
+        return Ok(Redirect::to("/bank?error=Please+select+a+PDF+statement+file+to+upload.").into_response());
     }
 
     let legmon_url = legmon_base_url();
@@ -378,18 +526,41 @@ pub async fn upload_statement_form(
             .await
         {
             Ok(res) if res.status().is_success() => {
-                return Ok(Redirect::to("/bank?info=Statement+PDF+uploaded+successfully.+LegMon+OCR+extraction+in+progress..."));
+                if accepts_json {
+                    return Ok((
+                        StatusCode::ACCEPTED,
+                        Json(serde_json::json!({
+                            "status": "processing",
+                            "message": "Statement accepted by LegMon. OCR & transaction extraction in progress..."
+                        })),
+                    )
+                        .into_response());
+                }
+                return Ok(Redirect::to(
+                    "/bank?info=Statement+PDF+uploaded+successfully.+LegMon+OCR+extraction+in+progress...",
+                )
+                .into_response());
             }
             Ok(res) => {
                 let err_msg = format!("LegMon returned status {}: extraction failed", res.status());
-                return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&err_msg))));
+                if accepts_json {
+                    return Err((StatusCode::BAD_GATEWAY, err_msg));
+                }
+                return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&err_msg))).into_response());
             }
             Err(e) => {
                 let err_msg = format!("Could not reach LegMon service: {}", e);
-                return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&err_msg))));
+                if accepts_json {
+                    return Err((StatusCode::BAD_GATEWAY, err_msg));
+                }
+                return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&err_msg))).into_response());
             }
         }
     }
 
-    Ok(Redirect::to("/bank?info=Statement+uploaded+successfully."))
+    if accepts_json {
+        Ok(Json(serde_json::json!({ "status": "processing" })).into_response())
+    } else {
+        Ok(Redirect::to("/bank?info=Statement+uploaded+successfully.").into_response())
+    }
 }

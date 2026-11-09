@@ -504,12 +504,15 @@ async fn main() {
         .route("/api/legmon/status", get(statement::get_legmon_status_api))
         .route("/api/legmon/logs", get(statement::get_legmon_logs_api))
         .route("/api/statement/webhook", post(statement::handle_statement_webhook_api))
+        .route("/api/bank/statement/pending", get(statement::get_pending_statements_api))
         .route("/api/bank/statement/:id/preview", get(statement::get_statement_preview_api))
         .route("/api/bank/statement/:id/confirm", post(statement::confirm_statement_api))
+        .route("/api/bank/statement/:id/discard", post(statement::discard_statement_api))
         .route("/bank/statement/upload", post(statement::upload_statement_form))
         .route("/bank/statement/:id/confirm", post(statement::confirm_statement_api))
         .route("/bank/statement/:id/discard", post(statement::discard_statement_api))
         .route("/assets/*path", get(serve_asset_handler))
+        .route("/public/*path", get(serve_asset_handler))
         .layer(axum::middleware::map_response(apply_cache_control_headers))
         .with_state(state);
 

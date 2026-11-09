@@ -7,7 +7,11 @@ ENV BUILD_NUMBER=$BUILD_NUMBER
 COPY Cargo.toml Cargo.lock build.rs build.properties* ./
 COPY templates ./templates
 COPY src ./src
-RUN cargo build --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build --release && \
+    cp /build/target/release/monmon-rs /build/monmon-rs
 
 FROM debian:bookworm-slim
 
@@ -19,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /build/target/release/monmon-rs /app/monmon-rs
+COPY --from=builder /build/monmon-rs /app/monmon-rs
 COPY public /app/public
 
 ENV PORT=9000 \

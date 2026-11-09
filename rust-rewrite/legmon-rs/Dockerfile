@@ -2,7 +2,11 @@ FROM rust:bookworm AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN cargo build --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build --release && \
+    cp /build/target/release/legmon-rs /build/legmon-rs
 
 FROM debian:bookworm-slim
 
@@ -15,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /build/target/release/legmon-rs /app/legmon-rs
+COPY --from=builder /build/legmon-rs /app/legmon-rs
 
 ENV PORT=9005 \
     RUST_LOG=info

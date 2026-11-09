@@ -78,6 +78,60 @@ impl MonzoConnectionRow {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingStatementDto {
+    pub id: i64,
+    pub job_id: String,
+    pub bank_name: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub opening_balance: Option<f32>,
+    pub closing_balance: Option<f32>,
+    pub transaction_count: i32,
+    pub total_paid_in: Option<f32>,
+    pub total_paid_out: Option<f32>,
+    pub matched_account_id: Option<i64>,
+    pub status: String,
+    pub is_tx_list: bool,
+}
+
+impl PendingStatementDto {
+    pub fn has_paid_in(&self) -> bool {
+        self.total_paid_in.map(|v| v > 0.0).unwrap_or(false)
+    }
+    pub fn has_paid_out(&self) -> bool {
+        self.total_paid_out.map(|v| v > 0.0).unwrap_or(false)
+    }
+    pub fn formatted_paid_in(&self) -> String {
+        format!("{:.2}", self.total_paid_in.unwrap_or(0.0))
+    }
+    pub fn formatted_paid_out(&self) -> String {
+        format!("{:.2}", self.total_paid_out.unwrap_or(0.0))
+    }
+    pub fn formatted_closing(&self) -> String {
+        format!("{:.2}", self.closing_balance.unwrap_or(0.0))
+    }
+    pub fn formatted_opening(&self) -> String {
+        format!("{:.2}", self.opening_balance.unwrap_or(0.0))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountOptionDto {
+    pub id: i64,
+    pub name: String,
+    pub account_type: String,
+    pub ledger_mode: String,
+}
+
+impl AccountOptionDto {
+    pub fn is_matched(&self, matched: &Option<i64>) -> bool {
+        *matched == Some(self.id)
+    }
+}
+
 #[derive(Template)]
 #[template(path = "bank_sync.html")]
 pub struct BankSyncTemplate {
@@ -95,6 +149,9 @@ pub struct BankSyncTemplate {
     pub accounts_count: usize,
     pub txs_count: usize,
     pub recent_transactions: Vec<BankTransactionDto>,
+    pub pending_statements: Vec<PendingStatementDto>,
+    pub accounts: Vec<AccountOptionDto>,
+    pub accounts_json: String,
     pub info_message: Option<String>,
     pub error_message: Option<String>,
 }
@@ -219,15 +276,71 @@ pub async fn get_bank_sync_page(
         "Awaiting first transaction event".to_string()
     };
 
-    // Query accounts count
-    let accounts_row = sqlx::query(
-        "SELECT COUNT(*)::bigint as cnt FROM account WHERE (userid = $1 OR user_id = $1) AND (archived IS NULL OR archived = false)",
+    // Query pending statements
+    let stmt_rows = sqlx::query(
+        r#"
+        SELECT id, COALESCE(job_id, '') AS job_id, COALESCE(bank_name, 'Unknown Bank') AS bank_name,
+               COALESCE(start_date, '') AS start_date, COALESCE(end_date, '') AS end_date,
+               opening_balance, closing_balance, COALESCE(transaction_count, 0) AS transaction_count,
+               total_paid_in, total_paid_out, matched_account_id, COALESCE(status, 'PENDING') AS status
+        FROM pending_statement
+        WHERE (userid = $1 OR user_id = $1) AND status = 'PENDING'
+        ORDER BY created_at DESC
+        "#,
     )
     .bind(&resolved)
-    .fetch_one(&state.pool)
+    .fetch_all(&state.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let accounts_count = accounts_row.get::<i64, _>("cnt") as usize;
+    .unwrap_or_default();
+
+    let pending_statements: Vec<PendingStatementDto> = stmt_rows
+        .into_iter()
+        .map(|r| {
+            let bank: String = r.get("bank_name");
+            let is_tx_list = bank.to_lowercase().contains("transaction") || bank.to_lowercase().contains("txn");
+            PendingStatementDto {
+                id: r.get("id"),
+                job_id: r.get("job_id"),
+                bank_name: bank,
+                start_date: r.get("start_date"),
+                end_date: r.get("end_date"),
+                opening_balance: r.get("opening_balance"),
+                closing_balance: r.get("closing_balance"),
+                transaction_count: r.get("transaction_count"),
+                total_paid_in: r.get("total_paid_in"),
+                total_paid_out: r.get("total_paid_out"),
+                matched_account_id: r.get("matched_account_id"),
+                status: r.get("status"),
+                is_tx_list,
+            }
+        })
+        .collect();
+
+    // Query accounts
+    let acc_rows = sqlx::query(
+        r#"
+        SELECT id, name, type, COALESCE(ledger_mode, 'ABL') AS ledger_mode
+        FROM account
+        WHERE (userid = $1 OR user_id = $1) AND (archived IS NULL OR archived = false)
+        ORDER BY name ASC
+        "#,
+    )
+    .bind(&resolved)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let accounts_count = acc_rows.len();
+    let accounts: Vec<AccountOptionDto> = acc_rows
+        .into_iter()
+        .map(|r| AccountOptionDto {
+            id: r.get("id"),
+            name: r.get("name"),
+            account_type: r.get("type"),
+            ledger_mode: r.get("ledger_mode"),
+        })
+        .collect();
+    let accounts_json = serde_json::to_string(&accounts).unwrap_or_else(|_| "[]".to_string());
 
     // Query transactions
     let txs = list_bank_transactions_internal(&state.pool, &resolved).await.unwrap_or_default();
@@ -248,6 +361,9 @@ pub async fn get_bank_sync_page(
         accounts_count,
         txs_count,
         recent_transactions: txs.into_iter().take(20).collect(),
+        pending_statements,
+        accounts,
+        accounts_json,
         info_message: query.info,
         error_message: query.error,
     };
