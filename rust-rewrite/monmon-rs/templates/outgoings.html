@@ -137,13 +137,22 @@
                                     </div>
                                 {% endif %}
                             </div>
-                            <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                            <div style="text-align: right;">
+                                <span class="badge-pill" style="{% if o.is_adjusted %}background: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);{% else %}background:#e0e7ff; color:#3730a3;{% endif %} padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                                    {% if o.is_adjusted %}
+                                        Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                    {% else %}
+                                        Day {{ o.outgoing_day }}
+                                    {% endif %}
+                                </span>
                                 {% if o.is_adjusted %}
-                                    Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
-                                {% else %}
-                                    Day {{ o.outgoing_day }}
+                                    <div style="margin-top: 3px;">
+                                        <span class="badge-pill" style="background: #fee2e2; color: #b91c1c; font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;" title="Shifted from Day {{ o.outgoing_day }} for short month or weekend/bank holiday">
+                                            <i class="fas fa-calendar-alt"></i> Clamped from {{ o.outgoing_day }}
+                                        </span>
+                                    </div>
                                 {% endif %}
-                            </span>
+                            </div>
                         </div>
                         <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; margin-bottom: 10px;">
                             <div class="stat-cell">
