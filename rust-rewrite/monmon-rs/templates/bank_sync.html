@@ -279,6 +279,7 @@
 </div>
 
     {% include "nav_scripts.html" %}
-    <script src="/assets/javascripts/legmon.js"></script>
+    <script src="/assets/javascripts/legmon.{{ crate::BUILD_HASH }}.js"></script>
+    <script src="/assets/javascripts/bank-sync.{{ crate::BUILD_HASH }}.js"></script>
 </body>
 </html>

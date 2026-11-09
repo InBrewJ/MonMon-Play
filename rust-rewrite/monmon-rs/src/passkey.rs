@@ -37,10 +37,41 @@ pub struct EnrolledPasskey {
     pub created_at: chrono::NaiveDateTime,
 }
 
+pub async fn init_passkey_table(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_passkey (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            credential_id VARCHAR(512) NOT NULL UNIQUE,
+            public_key TEXT,
+            device_name VARCHAR(255),
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_passkey_user_id ON user_passkey(user_id);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn get_passkey_options_api(
+    headers: HeaderMap,
     Query(query): Query<PasskeyOptionsQuery>,
 ) -> Json<serde_json::Value> {
-    let username = query.username.unwrap_or_else(|| "demo".to_string());
+    let host = headers.get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .map(|h| h.split(':').next().unwrap_or(h).trim().to_string())
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "localhost".to_string());
+
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, query.username.as_deref());
+    let username = if raw_uid.is_empty() || raw_uid == "demo" {
+        query.username.filter(|u| !u.trim().is_empty() && u != "demo").unwrap_or_else(|| "inbrewj".to_string())
+    } else {
+        raw_uid
+    };
     let req_type = query.r#type.unwrap_or_else(|| "register".to_string());
 
     // Generate random 32-byte challenge using uuid
@@ -50,7 +81,7 @@ pub async fn get_passkey_options_api(
         Json(serde_json::json!({
             "challenge": challenge,
             "timeout": 60000,
-            "rpId": "localhost",
+            "rpId": host,
             "userVerification": "preferred"
         }))
     } else {
@@ -58,7 +89,7 @@ pub async fn get_passkey_options_api(
             "challenge": challenge,
             "rp": {
                 "name": "MonMon",
-                "id": "localhost"
+                "id": host
             },
             "user": {
                 "id": format!("user_{}", username),
@@ -81,15 +112,32 @@ pub async fn get_passkey_options_api(
 
 pub async fn register_passkey_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(payload): Json<PasskeyRegisterPayload>,
-) -> Result<Response, (StatusCode, String)> {
-    let username = payload.username.trim().to_string();
-    if username.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Username cannot be empty".to_string()));
-    }
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(
+        &headers,
+        if payload.username.trim().is_empty() || payload.username == "demo" {
+            None
+        } else {
+            Some(&payload.username)
+        },
+    );
+    let resolved = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    let username = if resolved.is_empty() || resolved == "demo" {
+        if !payload.username.trim().is_empty() && payload.username != "demo" {
+            payload.username.trim().to_string()
+        } else {
+            "inbrewj".to_string()
+        }
+    } else {
+        resolved
+    };
 
     let public_key = payload.public_key.unwrap_or_else(|| "mock_pubkey_bytes".to_string());
     let device_name = payload.device_name.unwrap_or_else(|| "Browser Authenticator".to_string());
+
+    let _ = init_passkey_table(&state.pool).await;
 
     // Ensure user exists in user_access
     let user_email = format!("{}@example.com", username);
@@ -119,7 +167,7 @@ pub async fn register_passkey_api(
     .bind(&device_name)
     .execute(&state.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "success": false, "message": e.to_string() }))))?;
 
     // Issue auth cookies
     let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
@@ -134,10 +182,10 @@ pub async fn register_passkey_api(
     }))
     .into_response();
 
-    let headers = response.headers_mut();
-    headers.append(header::SET_COOKIE, cookie_val.parse().unwrap());
-    headers.append(header::SET_COOKIE, session_val.parse().unwrap());
-    headers.append(header::SET_COOKIE, auth_val.parse().unwrap());
+    let h = response.headers_mut();
+    h.append(header::SET_COOKIE, cookie_val.parse().unwrap());
+    h.append(header::SET_COOKIE, session_val.parse().unwrap());
+    h.append(header::SET_COOKIE, auth_val.parse().unwrap());
 
     Ok(response)
 }
@@ -145,7 +193,9 @@ pub async fn register_passkey_api(
 pub async fn login_passkey_api(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<PasskeyLoginPayload>,
-) -> Result<Response, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let _ = init_passkey_table(&state.pool).await;
+
     // Look up passkey by credential_id
     let row: Option<(String,)> = sqlx::query_as(
         r#"
@@ -157,18 +207,20 @@ pub async fn login_passkey_api(
     .bind(&payload.credential_id)
     .fetch_optional(&state.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "success": false, "message": e.to_string() }))))?;
 
-    let username = if let Some((uid,)) = row {
-        uid
-    } else if let Some(un) = payload.username {
-        if !un.trim().is_empty() {
-            un.trim().to_string()
-        } else {
-            "demo".to_string()
+    let username = match row {
+        Some((uid,)) => uid,
+        None => {
+            if let Some(user) = payload.username.filter(|u| !u.trim().is_empty()) {
+                user
+            } else {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({ "success": false, "message": "Unknown passkey credential" })),
+                ));
+            }
         }
-    } else {
-        "demo".to_string()
     };
 
     let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
@@ -199,7 +251,8 @@ pub async fn list_user_passkeys_api(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(query): Query<ListPasskeysQuery>,
-) -> Result<Json<Vec<EnrolledPasskey>>, (StatusCode, String)> {
+) -> Result<Json<Vec<EnrolledPasskey>>, (StatusCode, Json<serde_json::Value>)> {
+    let _ = init_passkey_table(&state.pool).await;
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, query.user_id.as_deref());
     let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
 
@@ -223,17 +276,20 @@ pub async fn delete_passkey_api(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<i32>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let _ = init_passkey_table(&state.pool).await;
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
-    let res = sqlx::query("DELETE FROM user_passkey WHERE id = $1 AND (user_id = $2 OR userid = $2)")
+
+    let res = sqlx::query("DELETE FROM user_passkey WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(&user_id)
         .execute(&state.pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "success": false, "message": e.to_string() }))))?;
 
-    crate::authz::Authz::verify_affected(res.rows_affected(), "Passkey", id as i64)?;
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Passkey", id as i64)
+        .map_err(|(sc, msg)| (sc, Json(serde_json::json!({ "success": false, "message": msg }))))?;
 
     Ok(Json(serde_json::json!({ "success": true })))
 }

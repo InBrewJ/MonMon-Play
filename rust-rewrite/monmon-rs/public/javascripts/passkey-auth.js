@@ -33,6 +33,15 @@
         return match ? decodeURIComponent(match[3]) : null;
     }
 
+    async function safeJson(res) {
+        var text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error('Server returned unexpected response (' + res.status + '): ' + (text ? text.substring(0, 150) : '(empty)'));
+        }
+    }
+
     function detectDeviceName() {
         var ua = navigator.userAgent;
         if (/iPhone|iPad/i.test(ua)) return 'Apple iOS Device (Touch/Face ID)';
@@ -75,7 +84,7 @@
 
             try {
                 var optRes = await fetch('/api/auth/passkey/options?type=register&username=' + encodeURIComponent(username));
-                var options = await optRes.json();
+                var options = await safeJson(optRes);
 
                 var credentialId = 'passkey_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
                 var rawIdBase64 = credentialId;
@@ -116,7 +125,7 @@
                         device_name: detectDeviceName()
                     })
                 });
-                var regData = await regRes.json();
+                var regData = await safeJson(regRes);
 
                 if (regData.success) {
                     if (statusEl) {
@@ -164,7 +173,7 @@
 
             try {
                 var optRes = await fetch('/api/auth/passkey/options?type=login&username=' + encodeURIComponent(username));
-                var options = await optRes.json();
+                var options = await safeJson(optRes);
 
                 var credId = 'demo-passkey-creds';
                 if (window.PublicKeyCredential && navigator.credentials && navigator.credentials.get) {
@@ -173,7 +182,7 @@
                         var assertion = await navigator.credentials.get({
                             publicKey: {
                                 challenge: challengeBuf,
-                                rpId: options.rpId || window.location.hostname,
+                                rpId: window.location.hostname,
                                 timeout: 60000,
                                 userVerification: options.userVerification
                             }
@@ -194,7 +203,7 @@
                         credential_id: credId
                     })
                 });
-                var loginData = await loginRes.json();
+                var loginData = await safeJson(loginRes);
 
                 if (loginData.success) {
                     if (statusEl) {
@@ -232,7 +241,11 @@
             if (!listContainer) return;
             try {
                 var res = await fetch('/api/auth/passkey/list');
-                var passkeys = await res.json();
+                if (!res.ok) {
+                    console.warn('Failed to load passkeys:', res.status);
+                    return;
+                }
+                var passkeys = await safeJson(res);
 
                 if (!passkeys || passkeys.length === 0) {
                     listContainer.innerHTML = [
@@ -270,8 +283,13 @@
                     delBtn.addEventListener('click', async function () {
                         var id = this.getAttribute('data-id');
                         if (confirm('Remove this passkey?')) {
-                            await fetch('/api/auth/passkey/' + id, { method: 'DELETE' });
-                            loadPasskeys();
+                            var dRes = await fetch('/api/auth/passkey/' + id, { method: 'DELETE' });
+                            if (dRes.ok) {
+                                loadPasskeys();
+                            } else {
+                                var err = await safeJson(dRes).catch(function(e) { return { message: e.message }; });
+                                alert('Could not delete passkey: ' + (err.message || 'Error'));
+                            }
                         }
                     });
                 });
@@ -287,7 +305,7 @@
                 try {
                     var username = getCookie('user_id') || getCookie('monmon_session') || 'demo';
                     var optRes = await fetch('/api/auth/passkey/options?type=register&username=' + encodeURIComponent(username));
-                    var options = await optRes.json();
+                    var options = await safeJson(optRes);
 
                     var credentialId = 'passkey_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
                     var rawIdBase64 = credentialId;
@@ -328,7 +346,7 @@
                             device_name: detectDeviceName()
                         })
                     });
-                    var regData = await regRes.json();
+                    var regData = await safeJson(regRes);
                     if (regData.success) {
                         await loadPasskeys();
                     } else {

@@ -228,7 +228,7 @@
 <script>
     window.spendingPaceData = {{ chart_json|safe }};
 </script>
-<script src="/assets/javascripts/spending-pace-chart.js"></script>
+<script src="/assets/javascripts/spending-pace-chart.{{ crate::BUILD_HASH }}.js"></script>
 
 {% include "nav_scripts.html" %}
 </body>

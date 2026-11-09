@@ -18,6 +18,8 @@ mod search;
 mod spog;
 mod statement;
 
+pub const BUILD_HASH: &str = env!("BUILD_HASH");
+
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
@@ -37,7 +39,6 @@ use sqlx::PgPool;
 use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tower_http::services::ServeDir;
 use tracing::info;
 
 #[derive(Clone)]
@@ -215,6 +216,8 @@ async fn main() {
         .connect(&clean_db_url)
         .await
         .expect("Failed to connect to PostgreSQL");
+
+    let _ = passkey::init_passkey_table(&pool).await;
 
     let state = Arc::new(AppState { pool });
 
@@ -443,14 +446,8 @@ async fn main() {
         .route("/bank/statement/upload", post(statement::upload_statement_form))
         .route("/bank/statement/:id/confirm", post(statement::confirm_statement_api))
         .route("/bank/statement/:id/discard", post(statement::discard_statement_api))
-        .nest_service(
-            "/assets",
-            ServeDir::new(if std::path::Path::new("public").exists() {
-                "public"
-            } else {
-                "../../public"
-            }),
-        )
+        .route("/assets/*path", get(serve_asset_handler))
+        .layer(axum::middleware::map_response(apply_cache_control_headers))
         .with_state(state);
 
     let port: u16 = env::var("PORT")
@@ -960,4 +957,119 @@ async fn get_spending_pace_page_handler(
         .and_then(|c| c.parse().ok())
         .unwrap_or(0);
     spog::get_spending_pace_page(&state, &user_id, cycle_offset).await
+}
+
+async fn apply_cache_control_headers(response: Response) -> Response {
+    let mut response = response;
+    let headers = response.headers_mut();
+    if !headers.contains_key(header::CACHE_CONTROL) {
+        headers.insert(
+            header::CACHE_CONTROL,
+            header::HeaderValue::from_static("no-cache, no-store, must-revalidate, max-age=0"),
+        );
+        headers.insert(header::PRAGMA, header::HeaderValue::from_static("no-cache"));
+        headers.insert(header::EXPIRES, header::HeaderValue::from_static("0"));
+    }
+    response
+}
+
+async fn serve_asset_handler(
+    axum::extract::Path(path): axum::extract::Path<String>,
+    req: axum::extract::Request,
+) -> Response {
+    if path.contains("..") {
+        return (StatusCode::BAD_REQUEST, "Invalid path").into_response();
+    }
+
+    // Check if filename has a build hash, e.g. name.<hash>.ext
+    let mut is_hashed = false;
+    let target_path = if let Some(dot_idx) = path.rfind('.') {
+        let (prefix, ext) = path.split_at(dot_idx);
+        let ext = &ext[1..];
+        if let Some(second_dot_idx) = prefix.rfind('.') {
+            let (stem, possible_hash) = prefix.split_at(second_dot_idx);
+            let possible_hash = &possible_hash[1..];
+            if possible_hash.len() >= 6 && possible_hash.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+                is_hashed = true;
+                format!("{}.{}", stem, ext)
+            } else {
+                path.clone()
+            }
+        } else {
+            path.clone()
+        }
+    } else {
+        path.clone()
+    };
+
+    if req.uri().query().map(|q| q.contains("v=")).unwrap_or(false) {
+        is_hashed = true;
+    }
+
+    let base_dir = if std::path::Path::new("public").exists() {
+        "public"
+    } else {
+        "../../public"
+    };
+
+    let file_path = std::path::Path::new(base_dir).join(&target_path);
+    if !file_path.is_file() {
+        return (StatusCode::NOT_FOUND, "Asset not found").into_response();
+    }
+
+    let contents = match tokio::fs::read(&file_path).await {
+        Ok(c) => c,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read asset").into_response(),
+    };
+
+    let content_type = match file_path.extension().and_then(|s| s.to_str()).unwrap_or("") {
+        "js" => "application/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "ico" => "image/x-icon",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "json" => "application/json",
+        _ => "application/octet-stream",
+    };
+
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    contents.hash(&mut hasher);
+    let etag = format!("\"{:x}\"", hasher.finish());
+
+    if let Some(if_none_match) = req.headers().get(header::IF_NONE_MATCH) {
+        if if_none_match.to_str().map(|s| s == etag).unwrap_or(false) {
+            let mut res = StatusCode::NOT_MODIFIED.into_response();
+            let h = res.headers_mut();
+            h.insert(header::ETAG, etag.parse().unwrap());
+            if is_hashed {
+                h.insert(header::CACHE_CONTROL, header::HeaderValue::from_static("public, max-age=31536000, immutable"));
+            } else {
+                h.insert(header::CACHE_CONTROL, header::HeaderValue::from_static("no-cache, must-revalidate"));
+            }
+            return res;
+        }
+    }
+
+    let mut response = (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, content_type)],
+        contents,
+    ).into_response();
+
+    let headers = response.headers_mut();
+    headers.insert(header::ETAG, etag.parse().unwrap());
+    if is_hashed {
+        headers.insert(header::CACHE_CONTROL, header::HeaderValue::from_static("public, max-age=31536000, immutable"));
+    } else {
+        headers.insert(header::CACHE_CONTROL, header::HeaderValue::from_static("no-cache, must-revalidate"));
+    }
+
+    response
 }

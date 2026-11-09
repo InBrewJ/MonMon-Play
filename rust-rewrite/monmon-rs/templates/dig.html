@@ -359,8 +359,8 @@
     </script>
     {% include "nav_scripts.html" %}
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <script src="/assets/javascripts/leaflet-heat.js"></script>
-    <script src="/assets/javascripts/dig.js"></script>
+    <script src="/assets/javascripts/leaflet-heat.{{ crate::BUILD_HASH }}.js"></script>
+    <script src="/assets/javascripts/dig.{{ crate::BUILD_HASH }}.js"></script>
 
 </body>
 </html>
