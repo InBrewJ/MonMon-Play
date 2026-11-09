@@ -2,9 +2,9 @@ FROM rust:bookworm AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target \
+RUN --mount=type=cache,id=legmon-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=legmon-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=legmon-build-target,target=/build/target \
     cargo build --release && \
     cp /build/target/release/legmon-rs /build/legmon-rs
 

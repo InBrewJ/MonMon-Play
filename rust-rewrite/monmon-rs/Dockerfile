@@ -7,9 +7,9 @@ ENV BUILD_NUMBER=$BUILD_NUMBER
 COPY Cargo.toml Cargo.lock build.rs build.properties* ./
 COPY templates ./templates
 COPY src ./src
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target \
+RUN --mount=type=cache,id=monmon-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=monmon-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=monmon-build-target,target=/build/target \
     cargo build --release && \
     cp /build/target/release/monmon-rs /build/monmon-rs
 
