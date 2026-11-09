@@ -75,7 +75,9 @@ if [ -n "$CURRENT_KID" ] && [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ]; then
     docker compose -f docker-compose.rust.yaml stop rauthy || true
 
     PASSKEY_SQL="/tmp/rauthy_passkeys_restore.sql"
-    docker run --rm -v "$APP_DIR/rust-rewrite/rauthy/data:/data:ro" alpine sh -c "
+    mkdir -p "$APP_DIR/backups"
+    docker run --rm -v "$APP_DIR/rust-rewrite/rauthy/data:/data:ro" -v "$APP_DIR/backups:/backups" alpine sh -c "
+        cp -f /data/state_machine/db/hiqlite.db /backups/rauthy_pre_rotation.sqlite 2>/dev/null || true
         apk add --no-cache sqlite >/dev/null 2>&1
         sqlite3 /data/state_machine/db/hiqlite.db \".mode insert passkeys\" \"SELECT * FROM passkeys;\"
         sqlite3 /data/state_machine/db/hiqlite.db \"SELECT 'UPDATE users SET webauthn_user_id = ''' || webauthn_user_id || ''' WHERE id = ''' || id || ''';' FROM users WHERE webauthn_user_id IS NOT NULL;\"
@@ -85,7 +87,7 @@ if [ -n "$CURRENT_KID" ] && [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ]; then
 
     docker compose -f docker-compose.rust.yaml up -d rauthy
     echo "Waiting for Rauthy bootstrap to complete..."
-    for _ in $(seq 1 20); do
+    for _ in $(seq 1 60); do
         if [ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8085/auth/v1/ping 2>/dev/null || true)" = "200" ]; then
             break
         fi
@@ -134,7 +136,14 @@ else
 fi
 
 # 7. Verify Rauthy status
-RAUTHY_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8085/auth/v1/ping 2>/dev/null || true)
+RAUTHY_CODE="000"
+for _ in $(seq 1 15); do
+    RAUTHY_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8085/auth/v1/ping 2>/dev/null || true)
+    if [ "$RAUTHY_CODE" = "200" ]; then
+        break
+    fi
+    sleep 1
+done
 if [ "$RAUTHY_CODE" = "200" ]; then
     echo "✅ Rauthy Auth service is healthy (HTTP 200)!"
 else
