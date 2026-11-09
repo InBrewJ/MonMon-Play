@@ -32,6 +32,11 @@ rsync -avz --delete \
     --exclude 'target' \
     rust-rewrite/legmon-rs/ \
     "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/legmon-rs/"
+scp docker-compose.rust.yaml "${GREENSTREET_HOST}:${REMOTE_DIR}/"
+if [[ -f .env ]]; then
+    scp .env "${GREENSTREET_HOST}:${REMOTE_DIR}/.env"
+    ssh "$GREENSTREET_HOST" "chmod 600 ${REMOTE_DIR}/.env"
+fi
 
 echo -e "${BLUE}${BOLD}==> [3/4] Building and updating legmon container on ${GREENSTREET_HOST}...${NC}"
 ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml build legmon && docker compose -f docker-compose.rust.yaml up -d --no-deps legmon"
