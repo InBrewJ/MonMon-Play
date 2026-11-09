@@ -4,6 +4,8 @@
 
 "pencils down, rewrite everything in Rust, get performance gains, don't read the code"
 
+Spoilers: I did end up reading some of the code. Literally how can you not. I also modified about four lines, some config and some small bit in the Rust that deals with logging out. But that was it.
+
 ## HOW IT WENT
 
 In short, Gemini 3.8 Flash started with a [vague plan](rust-rewrite/README.md), then:
