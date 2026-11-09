@@ -19,7 +19,7 @@ static RE_LEADING_DATE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static RE_AMOUNT_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:([+\-])\s*)?(?:(?:GBP|[£E])\s*)?([\d,]+\.\d{2})(?![0-9%])")
+    Regex::new(r"(?:([+\-])\s*)?(?:(?:GBP|[£E])\s*)?([\d,]+\.\d{2})\b")
         .unwrap()
 });
 
@@ -199,5 +199,17 @@ pub fn parse(raw_text: &str) -> Statement {
         opening_balance: 0.0,
         closing_balance: 0.0,
         transactions,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_regex_initialization_and_parsing() {
+        let sample = "NatWest Bank Statement\nAccount: 12345678\nDate 01 Oct 2026\n01 Oct Tesco -25.50 1000.00\n02 Oct Salary +2500.00 3500.00";
+        let stmt = parse(sample);
+        assert_eq!(stmt.bank, "NatWest");
     }
 }

@@ -869,7 +869,13 @@ async fn logout_handler(headers: HeaderMap) -> Response {
         ("http://localhost:8085/auth/v1/oidc/logout", "http://localhost:9000/")
     };
 
-    let logout_target = format!("{}?post_logout_redirect_uri={}", rauthy_logout_base, urlencoding::encode(post_logout));
+    let client_id = std::env::var("OIDC_CLIENT_ID").unwrap_or_else(|_| "monmon-web".to_string());
+    let logout_target = format!(
+        "{}?post_logout_redirect_uri={}&client_id={}",
+        rauthy_logout_base,
+        urlencoding::encode(post_logout),
+        urlencoding::encode(&client_id)
+    );
 
     let mut response = axum::response::Redirect::to(&logout_target).into_response();
     let resp_headers = response.headers_mut();

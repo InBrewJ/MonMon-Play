@@ -494,9 +494,11 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         });
     }
 
-    let total_available_credit = total_available_credit.max(0.0);
+    let total_available_credit = ((total_available_credit.max(0.0)) * 100.0).round() / 100.0;
+    let credit_balance = ((credit_balance.max(0.0)) * 100.0).round() / 100.0;
+    let credit_limit = ((credit_limit.max(0.0)) * 100.0).round() / 100.0;
     let credit_usage = if credit_limit > 0.0 {
-        ((credit_balance / credit_limit) * 100.0).clamp(0.0, 100.0)
+        (((credit_balance / credit_limit) * 100.0 * 100.0).round() / 100.0).clamp(0.0, 100.0)
     } else {
         0.0
     };
