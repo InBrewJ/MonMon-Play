@@ -5,6 +5,8 @@ services:
     container_name: rauthy
     image: ghcr.io/sebadob/rauthy:0.37.2
     command: ["serve", "-c", "/app/rauthy.cfg"]
+    env_file:
+      - .env
     environment:
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     volumes:

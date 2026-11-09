@@ -27,3 +27,13 @@ rp_origin = "https://identity.dryark.uk:443"
 [bootstrap]
 bootstrap_dir = "/app/bootstrap"
 
+[email]
+rauthy_admin_email = 'jason@dryark.uk'
+sub_prefix = 'MonMon Identity'
+smtp_url = 'smtp.mailbox.org'
+smtp_port = 587
+smtp_username = "$SECRETS"
+smtp_password = "$SECRETS"
+smtp_from = 'MonMon <no-reply@dryark.uk>'
+smtp_tls_mode = 'starttls'
+
