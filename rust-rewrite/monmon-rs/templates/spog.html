@@ -42,14 +42,14 @@
                 <!-- Baseline Difference Box -->
                 <div class="w3-panel w3-round {% if pace.is_behind_baseline %}w3-pale-red w3-border-red{% else %}w3-pale-green w3-border-green{% endif %}" style="margin: 0.75rem auto; max-width: 360px; padding: 8px 14px; font-size: 0.95em; border-left: 4px solid;">
                     {% if pace.is_behind_baseline %}
-                        <span>
+                        <span title="£{{ pace.absolute_baseline_diff_total }} behind baseline (£{{ metrics.max_per_day }}/day)">
                             <i class="fas fa-exclamation-circle" style="color: #ef4444; margin-right: 4px;"></i>
-                            <b>£{{ pace.absolute_baseline_diff_total }}</b> to get back to baseline
+                            <b>£{{ pace.absolute_baseline_diff_total }}</b> to get back to baseline<sup><i class="fas fa-arrow-down" style="color: #ef4444;"></i></sup>
                         </span>
                     {% else %}
-                        <span>
+                        <span title="£{{ pace.absolute_baseline_diff_total }} ahead of baseline (£{{ metrics.max_per_day }}/day)">
                             <i class="fas fa-check-circle" style="color: #10b981; margin-right: 4px;"></i>
-                            <b>£{{ pace.absolute_baseline_diff_total }}</b> surplus above baseline
+                            <b>£{{ pace.absolute_baseline_diff_total }}</b> surplus above baseline<sup><i class="fas fa-arrow-up" style="color: #10b981;"></i></sup>
                         </span>
                     {% endif %}
                 </div>
@@ -144,10 +144,15 @@
                     <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
                         <i class="fas fa-chart-line" style="color: var(--primary); margin-right: 6px;"></i> Spent This Month
                     </span>
-                    <a href="/historicSpent" title="Spending history" aria-label="Spending history"
-                       style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); color: var(--primary);">
-                        <i class="fas fa-history"></i>
-                    </a>
+                    <span style="display: flex; align-items: center; gap: 6px;">
+                        <span class="badge-pill {% if pace.is_overspent_daily %}badge-danger{% else %}badge-success{% endif %}">
+                            Day {{ pace.days_since_last_payday }} of {{ metrics.days_between_paydays }}
+                        </span>
+                        <a href="/historicSpent" title="Spending history" aria-label="Spending history"
+                           style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); color: var(--primary);">
+                            <i class="fas fa-history"></i>
+                        </a>
+                    </span>
                 </div>
 
                 <div style="margin: 0.5rem 0 0.25rem 0;">
@@ -161,7 +166,7 @@
 
                 <div style="font-size: 0.95rem; margin-bottom: 0.65rem; display: flex; align-items: center; justify-content: space-between;">
                     <div>
-                        Current pace: <b>£{{ pace.actual_daily_spend }} / day</b>
+                        Current spending pace: <b>£{{ pace.actual_daily_spend }} / day</b>
                     </div>
                     <a href="/spendingPace" title="View spending pace histogram" aria-label="View spending pace histogram"
                        style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); color: var(--primary); text-decoration: none;">
@@ -169,16 +174,16 @@
                     </a>
                 </div>
 
-                <div class="w3-panel w3-round {% if pace.is_behind_baseline %}w3-pale-red w3-border-red{% else %}w3-pale-green w3-border-green{% endif %}" style="margin: 0; padding: 8px 12px; font-size: 0.9em; border-left: 4px solid;">
-                    {% if pace.is_behind_baseline %}
-                        <span>
+                <div class="w3-panel w3-round {% if pace.is_overspent_daily %}w3-pale-red w3-border-red{% else %}w3-pale-green w3-border-green{% endif %}" style="margin: 0; padding: 8px 12px; font-size: 0.9em; border-left: 4px solid;">
+                    {% if pace.is_overspent_daily %}
+                        <span title="Actual daily spend (£{{ pace.actual_daily_spend }}) exceeds daily MAX allowance (£{{ metrics.max_per_day }}) by £{{ pace.absolute_daily_overspend }}/day">
                             <i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 4px;"></i>
-                            Overspent by <b>£{{ pace.absolute_baseline_diff_total }}</b> based on baseline allowance
+                            Overspent by <b>£{{ pace.absolute_daily_overspend }}</b> per day based on MAX (£{{ metrics.max_per_day }})<sup><i class="fas fa-arrow-up" style="color: #ef4444;"></i></sup>
                         </span>
                     {% else %}
-                        <span>
+                        <span title="Actual daily spend (£{{ pace.actual_daily_spend }}) is within daily MAX allowance (£{{ metrics.max_per_day }})">
                             <i class="fas fa-check-circle" style="color: #10b981; margin-right: 4px;"></i>
-                            <b>£{{ pace.absolute_baseline_diff_total }}</b> under baseline allowance
+                            <b>£{{ pace.absolute_daily_overspend }}</b> per day under MAX (£{{ metrics.max_per_day }})<sup><i class="fas fa-arrow-down" style="color: #10b981;"></i></sup>
                         </span>
                     {% endif %}
                 </div>
@@ -262,7 +267,7 @@
                     </div>
                     <div class="metric-box">
                         <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Credit Usage</div>
-                        <div style="font-size: 1.1rem; font-weight: 700; color: {% if metrics.credit_usage > 50.0 %}#ef4444{% else %}#10b981{% endif %};">
+                        <div style="font-size: 1.1rem; font-weight: 700; color: {% if metrics.credit_usage.0 > 5000 %}#ef4444{% else %}#10b981{% endif %};">
                             {{ metrics.credit_usage }}%
                         </div>
                     </div>

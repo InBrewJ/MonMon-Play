@@ -454,7 +454,7 @@ pub async fn calculate_historic_cycles(
 
         let days_in_cycle = (curr_cycle_end - curr_cycle_start).num_days().max(1) as i32;
         let days_elapsed = if is_current {
-            ((today - curr_cycle_start).num_days() as i32 + 1).min(days_in_cycle).max(1)
+            ((today - curr_cycle_start).num_days() as i32).min(days_in_cycle).max(1)
         } else {
             days_in_cycle
         };
@@ -535,8 +535,8 @@ pub async fn calculate_historic_cycles(
             0.0
         };
 
-        let monthly_income = spog.incoming_total;
-        let pot_allowance = spog.surplus;
+        let monthly_income = spog.incoming_total.to_pounds_f32();
+        let pot_allowance = spog.surplus.to_pounds_f32();
 
         let diff = pot_spent - pot_allowance;
         let is_over = diff > 0.0;

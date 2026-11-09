@@ -50,14 +50,14 @@ pub async fn ed_says_spog_api(
     let configured = is_mistral_configured();
     let advice = if metrics.monthly_pot_left_per_day >= metrics.max_per_day {
         format!(
-            "🌟 You're doing fantastic! Your daily spending allowance is £{:.2}/day, comfortably above your £{:.2}/day target baseline. With {} days until your next payday, you have a solid buffer. Keep pacing yourself!",
+            "🌟 You're doing fantastic! Your daily spending allowance is £{}/day, comfortably above your £{}/day target baseline. With {} days until your next payday, you have a solid buffer. Keep pacing yourself!",
             metrics.monthly_pot_left_per_day,
             metrics.max_per_day,
             metrics.days_between_paydays
         )
     } else {
         format!(
-            "⚠️ Heads up! Your daily allowance has dipped to £{:.2}/day (below your £{:.2}/day baseline). With {} days until your next payday, pausing non-essential purchases for a couple of days will help replenish your pot.",
+            "⚠️ Heads up! Your daily allowance has dipped to £{}/day (below your £{}/day baseline). With {} days until your next payday, pausing non-essential purchases for a couple of days will help replenish your pot.",
             metrics.monthly_pot_left_per_day,
             metrics.max_per_day,
             metrics.days_between_paydays
