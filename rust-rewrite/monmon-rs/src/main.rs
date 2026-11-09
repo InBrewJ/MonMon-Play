@@ -159,16 +159,20 @@ pub async fn callback_handler(
     if user_ident.is_empty() {
         if let Some(ref code) = params.code {
             let client = reqwest::Client::new();
-            let host_header = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("");
-            let redirect_uri = std::env::var("REDIRECT_URI").unwrap_or_else(|_| {
-                if host_header.contains("dryark.uk") {
-                    "https://monmon.dryark.uk/callback".to_string()
-                } else if !host_header.is_empty() {
-                    format!("http://{}/callback", host_header)
-                } else {
-                    "http://localhost:9000/callback".to_string()
-                }
-            });
+            let host_header = headers
+                .get("x-forwarded-host")
+                .or_else(|| headers.get("host"))
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("");
+            let redirect_uri = if host_header.contains("dryark.uk") {
+                "https://monmon.dryark.uk/callback".to_string()
+            } else if let Ok(ru) = std::env::var("REDIRECT_URI") {
+                ru
+            } else if !host_header.is_empty() {
+                format!("http://{}/callback", host_header)
+            } else {
+                "http://localhost:9000/callback".to_string()
+            };
             let client_secret = std::env::var("OIDC_CLIENT_SECRET")
                 .unwrap_or_else(|_| "aaa6a201a8a41810e2e33118bed1bddaba722902e89e959cb6cc0a2949445d78".to_string());
 
@@ -806,14 +810,19 @@ async fn get_login_page(
         .cloned()
         .unwrap_or_else(|| "/spog".to_string());
 
-    let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("");
-    let (auth_url, redirect_uri) = if let (Ok(au), Ok(ru)) = (env::var("AUTH_URL"), env::var("REDIRECT_URI")) {
-        (au, ru)
-    } else if host.contains("dryark.uk") {
+    let host = headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get("host"))
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+
+    let (auth_url, redirect_uri) = if host.contains("dryark.uk") {
         (
             "https://identity.dryark.uk/auth/v1/oidc/authorize".to_string(),
             "https://monmon.dryark.uk/callback".to_string(),
         )
+    } else if let (Ok(au), Ok(ru)) = (env::var("AUTH_URL"), env::var("REDIRECT_URI")) {
+        (au, ru)
     } else {
         (
             "http://localhost:8085/auth/v1/oidc/authorize".to_string(),
@@ -836,7 +845,11 @@ async fn get_login_page(
 }
 
 async fn logout_handler(headers: HeaderMap) -> Response {
-    let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("");
+    let host = headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get("host"))
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
     let (rauthy_logout_base, post_logout) = if host.contains("dryark.uk") {
         ("https://identity.dryark.uk/auth/v1/oidc/logout", "https://monmon.dryark.uk/")
     } else {
