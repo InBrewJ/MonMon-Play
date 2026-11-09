@@ -303,6 +303,7 @@ async fn main() {
         .route("/editAccount/:id", get(management::get_edit_account_page))
         .route("/updateAccount/:id", post(management::post_update_account_form))
         .route("/updateAccount", post(management::post_update_account_form_direct))
+        .route("/binAccount/:id", get(management::get_bin_account).post(management::get_bin_account))
         .route("/myIncomings", get(management::get_incomings_page))
         .route("/editIncoming/:id", get(management::get_edit_incoming_page))
         .route("/updateIncoming/:id", post(management::post_update_incoming_form))

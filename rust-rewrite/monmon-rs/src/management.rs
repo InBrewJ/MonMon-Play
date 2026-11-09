@@ -773,6 +773,26 @@ pub async fn get_bin_incoming(
     Ok(Redirect::to("/myIncomings"))
 }
 
+pub async fn get_bin_account(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    if !is_authenticated(&headers) {
+        return Ok(Redirect::to("/login"));
+    }
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    db::archive_account(&state.pool, id, &user_id)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Account #{} not found or owned by another user.", id)),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
+
+    Ok(Redirect::to("/myAccounts"))
+}
+
 pub async fn get_balances_page(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

@@ -52,8 +52,8 @@
                                         <a href="/editAccount/{{ a.id }}#account-modal" class="btn-action btn-edit" title="Edit" style="margin-right: 8px; color: var(--primary); text-decoration: none;">
                                             <i class="fas fa-pen"></i>
                                         </a>
-                                        <form method="POST" action="/internal/accounts/{{ a.id }}/archive" style="display: inline;">
-                                            <button type="submit" class="btn-action btn-delete" style="background:none; border:none; color:#ef4444; cursor:pointer;" onclick="return confirm('Archive account?');">
+                                        <form method="POST" action="/binAccount/{{ a.id }}" style="display: inline;">
+                                            <button type="submit" class="btn-action btn-delete" style="background:none; border:none; color:#ef4444; cursor:pointer;">
                                                 <i class="fas fa-trash-alt"></i>
                                             </button>
                                         </form>
@@ -90,7 +90,7 @@
                         <div class="item-card-actions" style="display: flex; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
                             <a href="/bank?uploadAccount={{ a.id }}#statement-upload" class="btn-action" style="padding: 4px 10px; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.8rem; text-decoration: none;"><i class="fas fa-file-pdf"></i> Statement</a>
                             <a href="/editAccount/{{ a.id }}#account-modal" class="btn-action btn-edit" style="padding: 4px 10px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.8rem; text-decoration: none;"><i class="fas fa-pen"></i> Edit</a>
-                            <form method="POST" action="/internal/accounts/{{ a.id }}/archive" style="display: inline;">
+                            <form method="POST" action="/binAccount/{{ a.id }}" style="display: inline;">
                                 <button type="submit" class="btn-action btn-delete" style="padding: 4px 10px; background: #f1f5f9; color: #ef4444; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.8rem; cursor: pointer;"><i class="fas fa-trash-alt"></i> Delete</button>
                             </form>
                         </div>

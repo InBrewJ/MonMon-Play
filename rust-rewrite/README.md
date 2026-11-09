@@ -8,12 +8,13 @@
 
 In short, Gemini 3.8 Flash started with this plan, then:
 
-- wrote migration / playwright tests for most GETs and some POSTs
+- wrote migration / playwright tests for most GETs and some POSTs to compare the Java and Rust versions
 - chose to use its own hand rolled auth (monmon-auth) which I then steered back towards RAuthy
 - hardcoded a demo user into the rust system
 - Did not initially get the notion of a shared header or nav system at all
 - The biggest glaring problem was auth: even though I'd heavily hinted to use RAuthy,
 Gem went ahead with hardcoding usernames and passwords everywhere, messing up passkeys, and in the finish deployed and ran Rauthy but left it unattached to the app
+- and for RAuthy, gem has no qualms about commited secrets into the repo. This repo is public and so generally, this is bad
 
 Generally, it got about 30% of the way there, then I went through and picked the UI apart
 and asked Gem to fix them all piecemeal.
