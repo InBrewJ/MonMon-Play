@@ -147,6 +147,12 @@ pub async fn callback_handler(
     headers: HeaderMap,
     Query(params): Query<CallbackQuery>,
 ) -> Response {
+    let host_header = headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get("host"))
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+
     let target = params.state.unwrap_or_else(|| "/spog".to_string());
     let clean_target = if target.starts_with('/') {
         target
@@ -156,15 +162,11 @@ pub async fn callback_handler(
 
     let mut user_ident = params.user_id.or(params.username).unwrap_or_default();
     let mut resolved_username = user_ident.clone();
+    let mut raw_id_token: Option<String> = None;
 
     if user_ident.is_empty() {
         if let Some(ref code) = params.code {
             let client = reqwest::Client::new();
-            let host_header = headers
-                .get("x-forwarded-host")
-                .or_else(|| headers.get("host"))
-                .and_then(|h| h.to_str().ok())
-                .unwrap_or("");
             let redirect_uri = if host_header.contains("dryark.uk") {
                 "https://monmon.dryark.uk/callback".to_string()
             } else if let Ok(ru) = std::env::var("REDIRECT_URI") {
@@ -201,6 +203,8 @@ pub async fn callback_handler(
                         if status.is_success() {
                             if let Ok(json) = res.json::<serde_json::Value>().await {
                                 if let Some(id_token) = json.get("id_token").and_then(|v| v.as_str()) {
+                                    raw_id_token = Some(id_token.to_string());
+
                                     if let Some(claims) = extract_claims_from_id_token(id_token) {
                                         if let Some(u) = claims.preferred_username {
                                             resolved_username = u.clone();
@@ -243,15 +247,25 @@ pub async fn callback_handler(
     let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", resolved_username);
     let auth_val = "authenticated=true; Path=/; SameSite=Lax";
 
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::SEE_OTHER)
         .header(header::LOCATION, clean_target)
         .header(header::SET_COOKIE, cookie_val)
         .header(header::SET_COOKIE, session_val)
         .header(header::SET_COOKIE, auth_val)
-        .header(header::SET_COOKIE, "PLAY_SESSION=authenticated; Path=/")
-        .body(axum::body::Body::empty())
-        .unwrap()
+        .header(header::SET_COOKIE, "PLAY_SESSION=authenticated; Path=/");
+
+    if let Some(id_token) = raw_id_token {
+        let is_prod = clean_target.contains("dryark.uk") || host_header.contains("dryark.uk");
+        let secure_flag = if is_prod { "; Secure" } else { "" };
+        let id_token_cookie = format!(
+            "id_token={}; Path=/; HttpOnly; SameSite=Lax{}",
+            id_token, secure_flag
+        );
+        builder = builder.header(header::SET_COOKIE, id_token_cookie);
+    }
+
+    builder.body(axum::body::Body::empty()).unwrap()
 }
 
 #[tokio::main]
@@ -870,26 +884,61 @@ async fn logout_handler(headers: HeaderMap) -> Response {
         .or_else(|| headers.get("host"))
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
+
     let (rauthy_logout_base, post_logout) = if host.contains("dryark.uk") {
         ("https://identity.dryark.uk/auth/v1/oidc/logout", "https://monmon.dryark.uk/")
     } else {
         ("http://localhost:8085/auth/v1/oidc/logout", "http://localhost:9000/")
     };
 
-    let client_id = std::env::var("OIDC_CLIENT_ID").unwrap_or_else(|_| "monmon-web".to_string());
-    let logout_target = format!(
-        "{}?post_logout_redirect_uri={}&client_id={}",
+    // Extract the id_token cookie value from the Cookie header
+    let id_token = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookie_str| {
+            cookie_str.split(';').find_map(|pair| {
+                let mut parts = pair.trim().splitn(2, '=');
+                let name = parts.next()?.trim();
+                let val = parts.next()?.trim();
+                if name == "id_token" {
+                    Some(val.to_string())
+                } else {
+                    None
+                }
+            })
+        });
+
+    // Build the query: post_logout_redirect_uri is primary, id_token_hint is required by Rauthy
+    let mut logout_target = format!(
+        "{}?post_logout_redirect_uri={}",
         rauthy_logout_base,
-        urlencoding::encode(post_logout),
-        urlencoding::encode(&client_id)
+        urlencoding::encode(post_logout)
     );
+
+    if let Some(token) = id_token {
+        logout_target.push_str(&format!("&id_token_hint={}", urlencoding::encode(&token)));
+    }
 
     let mut response = axum::response::Redirect::to(&logout_target).into_response();
     let resp_headers = response.headers_mut();
-    resp_headers.append(axum::http::header::SET_COOKIE, "user_id=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
-    resp_headers.append(axum::http::header::SET_COOKIE, "monmon_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
-    resp_headers.append(axum::http::header::SET_COOKIE, "authenticated=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
-    resp_headers.append(axum::http::header::SET_COOKIE, "PLAY_SESSION=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
+
+    let expired_cookies = [
+        "id_token",
+        "user_id",
+        "monmon_session",
+        "authenticated",
+        "PLAY_SESSION",
+    ];
+
+    for name in expired_cookies {
+        resp_headers.append(
+            axum::http::header::SET_COOKIE,
+            format!("{}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT", name)
+                .parse()
+                .unwrap(),
+        );
+    }
+
     response
 }
 

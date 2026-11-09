@@ -36,3 +36,8 @@ smtp_username = "$SECRETS"
 smtp_password = "$SECRETS"
 smtp_from = 'MonMon <jason@dryark.uk>'
 smtp_tls_mode = 'starttls'
+
+# https://sebadob.github.io/rauthy/config/sessions.html
+[lifetimes]
+session_lifetime = '336h'
+session_timeout = '24h'
