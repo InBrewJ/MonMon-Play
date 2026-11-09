@@ -15,6 +15,12 @@
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">Sign in to view your live Single Pane of Glass.</p>
             </div>
 
+            {% if let Some(err) = error_message %}
+            <div class="w3-panel w3-round" style="background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid var(--danger); padding: 10px 14px; margin-bottom: 1.25rem; border-radius: 8px; font-size: 0.88rem;">
+                <i class="fas fa-exclamation-triangle" style="margin-right: 6px;"></i> {{ err }}
+            </div>
+            {% endif %}
+
             <form method="POST" action="/login" id="login-form">
                 <input type="hidden" name="return_to" id="return_to" value="{{ return_to }}" />
                 <div style="margin-bottom: 1rem;">

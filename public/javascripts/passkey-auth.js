@@ -161,7 +161,17 @@
         btn.addEventListener('click', async function (e) {
             e.preventDefault();
             var usernameInput = document.getElementById('username');
-            var username = usernameInput ? usernameInput.value.trim() : 'demo';
+            var username = usernameInput ? usernameInput.value.trim() : '';
+
+            if (!username) {
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#ef4444';
+                    statusEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Please enter your username or email above first to sign in with passkey.';
+                }
+                if (usernameInput) usernameInput.focus();
+                return;
+            }
 
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking Passkey...';

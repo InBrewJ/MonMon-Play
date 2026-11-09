@@ -4,6 +4,7 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use std::sync::Arc;
 use crate::AppState;
 
@@ -123,15 +124,16 @@ pub async fn register_passkey_api(
             Some(&payload.username)
         },
     );
-    let resolved = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
-    let username = if resolved.is_empty() || resolved == "demo" {
-        if !payload.username.trim().is_empty() && payload.username != "demo" {
-            payload.username.trim().to_string()
-        } else {
-            "inbrewj".to_string()
-        }
-    } else {
-        resolved
+    let canonical_user_id = crate::auth::get_canonical_user_id(&state.pool, &raw_uid).await;
+
+    // Look up username for session display
+    let username = match sqlx::query("SELECT username FROM app_user WHERE id = $1 LIMIT 1")
+        .bind(&canonical_user_id)
+        .fetch_optional(&state.pool)
+        .await
+    {
+        Ok(Some(row)) => row.get::<String, _>("username"),
+        _ => payload.username.clone(),
     };
 
     let public_key = payload.public_key.unwrap_or_else(|| "mock_pubkey_bytes".to_string());
@@ -139,29 +141,15 @@ pub async fn register_passkey_api(
 
     let _ = init_passkey_table(&state.pool).await;
 
-    // Ensure user exists in user_access
-    let user_email = format!("{}@example.com", username);
-    let _ = sqlx::query(
-        r#"
-        INSERT INTO user_access (id, approvedat, approvedby, createdat, email, status, userid, username)
-        VALUES (nextval('hibernate_sequence'), NOW(), 'SYSTEM', NOW(), $1, 'APPROVED', $2, $2)
-        ON CONFLICT (userid) DO UPDATE SET status = 'APPROVED'
-        "#,
-    )
-    .bind(&user_email)
-    .bind(&username)
-    .execute(&state.pool)
-    .await;
-
-    // Save passkey in user_passkey
+    // Save passkey in user_passkey using the canonical UUID
     sqlx::query(
         r#"
         INSERT INTO user_passkey (user_id, credential_id, public_key, device_name, created_at)
         VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (credential_id) DO UPDATE SET public_key = EXCLUDED.public_key, device_name = EXCLUDED.device_name
+        ON CONFLICT (credential_id) DO UPDATE SET user_id = EXCLUDED.user_id, public_key = EXCLUDED.public_key, device_name = EXCLUDED.device_name
         "#,
     )
-    .bind(&username)
+    .bind(&canonical_user_id)
     .bind(&payload.credential_id)
     .bind(&public_key)
     .bind(&device_name)
@@ -169,8 +157,8 @@ pub async fn register_passkey_api(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "success": false, "message": e.to_string() }))))?;
 
-    // Issue auth cookies
-    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
+    // Issue auth cookies with the canonical UUID
+    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", canonical_user_id);
     let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
     let auth_val = "authenticated=true; Path=/; SameSite=Lax";
 
@@ -209,11 +197,11 @@ pub async fn login_passkey_api(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "success": false, "message": e.to_string() }))))?;
 
-    let username = match row {
-        Some((uid,)) => uid,
+    let canonical_id = match row {
+        Some((uid,)) => crate::auth::get_canonical_user_id(&state.pool, &uid).await,
         None => {
             if let Some(user) = payload.username.filter(|u| !u.trim().is_empty()) {
-                user
+                crate::auth::get_canonical_user_id(&state.pool, &user).await
             } else {
                 return Err((
                     StatusCode::UNAUTHORIZED,
@@ -223,7 +211,24 @@ pub async fn login_passkey_api(
         }
     };
 
-    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
+    // Look up username for session display
+    let username = match sqlx::query("SELECT username FROM app_user WHERE id = $1 LIMIT 1")
+        .bind(&canonical_id)
+        .fetch_optional(&state.pool)
+        .await
+    {
+        Ok(Some(row)) => row.get::<String, _>("username"),
+        _ => match sqlx::query("SELECT username FROM user_access WHERE userid = $1 LIMIT 1")
+            .bind(&canonical_id)
+            .fetch_optional(&state.pool)
+            .await
+        {
+            Ok(Some(row)) => row.get::<Option<String>, _>("username").unwrap_or_else(|| "User".to_string()),
+            _ => "User".to_string(),
+        },
+    };
+
+    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", canonical_id);
     let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
     let auth_val = "authenticated=true; Path=/; SameSite=Lax";
 
@@ -260,11 +265,12 @@ pub async fn list_user_passkeys_api(
         r#"
         SELECT id, user_id, credential_id, device_name, created_at
         FROM user_passkey
-        WHERE user_id = $1
+        WHERE user_id = $1 OR user_id = $2
         ORDER BY created_at DESC
         "#,
     )
     .bind(&user_id)
+    .bind(&raw_uid)
     .fetch_all(&state.pool)
     .await
     .unwrap_or_default();

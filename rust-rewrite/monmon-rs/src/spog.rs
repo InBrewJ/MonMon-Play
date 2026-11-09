@@ -118,10 +118,34 @@ pub struct SpendingPaceMetrics {
 }
 
 pub async fn resolve_user_id(pool: &PgPool, user_id_or_name: &str) -> String {
-    let row = sqlx::query(
-        "SELECT userid FROM user_access WHERE username = $1 OR email = $1 OR userid = $1 LIMIT 1",
+    let clean = user_id_or_name.trim();
+    if clean.is_empty() {
+        return "2ccc203f-a98c-488f-a5ba-8d20a384a9fc".to_string();
+    }
+
+    // Check app_user table first
+    if let Ok(Some(row)) = sqlx::query(
+        "SELECT id FROM app_user WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1) OR id = $1 LIMIT 1",
     )
-    .bind(user_id_or_name)
+    .bind(clean)
+    .fetch_optional(pool)
+    .await
+    {
+        return row.get::<String, _>("id");
+    }
+
+    // Check user_access table
+    let row = sqlx::query(
+        r#"
+        SELECT userid FROM user_access 
+        WHERE userid = $1 
+           OR (LOWER(username) = LOWER($1) AND userid != username) 
+           OR (LOWER(email) = LOWER($1) AND userid != email)
+        ORDER BY CASE WHEN userid = $1 THEN 1 WHEN length(userid) > 20 THEN 2 ELSE 3 END, id ASC 
+        LIMIT 1
+        "#,
+    )
+    .bind(clean)
     .fetch_optional(pool)
     .await
     .unwrap_or(None);
@@ -130,7 +154,7 @@ pub async fn resolve_user_id(pool: &PgPool, user_id_or_name: &str) -> String {
         let uid: String = r.get("userid");
         uid
     } else {
-        user_id_or_name.to_string()
+        clean.to_string()
     }
 }
 

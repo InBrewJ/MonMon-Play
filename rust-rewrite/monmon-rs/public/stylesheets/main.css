@@ -310,6 +310,8 @@ nav.crumbs {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 .nav-drawer.open {

@@ -323,6 +323,12 @@ pub async fn discard_statement_api(
     })))
 }
 
+fn monmon_webhook_callback_url(resolved: &str) -> String {
+    let port = std::env::var("PORT").unwrap_or_else(|_| "9000".to_string());
+    let host = std::env::var("MONMON_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    format!("http://{}:{}/api/statement/webhook?userId={}", host, port, resolved)
+}
+
 pub async fn upload_statement_form(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -348,27 +354,42 @@ pub async fn upload_statement_form(
         }
     }
 
-    if !file_bytes.is_empty() {
-        let legmon_url = legmon_base_url();
-        let callback_url = format!("http://localhost:9001/api/statement/webhook?userId={}", resolved);
-        let base_process = format!("{}/api/process", legmon_url);
-        if let Ok(mut url) = reqwest::Url::parse(&base_process) {
-            url.query_pairs_mut()
-                .append_pair("userId", &resolved)
-                .append_pair("callbackUrl", &callback_url);
-            if let Some(acc_id) = target_account_id {
-                url.query_pairs_mut().append_pair("accountId", &acc_id.to_string());
-            }
+    if file_bytes.is_empty() {
+        return Ok(Redirect::to("/bank?error=Please+select+a+PDF+statement+file+to+upload."));
+    }
 
-            let client = reqwest::Client::new();
-            let _ = client
-                .post(url)
-                .header("Content-Type", "application/pdf")
-                .body(file_bytes)
-                .send()
-                .await;
+    let legmon_url = legmon_base_url();
+    let callback_url = monmon_webhook_callback_url(&resolved);
+    let base_process = format!("{}/api/process", legmon_url);
+    if let Ok(mut url) = reqwest::Url::parse(&base_process) {
+        url.query_pairs_mut()
+            .append_pair("userId", &resolved)
+            .append_pair("callbackUrl", &callback_url);
+        if let Some(acc_id) = target_account_id {
+            url.query_pairs_mut().append_pair("accountId", &acc_id.to_string());
+        }
+
+        let client = reqwest::Client::new();
+        match client
+            .post(url)
+            .header("Content-Type", "application/pdf")
+            .body(file_bytes)
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => {
+                return Ok(Redirect::to("/bank?info=Statement+PDF+uploaded+successfully.+LegMon+OCR+extraction+in+progress..."));
+            }
+            Ok(res) => {
+                let err_msg = format!("LegMon returned status {}: extraction failed", res.status());
+                return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&err_msg))));
+            }
+            Err(e) => {
+                let err_msg = format!("Could not reach LegMon service: {}", e);
+                return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&err_msg))));
+            }
         }
     }
 
-    Ok(Redirect::to("/bank"))
+    Ok(Redirect::to("/bank?info=Statement+uploaded+successfully."))
 }

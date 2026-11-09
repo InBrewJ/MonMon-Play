@@ -13,7 +13,10 @@
         function openDrawer() {
             navDrawer.classList.add('open');
             if (navBackdrop) navBackdrop.classList.add('open');
+            document.documentElement.classList.add('modal-scroll-locked');
+            document.body.classList.add('modal-scroll-locked');
             document.body.classList.add('nav-drawer-locked');
+            if (window.lockModalScroll) window.lockModalScroll();
             if (navToggle) {
                 navToggle.classList.add('nav-open');
                 navToggle.setAttribute('aria-expanded', 'true');
@@ -23,7 +26,10 @@
         function closeDrawer() {
             navDrawer.classList.remove('open');
             if (navBackdrop) navBackdrop.classList.remove('open');
+            document.documentElement.classList.remove('modal-scroll-locked');
+            document.body.classList.remove('modal-scroll-locked');
             document.body.classList.remove('nav-drawer-locked');
+            if (window.unlockModalScroll) window.unlockModalScroll();
             if (navToggle) {
                 navToggle.classList.remove('nav-open');
                 navToggle.setAttribute('aria-expanded', 'false');

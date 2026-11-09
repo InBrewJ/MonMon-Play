@@ -15,7 +15,9 @@
         '.w3-modal',
         '.waiting-list-modal-overlay',
         '[role="dialog"]',
-        '.modal'
+        '.modal',
+        '.nav-drawer.open',
+        '#nav-drawer.open'
     ];
 
     var touchStartY = 0;
@@ -38,17 +40,26 @@
     function isModalVisible(el) {
         if (!el) return false;
         var style = window.getComputedStyle(el);
-        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+            return false;
+        }
+        if (el.classList.contains('nav-drawer') || el.id === 'nav-drawer') {
+            return el.classList.contains('open');
+        }
+        return true;
     }
 
     function getScrollableAncestor(target, modal) {
         var el = target;
-        while (el && el !== modal && el !== document.body && el !== document.documentElement) {
+        while (el && el !== document.body && el !== document.documentElement) {
             var style = window.getComputedStyle(el);
             var overflowY = style.overflowY;
             var canScroll = (overflowY === 'auto' || overflowY === 'scroll') && (el.scrollHeight > el.clientHeight);
             if (canScroll) {
                 return el;
+            }
+            if (el === modal) {
+                break;
             }
             el = el.parentElement;
         }
@@ -82,6 +93,9 @@
             window.scrollTo(0, savedScrollY);
         }
     }
+
+    window.lockModalScroll = lockScroll;
+    window.unlockModalScroll = unlockScroll;
 
     function syncLockState() {
         var openModals = getOpenModals();

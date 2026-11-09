@@ -1,4 +1,5 @@
 mod admin;
+pub mod auth;
 pub mod authz;
 mod bank_sync;
 mod db;
@@ -145,7 +146,7 @@ pub async fn callback_handler(Query(params): Query<CallbackQuery>) -> Response {
                 "http://localhost:8085",
             ];
             let redirect_uri = std::env::var("REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:9001/callback".to_string());
+                .unwrap_or_else(|_| "http://localhost:9000/callback".to_string());
             let client_secret = std::env::var("OIDC_CLIENT_SECRET")
                 .unwrap_or_else(|_| "aaa6a201a8a41810e2e33118bed1bddaba722902e89e959cb6cc0a2949445d78".to_string());
 
@@ -219,6 +220,7 @@ async fn main() {
         .expect("Failed to connect to PostgreSQL");
 
     let _ = passkey::init_passkey_table(&pool).await;
+    let _ = auth::init_auth_db(&pool).await;
 
     let state = Arc::new(AppState { pool });
 
@@ -765,6 +767,7 @@ struct SignupTemplate {}
 #[template(path = "login.html")]
 struct LoginTemplate {
     pub return_to: String,
+    pub error_message: Option<String>,
 }
 
 async fn get_signup_page() -> Html<String> {
@@ -778,7 +781,8 @@ async fn get_login_page(
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Html<String> {
     let return_to = query.get("return_to").cloned().unwrap_or_default();
-    LoginTemplate { return_to }
+    let error_message = query.get("error").cloned();
+    LoginTemplate { return_to, error_message }
         .render()
         .map(Html)
         .unwrap_or_else(|_| Html(String::new()))
@@ -789,21 +793,42 @@ async fn signup_form_handler(
     axum::extract::Form(form): axum::extract::Form<AuthForm>,
 ) -> Result<Response, (StatusCode, String)> {
     let username = form.username.trim().to_string();
+    if username.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Username cannot be empty".to_string()));
+    }
     let email = form.email.unwrap_or_else(|| format!("{}@example.com", username));
+    let password = form.password.unwrap_or_else(|| "password".to_string());
+    let password_hash = auth::hash_password(&password).unwrap_or_else(|_| password.clone());
+    let user_id = uuid::Uuid::new_v4().to_string();
+
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO app_user (id, username, email, password_hash, roles, created_at)
+        VALUES ($1, $2, $3, $4, 'ROLE_ADMIN', NOW())
+        ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash
+        "#,
+    )
+    .bind(&user_id)
+    .bind(&username)
+    .bind(&email)
+    .bind(&password_hash)
+    .execute(&state.pool)
+    .await;
 
     let _ = sqlx::query(
         r#"
         INSERT INTO user_access (id, approvedat, approvedby, createdat, email, status, userid, username)
-        VALUES (nextval('hibernate_sequence'), NOW(), 'SYSTEM', NOW(), $1, 'APPROVED', $2, $2)
+        VALUES (nextval('hibernate_sequence'), NOW(), 'SYSTEM', NOW(), $1, 'APPROVED', $2, $3)
         ON CONFLICT (userid) DO UPDATE SET status = 'APPROVED'
         "#,
     )
     .bind(&email)
+    .bind(&user_id)
     .bind(&username)
     .execute(&state.pool)
     .await;
 
-    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
+    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", user_id);
     let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
     let auth_val = "authenticated=true; Path=/; SameSite=Lax";
 
@@ -817,29 +842,37 @@ async fn signup_form_handler(
 }
 
 async fn login_form_handler(
+    State(state): State<Arc<AppState>>,
     axum::extract::Form(form): axum::extract::Form<AuthForm>,
-) -> Result<Response, (StatusCode, String)> {
-    let username = if form.username.trim().is_empty() {
-        "inbrewj".to_string()
-    } else {
-        form.username.trim().to_string()
-    };
+) -> Response {
+    let username = form.username.trim();
+    let password = form.password.as_deref().unwrap_or("").trim();
 
-    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
-    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
-    let auth_val = "authenticated=true; Path=/; SameSite=Lax";
+    match auth::authenticate_user(&state.pool, username, password).await {
+        Ok(Some(user)) => {
+            let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", user.id);
+            let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", user.username);
+            let auth_val = "authenticated=true; Path=/; SameSite=Lax";
 
-    let target = form.return_to
-        .filter(|t| !t.trim().is_empty() && t.starts_with('/'))
-        .unwrap_or_else(|| "/spog".to_string());
+            let target = form.return_to
+                .filter(|t| !t.trim().is_empty() && t.starts_with('/'))
+                .unwrap_or_else(|| "/spog".to_string());
 
-    let mut response = axum::response::Redirect::to(&target).into_response();
-    let headers = response.headers_mut();
-    headers.append(axum::http::header::SET_COOKIE, cookie_val.parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, session_val.parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, auth_val.parse().unwrap());
-
-    Ok(response)
+            let mut response = axum::response::Redirect::to(&target).into_response();
+            let headers = response.headers_mut();
+            headers.append(axum::http::header::SET_COOKIE, cookie_val.parse().unwrap());
+            headers.append(axum::http::header::SET_COOKIE, session_val.parse().unwrap());
+            headers.append(axum::http::header::SET_COOKIE, auth_val.parse().unwrap());
+            response
+        }
+        _ => {
+            let tmpl = LoginTemplate {
+                return_to: form.return_to.unwrap_or_default(),
+                error_message: Some("Invalid username or password. Please try again.".to_string()),
+            };
+            (StatusCode::UNAUTHORIZED, Html(tmpl.render().unwrap_or_default())).into_response()
+        }
+    }
 }
 
 async fn logout_handler() -> Response {

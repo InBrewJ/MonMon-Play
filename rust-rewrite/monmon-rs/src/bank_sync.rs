@@ -17,6 +17,8 @@ use std::sync::Arc;
 pub struct BankSyncQuery {
     #[serde(alias = "user_id")]
     pub user_id: Option<String>,
+    pub info: Option<String>,
+    pub error: Option<String>,
 }
 
 impl BankSyncQuery {
@@ -93,6 +95,8 @@ pub struct BankSyncTemplate {
     pub accounts_count: usize,
     pub txs_count: usize,
     pub recent_transactions: Vec<BankTransactionDto>,
+    pub info_message: Option<String>,
+    pub error_message: Option<String>,
 }
 
 pub async fn get_monzo_connection(
@@ -244,6 +248,8 @@ pub async fn get_bank_sync_page(
         accounts_count,
         txs_count,
         recent_transactions: txs.into_iter().take(20).collect(),
+        info_message: query.info,
+        error_message: query.error,
     };
 
     tmpl.render()
@@ -713,7 +719,7 @@ pub async fn monzo_oauth_callback(
     let base_url = resolve_base_url(&headers);
     let _ = register_monzo_webhooks(&state.pool, &resolved, &base_url).await;
 
-    Ok(Redirect::to("/bank"))
+    Ok(Redirect::to("/bank?info=Monzo+OAuth+authorization+completed+successfully!"))
 }
 
 pub async fn refresh_monzo_token(
@@ -723,11 +729,10 @@ pub async fn refresh_monzo_token(
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
-    refresh_monzo_token_internal(&state.pool, &resolved)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-
-    Ok(Redirect::to("/bank"))
+    match refresh_monzo_token_internal(&state.pool, &resolved).await {
+        Ok(_) => Ok(Redirect::to("/bank?info=Successfully+rotated+and+refreshed+Monzo+OAuth+token.")),
+        Err(e) => Ok(Redirect::to(&format!("/bank?error=Failed+to+rotate+token:+{}", urlencoding::encode(&e)))),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -914,7 +919,8 @@ pub async fn verify_monzo_connection(
     if wants_json {
         Ok(Json(report).into_response())
     } else {
-        Ok(Redirect::to("/bank").into_response())
+        let msg = format!("OAuth verification complete: {}", report.summary_message);
+        Ok(Redirect::to(&format!("/bank?info={}", urlencoding::encode(&msg))).into_response())
     }
 }
 
@@ -931,7 +937,7 @@ pub async fn disconnect_monzo(
         .execute(&state.pool)
         .await;
 
-    Ok(Redirect::to("/bank"))
+    Ok(Redirect::to("/bank?info=Disconnected+Monzo+integration+and+removed+registered+webhooks."))
 }
 
 pub async fn sync_monzo_webhooks(
@@ -942,11 +948,10 @@ pub async fn sync_monzo_webhooks(
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
     let base_url = resolve_base_url(&headers);
-    register_monzo_webhooks(&state.pool, &resolved, &base_url)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-
-    Ok(Redirect::to("/bank"))
+    match register_monzo_webhooks(&state.pool, &resolved, &base_url).await {
+        Ok(_) => Ok(Redirect::to("/bank?info=Webhooks+synchronized+successfully+with+Monzo.")),
+        Err(e) => Ok(Redirect::to(&format!("/bank?error=Failed+to+sync+webhooks:+{}", urlencoding::encode(&e)))),
+    }
 }
 
 pub async fn get_monzo_webhook_status_api(
