@@ -1,9 +1,9 @@
 [server]
-pub_url = "localhost:8085"
+pub_url = "identity.dryark.uk"
 port_http = 8085
 port_https = 8444
 proxy_mode = true
-trusted_proxies = ["127.0.0.1/32", "172.16.0.0/12", "192.168.0.0/16", "10.0.0.0/8"]
+trusted_proxies = ["127.0.0.1/32", "172.16.0.0/12", "192.168.0.0/16", "10.0.0.0/8", "100.64.0.0/10"]
 
 [cluster]
 node_id = 1
@@ -20,9 +20,9 @@ keys = [
 key_active = "2026-11-08"
 
 [webauthn]
-rp_id = "localhost"
-rp_name = "MonMon Auth"
-rp_origin = "http://localhost:8085"
+rp_id = "identity.dryark.uk"
+rp_name = "MonMon Identity"
+rp_origin = "https://identity.dryark.uk"
 
 [bootstrap]
 bootstrap_dir = "/app/bootstrap"

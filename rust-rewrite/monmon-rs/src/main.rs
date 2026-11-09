@@ -105,18 +105,30 @@ fn base64_url_decode(input: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn extract_username_from_id_token(id_token: &str) -> Option<String> {
+#[derive(Debug, Default)]
+struct IdTokenClaims {
+    sub: Option<String>,
+    preferred_username: Option<String>,
+    email: Option<String>,
+}
+
+fn extract_claims_from_id_token(id_token: &str) -> Option<IdTokenClaims> {
     let parts: Vec<&str> = id_token.split('.').collect();
     if parts.len() < 2 {
         return None;
     }
     let decoded = base64_url_decode(parts[1])?;
     let val: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
-    val.get("preferred_username")
-        .and_then(|v| v.as_str())
-        .or_else(|| val.get("email").and_then(|v| v.as_str()))
-        .or_else(|| val.get("sub").and_then(|v| v.as_str()))
-        .map(|s| s.to_string())
+    Some(IdTokenClaims {
+        sub: val.get("sub").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        preferred_username: val.get("preferred_username").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        email: val.get("email").and_then(|v| v.as_str()).map(|s| s.to_string()),
+    })
+}
+
+fn extract_username_from_id_token(id_token: &str) -> Option<String> {
+    let claims = extract_claims_from_id_token(id_token)?;
+    claims.preferred_username.or(claims.email).or(claims.sub)
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,7 +139,11 @@ pub struct CallbackQuery {
     pub username: Option<String>,
 }
 
-pub async fn callback_handler(Query(params): Query<CallbackQuery>) -> Response {
+pub async fn callback_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(params): Query<CallbackQuery>,
+) -> Response {
     let target = params.state.unwrap_or_else(|| "/spog".to_string());
     let clean_target = if target.starts_with('/') {
         target
@@ -135,22 +151,36 @@ pub async fn callback_handler(Query(params): Query<CallbackQuery>) -> Response {
         "/spog".to_string()
     };
 
-    let mut username = params.user_id.or(params.username).unwrap_or_default();
+    let mut user_ident = params.user_id.or(params.username).unwrap_or_default();
+    let mut resolved_username = user_ident.clone();
 
-    if username.is_empty() {
+    if user_ident.is_empty() {
         if let Some(ref code) = params.code {
             let client = reqwest::Client::new();
-            let rauthy_hosts = [
-                "http://rauthy:8085",
-                "http://127.0.0.1:8085",
-                "http://localhost:8085",
-            ];
-            let redirect_uri = std::env::var("REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:9000/callback".to_string());
+            let host_header = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("");
+            let redirect_uri = std::env::var("REDIRECT_URI").unwrap_or_else(|_| {
+                if host_header.contains("dryark.uk") {
+                    "https://monmon.dryark.uk/callback".to_string()
+                } else if !host_header.is_empty() {
+                    format!("http://{}/callback", host_header)
+                } else {
+                    "http://localhost:9000/callback".to_string()
+                }
+            });
             let client_secret = std::env::var("OIDC_CLIENT_SECRET")
                 .unwrap_or_else(|_| "aaa6a201a8a41810e2e33118bed1bddaba722902e89e959cb6cc0a2949445d78".to_string());
 
+            let rauthy_hosts = [
+                std::env::var("RAUTHY_INTERNAL_URL").unwrap_or_default(),
+                "http://rauthy:8085".to_string(),
+                "http://127.0.0.1:8085".to_string(),
+                "http://localhost:8085".to_string(),
+            ];
+
             for host in rauthy_hosts {
+                if host.is_empty() {
+                    continue;
+                }
                 let token_url = format!("{}/auth/v1/oidc/token", host);
                 let form = [
                     ("grant_type", "authorization_code"),
@@ -163,9 +193,20 @@ pub async fn callback_handler(Query(params): Query<CallbackQuery>) -> Response {
                     if res.status().is_success() {
                         if let Ok(json) = res.json::<serde_json::Value>().await {
                             if let Some(id_token) = json.get("id_token").and_then(|v| v.as_str()) {
-                                if let Some(extracted) = extract_username_from_id_token(id_token) {
-                                    username = extracted;
-                                    break;
+                                if let Some(claims) = extract_claims_from_id_token(id_token) {
+                                    if let Some(u) = claims.preferred_username {
+                                        resolved_username = u.clone();
+                                        user_ident = u;
+                                        break;
+                                    } else if let Some(e) = claims.email {
+                                        resolved_username = e.clone();
+                                        user_ident = e;
+                                        break;
+                                    } else if let Some(s) = claims.sub {
+                                        resolved_username = s.clone();
+                                        user_ident = s;
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -175,12 +216,16 @@ pub async fn callback_handler(Query(params): Query<CallbackQuery>) -> Response {
         }
     }
 
-    if username.is_empty() {
-        username = "inbrewj".to_string();
+    if user_ident.is_empty() {
+        user_ident = "inbrewj".to_string();
+        resolved_username = "inbrewj".to_string();
     }
 
-    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", username);
-    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
+    // Resolve canonical user UUID in Postgres
+    let canonical_uid = crate::spog::resolve_user_id(&state.pool, &user_ident).await;
+
+    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", canonical_uid);
+    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", resolved_username);
     let auth_val = "authenticated=true; Path=/; SameSite=Lax";
 
     Response::builder()
@@ -220,7 +265,6 @@ async fn main() {
         .expect("Failed to connect to PostgreSQL");
 
     let _ = passkey::init_passkey_table(&pool).await;
-    let _ = auth::init_auth_db(&pool).await;
 
     let state = Arc::new(AppState { pool });
 
@@ -231,11 +275,11 @@ async fn main() {
         .route("/health", get(landing::get_health_api))
         .route("/api/user/accessStatus", get(landing::get_access_status_api))
         .route("/api/search", get(search::search_api))
-        .route("/login", get(get_login_page).post(login_form_handler))
-        .route("/signup", get(get_signup_page).post(signup_form_handler))
+        .route("/login", get(get_login_page).post(get_login_page))
+        .route("/signup", get(get_login_page).post(get_login_page))
         .route("/logout", get(logout_handler))
         .route("/centralLogout", get(logout_handler))
-        .route("/callback", get(callback_handler))
+        .route("/callback", get(callback_handler).post(callback_handler))
         // Ed Says AI Financial Copilot
         .route("/api/ed-says", get(ed::ed_says_spog_api))
         .route("/api/ed-says-outgoings", get(ed::ed_says_outgoings_api))
@@ -751,137 +795,60 @@ async fn erratic_balances_handler(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
-#[derive(Debug, Deserialize)]
-pub struct AuthForm {
-    pub username: String,
-    pub email: Option<String>,
-    pub password: Option<String>,
-    pub return_to: Option<String>,
-}
-
-#[derive(Template)]
-#[template(path = "signup.html")]
-struct SignupTemplate {}
-
-#[derive(Template)]
-#[template(path = "login.html")]
-struct LoginTemplate {
-    pub return_to: String,
-    pub error_message: Option<String>,
-}
-
-async fn get_signup_page() -> Html<String> {
-    SignupTemplate {}
-        .render()
-        .map(Html)
-        .unwrap_or_else(|_| Html(String::new()))
-}
-
 async fn get_login_page(
+    headers: HeaderMap,
     Query(query): Query<std::collections::HashMap<String, String>>,
-) -> Html<String> {
-    let return_to = query.get("return_to").cloned().unwrap_or_default();
-    let error_message = query.get("error").cloned();
-    LoginTemplate { return_to, error_message }
-        .render()
-        .map(Html)
-        .unwrap_or_else(|_| Html(String::new()))
-}
-
-async fn signup_form_handler(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Form(form): axum::extract::Form<AuthForm>,
-) -> Result<Response, (StatusCode, String)> {
-    let username = form.username.trim().to_string();
-    if username.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Username cannot be empty".to_string()));
-    }
-    let email = form.email.unwrap_or_else(|| format!("{}@example.com", username));
-    let password = form.password.unwrap_or_else(|| "password".to_string());
-    let password_hash = auth::hash_password(&password).unwrap_or_else(|_| password.clone());
-    let user_id = uuid::Uuid::new_v4().to_string();
-
-    let _ = sqlx::query(
-        r#"
-        INSERT INTO app_user (id, username, email, password_hash, roles, created_at)
-        VALUES ($1, $2, $3, $4, 'ROLE_ADMIN', NOW())
-        ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash
-        "#,
-    )
-    .bind(&user_id)
-    .bind(&username)
-    .bind(&email)
-    .bind(&password_hash)
-    .execute(&state.pool)
-    .await;
-
-    let _ = sqlx::query(
-        r#"
-        INSERT INTO user_access (id, approvedat, approvedby, createdat, email, status, userid, username)
-        VALUES (nextval('hibernate_sequence'), NOW(), 'SYSTEM', NOW(), $1, 'APPROVED', $2, $3)
-        ON CONFLICT (userid) DO UPDATE SET status = 'APPROVED'
-        "#,
-    )
-    .bind(&email)
-    .bind(&user_id)
-    .bind(&username)
-    .execute(&state.pool)
-    .await;
-
-    let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", user_id);
-    let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", username);
-    let auth_val = "authenticated=true; Path=/; SameSite=Lax";
-
-    let mut response = axum::response::Redirect::to("/spog").into_response();
-    let headers = response.headers_mut();
-    headers.append(axum::http::header::SET_COOKIE, cookie_val.parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, session_val.parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, auth_val.parse().unwrap());
-
-    Ok(response)
-}
-
-async fn login_form_handler(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Form(form): axum::extract::Form<AuthForm>,
 ) -> Response {
-    let username = form.username.trim();
-    let password = form.password.as_deref().unwrap_or("").trim();
+    let return_to = query
+        .get("return_to")
+        .cloned()
+        .unwrap_or_else(|| "/spog".to_string());
 
-    match auth::authenticate_user(&state.pool, username, password).await {
-        Ok(Some(user)) => {
-            let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax", user.id);
-            let session_val = format!("monmon_session={}; Path=/; SameSite=Lax", user.username);
-            let auth_val = "authenticated=true; Path=/; SameSite=Lax";
+    let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("");
+    let (auth_url, redirect_uri) = if let (Ok(au), Ok(ru)) = (env::var("AUTH_URL"), env::var("REDIRECT_URI")) {
+        (au, ru)
+    } else if host.contains("dryark.uk") {
+        (
+            "https://identity.dryark.uk/auth/v1/oidc/authorize".to_string(),
+            "https://monmon.dryark.uk/callback".to_string(),
+        )
+    } else {
+        (
+            "http://localhost:8085/auth/v1/oidc/authorize".to_string(),
+            format!("http://{}/callback", if host.is_empty() { "localhost:9000" } else { host }),
+        )
+    };
 
-            let target = form.return_to
-                .filter(|t| !t.trim().is_empty() && t.starts_with('/'))
-                .unwrap_or_else(|| "/spog".to_string());
+    let target = format!(
+        "{}?client_id=monmon-web&redirect_uri={}&response_type=code&scope=openid+profile+email&state={}",
+        auth_url,
+        urlencoding::encode(&redirect_uri),
+        urlencoding::encode(&return_to)
+    );
 
-            let mut response = axum::response::Redirect::to(&target).into_response();
-            let headers = response.headers_mut();
-            headers.append(axum::http::header::SET_COOKIE, cookie_val.parse().unwrap());
-            headers.append(axum::http::header::SET_COOKIE, session_val.parse().unwrap());
-            headers.append(axum::http::header::SET_COOKIE, auth_val.parse().unwrap());
-            response
-        }
-        _ => {
-            let tmpl = LoginTemplate {
-                return_to: form.return_to.unwrap_or_default(),
-                error_message: Some("Invalid username or password. Please try again.".to_string()),
-            };
-            (StatusCode::UNAUTHORIZED, Html(tmpl.render().unwrap_or_default())).into_response()
-        }
-    }
+    Response::builder()
+        .status(StatusCode::SEE_OTHER)
+        .header(header::LOCATION, target)
+        .body(axum::body::Body::empty())
+        .unwrap()
 }
 
-async fn logout_handler() -> Response {
-    let mut response = axum::response::Redirect::to("/").into_response();
-    let headers = response.headers_mut();
-    headers.append(axum::http::header::SET_COOKIE, "user_id=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, "monmon_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, "authenticated=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
-    headers.append(axum::http::header::SET_COOKIE, "PLAY_SESSION=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
+async fn logout_handler(headers: HeaderMap) -> Response {
+    let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("");
+    let (rauthy_logout_base, post_logout) = if host.contains("dryark.uk") {
+        ("https://identity.dryark.uk/auth/v1/oidc/logout", "https://monmon.dryark.uk/")
+    } else {
+        ("http://localhost:8085/auth/v1/oidc/logout", "http://localhost:9000/")
+    };
+
+    let logout_target = format!("{}?post_logout_redirect_uri={}", rauthy_logout_base, urlencoding::encode(post_logout));
+
+    let mut response = axum::response::Redirect::to(&logout_target).into_response();
+    let resp_headers = response.headers_mut();
+    resp_headers.append(axum::http::header::SET_COOKIE, "user_id=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
+    resp_headers.append(axum::http::header::SET_COOKIE, "monmon_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
+    resp_headers.append(axum::http::header::SET_COOKIE, "authenticated=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
+    resp_headers.append(axum::http::header::SET_COOKIE, "PLAY_SESSION=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap());
     response
 }
 

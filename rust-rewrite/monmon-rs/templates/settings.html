@@ -88,20 +88,15 @@
         <div class="w3-card w3-padding w3-margin-bottom w3-round" id="passkey-settings-card" style="background: var(--card-bg); border: 1px solid var(--border-color);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
                 <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
-                    <i class="fas fa-fingerprint" style="color: var(--primary); margin-right: 8px;"></i> Authentication & Passkey Options
+                    <i class="fas fa-fingerprint" style="color: var(--primary); margin-right: 8px;"></i> Authentication & Passkey Security
                 </div>
-                <button type="button" id="btn-add-passkey-settings" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; font-size: 0.85rem; padding: 6px 14px; border-radius: 6px; cursor: pointer;">
-                    <i class="fas fa-plus"></i> Add Passkey
-                </button>
+                <a href="https://identity.dryark.uk/auth/v1/account" target="_blank" rel="noopener noreferrer" id="btn-add-passkey-settings" class="w3-button w3-round" style="background: var(--primary); color: #fff; font-weight: 700; font-size: 0.85rem; padding: 6px 14px; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-external-link-alt"></i> Manage Passkeys & Credentials on RAuthy
+                </a>
             </div>
-            <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0; margin-bottom: 1rem;">
-                Passkeys let you sign in securely to MonMon using your fingerprint, face (Touch ID, Face ID, Windows Hello), or a security key without typing a password.
+            <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0; margin-bottom: 0.75rem;">
+                Passkeys, passwords, MFA, and device credentials are fully managed by your <strong>RAuthy</strong> identity provider. Click above to view, enroll, or revoke WebAuthn passkeys across your devices (Bitwarden, iCloud Keychain, Touch ID, Face ID, Windows Hello).
             </p>
-            <div id="passkeys-list-container">
-                <div style="text-align: center; padding: 1.25rem 0; color: var(--text-muted); font-size: 0.88rem;">
-                    <i class="fas fa-spinner fa-spin" style="margin-right: 6px;"></i> Loading enrolled passkeys...
-                </div>
-            </div>
         </div>
 
         <!-- Regional Settings Card -->
@@ -145,6 +140,5 @@
     </main>
 
     {% include "nav_scripts.html" %}
-    <script src="/assets/javascripts/passkey-auth.{{ crate::BUILD_HASH }}.js"></script>
 </body>
 </html>

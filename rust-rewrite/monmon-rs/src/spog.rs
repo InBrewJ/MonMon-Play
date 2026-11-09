@@ -123,18 +123,7 @@ pub async fn resolve_user_id(pool: &PgPool, user_id_or_name: &str) -> String {
         return "2ccc203f-a98c-488f-a5ba-8d20a384a9fc".to_string();
     }
 
-    // Check app_user table first
-    if let Ok(Some(row)) = sqlx::query(
-        "SELECT id FROM app_user WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1) OR id = $1 LIMIT 1",
-    )
-    .bind(clean)
-    .fetch_optional(pool)
-    .await
-    {
-        return row.get::<String, _>("id");
-    }
-
-    // Check user_access table
+    // Check user_access table first (canonical MonMon user mapping)
     let row = sqlx::query(
         r#"
         SELECT userid FROM user_access 
@@ -151,11 +140,21 @@ pub async fn resolve_user_id(pool: &PgPool, user_id_or_name: &str) -> String {
     .unwrap_or(None);
 
     if let Some(r) = row {
-        let uid: String = r.get("userid");
-        uid
-    } else {
-        clean.to_string()
+        return r.get("userid");
     }
+
+    // Check app_user table as fallback if present
+    if let Ok(Some(row)) = sqlx::query(
+        "SELECT id FROM app_user WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1) OR id = $1 LIMIT 1",
+    )
+    .bind(clean)
+    .fetch_optional(pool)
+    .await
+    {
+        return row.get::<String, _>("id");
+    }
+
+    clean.to_string()
 }
 
 pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetrics, sqlx::Error> {

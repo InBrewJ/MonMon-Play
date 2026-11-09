@@ -13,7 +13,10 @@
     "post_logout_redirect_uris": [
       "http://localhost:9000/?defaulturlafterlogout",
       "http://localhost:9001/?defaulturlafterlogout",
-      "https://monmon.dryark.uk/?defaulturlafterlogout"
+      "https://monmon.dryark.uk/?defaulturlafterlogout",
+      "http://localhost:9000/",
+      "http://localhost:9001/",
+      "https://monmon.dryark.uk/"
     ],
     "allowed_origins": [
       "http://localhost:9000",
