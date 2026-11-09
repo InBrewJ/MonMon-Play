@@ -9,6 +9,7 @@
       "Plain": "__KEYCLOAK_ADMIN_PASSWORD__"
     },
     "roles": [
+      "rauthy_admin",
       "admin",
       "user"
     ],
@@ -29,6 +30,7 @@
       "Plain": "__INBREWJ_PASSWORD__"
     },
     "roles": [
+      "rauthy_admin",
       "admin",
       "user"
     ],
