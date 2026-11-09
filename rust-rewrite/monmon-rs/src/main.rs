@@ -195,27 +195,36 @@ pub async fn callback_handler(
                     ("client_id", "monmon-web"),
                     ("client_secret", client_secret.as_str()),
                 ];
-                if let Ok(res) = client.post(&token_url).form(&form).send().await {
-                    if res.status().is_success() {
-                        if let Ok(json) = res.json::<serde_json::Value>().await {
-                            if let Some(id_token) = json.get("id_token").and_then(|v| v.as_str()) {
-                                if let Some(claims) = extract_claims_from_id_token(id_token) {
-                                    if let Some(u) = claims.preferred_username {
-                                        resolved_username = u.clone();
-                                        user_ident = u;
-                                        break;
-                                    } else if let Some(e) = claims.email {
-                                        resolved_username = e.clone();
-                                        user_ident = e;
-                                        break;
-                                    } else if let Some(s) = claims.sub {
-                                        resolved_username = s.clone();
-                                        user_ident = s;
-                                        break;
+                match client.post(&token_url).form(&form).send().await {
+                    Ok(res) => {
+                        let status = res.status();
+                        if status.is_success() {
+                            if let Ok(json) = res.json::<serde_json::Value>().await {
+                                if let Some(id_token) = json.get("id_token").and_then(|v| v.as_str()) {
+                                    if let Some(claims) = extract_claims_from_id_token(id_token) {
+                                        if let Some(u) = claims.preferred_username {
+                                            resolved_username = u.clone();
+                                            user_ident = u;
+                                            break;
+                                        } else if let Some(e) = claims.email {
+                                            resolved_username = e.clone();
+                                            user_ident = e;
+                                            break;
+                                        } else if let Some(s) = claims.sub {
+                                            resolved_username = s.clone();
+                                            user_ident = s;
+                                            break;
+                                        }
                                     }
                                 }
                             }
+                        } else {
+                            let err_body = res.text().await.unwrap_or_default();
+                            tracing::warn!("OIDC token exchange failed at {}: status={}, body={}", token_url, status, err_body);
                         }
+                    }
+                    Err(e) => {
+                        tracing::warn!("OIDC token request connection error to {}: {}", token_url, e);
                     }
                 }
             }
@@ -223,8 +232,8 @@ pub async fn callback_handler(
     }
 
     if user_ident.is_empty() {
-        user_ident = "inbrewj".to_string();
-        resolved_username = "inbrewj".to_string();
+        tracing::error!("OIDC callback failed to resolve user identifier; redirecting to login");
+        return axum::response::Redirect::to("/login?error=auth_failed").into_response();
     }
 
     // Resolve canonical user UUID in Postgres
