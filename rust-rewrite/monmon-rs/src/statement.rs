@@ -310,6 +310,13 @@ pub struct ConfirmPayload {
     pub anchor_date: Option<String>,
 }
 
+/// Epoch seconds (noon UTC) for a `YYYY-MM-DD` anchor date, or `fallback` if absent/unparseable.
+fn anchor_timestamp(date: Option<&str>, fallback: i64) -> i64 {
+    date.and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        .map(|d| d.and_hms_opt(12, 0, 0).unwrap().and_utc().timestamp())
+        .unwrap_or(fallback)
+}
+
 pub async fn confirm_statement_api(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -338,7 +345,7 @@ pub async fn confirm_statement_api(
     let target_account_id = payload.account_id;
 
     let row = sqlx::query(
-        "SELECT raw_payload FROM pending_statement WHERE id = $1 AND (user_id = $2 OR userid = $2)"
+        "SELECT raw_payload, closing_balance, end_date FROM pending_statement WHERE id = $1 AND (user_id = $2 OR userid = $2)"
     )
     .bind(id)
     .bind(&resolved)
@@ -352,6 +359,8 @@ pub async fn confirm_statement_api(
     };
 
     let raw_payload: Option<String> = r.get("raw_payload");
+    let stmt_closing: Option<f32> = r.get("closing_balance");
+    let stmt_end_date: Option<String> = r.get("end_date");
     let parsed: Value = raw_payload
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or(serde_json::json!({}));
@@ -388,6 +397,21 @@ pub async fn confirm_statement_api(
             .execute(&state.pool)
             .await;
         }
+    }
+
+    // Record the statement's anchor (closing) balance as the account's "available".
+    if let (Some(acc_id), Some(anchor)) = (target_account_id, payload.anchor_balance.or(stmt_closing)) {
+        let ts = anchor_timestamp(payload.anchor_date.as_deref().or(stmt_end_date.as_deref()), now_sec);
+        let _ = sqlx::query(
+            r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
+               VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+        )
+        .bind(anchor)
+        .bind(ts)
+        .bind(acc_id)
+        .bind(&resolved)
+        .execute(&state.pool)
+        .await;
     }
 
     let now_ms = Utc::now().timestamp_millis();

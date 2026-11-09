@@ -163,7 +163,7 @@ async fn process_handler(
         .unwrap_or_else(|| "default-user".to_string());
     let callback_url = params.callback_url.clone().unwrap_or_else(|| {
         format!(
-            "{}/api/monzo/webhook?statement=true&userId={}",
+            "{}/api/statement/webhook?userId={}",
             state.monmon_url, user_id
         )
     });

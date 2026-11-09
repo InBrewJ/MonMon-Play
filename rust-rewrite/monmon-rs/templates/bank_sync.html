@@ -355,6 +355,11 @@
                                     <i class="fas fa-sync"></i> Re-register / Sync Webhooks
                                 </button>
                             </form>
+                            <form action="/bank/monzo/balances/refresh" method="POST" style="margin: 0;">
+                                <button type="submit" class="w3-button w3-small w3-round" title="Fetch live balances from Monzo (Debit and Flex) and record them as the current available" style="background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 600;">
+                                    <i class="fas fa-wallet"></i> Refresh Balances
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>

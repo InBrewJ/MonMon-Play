@@ -422,6 +422,10 @@ async fn main() {
             post(bank_sync::sync_monzo_webhooks),
         )
         .route(
+            "/bank/monzo/balances/refresh",
+            post(bank_sync::refresh_monzo_balances),
+        )
+        .route(
             "/bank/monzo/webhooks/status",
             get(bank_sync::get_monzo_webhook_status_api),
         )

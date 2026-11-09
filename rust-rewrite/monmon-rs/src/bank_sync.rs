@@ -1115,6 +1115,226 @@ pub async fn get_monzo_webhook_status_api(
     })))
 }
 
+/// Converts Monzo's integer pence `account_balance` into the pounds value stored in `balance`.
+pub fn balance_pounds_from_pence(pence: i64) -> f32 {
+    (pence as f64 / 100.0) as f32
+}
+
+/// Converts a raw Monzo balance (pounds) into MonMon's "available" figure.
+/// CREDIT (Flex): Monzo reports the amount owed, so available = limit - |balance|.
+pub fn convert_to_available(account_type: &str, account_limit: f64, monzo_balance: f64) -> f64 {
+    if account_type.eq_ignore_ascii_case("CREDIT") {
+        ((account_limit - monzo_balance.abs()) * 100.0).round() / 100.0
+    } else {
+        monzo_balance
+    }
+}
+
+/// Picks the Monzo account id (from `(id, type)` pairs) matching a MonMon account:
+/// CREDIT -> `uk_monzo_flex`, anything else -> `uk_retail` / `uk_retail_joint`.
+pub fn match_monzo_account_id(is_credit: bool, monzo_accounts: &[(String, String)]) -> Option<String> {
+    monzo_accounts
+        .iter()
+        .find(|(_, t)| {
+            if is_credit {
+                t == "uk_monzo_flex"
+            } else {
+                t == "uk_retail" || t == "uk_retail_joint"
+            }
+        })
+        .map(|(id, _)| id.clone())
+}
+
+/// Finds the MonMon account that Monzo debit (or Flex, when `is_credit`) data belongs to.
+/// Only DEBIT* / CREDIT accounts qualify; accounts named like "monzo"/"flex" win, then lowest id.
+/// Returns `(id, type, account_limit)`.
+async fn find_target_account(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+    is_credit: bool,
+) -> Option<(i64, String, f64)> {
+    let row = sqlx::query(
+        r#"SELECT id, type, account_limit FROM account
+           WHERE (userid = $1 OR user_id = $1) AND (archived IS NULL OR archived = false)
+             AND (CASE WHEN $2 THEN UPPER(type) = 'CREDIT' ELSE UPPER(type) LIKE 'DEBIT%' END)
+           ORDER BY (LOWER(name) LIKE '%monzo%' OR LOWER(name) LIKE '%flex%') DESC, id ASC LIMIT 1"#,
+    )
+    .bind(user_id)
+    .bind(is_credit)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None)?;
+    Some((
+        row.get("id"),
+        row.get("type"),
+        row.get::<Option<f32>, _>("account_limit").unwrap_or(0.0) as f64,
+    ))
+}
+
+/// Fetches live Monzo balances for every matched MonMon account and records each as a new
+/// "available" balance. Returns `(account_id, account_name, available)` per refreshed account.
+pub async fn refresh_balances_internal(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+) -> Result<Vec<(i64, String, f64)>, String> {
+    let conn = get_monzo_connection(pool, user_id).await.unwrap_or(None);
+    if conn.as_ref().and_then(|c| c.accesstoken.as_ref()).is_none() {
+        return Ok(vec![]);
+    }
+    let token = ensure_valid_token(pool, user_id)
+        .await?
+        .ok_or_else(|| "No Monzo access token available".to_string())?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get("https://api.monzo.com/accounts")
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch Monzo accounts: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Monzo accounts API returned {}", resp.status()));
+    }
+    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let monzo_accounts: Vec<(String, String)> = json
+        .get("accounts")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|a| !a.get("closed").and_then(|v| v.as_bool()).unwrap_or(false))
+                .filter_map(|a| {
+                    Some((
+                        a.get("id")?.as_str()?.to_string(),
+                        a.get("type")?.as_str()?.to_string(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut refreshed = Vec::new();
+    for is_credit in [false, true] {
+        let Some(monzo_id) = match_monzo_account_id(is_credit, &monzo_accounts) else { continue };
+        let Some((acc_id, acc_type, limit)) = find_target_account(pool, user_id, is_credit).await else { continue };
+        let Some(raw) = fetch_monzo_balance(pool, user_id, &monzo_id).await else { continue };
+        let available = convert_to_available(&acc_type, limit, raw);
+        sqlx::query(
+            r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
+               VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+        )
+        .bind(available as f32)
+        .bind(Utc::now().timestamp())
+        .bind(acc_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        let name: String = sqlx::query_scalar("SELECT name FROM account WHERE id = $1")
+            .bind(acc_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or_default();
+        refreshed.push((acc_id, name, available));
+    }
+    Ok(refreshed)
+}
+
+/// Human-readable summary of a balance refresh, naming each account and the value recorded.
+pub fn format_refresh_message(refreshed: &[(i64, String, f64)]) -> String {
+    let parts: Vec<String> = refreshed
+        .iter()
+        .map(|(id, name, v)| format!("{} (#{}) £{:.2}", name, id, v))
+        .collect();
+    format!("Refreshed available balance from Monzo: {}.", parts.join(", "))
+}
+
+pub async fn refresh_monzo_balances(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<BankSyncQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+    let wants_json = headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("application/json"))
+        .unwrap_or(false);
+
+    let result = refresh_balances_internal(&state.pool, &resolved).await;
+    if wants_json {
+        return Ok(match result {
+            Ok(list) => Json(serde_json::json!({
+                "refreshed": list.iter().map(|(id, name, v)| serde_json::json!({
+                    "accountId": id, "accountName": name, "available": v
+                })).collect::<Vec<_>>()
+            }))
+            .into_response(),
+            Err(e) => (StatusCode::BAD_GATEWAY, Json(serde_json::json!({ "error": e }))).into_response(),
+        });
+    }
+    let target = match result {
+        Ok(list) if list.is_empty() => {
+            "/bank?error=No+Monzo+accounts+matched+-+nothing+refreshed.".to_string()
+        }
+        Ok(list) => format!("/bank?info={}", urlencoding::encode(&format_refresh_message(&list))),
+        Err(e) => format!("/bank?error={}", urlencoding::encode(&format!("Balance refresh failed: {}", e))),
+    };
+    Ok(Redirect::to(&target).into_response())
+}
+
+/// Live balance (pounds) for a Monzo account via `/balance`, as the Java version did.
+async fn fetch_monzo_balance(pool: &sqlx::PgPool, user_id: &str, monzo_acc_id: &str) -> Option<f64> {
+    if monzo_acc_id.is_empty() {
+        return None;
+    }
+    let token = ensure_valid_token(pool, user_id).await.ok().flatten()?;
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build().ok()?;
+    let resp = client
+        .get("https://api.monzo.com/balance")
+        .bearer_auth(&token)
+        .query(&[("account_id", monzo_acc_id)])
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let json: Value = resp.json().await.ok()?;
+    json.get("balance").and_then(|v| v.as_i64()).map(|p| p as f64 / 100.0)
+}
+
+/// Best-effort lookup of whether a Monzo account id is a Flex account (via the Monzo API).
+async fn monzo_account_is_flex(pool: &sqlx::PgPool, user_id: &str, monzo_acc_id: &str) -> bool {
+    if monzo_acc_id.is_empty() {
+        return false;
+    }
+    let token = match ensure_valid_token(pool, user_id).await {
+        Ok(Some(t)) => t,
+        _ => return false,
+    };
+    let client = match reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let Ok(resp) = client.get("https://api.monzo.com/accounts").bearer_auth(&token).send().await else {
+        return false;
+    };
+    let Ok(json) = resp.json::<Value>().await else { return false };
+    json.get("accounts")
+        .and_then(|v| v.as_array())
+        .map(|accs| {
+            accs.iter().any(|a| {
+                a.get("id").and_then(|v| v.as_str()) == Some(monzo_acc_id)
+                    && a.get("type").and_then(|v| v.as_str()) == Some("uk_monzo_flex")
+            })
+        })
+        .unwrap_or(false)
+}
+
 pub async fn handle_monzo_webhook_api(
     State(state): State<Arc<AppState>>,
     Query(q): Query<BankSyncQuery>,
@@ -1167,16 +1387,22 @@ pub async fn handle_monzo_webhook_api(
                 }
             }
 
-            // Find matching account (debit or flex)
-            let acc_row = sqlx::query(
-                "SELECT id FROM account WHERE (userid = $1 OR user_id = $1) AND (archived IS NULL OR archived = false) ORDER BY id ASC LIMIT 1",
-            )
-            .bind(&resolved)
-            .fetch_optional(&state.pool)
-            .await
-            .unwrap_or(None);
-
-            let account_id: Option<i64> = acc_row.map(|r| r.get("id"));
+            // Find matching account: Flex (uk_monzo_flex) maps to the CREDIT account,
+            // everything else to the first non-credit account.
+            let monzo_acc_id = data.get("account_id").and_then(|v| v.as_str()).unwrap_or("");
+            let meta = data.get("metadata");
+            let meta_flex = meta
+                .map(|m| {
+                    m.get("is_flex_direct_virtual_card_tx").and_then(|v| v.as_bool()).unwrap_or(false)
+                        || m.get("monzo_flex_id").is_some()
+                        || m.get("backing_loan_id").is_some()
+                })
+                .unwrap_or(false);
+            let is_flex = meta_flex || monzo_account_is_flex(&state.pool, &resolved, monzo_acc_id).await;
+            let target = find_target_account(&state.pool, &resolved, is_flex).await;
+            let account_id: Option<i64> = target.as_ref().map(|t| t.0);
+            let acc_type: String = target.as_ref().map(|t| t.1.clone()).unwrap_or_default();
+            let acc_limit: f64 = target.as_ref().map(|t| t.2).unwrap_or(0.0);
 
             // Insert into bank_transaction
             let _ = sqlx::query(
@@ -1217,6 +1443,28 @@ pub async fn handle_monzo_webhook_api(
             .execute(&state.pool)
             .await;
 
+            // Record the account's latest "available": live Monzo balance (falling back to the
+            // webhook's account_balance), converted for CREDIT/Flex as limit - |owed|.
+            if let Some(acc_id) = account_id {
+                let live = fetch_monzo_balance(&state.pool, &resolved, monzo_acc_id).await;
+                let raw = live.or_else(|| {
+                    data.get("account_balance").and_then(|v| v.as_i64()).map(|p| p as f64 / 100.0)
+                });
+                if let Some(raw) = raw {
+                    let available = convert_to_available(&acc_type, acc_limit, raw);
+                    let _ = sqlx::query(
+                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
+                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+                    )
+                    .bind(available as f32)
+                    .bind(Utc::now().timestamp())
+                    .bind(acc_id)
+                    .bind(&resolved)
+                    .execute(&state.pool)
+                    .await;
+                }
+            }
+
             // Update last_received_at on monzo_connection
             let now_ms = Utc::now().timestamp_millis();
             let _ = sqlx::query(
@@ -1230,4 +1478,51 @@ pub async fn handle_monzo_webhook_api(
     }
 
     Ok(Json(serde_json::json!({ "status": "ok" })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pence_balance_converts_to_pounds() {
+        assert_eq!(balance_pounds_from_pence(123456), 1234.56_f32);
+        assert_eq!(balance_pounds_from_pence(-5000), -50.0_f32);
+    }
+
+    #[test]
+    fn flex_balance_becomes_limit_minus_owed() {
+        assert_eq!(convert_to_available("CREDIT", 1000.0, -250.0), 750.0);
+        assert_eq!(convert_to_available("CREDIT", 1000.0, 250.0), 750.0);
+        assert_eq!(convert_to_available("CREDIT", 1000.0, 0.0), 1000.0);
+        assert_eq!(convert_to_available("CREDIT", 0.0, -12.345), -12.35);
+    }
+
+    #[test]
+    fn matches_monzo_accounts_by_type() {
+        let accs = vec![
+            ("acc_flex".to_string(), "uk_monzo_flex".to_string()),
+            ("acc_debit".to_string(), "uk_retail".to_string()),
+        ];
+        assert_eq!(match_monzo_account_id(true, &accs).as_deref(), Some("acc_flex"));
+        assert_eq!(match_monzo_account_id(false, &accs).as_deref(), Some("acc_debit"));
+        assert_eq!(match_monzo_account_id(true, &accs[1..]), None);
+    }
+
+    #[test]
+    fn refresh_message_names_accounts_and_values() {
+        let msg = format_refresh_message(&[
+            (8638, "Monzo".to_string(), 123.4),
+            (8787, "Flex".to_string(), 2250.0),
+        ]);
+        assert_eq!(
+            msg,
+            "Refreshed available balance from Monzo: Monzo (#8638) £123.40, Flex (#8787) £2250.00."
+        );
+    }
+
+    #[test]
+    fn debit_balance_is_unchanged() {
+        assert_eq!(convert_to_available("DEBIT", 500.0, 1234.56), 1234.56);
+    }
 }
