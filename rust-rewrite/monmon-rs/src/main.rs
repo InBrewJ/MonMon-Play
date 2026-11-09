@@ -1,4 +1,5 @@
 mod admin;
+pub mod authz;
 mod bank_sync;
 mod db;
 mod dig;
@@ -331,6 +332,30 @@ async fn main() {
             get(bank_sync::list_bank_transactions_api),
         )
         .route(
+            "/bank/monzo/connect",
+            get(bank_sync::connect_monzo_oauth).post(bank_sync::connect_monzo_oauth),
+        )
+        .route(
+            "/bank/monzo/callback",
+            get(bank_sync::monzo_oauth_callback),
+        )
+        .route(
+            "/bank/monzo/refresh",
+            post(bank_sync::refresh_monzo_token),
+        )
+        .route(
+            "/bank/monzo/verify",
+            post(bank_sync::verify_monzo_connection),
+        )
+        .route(
+            "/bank/monzo/disconnect",
+            post(bank_sync::disconnect_monzo),
+        )
+        .route(
+            "/bank/monzo/webhooks/sync",
+            post(bank_sync::sync_monzo_webhooks),
+        )
+        .route(
             "/bank/monzo/webhooks/status",
             get(bank_sync::get_monzo_webhook_status_api),
         )
@@ -402,6 +427,7 @@ async fn main() {
         .route("/api/networth", get(net_worth::get_net_worth_api))
         .route("/api/networth/asset", post(net_worth::add_asset_api))
         .route("/netWorth/addAsset", post(net_worth::add_asset_form))
+        .route("/netWorth/updateAsset/:id", post(net_worth::update_asset_endpoint))
         .route("/netWorth/binAsset/:id", get(net_worth::bin_asset_endpoint))
         // Monzo Dig (Geotagged Heatmap & Category Histogram)
         .route("/dig", get(dig::get_dig_page))
@@ -456,18 +482,25 @@ async fn list_accounts_handler(
 
 async fn get_account_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Account>, (StatusCode, String)> {
-    db::get_account(&state.pool, id)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::get_account(&state.pool, id, &user_id)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Account not found or access denied: {}", e)))
 }
 
 async fn create_account_handler(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<NewAccount>,
+    headers: HeaderMap,
+    Json(mut payload): Json<NewAccount>,
 ) -> Result<Json<Account>, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, Some(&payload.user_id));
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    payload.user_id = user_id;
     db::create_account(&state.pool, &payload)
         .await
         .map(Json)
@@ -476,33 +509,42 @@ async fn create_account_handler(
 
 async fn update_account_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Json(payload): Json<UpdateAccount>,
 ) -> Result<Json<Account>, (StatusCode, String)> {
-    db::update_account(&state.pool, id, &payload)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::update_account(&state.pool, id, &user_id, &payload)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Account not found or access denied: {}", e)))
 }
 
 async fn archive_account_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Account>, (StatusCode, String)> {
-    db::archive_account(&state.pool, id)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::archive_account(&state.pool, id, &user_id)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Account not found or access denied: {}", e)))
 }
 
 async fn toggle_ledger_account_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Account>, (StatusCode, String)> {
-    db::toggle_ledger_mode(&state.pool, id)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::toggle_ledger_mode(&state.pool, id, &user_id)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Account not found or access denied: {}", e)))
 }
 
 // Incomings Handlers
@@ -518,18 +560,25 @@ async fn list_incomings_handler(
 
 async fn get_incoming_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Incoming>, (StatusCode, String)> {
-    db::get_incoming(&state.pool, id)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::get_incoming(&state.pool, id, &user_id)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Incoming not found or access denied: {}", e)))
 }
 
 async fn create_incoming_handler(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<NewIncoming>,
+    headers: HeaderMap,
+    Json(mut payload): Json<NewIncoming>,
 ) -> Result<Json<Incoming>, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, Some(&payload.user_id));
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    payload.user_id = user_id;
     db::create_incoming(&state.pool, &payload)
         .await
         .map(Json)
@@ -538,23 +587,29 @@ async fn create_incoming_handler(
 
 async fn update_incoming_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Json(payload): Json<UpdateIncoming>,
 ) -> Result<Json<Incoming>, (StatusCode, String)> {
-    db::update_incoming(&state.pool, id, &payload)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::update_incoming(&state.pool, id, &user_id, &payload)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Incoming not found or access denied: {}", e)))
 }
 
 async fn archive_incoming_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Incoming>, (StatusCode, String)> {
-    db::archive_incoming(&state.pool, id)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::archive_incoming(&state.pool, id, &user_id)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Incoming not found or access denied: {}", e)))
 }
 
 // Outgoings Handlers
@@ -590,18 +645,25 @@ async fn list_bills_handler(
 
 async fn get_outgoing_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Outgoing>, (StatusCode, String)> {
-    db::get_outgoing(&state.pool, id)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::get_outgoing(&state.pool, id, &user_id)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Outgoing not found or access denied: {}", e)))
 }
 
 async fn create_outgoing_handler(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<NewOutgoing>,
+    headers: HeaderMap,
+    Json(mut payload): Json<NewOutgoing>,
 ) -> Result<Json<Outgoing>, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, Some(&payload.user_id));
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    payload.user_id = user_id;
     db::create_outgoing(&state.pool, &payload)
         .await
         .map(Json)
@@ -610,23 +672,29 @@ async fn create_outgoing_handler(
 
 async fn update_outgoing_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Json(payload): Json<UpdateOutgoing>,
 ) -> Result<Json<Outgoing>, (StatusCode, String)> {
-    db::update_outgoing(&state.pool, id, &payload)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::update_outgoing(&state.pool, id, &user_id, &payload)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Outgoing not found or access denied: {}", e)))
 }
 
 async fn archive_outgoing_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Outgoing>, (StatusCode, String)> {
-    db::archive_outgoing(&state.pool, id)
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    db::archive_outgoing(&state.pool, id, &user_id)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| (StatusCode::FORBIDDEN, format!("Outgoing not found or access denied: {}", e)))
 }
 
 async fn pause_outgoing_handler(

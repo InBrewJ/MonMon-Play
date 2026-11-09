@@ -280,12 +280,16 @@ pub async fn get_bin_plan(
     Path(id): Path<i64>,
     headers: HeaderMap,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let _user_id = get_user_id_from_headers_or_default(&headers, None);
-    sqlx::query("UPDATE plan SET archived = true WHERE id = $1")
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let res = sqlx::query("UPDATE plan SET archived = true WHERE id = $1 AND (userid = $2 OR user_id = $2)")
         .bind(id)
+        .bind(&user_id)
         .execute(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Plan", id)?;
 
     Ok(Redirect::to("/myPlans"))
 }

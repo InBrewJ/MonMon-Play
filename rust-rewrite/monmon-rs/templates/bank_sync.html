@@ -97,18 +97,134 @@
 
         <!-- Monzo API Card -->
         <div class="deck-card w3-card w3-round" id="card-bank-monzo" style="background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px;">
-            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700;">
-                <i class="fas fa-bolt" style="color: #0284c7; margin-right: 6px;"></i>
-                Monzo Direct Bank Feed
-            </h3>
-            <p style="color: #64748b; font-size: 0.9rem;">
-                Real-time transaction webhook feeds directly populate your account ledgers and spending pace analytics.
-            </p>
-            <div style="margin-top: 1rem;">
-                <a href="/bank/monzo/connect" class="w3-button w3-round" style="background: #0284c7; color: #fff; font-weight: 600;">
-                    <i class="fas fa-plug"></i> Connect Monzo
-                </a>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: #0f172a;">
+                        <i class="fas fa-bolt" style="color: #0284c7; margin-right: 6px;"></i>
+                        Monzo Direct Bank Feed (Accurate Mode / TBL)
+                    </h3>
+                    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.88rem;">
+                        100% free direct API. Connect your personal Monzo account to sync all transactions for your <strong>Debit account</strong> and <strong>Monzo Flex credit card</strong>.
+                    </p>
+                </div>
+                {% if is_monzo_connected %}
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <form id="form-verify-monzo-tbl" action="/bank/monzo/verify" method="POST" style="margin: 0;">
+                            <button type="submit" id="btn-verify-monzo-tbl" class="w3-button w3-small w3-round" title="Test live OAuth connection and verify all Monzo TBL accounts" style="background: #ea580c; color: white; font-weight: 700;">
+                                <i class="fas fa-check-double" id="verify-monzo-icon"></i> <span>Verify OAuth &amp; TBL Accounts</span>
+                            </button>
+                        </form>
+                        {% if has_refresh_token %}
+                            <form action="/bank/monzo/refresh" method="POST" style="margin: 0;">
+                                <button type="submit" class="w3-button w3-small w3-round" title="Manually rotate OAuth access_token & refresh_token now" style="background: #f8fafc; color: #334155; border: 1px solid #cbd5e1; font-weight: 600;">
+                                    <i class="fas fa-key" style="color: #10b981;"></i> Rotate Token
+                                </button>
+                            </form>
+                        {% endif %}
+                        <form action="/bank/monzo/disconnect" method="POST" style="margin: 0;" onsubmit="return confirm('Disconnect Monzo integration?');">
+                            <button type="submit" class="w3-button w3-small w3-round" style="background: #fee2e2; color: #dc2626; border: 1px solid #f87171; font-weight: 600;">
+                                <i class="fas fa-unlink"></i> Disconnect
+                            </button>
+                        </form>
+                    </div>
+                {% endif %}
             </div>
+
+            <!-- Live OAuth & TBL Verification Output Panel -->
+            <div id="monzo-verification-panel" style="display: none; margin-top: 12px; background: #f8fafc; border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 8px; padding: 14px 16px;"></div>
+
+            {% if !is_monzo_connected %}
+                <!-- Confidential OAuth Client Setup -->
+                <div style="margin-top: 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px;">
+                    <div style="font-size: 0.88rem; color: #0f172a; margin-bottom: 10px;">
+                        <strong><i class="fas fa-shield-alt" style="color: #10b981; margin-right: 4px;"></i> Monzo Confidential OAuth Client (Auto-Refreshing)</strong>
+                        <ol style="margin: 6px 0 0 0; padding-left: 20px; font-size: 0.84rem; color: #64748b; line-height: 1.6;">
+                            <li>Sign in at <a href="https://developers.monzo.com/" target="_blank" rel="noopener" style="color: #0284c7; font-weight: 600; text-decoration: underline;">developers.monzo.com</a>, approve login in the Monzo app, and go to <strong>Clients &rarr; New OAuth Client</strong>.</li>
+                            <li>Set <strong>Confidentiality</strong> to <strong><code>Confidential</code></strong> (so Monzo issues a rotating <code>refresh_token</code>) and set <strong>Redirect URL</strong> to <code>{{ redirect_uri }}</code>.</li>
+                            <li>Click <strong>Authorize with Monzo OAuth</strong> below, follow the email link, and then <strong>tap Approve in the Monzo mobile app</strong> to unlock API permissions.</li>
+                        </ol>
+                    </div>
+
+                    <form action="/bank/monzo/connect" method="POST" style="margin-top: 12px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                            <div>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #0f172a; margin-bottom: 4px;">OAuth Client ID</label>
+                                <input type="text" name="clientId" class="w3-input w3-border w3-round"
+                                       value="{% if let Some(cid) = client_id %}{{ cid }}{% endif %}"
+                                       placeholder="oauth2client_0000..."
+                                       style="font-family: monospace; font-size: 0.83rem;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #0f172a; margin-bottom: 4px;">OAuth Client Secret (Confidential)</label>
+                                <input type="password" name="clientSecret" class="w3-input w3-border w3-round"
+                                       placeholder="mnzconf... (or loaded from MONZO_CLIENT_SECRET)"
+                                       style="font-family: monospace; font-size: 0.83rem;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #0f172a; margin-bottom: 4px;">Redirect URI</label>
+                                <input type="text" name="redirectUri" class="w3-input w3-border w3-round"
+                                       value="{{ redirect_uri }}"
+                                       style="font-family: monospace; font-size: 0.83rem;" />
+                            </div>
+                        </div>
+                        <button type="submit" class="w3-button w3-round btn-mobile-full" style="background: #ea580c; color: white; font-weight: 700; padding: 10px 18px;">
+                            <i class="fas fa-key"></i> Authorize with Monzo OAuth
+                        </button>
+                    </form>
+                </div>
+            {% else %}
+                <div id="monzo-status-card" style="margin-top: 14px; background: #f8fafc; border: 1px solid {% if has_active_webhooks %}rgba(52, 211, 153, 0.3){% else %}rgba(234, 179, 8, 0.4){% endif %}; border-radius: 8px; padding: 14px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                        <span id="monzo-webhook-badge" style="font-size: 0.95rem; font-weight: 700; color: {% if has_active_webhooks %}#10b981{% else %}#eab308{% endif %};">
+                            {% if has_active_webhooks %}
+                                <i class="fas fa-satellite-dish" style="color: #10b981; margin-right: 4px;"></i> Live Webhooks Active on Monzo
+                            {% else %}
+                                <i class="fas fa-exclamation-triangle" style="margin-right: 4px;"></i> Webhook Inactive / Not Registered
+                            {% endif %}
+                        </span>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <span style="background: #dcfce7; color: #16a34a; border: 1px solid rgba(52, 211, 153, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 600;">
+                                <i class="fas fa-infinity"></i> OAuth Client Connected ({% if let Some(uid) = monzo_user_id %}{{ uid }}{% else %}Auto-Refresh{% endif %})
+                            </span>
+                            <span id="monzo-received-pill" style="background: {% if has_active_webhooks %}#dcfce7{% else %}rgba(234, 179, 8, 0.15){% endif %}; color: {% if has_active_webhooks %}#16a34a{% else %}#d97706{% endif %}; border: 1px solid rgba(52, 211, 153, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;">
+                                <i class="fas fa-clock"></i> {{ last_received_text }}
+                            </span>
+                            <button type="button" id="btn-refresh-webhooks" onclick="checkLiveWebhooks()" class="w3-button w3-tiny w3-round" title="Query Monzo API directly for registered webhooks" style="background: #fff; border: 1px solid #cbd5e1; color: #64748b; font-size: 0.78rem; padding: 4px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fas fa-sync-alt" id="refresh-webhooks-icon"></i> <span>Check Webhooks</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 0.85rem; line-height: 1.6;">
+                        <div><strong style="color: #0f172a;">Connected Accounts:</strong> Monzo Current (`uk_retail`) &amp; Monzo Flex Credit Card (`uk_monzo_flex`)</div>
+                        
+                        <div id="monzo-status-alert">
+                            {% if has_active_webhooks %}
+                                <div style="margin-top: 8px; color: #64748b; font-size: 0.82rem; background: #fff; border: 1px solid rgba(52, 211, 153, 0.25); border-radius: 6px; padding: 8px 12px; line-height: 1.5;">
+                                    <strong style="color: #0f172a;"><i class="fas fa-check-circle" style="color: #10b981;"></i> Webhooks exist on Monzo:</strong>
+                                    Your webhooks are registered on Monzo and listening. Monzo streams transaction events automatically as you spend.
+                                </div>
+                            {% else %}
+                                <div style="margin-top: 8px; color: #64748b; font-size: 0.82rem; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; line-height: 1.5;">
+                                    <strong style="color: #0f172a;"><i class="fas fa-info-circle" style="color: #ea580c;"></i> Webhooks not registered:</strong>
+                                    Click <strong>Re-register / Sync Webhooks</strong> below to register webhook endpoints for real-time transaction updates.
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div id="monzo-webhook-url-wrap" style="{% if webhook_url.is_none() %}display: none;{% endif %} margin-top: 6px; font-family: monospace; font-size: 0.8rem; color: #64748b; word-break: break-all;">
+                            <strong>Webhook URL:</strong> <span id="monzo-webhook-url-val">{% if let Some(w) = webhook_url %}{{ w }}{% endif %}</span>
+                        </div>
+
+                        <div style="margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <form action="/bank/monzo/webhooks/sync" method="POST" style="margin: 0;">
+                                <button type="submit" class="w3-button w3-small w3-round" style="background: #0284c7; color: white; font-weight: 600;">
+                                    <i class="fas fa-sync"></i> Re-register / Sync Webhooks
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
         </div>
 
         <!-- Accounts Card -->

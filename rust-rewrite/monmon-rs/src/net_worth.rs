@@ -6,7 +6,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, Json, Redirect},
 };
-use chrono::{TimeZone, Utc};
+use chrono::{Datelike, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::sync::Arc;
@@ -53,6 +53,17 @@ pub struct AccountItemDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct NetWorthHistoryPoint {
+    pub timestamp: i64,
+    pub date_str: String,
+    pub pensions: f64,
+    pub cash_savings: f64,
+    pub fixed_assets: f64,
+    pub total: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NetWorthDto {
     pub net_worth: f64,
     pub total_assets: f64,
@@ -83,6 +94,7 @@ pub struct NetWorthDto {
 #[template(path = "net_worth.html")]
 pub struct NetWorthTemplate {
     pub vm: NetWorthDto,
+    pub chart_history_json: String,
 }
 
 fn round2(val: f64) -> f64 {
@@ -330,6 +342,227 @@ pub async fn calculate_net_worth(
     })
 }
 
+pub async fn calculate_history_points(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+) -> Result<Vec<NetWorthHistoryPoint>, sqlx::Error> {
+    let now = Utc::now();
+    let today = now.date_naive();
+    let now_sec = today.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp();
+
+    let ten_years_ago = chrono::NaiveDate::from_ymd_opt(today.year() - 10, today.month(), 1)
+        .unwrap_or_else(|| today - chrono::Duration::days(3650));
+    let ten_years_ago_sec = ten_years_ago.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+
+    // 1. Fetch user accounts
+    let accounts_rows = sqlx::query(
+        r#"
+        SELECT id, type
+        FROM account
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut pension_acc_ids = Vec::new();
+    let mut cash_savings_acc_ids = Vec::new();
+
+    for r in accounts_rows {
+        let acc_id: i64 = r.get("id");
+        let acc_type: String = r.get("type");
+        match acc_type.as_str() {
+            "PENSION" => pension_acc_ids.push(acc_id),
+            "DEBIT" | "SHORT_TERM_SAVINGS" | "LONG_TERM_SAVINGS" | "DEBIT_SHARED_BILLS" | "SAVINGS" => {
+                cash_savings_acc_ids.push(acc_id);
+            }
+            _ => {}
+        }
+    }
+
+    // 2. Fetch all historical balances for these accounts
+    let balance_rows = sqlx::query(
+        r#"
+        SELECT account_id, value::float8 as val, timestamp
+        FROM balance
+        WHERE (userid = $1 OR user_id = $1)
+        ORDER BY timestamp ASC, id ASC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut account_balances_map: std::collections::HashMap<i64, Vec<(i64, f64)>> = std::collections::HashMap::new();
+    for r in balance_rows {
+        let acc_id: Option<i64> = r.get("account_id");
+        let val: Option<f64> = r.get("val");
+        let ts: Option<i64> = r.get("timestamp");
+        if let (Some(aid), Some(v), Some(t)) = (acc_id, val, ts) {
+            account_balances_map.entry(aid).or_default().push((t, v));
+        }
+    }
+
+    // 3. Fetch custom assets
+    struct AssetItem {
+        value: f64,
+        start_sec: Option<i64>,
+        archived: bool,
+        delete_sec: Option<i64>,
+    }
+
+    let asset_rows = sqlx::query(
+        r#"
+        SELECT 
+            asset_value, archived,
+            COALESCE(acquired_at, acquiredat, created_at, createdat) as acq_ms,
+            updated_at, deleted_at
+        FROM net_worth_asset
+        WHERE (userid = $1 OR user_id = $1)
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut assets = Vec::new();
+    for r in asset_rows {
+        let val: f64 = r.get("asset_value");
+        let archived: bool = r.get("archived");
+        let acq_ms: Option<i64> = r.get("acq_ms");
+        let start_sec = acq_ms.map(|ms| ms / 1000);
+        let del_ms: Option<i64> = r.get("deleted_at");
+        let upd_ms: Option<i64> = r.get("updated_at");
+        let delete_sec = del_ms.or(upd_ms).map(|ms| ms / 1000);
+
+        assets.push(AssetItem {
+            value: val,
+            start_sec,
+            archived,
+            delete_sec,
+        });
+    }
+
+    // 4. Sample timestamps across last 10 years
+    let mut timestamp_set = std::collections::BTreeSet::new();
+
+    // Monthly anchors
+    let mut cur_month = ten_years_ago;
+    while cur_month <= today {
+        if let Some(dt) = cur_month.and_hms_opt(0, 0, 0) {
+            timestamp_set.insert(dt.and_utc().timestamp());
+        }
+        let (y, m) = if cur_month.month() == 12 {
+            (cur_month.year() + 1, 1)
+        } else {
+            (cur_month.year(), cur_month.month() + 1)
+        };
+        cur_month = chrono::NaiveDate::from_ymd_opt(y, m, 1).unwrap_or(today + chrono::Duration::days(1));
+    }
+
+    // Balance timestamps
+    for list in account_balances_map.values() {
+        for &(t, _) in list {
+            if t >= ten_years_ago_sec && t <= now_sec {
+                timestamp_set.insert(t);
+            }
+        }
+    }
+
+    // Asset timestamps
+    for a in &assets {
+        if let Some(s) = a.start_sec {
+            if s >= ten_years_ago_sec && s <= now_sec {
+                if s - 86400 >= ten_years_ago_sec {
+                    timestamp_set.insert(s - 86400);
+                }
+                timestamp_set.insert(s);
+            }
+        }
+        if a.archived {
+            if let Some(del) = a.delete_sec {
+                if del >= ten_years_ago_sec && del <= now_sec {
+                    if del - 86400 >= ten_years_ago_sec {
+                        timestamp_set.insert(del - 86400);
+                    }
+                    timestamp_set.insert(del);
+                }
+            }
+        }
+    }
+
+    timestamp_set.insert(now_sec);
+
+    // 5. Coalesce by day
+    let mut date_to_latest_ts = std::collections::BTreeMap::new();
+    for &ts in &timestamp_set {
+        if let Some(dt) = Utc.timestamp_opt(ts, 0).single() {
+            let d = dt.date_naive();
+            date_to_latest_ts.insert(d, ts);
+        }
+    }
+
+    // 6. Compute points
+    let mut points = Vec::new();
+    for (d, ts) in date_to_latest_ts {
+        let mut pensions_sum = 0.0;
+        for &pid in &pension_acc_ids {
+            if let Some(b_list) = account_balances_map.get(&pid) {
+                let latest_val = b_list.iter().filter(|(t, _)| *t <= ts).map(|(_, v)| *v).last();
+                if let Some(v) = latest_val {
+                    pensions_sum += v.max(0.0);
+                }
+            }
+        }
+
+        let mut cash_sum = 0.0;
+        for &cid in &cash_savings_acc_ids {
+            if let Some(b_list) = account_balances_map.get(&cid) {
+                let latest_val = b_list.iter().filter(|(t, _)| *t <= ts).map(|(_, v)| *v).last();
+                if let Some(v) = latest_val {
+                    cash_sum += v;
+                }
+            }
+        }
+
+        let mut fixed_sum = 0.0;
+        for a in &assets {
+            if let Some(s) = a.start_sec {
+                if ts < s {
+                    continue;
+                }
+            }
+            if a.archived {
+                if let Some(del) = a.delete_sec {
+                    if ts >= del {
+                        continue;
+                    }
+                }
+            }
+            fixed_sum += a.value.max(0.0);
+        }
+
+        let pensions = round2(pensions_sum);
+        let cash_savings = round2(cash_sum);
+        let fixed_assets = round2(fixed_sum);
+        let total = round2(pensions + cash_savings + fixed_assets);
+        let date_str = d.format("%-d %b %Y").to_string();
+
+        points.push(NetWorthHistoryPoint {
+            timestamp: ts,
+            date_str,
+            pensions,
+            cash_savings,
+            fixed_assets,
+            total,
+        });
+    }
+
+    Ok(points)
+}
+
 pub async fn get_net_worth_page(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -341,7 +574,15 @@ pub async fn get_net_worth_page(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let tmpl = NetWorthTemplate { vm };
+    let history_points = calculate_history_points(&state.pool, &resolved)
+        .await
+        .unwrap_or_default();
+    let chart_history_json = serde_json::to_string(&history_points).unwrap_or_else(|_| "[]".to_string());
+
+    let tmpl = NetWorthTemplate {
+        vm,
+        chart_history_json,
+    };
     tmpl.render()
         .map(Html)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -449,19 +690,70 @@ pub async fn add_asset_form(
     Ok(Redirect::to("/netWorth"))
 }
 
-pub async fn bin_asset_endpoint(
+pub async fn update_asset_endpoint(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
+    axum::extract::Form(form): axum::extract::Form<AddAssetForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let now = Utc::now().timestamp_millis();
-    sqlx::query(
-        "UPDATE net_worth_asset SET archived = true, updated_at = $1, deleted_at = $1 WHERE id = $2",
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, form.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let now_ms = Utc::now().timestamp_millis();
+    let category = form.category.unwrap_or_else(|| "OTHER".to_string());
+    let acq_at = if let Some(ref d) = form.acquired_date {
+        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .ok()
+            .and_then(|nd| nd.and_hms_opt(0, 0, 0))
+            .map(|dt| Utc.from_utc_datetime(&dt).timestamp_millis())
+    } else {
+        None
+    };
+
+    let res = sqlx::query(
+        r#"
+        UPDATE net_worth_asset
+        SET name = $1, category = $2, asset_value = $3, notes = $4,
+            acquired_at = COALESCE($5, acquired_at), updated_at = $6
+        WHERE id = $7 AND (userid = $8 OR user_id = $8)
+        "#,
     )
-    .bind(now)
+    .bind(&form.name)
+    .bind(&category)
+    .bind(form.value)
+    .bind(&form.notes)
+    .bind(acq_at)
+    .bind(now_ms)
     .bind(id)
+    .bind(&resolved)
     .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Net Worth Asset", id)?;
+
+    Ok(Redirect::to("/netWorth"))
+}
+
+pub async fn bin_asset_endpoint(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+    let now = Utc::now().timestamp_millis();
+    let res = sqlx::query(
+        "UPDATE net_worth_asset SET archived = true, updated_at = $1, deleted_at = $1 WHERE id = $2 AND (userid = $3 OR user_id = $3)",
+    )
+    .bind(now)
+    .bind(id)
+    .bind(&resolved)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Net Worth Asset", id)?;
 
     Ok(Redirect::to("/netWorth"))
 }

@@ -287,9 +287,12 @@ pub async fn get_edit_account_page(
 
 pub async fn post_update_account_form(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<i64>,
     Form(form): Form<AccountForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let update = crate::models::UpdateAccount {
         name: form.name,
         nickname: form.nickname,
@@ -297,18 +300,24 @@ pub async fn post_update_account_form(
         account_limit: form.available_limit,
         interest_rate: form.interest_rate,
     };
-    db::update_account(&state.pool, id, &update)
+    db::update_account(&state.pool, id, &user_id, &update)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Account #{} not found or owned by another user.", id)),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
 
     Ok(Redirect::to("/myAccounts"))
 }
 
 pub async fn post_update_account_form_direct(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<AccountForm>,
 ) -> Result<Redirect, (StatusCode, String)> {
     if let Some(id) = form.id {
+        let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+        let user_id = resolve_user_id(&state.pool, &raw_uid).await;
         let update = crate::models::UpdateAccount {
             name: form.name,
             nickname: form.nickname,
@@ -316,9 +325,12 @@ pub async fn post_update_account_form_direct(
             account_limit: form.available_limit,
             interest_rate: form.interest_rate,
         };
-        db::update_account(&state.pool, id, &update)
+        db::update_account(&state.pool, id, &user_id, &update)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| match e {
+                sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Account #{} not found or owned by another user.", id)),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            })?;
     }
     Ok(Redirect::to("/myAccounts"))
 }
@@ -528,7 +540,7 @@ pub async fn post_update_outgoing_form(
         name: form.name,
         cost: form.cost,
         outgoing_day: form.outgoing_day,
-        user_id: Some(user_id),
+        user_id: Some(user_id.clone()),
         account_id: form.account_id,
         outgoing_month,
         year_interval,
@@ -537,9 +549,12 @@ pub async fn post_update_outgoing_form(
         rent: Some(false),
         hidden_from_total: Some(false),
     };
-    db::update_outgoing(&state.pool, id, &update)
+    db::update_outgoing(&state.pool, id, &user_id, &update)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Outgoing #{} not found or owned by another user.", id)),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
 
     Ok(Redirect::to("/myOutgoings"))
 }
@@ -557,7 +572,7 @@ pub async fn post_update_outgoing_form_direct(
             name: form.name,
             cost: form.cost,
             outgoing_day: form.outgoing_day,
-            user_id: Some(user_id),
+            user_id: Some(user_id.clone()),
             account_id: form.account_id,
             outgoing_month,
             year_interval,
@@ -566,9 +581,12 @@ pub async fn post_update_outgoing_form_direct(
             rent: Some(false),
             hidden_from_total: Some(false),
         };
-        db::update_outgoing(&state.pool, id, &update)
+        db::update_outgoing(&state.pool, id, &user_id, &update)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| match e {
+                sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Outgoing #{} not found or owned by another user.", id)),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            })?;
     }
     Ok(Redirect::to("/myOutgoings"))
 }
@@ -671,13 +689,16 @@ pub async fn post_update_incoming_form(
         net_value: form.net_value,
         gross_value: Some(form.net_value),
         incoming_month_day: form.incoming_month_day,
-        user_id: Some(user_id),
+        user_id: Some(user_id.clone()),
         account_id: form.account_id,
         payday: Some(form.payday.unwrap_or(false)),
     };
-    db::update_incoming(&state.pool, id, &update)
+    db::update_incoming(&state.pool, id, &user_id, &update)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Incoming #{} not found or owned by another user.", id)),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
 
     Ok(Redirect::to("/myIncomings"))
 }
@@ -695,13 +716,16 @@ pub async fn post_update_incoming_form_direct(
             net_value: form.net_value,
             gross_value: Some(form.net_value),
             incoming_month_day: form.incoming_month_day,
-            user_id: Some(user_id),
+            user_id: Some(user_id.clone()),
             account_id: form.account_id,
             payday: Some(form.payday.unwrap_or(false)),
         };
-        db::update_incoming(&state.pool, id, &update)
+        db::update_incoming(&state.pool, id, &user_id, &update)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| match e {
+                sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Incoming #{} not found or owned by another user.", id)),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            })?;
     }
     Ok(Redirect::to("/myIncomings"))
 }
@@ -737,9 +761,14 @@ pub async fn get_bin_incoming(
     if !is_authenticated(&headers) {
         return Ok(Redirect::to("/login"));
     }
-    db::archive_incoming(&state.pool, id)
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    db::archive_incoming(&state.pool, id, &user_id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Incoming #{} not found or owned by another user.", id)),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
 
     Ok(Redirect::to("/myIncomings"))
 }
@@ -1018,11 +1047,21 @@ pub async fn post_balance_form(
 
 pub async fn post_delete_balance(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    db::delete_balance(&state.pool, id)
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let deleted = db::delete_balance(&state.pool, id, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !deleted {
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!("Access denied: Balance #{} was not found or belongs to another user account.", id),
+        ));
+    }
 
     Ok(Redirect::to("/myBalances"))
 }

@@ -221,13 +221,19 @@ pub async fn list_user_passkeys_api(
 
 pub async fn delete_passkey_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    sqlx::query("DELETE FROM user_passkey WHERE id = $1")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+    let res = sqlx::query("DELETE FROM user_passkey WHERE id = $1 AND (user_id = $2 OR userid = $2)")
         .bind(id)
+        .bind(&user_id)
         .execute(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Passkey", id as i64)?;
 
     Ok(Json(serde_json::json!({ "success": true })))
 }

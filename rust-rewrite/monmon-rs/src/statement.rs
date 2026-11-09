@@ -162,20 +162,25 @@ pub async fn handle_statement_webhook_api(
 
 pub async fn get_statement_preview_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
-    Query(_q): Query<StatementQuery>,
+    Query(q): Query<StatementQuery>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
     let row = sqlx::query(
-        "SELECT id, bank_name, start_date, end_date, opening_balance, closing_balance, raw_payload FROM pending_statement WHERE id = $1"
+        "SELECT id, bank_name, start_date, end_date, opening_balance, closing_balance, raw_payload FROM pending_statement WHERE id = $1 AND (user_id = $2 OR userid = $2)"
     )
     .bind(id)
+    .bind(&resolved)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let r = match row {
         Some(r) => r,
-        None => return Err((StatusCode::NOT_FOUND, "Statement not found".to_string())),
+        None => return Err((StatusCode::FORBIDDEN, "Statement not found or access denied".to_string())),
     };
 
     let bank: String = r.get("bank_name");
@@ -210,24 +215,27 @@ pub struct ConfirmPayload {
 
 pub async fn confirm_statement_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Query(q): Query<StatementQuery>,
     payload: Option<Json<ConfirmPayload>>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let target_account_id = payload.and_then(|p| p.account_id);
 
     let row = sqlx::query(
-        "SELECT raw_payload FROM pending_statement WHERE id = $1"
+        "SELECT raw_payload FROM pending_statement WHERE id = $1 AND (user_id = $2 OR userid = $2)"
     )
     .bind(id)
+    .bind(&resolved)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let r = match row {
         Some(r) => r,
-        None => return Err((StatusCode::NOT_FOUND, "Statement not found".to_string())),
+        None => return Err((StatusCode::FORBIDDEN, "Statement not found or access denied".to_string())),
     };
 
     let raw_payload: Option<String> = r.get("raw_payload");
@@ -270,13 +278,17 @@ pub async fn confirm_statement_api(
     }
 
     let now_ms = Utc::now().timestamp_millis();
-    let _ = sqlx::query(
-        "UPDATE pending_statement SET status = 'CONFIRMED', applied_at = $1 WHERE id = $2"
+    let res = sqlx::query(
+        "UPDATE pending_statement SET status = 'CONFIRMED', applied_at = $1 WHERE id = $2 AND (user_id = $3 OR userid = $3)"
     )
     .bind(now_ms)
     .bind(id)
+    .bind(&resolved)
     .execute(&state.pool)
-    .await;
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Statement", id)?;
 
     Ok(Json(serde_json::json!({
         "status": "confirmed",
@@ -286,17 +298,24 @@ pub async fn confirm_statement_api(
 
 pub async fn discard_statement_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
+    Query(q): Query<StatementQuery>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let now_ms = Utc::now().timestamp_millis();
-    let _ = sqlx::query(
-        "UPDATE pending_statement SET status = 'DISCARDED', applied_at = $1 WHERE id = $2"
+    let res = sqlx::query(
+        "UPDATE pending_statement SET status = 'DISCARDED', applied_at = $1 WHERE id = $2 AND (user_id = $3 OR userid = $3)"
     )
     .bind(now_ms)
     .bind(id)
+    .bind(&resolved)
     .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Statement", id)?;
 
     Ok(Json(serde_json::json!({
         "status": "discarded",

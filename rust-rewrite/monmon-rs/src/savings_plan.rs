@@ -587,25 +587,30 @@ pub async fn move_item_up_api(
     headers: HeaderMap,
     Query(q): Query<SavingsPlanQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let user_id = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let plan = get_or_create_active_plan(&state.pool, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    if let Some(idx) = plan.items.iter().position(|it| it.id == id) {
-        if idx > 0 {
-            let prev = &plan.items[idx - 1];
-            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
-                .bind(prev.priority)
-                .bind(id)
-                .execute(&state.pool)
-                .await;
-            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
-                .bind(plan.items[idx].priority)
-                .bind(prev.id)
-                .execute(&state.pool)
-                .await;
-        }
+    let idx = plan.items.iter().position(|it| it.id == id).ok_or_else(|| {
+        (StatusCode::FORBIDDEN, format!("Access denied: Item #{} not found in user plan", id))
+    })?;
+
+    if idx > 0 {
+        let prev = &plan.items[idx - 1];
+        let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2 AND savings_plan_id = $3")
+            .bind(prev.priority)
+            .bind(id)
+            .bind(plan.id)
+            .execute(&state.pool)
+            .await;
+        let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2 AND savings_plan_id = $3")
+            .bind(plan.items[idx].priority)
+            .bind(prev.id)
+            .bind(plan.id)
+            .execute(&state.pool)
+            .await;
     }
 
     Ok(Json(serde_json::json!({ "success": true, "moved": id, "direction": "up" })))
@@ -617,25 +622,30 @@ pub async fn move_item_down_api(
     headers: HeaderMap,
     Query(q): Query<SavingsPlanQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let user_id = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let plan = get_or_create_active_plan(&state.pool, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    if let Some(idx) = plan.items.iter().position(|it| it.id == id) {
-        if idx + 1 < plan.items.len() {
-            let next = &plan.items[idx + 1];
-            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
-                .bind(next.priority)
-                .bind(id)
-                .execute(&state.pool)
-                .await;
-            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
-                .bind(plan.items[idx].priority)
-                .bind(next.id)
-                .execute(&state.pool)
-                .await;
-        }
+    let idx = plan.items.iter().position(|it| it.id == id).ok_or_else(|| {
+        (StatusCode::FORBIDDEN, format!("Access denied: Item #{} not found in user plan", id))
+    })?;
+
+    if idx + 1 < plan.items.len() {
+        let next = &plan.items[idx + 1];
+        let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2 AND savings_plan_id = $3")
+            .bind(next.priority)
+            .bind(id)
+            .bind(plan.id)
+            .execute(&state.pool)
+            .await;
+        let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2 AND savings_plan_id = $3")
+            .bind(plan.items[idx].priority)
+            .bind(next.id)
+            .bind(plan.id)
+            .execute(&state.pool)
+            .await;
     }
 
     Ok(Json(serde_json::json!({ "success": true, "moved": id, "direction": "down" })))
@@ -643,21 +653,29 @@ pub async fn move_item_down_api(
 
 pub async fn toggle_lock_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
-    Query(_q): Query<SavingsPlanQuery>,
+    Query(q): Query<SavingsPlanQuery>,
 ) -> Result<Json<SavingsPlanItemDto>, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+
     let row = sqlx::query(
         r#"
         UPDATE savings_plan_item
         SET locked = NOT COALESCE(locked, false)
         WHERE id = $1
+          AND savings_plan_id IN (SELECT id FROM savings_plan WHERE userid = $2 OR user_id = $2)
         RETURNING id, savings_plan_id, name, type, account_id, targetamount, monthlyamount, priority, locked, archived
         "#,
     )
     .bind(id)
-    .fetch_one(&state.pool)
+    .bind(&user_id)
+    .fetch_optional(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let row = crate::authz::Authz::verify_ownership(row, "Savings Plan Item", id)?;
 
     Ok(Json(SavingsPlanItemDto {
         id: row.get("id"),
@@ -686,34 +704,42 @@ pub async fn delete_item_api(
     headers: HeaderMap,
     Query(q): Query<SavingsPlanQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let user_id = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let plan = get_or_create_active_plan(&state.pool, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let deleted_item = plan.items.iter().find(|it| it.id == id);
-    let amount_to_roll_over = deleted_item.map(|it| it.monthly_amount).unwrap_or(0.0);
+    let deleted_item = plan.items.iter().find(|it| it.id == id).ok_or_else(|| {
+        (StatusCode::FORBIDDEN, format!("Access denied: Item #{} not found in user plan", id))
+    })?;
+    let amount_to_roll_over = deleted_item.monthly_amount;
 
-    sqlx::query("UPDATE savings_plan_item SET archived = true, monthlyamount = 0.0, monthly_amount = 0.0 WHERE id = $1")
+    let res = sqlx::query("UPDATE savings_plan_item SET archived = true, monthlyamount = 0.0, monthly_amount = 0.0 WHERE id = $1 AND savings_plan_id = $2")
         .bind(id)
+        .bind(plan.id)
         .execute(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Savings Plan Item", id)?;
 
     let remaining_items: Vec<_> = plan.items.into_iter().filter(|it| it.id != id).collect();
     if !remaining_items.is_empty() {
         let top_id = remaining_items[0].id;
         let new_top_amount = remaining_items[0].monthly_amount + amount_to_roll_over;
-        let _ = sqlx::query("UPDATE savings_plan_item SET monthlyamount = $1, monthly_amount = $1 WHERE id = $2")
+        let _ = sqlx::query("UPDATE savings_plan_item SET monthlyamount = $1, monthly_amount = $1 WHERE id = $2 AND savings_plan_id = $3")
             .bind(new_top_amount)
             .bind(top_id)
+            .bind(plan.id)
             .execute(&state.pool)
             .await;
 
         for (new_pri, item) in remaining_items.iter().enumerate() {
-            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2")
+            let _ = sqlx::query("UPDATE savings_plan_item SET priority = $1 WHERE id = $2 AND savings_plan_id = $3")
                 .bind((new_pri + 1) as i32)
                 .bind(item.id)
+                .bind(plan.id)
                 .execute(&state.pool)
                 .await;
         }
@@ -854,19 +880,24 @@ pub async fn get_edit_savings_plan_item_page(
 
 pub async fn update_item_form_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     axum::extract::Path(item_id): axum::extract::Path<i64>,
     Form(form): Form<FormAddItem>,
 ) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+
     let target_amount = form.target_amount.unwrap_or(0.0);
     let monthly_amount = form.monthly_amount.unwrap_or(0.0);
     let priority = form.priority.unwrap_or(1);
     let account_id = form.account_id;
 
-    let _ = sqlx::query(
+    let res = sqlx::query(
         r#"
         UPDATE savings_plan_item
         SET name = $1, target_amount = $2, monthly_amount = $3, priority = $4, account_id = $5
         WHERE id = $6
+          AND savings_plan_id IN (SELECT id FROM savings_plan WHERE userid = $7 OR user_id = $7)
         "#,
     )
     .bind(&form.name)
@@ -875,9 +906,12 @@ pub async fn update_item_form_handler(
     .bind(priority)
     .bind(account_id)
     .bind(item_id)
+    .bind(&user_id)
     .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Savings Plan Item", item_id)?;
 
     Ok(Redirect::to("/savingsPlan#sliced-items-card"))
 }
@@ -990,7 +1024,7 @@ pub async fn toggle_lock_form_handler(
 ) -> Result<Redirect, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let q = SavingsPlanQuery { user_id: Some(raw_uid) };
-    let _ = toggle_lock_api(State(state), Path(id), Query(q)).await;
+    let _ = toggle_lock_api(State(state), headers, Path(id), Query(q)).await;
     Ok(Redirect::to(&format!("/savingsPlan#savings-item-{}", id)))
 }
 
@@ -1091,12 +1125,19 @@ pub async fn bin_item_handler(
 
 pub async fn bin_plan_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    let _ = sqlx::query("UPDATE savings_plan SET archived = true WHERE id = $1")
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let res = sqlx::query("UPDATE savings_plan SET archived = true WHERE id = $1 AND (userid = $2 OR user_id = $2)")
         .bind(id)
+        .bind(&user_id)
         .execute(&state.pool)
-        .await;
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "Savings Plan", id)?;
 
     Ok(Redirect::to("/savingsPlan"))
 }

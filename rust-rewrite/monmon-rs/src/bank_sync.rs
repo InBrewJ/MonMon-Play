@@ -2,10 +2,11 @@ use crate::spog::resolve_user_id;
 use crate::AppState;
 use askama::Template;
 use axum::{
-    extract::{Query, State},
+    extract::{Form, Query, State},
     http::{HeaderMap, StatusCode},
-    response::{Html, Json},
+    response::{Html, IntoResponse, Json, Redirect, Response},
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::Row;
@@ -47,13 +48,136 @@ pub struct BankTransactionDto {
     pub longitude: Option<f64>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct MonzoConnectionRow {
+    pub id: i64,
+    pub userid: String,
+    pub accesstoken: Option<String>,
+    pub refreshtoken: Option<String>,
+    pub monzouserid: Option<String>,
+    pub expiresat: Option<i64>,
+    pub clientid: Option<String>,
+    pub clientsecret: Option<String>,
+    pub redirecturi: Option<String>,
+    pub webhook_debit_id: Option<String>,
+    pub webhook_flex_id: Option<String>,
+    pub webhook_url: Option<String>,
+    pub last_received_at: Option<i64>,
+}
+
+impl MonzoConnectionRow {
+    pub fn has_active_webhooks(&self) -> bool {
+        self.webhook_debit_id.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+            || self.webhook_flex_id.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+    }
+
+    pub fn has_refresh_token(&self) -> bool {
+        self.refreshtoken.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+    }
+}
+
 #[derive(Template)]
 #[template(path = "bank_sync.html")]
 pub struct BankSyncTemplate {
     pub is_monzo_connected: bool,
+    pub has_refresh_token: bool,
+    pub has_active_webhooks: bool,
+    pub monzo_user_id: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret_masked: Option<String>,
+    pub redirect_uri: String,
+    pub webhook_url: Option<String>,
+    pub webhook_debit_id: Option<String>,
+    pub webhook_flex_id: Option<String>,
+    pub last_received_text: String,
     pub accounts_count: usize,
     pub txs_count: usize,
     pub recent_transactions: Vec<BankTransactionDto>,
+}
+
+pub async fn get_monzo_connection(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+) -> Result<Option<MonzoConnectionRow>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            id, userid, accesstoken, refreshtoken, monzouserid, expiresat,
+            clientid, clientsecret, redirecturi,
+            COALESCE(webhook_debit_id, webhookdebitid) as wh_debit,
+            COALESCE(webhook_flex_id, webhookflexid) as wh_flex,
+            COALESCE(webhook_url, webhookurl) as wh_url,
+            COALESCE(last_received_at, lastreceivedat) as last_recv
+        FROM monzo_connection
+        WHERE userid = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| MonzoConnectionRow {
+        id: r.get("id"),
+        userid: r.get("userid"),
+        accesstoken: r.get("accesstoken"),
+        refreshtoken: r.get("refreshtoken"),
+        monzouserid: r.get("monzouserid"),
+        expiresat: r.get("expiresat"),
+        clientid: r.get("clientid"),
+        clientsecret: r.get("clientsecret"),
+        redirecturi: r.get("redirecturi"),
+        webhook_debit_id: r.get("wh_debit"),
+        webhook_flex_id: r.get("wh_flex"),
+        webhook_url: r.get("wh_url"),
+        last_received_at: r.get("last_recv"),
+    }))
+}
+
+pub fn resolve_client_id(conn: Option<&MonzoConnectionRow>) -> String {
+    if let Some(c) = conn {
+        if let Some(ref cid) = c.clientid {
+            if !cid.trim().is_empty() {
+                return cid.trim().to_string();
+            }
+        }
+    }
+    std::env::var("MONZO_CLIENT_ID").unwrap_or_default().trim().to_string()
+}
+
+pub fn resolve_client_secret(conn: Option<&MonzoConnectionRow>) -> String {
+    if let Some(c) = conn {
+        if let Some(ref sec) = c.clientsecret {
+            if !sec.trim().is_empty() {
+                return sec.trim().to_string();
+            }
+        }
+    }
+    std::env::var("MONZO_CLIENT_SECRET").unwrap_or_default().trim().to_string()
+}
+
+pub fn resolve_redirect_uri(conn: Option<&MonzoConnectionRow>, headers: &HeaderMap) -> String {
+    if let Some(c) = conn {
+        if let Some(ref ruri) = c.redirecturi {
+            if !ruri.trim().is_empty() {
+                return ruri.trim().to_string();
+            }
+        }
+    }
+    if let Ok(env_uri) = std::env::var("MONZO_REDIRECT_URI") {
+        if !env_uri.trim().is_empty() {
+            return env_uri.trim().to_string();
+        }
+    }
+    let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("monmon.dryark.uk");
+    let scheme = headers.get("x-forwarded-proto").and_then(|h| h.to_str().ok()).unwrap_or("https");
+    format!("{}://{}/bank/monzo/callback", scheme, host)
+}
+
+pub fn resolve_base_url(headers: &HeaderMap) -> String {
+    let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("monmon.dryark.uk");
+    let scheme = headers.get("x-forwarded-proto").and_then(|h| h.to_str().ok()).unwrap_or("https");
+    format!("{}://{}", scheme, host)
 }
 
 pub async fn get_bank_sync_page(
@@ -64,16 +188,32 @@ pub async fn get_bank_sync_page(
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, query.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
 
-    // Check Monzo connection
-    let conn_row = sqlx::query(
-        "SELECT id FROM monzo_connection WHERE userid = $1 LIMIT 1",
-    )
-    .bind(&resolved)
-    .fetch_optional(&state.pool)
-    .await
-    .unwrap_or(None);
+    let conn_opt = get_monzo_connection(&state.pool, &resolved).await.unwrap_or(None);
+    let is_monzo_connected = conn_opt.as_ref().map(|c| c.accesstoken.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false)).unwrap_or(false);
+    let has_refresh_token = conn_opt.as_ref().map(|c| c.has_refresh_token()).unwrap_or(false);
+    let has_active_webhooks = conn_opt.as_ref().map(|c| c.has_active_webhooks()).unwrap_or(false);
+    let monzo_user_id = conn_opt.as_ref().and_then(|c| c.monzouserid.clone());
+    let client_id = conn_opt.as_ref().and_then(|c| c.clientid.clone()).or_else(|| std::env::var("MONZO_CLIENT_ID").ok());
+    let client_secret_masked = conn_opt.as_ref().and_then(|c| c.clientsecret.as_ref().map(|s| if s.len() > 8 { format!("{}...", &s[..8]) } else { "********".to_string() }));
+    let redirect_uri = resolve_redirect_uri(conn_opt.as_ref(), &headers);
+    let webhook_url = conn_opt.as_ref().and_then(|c| c.webhook_url.clone());
+    let webhook_debit_id = conn_opt.as_ref().and_then(|c| c.webhook_debit_id.clone());
+    let webhook_flex_id = conn_opt.as_ref().and_then(|c| c.webhook_flex_id.clone());
 
-    let is_monzo_connected = conn_row.is_some();
+    let last_received_text = if let Some(last_ts) = conn_opt.as_ref().and_then(|c| c.last_received_at) {
+        let diff = (Utc::now().timestamp_millis() - last_ts) / 1000;
+        if diff < 60 {
+            "Last received from Monzo just now".to_string()
+        } else if diff < 3600 {
+            format!("Last received from Monzo {}m ago", diff / 60)
+        } else if diff < 86400 {
+            format!("Last received from Monzo {}h ago", diff / 3600)
+        } else {
+            format!("Last received from Monzo {}d ago", diff / 86400)
+        }
+    } else {
+        "Awaiting first transaction event".to_string()
+    };
 
     // Query accounts count
     let accounts_row = sqlx::query(
@@ -91,9 +231,19 @@ pub async fn get_bank_sync_page(
 
     let tmpl = BankSyncTemplate {
         is_monzo_connected,
+        has_refresh_token,
+        has_active_webhooks,
+        monzo_user_id,
+        client_id,
+        client_secret_masked,
+        redirect_uri,
+        webhook_url,
+        webhook_debit_id,
+        webhook_flex_id,
+        last_received_text,
         accounts_count,
         txs_count,
-        recent_transactions: txs.into_iter().take(10).collect(),
+        recent_transactions: txs.into_iter().take(20).collect(),
     };
 
     tmpl.render()
@@ -161,38 +311,686 @@ pub async fn list_bank_transactions_api(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
-pub async fn get_monzo_webhook_status_api(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<BankSyncQuery>,
-) -> Result<Json<Value>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+// ==========================================
+// Monzo OAuth Token Refresh & Helpers
+// ==========================================
 
-    let row = sqlx::query(
+pub async fn refresh_monzo_token_internal(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+) -> Result<String, String> {
+    let row = get_monzo_connection(pool, user_id).await.map_err(|e| e.to_string())?;
+    let conn = row.ok_or_else(|| "No Monzo connection found for user".to_string())?;
+    let refresh_tok = conn.refreshtoken.clone().filter(|t| !t.trim().is_empty())
+        .ok_or_else(|| "No Monzo refresh_token available. Please re-authenticate via OAuth.".to_string())?;
+
+    let client_id = resolve_client_id(Some(&conn));
+    let client_secret = resolve_client_secret(Some(&conn));
+
+    if client_id.is_empty() || client_secret.is_empty() {
+        return Err("Monzo OAuth Client ID or Client Secret is missing.".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let params = [
+        ("grant_type", "refresh_token"),
+        ("client_id", client_id.as_str()),
+        ("client_secret", client_secret.as_str()),
+        ("refresh_token", refresh_tok.as_str()),
+    ];
+
+    let resp = client.post("https://api.monzo.com/oauth2/token")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to call Monzo token refresh endpoint: {}", e))?;
+
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("Monzo token refresh failed (HTTP {}): {}", status, body));
+    }
+
+    let json: Value = serde_json::from_str(&body).map_err(|e| format!("Failed to parse Monzo refresh JSON: {}", e))?;
+    let new_access = json.get("access_token").and_then(|v| v.as_str()).ok_or_else(|| "Missing access_token".to_string())?;
+    let new_refresh = json.get("refresh_token").and_then(|v| v.as_str()).unwrap_or(&refresh_tok);
+    let expires_in = json.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(21600);
+    let monzo_uid = json.get("user_id").and_then(|v| v.as_str());
+
+    let now_ms = Utc::now().timestamp_millis();
+    let expires_at = now_ms + (expires_in * 1000);
+
+    sqlx::query(
         r#"
-        SELECT id, accesstoken, webhookurl, webhook_url, webhook_debit_id, webhookdebitid
-        FROM monzo_connection
-        WHERE userid = $1
-        LIMIT 1
+        UPDATE monzo_connection
+        SET accesstoken = $1, refreshtoken = $2, expiresat = $3, lastsyncedat = $4,
+            monzouserid = COALESCE($5, monzouserid)
+        WHERE userid = $6
+        "#,
+    )
+    .bind(new_access)
+    .bind(new_refresh)
+    .bind(expires_at)
+    .bind(now_ms)
+    .bind(monzo_uid)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    tracing::info!("[Monzo] Successfully refreshed OAuth token for user {}", user_id);
+    Ok(new_access.to_string())
+}
+
+pub async fn ensure_valid_token(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+) -> Result<Option<String>, String> {
+    let row = get_monzo_connection(pool, user_id).await.map_err(|e| e.to_string())?;
+    if let Some(conn) = row {
+        let now_ms = Utc::now().timestamp_millis();
+        let expires_at = conn.expiresat.unwrap_or(0);
+        let has_refresh = conn.refreshtoken.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false);
+
+        if has_refresh && (expires_at == 0 || expires_at < now_ms + 300_000) {
+            match refresh_monzo_token_internal(pool, user_id).await {
+                Ok(new_tok) => return Ok(Some(new_tok)),
+                Err(err) => {
+                    tracing::warn!("[Monzo] Proactive token refresh failed for user {}: {}", user_id, err);
+                }
+            }
+        }
+        return Ok(conn.accesstoken);
+    }
+    Ok(None)
+}
+
+pub async fn register_monzo_webhooks(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+    base_url: &str,
+) -> Result<(Option<String>, Option<String>), String> {
+    let token = ensure_valid_token(pool, user_id).await?
+        .ok_or_else(|| "No Monzo access token available".to_string())?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let accs_resp = client.get("https://api.monzo.com/accounts")
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch Monzo accounts: {}", e))?;
+
+    if !accs_resp.status().is_success() {
+        let body = accs_resp.text().await.unwrap_or_default();
+        return Err(format!("Monzo accounts API returned error: {}", body));
+    }
+
+    let accs_json: Value = accs_resp.json().await.map_err(|e| e.to_string())?;
+    let accounts = accs_json.get("accounts").and_then(|v| v.as_array())
+        .ok_or_else(|| "No accounts array in Monzo response".to_string())?;
+
+    let webhook_target_url = format!("{}/api/monzo/webhook?userId={}", base_url.trim_end_matches('/'), user_id);
+
+    let mut debit_hook_id = None;
+    let mut flex_hook_id = None;
+
+    for acc in accounts {
+        let closed = acc.get("closed").and_then(|v| v.as_bool()).unwrap_or(false);
+        if closed {
+            continue;
+        }
+        let acc_id = acc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let acc_type = acc.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        if acc_id.is_empty() {
+            continue;
+        }
+
+        // List existing webhooks to remove old ones pointing to our domain
+        if let Ok(wh_list_resp) = client.get("https://api.monzo.com/webhooks")
+            .bearer_auth(&token)
+            .query(&[("account_id", acc_id)])
+            .send()
+            .await
+        {
+            if let Ok(wh_json) = wh_list_resp.json::<Value>().await {
+                if let Some(hooks) = wh_json.get("webhooks").and_then(|v| v.as_array()) {
+                    for h in hooks {
+                        let h_id = h.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        let h_url = h.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                        if (h_url.contains("dryark.uk") || h_url.contains("monmon")) && !h_id.is_empty() {
+                            let _ = client.post(&format!("https://api.monzo.com/webhooks/{}/delete", h_id))
+                                .bearer_auth(&token)
+                                .send()
+                                .await;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Register new webhook
+        let reg_params = [
+            ("account_id", acc_id),
+            ("url", &webhook_target_url),
+        ];
+
+        let reg_resp = client.post("https://api.monzo.com/webhooks")
+            .bearer_auth(&token)
+            .form(&reg_params)
+            .send()
+            .await;
+
+        if let Ok(resp) = reg_resp {
+            if resp.status().is_success() {
+                if let Ok(resp_json) = resp.json::<Value>().await {
+                    let hook_id = resp_json.get("webhook").and_then(|w| w.get("id")).and_then(|v| v.as_str()).map(|s| s.to_string());
+                    if acc_type == "uk_monzo_flex" {
+                        flex_hook_id = hook_id;
+                    } else {
+                        debit_hook_id = hook_id;
+                    }
+                }
+            }
+        }
+    }
+
+    // Save to DB
+    sqlx::query(
+        r#"
+        UPDATE monzo_connection
+        SET webhook_debit_id = $1, webhookdebitid = $1,
+            webhook_flex_id = $2, webhookflexid = $2,
+            webhook_url = $3, webhookurl = $3
+        WHERE userid = $4
+        "#,
+    )
+    .bind(&debit_hook_id)
+    .bind(&flex_hook_id)
+    .bind(&webhook_target_url)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok((debit_hook_id, flex_hook_id))
+}
+
+// ==========================================
+// Handlers: Connect, Callback, Refresh, Verify, Disconnect, Webhook Sync
+// ==========================================
+
+#[derive(Debug, Deserialize)]
+pub struct MonzoConnectForm {
+    #[serde(alias = "clientId")]
+    pub client_id: Option<String>,
+    #[serde(alias = "clientSecret")]
+    pub client_secret: Option<String>,
+    #[serde(alias = "redirectUri")]
+    pub redirect_uri: Option<String>,
+}
+
+pub async fn connect_monzo_oauth(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    form_opt: Option<Form<MonzoConnectForm>>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let existing = get_monzo_connection(&state.pool, &resolved).await.unwrap_or(None);
+
+    let form_client_id = form_opt.as_ref().and_then(|f| f.client_id.as_deref()).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let form_client_secret = form_opt.as_ref().and_then(|f| f.client_secret.as_deref()).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let form_redirect_uri = form_opt.as_ref().and_then(|f| f.redirect_uri.as_deref()).map(|s| s.trim()).filter(|s| !s.is_empty());
+
+    let client_id = form_client_id
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| resolve_client_id(existing.as_ref()));
+
+    let client_secret = form_client_secret
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| resolve_client_secret(existing.as_ref()));
+
+    let redirect_uri = form_redirect_uri
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| resolve_redirect_uri(existing.as_ref(), &headers));
+
+    if client_id.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Monzo OAuth Client ID is required. Please provide your Confidential Client ID from developers.monzo.com or set MONZO_CLIENT_ID.".to_string(),
+        ));
+    }
+
+    // Persist configuration to monzo_connection
+    let now_ms = Utc::now().timestamp_millis();
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO monzo_connection (
+            id, userid, clientid, clientsecret, redirecturi, createdat, lastsyncedat
+        ) VALUES (
+            nextval('hibernate_sequence'), $1, $2, $3, $4, $5, $5
+        )
+        ON CONFLICT (userid) DO UPDATE SET
+            clientid = EXCLUDED.clientid,
+            clientsecret = CASE WHEN EXCLUDED.clientsecret IS NOT NULL AND EXCLUDED.clientsecret != '' THEN EXCLUDED.clientsecret ELSE monzo_connection.clientsecret END,
+            redirecturi = EXCLUDED.redirecturi,
+            lastsyncedat = EXCLUDED.lastsyncedat
         "#,
     )
     .bind(&resolved)
-    .fetch_optional(&state.pool)
+    .bind(&client_id)
+    .bind(&client_secret)
+    .bind(&redirect_uri)
+    .bind(now_ms)
+    .execute(&state.pool)
+    .await;
+
+    let encoded_redirect = urlencoding::encode(&redirect_uri);
+    let state_val = urlencoding::encode(&resolved);
+    let monzo_auth_url = format!(
+        "https://auth.monzo.com/?client_id={}&redirect_uri={}&response_type=code&state={}",
+        urlencoding::encode(&client_id),
+        encoded_redirect,
+        state_val
+    );
+
+    Ok(Redirect::to(&monzo_auth_url))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MonzoCallbackQuery {
+    pub code: Option<String>,
+    pub state: Option<String>,
+}
+
+pub async fn monzo_oauth_callback(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(params): Query<MonzoCallbackQuery>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, params.state.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let code = params.code.filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing OAuth authorization code from Monzo".to_string()))?;
+
+    let conn_opt = get_monzo_connection(&state.pool, &resolved).await.unwrap_or(None);
+    let client_id = resolve_client_id(conn_opt.as_ref());
+    let client_secret = resolve_client_secret(conn_opt.as_ref());
+    let redirect_uri = resolve_redirect_uri(conn_opt.as_ref(), &headers);
+
+    if client_id.is_empty() || client_secret.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "OAuth Client ID or Client Secret not found during callback. Please configure your Monzo credentials first.".to_string(),
+        ));
+    }
+
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let form_params = [
+        ("grant_type", "authorization_code"),
+        ("client_id", client_id.as_str()),
+        ("client_secret", client_secret.as_str()),
+        ("redirect_uri", redirect_uri.as_str()),
+        ("code", code.trim()),
+    ];
+
+    let resp = http_client.post("https://api.monzo.com/oauth2/token")
+        .form(&form_params)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to reach Monzo token endpoint: {}", e)))?;
+
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("Monzo token exchange failed (HTTP {}): {}", status, body),
+        ));
+    }
+
+    let json: Value = serde_json::from_str(&body)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to parse token response: {}", e)))?;
+
+    let access_token = json.get("access_token").and_then(|v| v.as_str())
+        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, "Missing access_token in response".to_string()))?;
+    let refresh_token = json.get("refresh_token").and_then(|v| v.as_str());
+    let monzo_user_id = json.get("user_id").and_then(|v| v.as_str()).unwrap_or("monzo-user");
+    let expires_in = json.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(21600);
+
+    let now_ms = Utc::now().timestamp_millis();
+    let expires_at = now_ms + (expires_in * 1000);
+
+    sqlx::query(
+        r#"
+        INSERT INTO monzo_connection (
+            id, userid, accesstoken, refreshtoken, monzouserid, expiresat,
+            clientid, clientsecret, redirecturi, lastsyncedat, createdat
+        ) VALUES (
+            nextval('hibernate_sequence'), $1, $2, $3, $4, $5,
+            $6, $7, $8, $9, $9
+        )
+        ON CONFLICT (userid) DO UPDATE SET
+            accesstoken = EXCLUDED.accesstoken,
+            refreshtoken = COALESCE(EXCLUDED.refreshtoken, monzo_connection.refreshtoken),
+            monzouserid = EXCLUDED.monzouserid,
+            expiresat = EXCLUDED.expiresat,
+            clientid = COALESCE(EXCLUDED.clientid, monzo_connection.clientid),
+            clientsecret = COALESCE(EXCLUDED.clientsecret, monzo_connection.clientsecret),
+            redirecturi = COALESCE(EXCLUDED.redirecturi, monzo_connection.redirecturi),
+            lastsyncedat = EXCLUDED.lastsyncedat
+        "#,
+    )
+    .bind(&resolved)
+    .bind(access_token)
+    .bind(refresh_token)
+    .bind(monzo_user_id)
+    .bind(expires_at)
+    .bind(&client_id)
+    .bind(&client_secret)
+    .bind(&redirect_uri)
+    .bind(now_ms)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let (connected, webhooks_registered) = match row {
-        Some(r) => {
-            let token: Option<String> = r.get("accesstoken");
-            let has_token = token.map(|t| !t.trim().is_empty()).unwrap_or(false);
-            let hook: Option<String> = r.try_get("webhook_debit_id").ok().or_else(|| r.try_get("webhookdebitid").ok());
-            (has_token, hook.is_some())
+    // Attempt to register real-time webhooks immediately
+    let base_url = resolve_base_url(&headers);
+    let _ = register_monzo_webhooks(&state.pool, &resolved, &base_url).await;
+
+    Ok(Redirect::to("/bank"))
+}
+
+pub async fn refresh_monzo_token(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    refresh_monzo_token_internal(&state.pool, &resolved)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    Ok(Redirect::to("/bank"))
+}
+
+#[derive(Debug, Serialize)]
+pub struct TblAccountVerification {
+    pub monmon_account_id: i64,
+    pub monmon_account_name: String,
+    pub ledger_mode: String,
+    pub matched_to_monzo: bool,
+    pub monzo_account_id: Option<String>,
+    pub monzo_account_type: Option<String>,
+    pub live_monzo_balance: Option<f64>,
+    pub latest_recorded_balance: Option<f64>,
+    pub working: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MonzoVerificationReport {
+    pub oauth_client_configured: bool,
+    pub client_id: String,
+    pub oauth_connected: bool,
+    pub has_refresh_token: bool,
+    pub awaiting_in_app_approval: bool,
+    pub api_permissions_granted: bool,
+    pub monzo_user_id: String,
+    pub token_expires_at: Option<i64>,
+    pub summary_message: String,
+    pub tbl_accounts: Vec<TblAccountVerification>,
+}
+
+pub async fn verify_monzo_connection(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let conn_opt = get_monzo_connection(&state.pool, &resolved).await.unwrap_or(None);
+    let client_id = resolve_client_id(conn_opt.as_ref());
+    let oauth_client_configured = !client_id.is_empty();
+
+    if conn_opt.is_none() || conn_opt.as_ref().and_then(|c| c.accesstoken.as_ref()).is_none() {
+        let rep = MonzoVerificationReport {
+            oauth_client_configured,
+            client_id,
+            oauth_connected: false,
+            has_refresh_token: false,
+            awaiting_in_app_approval: false,
+            api_permissions_granted: false,
+            monzo_user_id: "".to_string(),
+            token_expires_at: None,
+            summary_message: "Monzo is not connected yet. Click 'Authorize with Monzo OAuth' to start.".to_string(),
+            tbl_accounts: vec![],
+        };
+        return Ok(Json(rep).into_response());
+    }
+
+    let conn = conn_opt.unwrap();
+    let has_refresh_token = conn.has_refresh_token();
+    let monzo_user_id = conn.monzouserid.clone().unwrap_or_default();
+    let token_expires_at = conn.expiresat;
+
+    let token = match ensure_valid_token(&state.pool, &resolved).await {
+        Ok(Some(t)) => t,
+        _ => conn.accesstoken.unwrap_or_default(),
+    };
+
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Check accounts endpoint
+    let accs_resp = http_client.get("https://api.monzo.com/accounts")
+        .bearer_auth(&token)
+        .send()
+        .await;
+
+    let (api_permissions_granted, awaiting_in_app_approval, monzo_accounts) = match accs_resp {
+        Ok(resp) if resp.status().is_success() => {
+            let json: Value = resp.json().await.unwrap_or(serde_json::json!({}));
+            let accs = json.get("accounts").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            (true, false, accs)
         }
-        None => (false, false),
+        Ok(resp) if resp.status().as_u16() == 403 => {
+            (false, true, vec![])
+        }
+        _ => (false, false, vec![]),
+    };
+
+    // Load user MonMon accounts
+    let db_accs = sqlx::query(
+        r#"
+        SELECT id, name, type, ledger_mode
+        FROM account
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&resolved)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut tbl_accounts = Vec::new();
+
+    for dba in db_accs {
+        let aid: i64 = dba.get("id");
+        let aname: String = dba.get("name");
+        let atype: String = dba.get("type");
+        let lmode: String = dba.get("ledger_mode");
+
+        // Try to match with monzo accounts
+        let mut matched_m_acc = None;
+        let is_credit = atype == "CREDIT";
+
+        for ma in &monzo_accounts {
+            let m_type = ma.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if is_credit && m_type == "uk_monzo_flex" {
+                matched_m_acc = Some(ma);
+                break;
+            } else if !is_credit && (m_type == "uk_retail" || m_type == "uk_retail_joint") {
+                matched_m_acc = Some(ma);
+                break;
+            }
+        }
+
+        let mut live_bal = None;
+        if let Some(ma) = matched_m_acc {
+            let mid = ma.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if !mid.is_empty() {
+                if let Ok(b_resp) = http_client.get("https://api.monzo.com/balance")
+                    .bearer_auth(&token)
+                    .query(&[("account_id", mid)])
+                    .send()
+                    .await
+                {
+                    if let Ok(b_json) = b_resp.json::<Value>().await {
+                        if let Some(pence) = b_json.get("balance").and_then(|v| v.as_i64()) {
+                            live_bal = Some(pence as f64 / 100.0);
+                        }
+                    }
+                }
+            }
+        }
+
+        let working = api_permissions_granted && matched_m_acc.is_some();
+
+        tbl_accounts.push(TblAccountVerification {
+            monmon_account_id: aid,
+            monmon_account_name: aname,
+            ledger_mode: lmode,
+            matched_to_monzo: matched_m_acc.is_some(),
+            monzo_account_id: matched_m_acc.and_then(|m| m.get("id")).and_then(|v| v.as_str()).map(|s| s.to_string()),
+            monzo_account_type: matched_m_acc.and_then(|m| m.get("type")).and_then(|v| v.as_str()).map(|s| s.to_string()),
+            live_monzo_balance: live_bal,
+            latest_recorded_balance: None,
+            working,
+        });
+    }
+
+    let summary_message = if api_permissions_granted {
+        "Monzo OAuth connection verified! Real-time API permissions granted and accounts verified.".to_string()
+    } else if awaiting_in_app_approval {
+        "Awaiting SCA approval: open your Monzo mobile app and tap 'Approve' to grant MonMon API access, then click Verify again.".to_string()
+    } else {
+        "Could not verify Monzo API permissions. Try rotating your token or reconnecting OAuth.".to_string()
+    };
+
+    let report = MonzoVerificationReport {
+        oauth_client_configured,
+        client_id,
+        oauth_connected: true,
+        has_refresh_token,
+        awaiting_in_app_approval,
+        api_permissions_granted,
+        monzo_user_id,
+        token_expires_at,
+        summary_message,
+        tbl_accounts,
+    };
+
+    let wants_json = headers.get("accept").and_then(|h| h.to_str().ok()).map(|s| s.contains("application/json")).unwrap_or(false);
+    if wants_json {
+        Ok(Json(report).into_response())
+    } else {
+        Ok(Redirect::to("/bank").into_response())
+    }
+}
+
+pub async fn disconnect_monzo(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    // Delete monzo_connection
+    let _ = sqlx::query("DELETE FROM monzo_connection WHERE userid = $1")
+        .bind(&resolved)
+        .execute(&state.pool)
+        .await;
+
+    Ok(Redirect::to("/bank"))
+}
+
+pub async fn sync_monzo_webhooks(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let base_url = resolve_base_url(&headers);
+    register_monzo_webhooks(&state.pool, &resolved, &base_url)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    Ok(Redirect::to("/bank"))
+}
+
+pub async fn get_monzo_webhook_status_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<BankSyncQuery>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let conn_opt = get_monzo_connection(&state.pool, &resolved).await.unwrap_or(None);
+
+    let (connected, has_active_webhooks, wh_url, wh_debit, wh_flex, last_recv) = match conn_opt {
+        Some(ref c) => {
+            let conn = c.accesstoken.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false);
+            let active = c.has_active_webhooks();
+            (conn, active, c.webhook_url.clone(), c.webhook_debit_id.clone(), c.webhook_flex_id.clone(), c.last_received_at)
+        }
+        None => (false, false, None, None, None, None),
+    };
+
+    let last_received_text = if let Some(last_ts) = last_recv {
+        let diff = (Utc::now().timestamp_millis() - last_ts) / 1000;
+        if diff < 60 {
+            "Last received from Monzo just now".to_string()
+        } else if diff < 3600 {
+            format!("Last received from Monzo {}m ago", diff / 60)
+        } else if diff < 86400 {
+            format!("Last received from Monzo {}h ago", diff / 3600)
+        } else {
+            format!("Last received from Monzo {}d ago", diff / 86400)
+        }
+    } else {
+        "Awaiting first transaction event".to_string()
     };
 
     Ok(Json(serde_json::json!({
         "connected": connected,
-        "webhooksRegistered": webhooks_registered
+        "hasActiveWebhooks": has_active_webhooks,
+        "webhookUrl": wh_url,
+        "webhookDebitId": wh_debit,
+        "webhookFlexId": wh_flex,
+        "lastReceivedAt": last_recv,
+        "lastReceivedText": last_received_text
     })))
 }
 
@@ -295,6 +1093,16 @@ pub async fn handle_monzo_webhook_api(
             .bind(merchant_emoji)
             .bind(latitude)
             .bind(longitude)
+            .execute(&state.pool)
+            .await;
+
+            // Update last_received_at on monzo_connection
+            let now_ms = Utc::now().timestamp_millis();
+            let _ = sqlx::query(
+                "UPDATE monzo_connection SET last_received_at = $1, lastreceivedat = $1 WHERE userid = $2"
+            )
+            .bind(now_ms)
+            .bind(&resolved)
             .execute(&state.pool)
             .await;
         }

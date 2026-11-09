@@ -27,7 +27,7 @@ pub async fn list_accounts(pool: &PgPool, user_id: &str) -> Result<Vec<Account>,
     .await
 }
 
-pub async fn get_account(pool: &PgPool, id: i64) -> Result<Account, sqlx::Error> {
+pub async fn get_account(pool: &PgPool, id: i64, user_id: &str) -> Result<Account, sqlx::Error> {
     sqlx::query_as::<_, Account>(
         r#"
         SELECT 
@@ -35,10 +35,11 @@ pub async fn get_account(pool: &PgPool, id: i64) -> Result<Account, sqlx::Error>
             COALESCE(user_id, userid, "userId") as user_id,
             account_limit, interest_rate, ledger_mode, archived
         FROM account
-        WHERE id = $1
+        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
         "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
@@ -64,12 +65,12 @@ pub async fn create_account(pool: &PgPool, acc: &NewAccount) -> Result<Account, 
     .await
 }
 
-pub async fn update_account(pool: &PgPool, id: i64, acc: &UpdateAccount) -> Result<Account, sqlx::Error> {
+pub async fn update_account(pool: &PgPool, id: i64, user_id: &str, acc: &UpdateAccount) -> Result<Account, sqlx::Error> {
     sqlx::query_as::<_, Account>(
         r#"
         UPDATE account
         SET name = $1, nickname = $2, type = $3, account_limit = $4, interest_rate = $5
-        WHERE id = $6
+        WHERE id = $6 AND COALESCE(user_id, userid, "userId") = $7
         RETURNING 
             id, name, nickname, type as account_type, 
             COALESCE(user_id, userid, "userId") as user_id,
@@ -82,16 +83,17 @@ pub async fn update_account(pool: &PgPool, id: i64, acc: &UpdateAccount) -> Resu
     .bind(acc.account_limit)
     .bind(acc.interest_rate)
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
 
-pub async fn archive_account(pool: &PgPool, id: i64) -> Result<Account, sqlx::Error> {
+pub async fn archive_account(pool: &PgPool, id: i64, user_id: &str) -> Result<Account, sqlx::Error> {
     sqlx::query_as::<_, Account>(
         r#"
         UPDATE account
         SET archived = TRUE
-        WHERE id = $1
+        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
         RETURNING 
             id, name, nickname, type as account_type, 
             COALESCE(user_id, userid, "userId") as user_id,
@@ -99,16 +101,17 @@ pub async fn archive_account(pool: &PgPool, id: i64) -> Result<Account, sqlx::Er
         "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
 
-pub async fn toggle_ledger_mode(pool: &PgPool, id: i64) -> Result<Account, sqlx::Error> {
+pub async fn toggle_ledger_mode(pool: &PgPool, id: i64, user_id: &str) -> Result<Account, sqlx::Error> {
     sqlx::query_as::<_, Account>(
         r#"
         UPDATE account
         SET ledger_mode = CASE WHEN ledger_mode = 'ABL' THEN 'TBL' ELSE 'ABL' END
-        WHERE id = $1
+        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
         RETURNING 
             id, name, nickname, type as account_type, 
             COALESCE(user_id, userid, "userId") as user_id,
@@ -116,6 +119,7 @@ pub async fn toggle_ledger_mode(pool: &PgPool, id: i64) -> Result<Account, sqlx:
         "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
@@ -144,7 +148,7 @@ pub async fn list_incomings(pool: &PgPool, user_id: &str) -> Result<Vec<Incoming
     .await
 }
 
-pub async fn get_incoming(pool: &PgPool, id: i64) -> Result<Incoming, sqlx::Error> {
+pub async fn get_incoming(pool: &PgPool, id: i64, user_id: &str) -> Result<Incoming, sqlx::Error> {
     sqlx::query_as::<_, Incoming>(
         r#"
         SELECT 
@@ -154,10 +158,11 @@ pub async fn get_incoming(pool: &PgPool, id: i64) -> Result<Incoming, sqlx::Erro
             i.account_id, a.name as account_name, i.archived
         FROM incoming i
         LEFT JOIN account a ON i.account_id = a.id
-        WHERE i.id = $1
+        WHERE i.id = $1 AND COALESCE(i.user_id, i.userid, i."userId") = $2
         "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
@@ -190,12 +195,12 @@ pub async fn create_incoming(pool: &PgPool, inc: &NewIncoming) -> Result<Incomin
     .await
 }
 
-pub async fn update_incoming(pool: &PgPool, id: i64, inc: &UpdateIncoming) -> Result<Incoming, sqlx::Error> {
+pub async fn update_incoming(pool: &PgPool, id: i64, user_id: &str, inc: &UpdateIncoming) -> Result<Incoming, sqlx::Error> {
     sqlx::query_as::<_, Incoming>(
         r#"
         UPDATE incoming
         SET name = $1, netvalue = $2, grossvalue = $3, incomingmonthday = $4, payday = $5, account_id = $6
-        WHERE id = $7
+        WHERE id = $7 AND COALESCE(user_id, userid, "userId") = $8
         RETURNING 
             id, name, netvalue as net_value, grossvalue as gross_value,
             incomingmonthday as incoming_month_day, payday, type as incoming_type,
@@ -210,16 +215,17 @@ pub async fn update_incoming(pool: &PgPool, id: i64, inc: &UpdateIncoming) -> Re
     .bind(inc.payday.unwrap_or(false))
     .bind(inc.account_id)
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
 
-pub async fn archive_incoming(pool: &PgPool, id: i64) -> Result<Incoming, sqlx::Error> {
+pub async fn archive_incoming(pool: &PgPool, id: i64, user_id: &str) -> Result<Incoming, sqlx::Error> {
     sqlx::query_as::<_, Incoming>(
         r#"
         UPDATE incoming
         SET archived = TRUE
-        WHERE id = $1
+        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
         RETURNING 
             id, name, netvalue as net_value, grossvalue as gross_value,
             incomingmonthday as incoming_month_day, payday, type as incoming_type,
@@ -228,6 +234,7 @@ pub async fn archive_incoming(pool: &PgPool, id: i64) -> Result<Incoming, sqlx::
         "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
@@ -318,7 +325,7 @@ pub async fn list_bills(pool: &PgPool, user_id: &str) -> Result<Vec<Outgoing>, s
     .await
 }
 
-pub async fn get_outgoing(pool: &PgPool, id: i64) -> Result<Outgoing, sqlx::Error> {
+pub async fn get_outgoing(pool: &PgPool, id: i64, user_id: &str) -> Result<Outgoing, sqlx::Error> {
     sqlx::query_as::<_, Outgoing>(
         r#"
         SELECT 
@@ -334,10 +341,11 @@ pub async fn get_outgoing(pool: &PgPool, id: i64) -> Result<Outgoing, sqlx::Erro
             o.archived
         FROM outgoing o
         LEFT JOIN account a ON o.account_id = a.id
-        WHERE o.id = $1
+        WHERE o.id = $1 AND COALESCE(o.user_id, o.userid, o."userId") = $2
         "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
@@ -377,14 +385,14 @@ pub async fn create_outgoing(pool: &PgPool, out: &NewOutgoing) -> Result<Outgoin
     .await
 }
 
-pub async fn update_outgoing(pool: &PgPool, id: i64, out: &UpdateOutgoing) -> Result<Outgoing, sqlx::Error> {
+pub async fn update_outgoing(pool: &PgPool, id: i64, user_id: &str, out: &UpdateOutgoing) -> Result<Outgoing, sqlx::Error> {
     sqlx::query_as::<_, Outgoing>(
         r#"
         UPDATE outgoing
         SET name = $1, cost = $2, outgoingday = $3, outgoingmonth = $4,
             yearinterval = $5, startingyear = $6, bill = $7, rent = $8,
             hiddenfromtotal = $9, account_id = $10
-        WHERE id = $11
+        WHERE id = $11 AND COALESCE(user_id, userid, "userId") = $12
         RETURNING 
             id, name, cost, outgoingday as outgoing_day, 
             outgoingmonth as outgoing_month, yearinterval as year_interval, 
@@ -406,16 +414,17 @@ pub async fn update_outgoing(pool: &PgPool, id: i64, out: &UpdateOutgoing) -> Re
     .bind(out.hidden_from_total.unwrap_or(false))
     .bind(out.account_id)
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
 
-pub async fn archive_outgoing(pool: &PgPool, id: i64) -> Result<Outgoing, sqlx::Error> {
+pub async fn archive_outgoing(pool: &PgPool, id: i64, user_id: &str) -> Result<Outgoing, sqlx::Error> {
     sqlx::query_as::<_, Outgoing>(
         r#"
         UPDATE outgoing
         SET archived = TRUE
-        WHERE id = $1
+        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
         RETURNING 
             id, name, cost, outgoingday as outgoing_day, 
             outgoingmonth as outgoing_month, yearinterval as year_interval, 
@@ -427,6 +436,7 @@ pub async fn archive_outgoing(pool: &PgPool, id: i64) -> Result<Outgoing, sqlx::
         "#,
     )
     .bind(id)
+    .bind(user_id)
     .fetch_one(pool)
     .await
 }
@@ -521,11 +531,17 @@ pub async fn create_balance(pool: &PgPool, bal: &NewBalance) -> Result<Balance, 
     .await
 }
 
-pub async fn delete_balance(pool: &PgPool, id: i64) -> Result<bool, sqlx::Error> {
-    let res = sqlx::query("DELETE FROM balance WHERE id = $1")
-        .bind(id)
-        .execute(pool)
-        .await?;
+pub async fn delete_balance(pool: &PgPool, id: i64, user_id: &str) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query(
+        r#"
+        DELETE FROM balance
+        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
+        "#,
+    )
+    .bind(id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
     Ok(res.rows_affected() > 0)
 }
 
