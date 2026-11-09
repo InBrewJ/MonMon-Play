@@ -175,6 +175,7 @@
                     Sliced Savings & Payoff Items ({{ plan.items.len() }})
                 </h3>
                 <div style="display: flex; align-items: center; gap: 8px;">
+                    <form method="POST" action="/savingsPlan/saveAllocations/{{ plan.id }}" id="save-allocations-form" style="display: none;"></form>
                     <button type="button" id="btn-save-allocations" class="w3-button w3-round w3-small" style="background: var(--success); color: #fff; font-weight: 700; display: none; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);">
                         <i class="fas fa-check" style="margin-right: 4px;"></i> Save Slices
                     </button>

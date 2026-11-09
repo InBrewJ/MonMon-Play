@@ -353,6 +353,23 @@ pub fn select_credit_card_candidates(
         .collect()
 }
 
+/// Extracts `amount_<itemId>=<value>` pairs from the "Save Slices" form (Java `saveAllocations`).
+/// Malformed keys/values are ignored and negative amounts are clamped to zero.
+pub fn parse_allocation_amounts(
+    form: &std::collections::HashMap<String, String>,
+) -> Vec<(i64, f32)> {
+    let mut out: Vec<(i64, f32)> = form
+        .iter()
+        .filter_map(|(k, v)| {
+            let id = k.strip_prefix("amount_")?.parse::<i64>().ok()?;
+            let amt = v.trim().parse::<f32>().ok()?;
+            Some((id, amt.max(0.0)))
+        })
+        .collect();
+    out.sort_by_key(|(id, _)| *id);
+    out
+}
+
 /// Mirrors the Java "Allocate max" button: the whole positive unallocated amount.
 pub fn allocate_max_amount(unallocated: f32) -> f32 {
     unallocated.max(0.0)
@@ -1266,6 +1283,32 @@ pub async fn add_all_credit_cards_form_handler(
     Ok(Redirect::to("/savingsPlan#sliced-items-card"))
 }
 
+pub async fn save_allocations_form_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(_plan_id): Path<i64>,
+    Form(form): Form<std::collections::HashMap<String, String>>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let plan = get_or_create_active_plan(&state.pool, &raw_uid)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    for (item_id, amount) in parse_allocation_amounts(&form) {
+        // Only items belonging to the caller's own active plan may be updated.
+        if plan.items.iter().any(|it| it.id == item_id) {
+            sqlx::query("UPDATE savings_plan_item SET monthlyamount = $1, monthly_amount = $1 WHERE id = $2 AND savings_plan_id = $3")
+                .bind(amount)
+                .bind(item_id)
+                .bind(plan.id)
+                .execute(&state.pool)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
+    }
+    Ok(Redirect::to("/savingsPlan#sliced-items-card"))
+}
+
 pub async fn bin_item_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -1582,5 +1625,16 @@ mod tests {
         assert_eq!(deduct_deficit_from_slice(100.0, -30.0), 70.0);
         assert_eq!(deduct_deficit_from_slice(20.0, -30.0), 0.0);
         assert_eq!(deduct_deficit_from_slice(100.0, 15.0), 100.0);
+    }
+
+    #[test]
+    fn test_parse_allocation_amounts() {
+        let mut form = std::collections::HashMap::new();
+        form.insert("amount_12".to_string(), "150.50".to_string());
+        form.insert("amount_3".to_string(), "-5".to_string());
+        form.insert("amount_x".to_string(), "10".to_string());
+        form.insert("amount_7".to_string(), "abc".to_string());
+        form.insert("csrfToken".to_string(), "t".to_string());
+        assert_eq!(parse_allocation_amounts(&form), vec![(3, 0.0), (12, 150.5)]);
     }
 }
