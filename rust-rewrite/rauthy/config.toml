@@ -34,6 +34,6 @@ smtp_url = 'smtp.mailbox.org'
 smtp_port = 587
 smtp_username = "$SECRETS"
 smtp_password = "$SECRETS"
-smtp_from = 'MonMon <no-reply@dryark.uk>'
+smtp_from = 'MonMon <jason@dryark.uk>'
 smtp_tls_mode = 'starttls'
 
