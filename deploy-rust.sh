@@ -16,7 +16,12 @@ GREENSTREET_HOST="${1:-greenstreet@greenstreet.local}"
 REMOTE_USER="${GREENSTREET_HOST%@*}"
 REMOTE_DIR="/home/${REMOTE_USER}/app"
 
-echo -e "${BLUE}${BOLD}==> [1/4] Preparing remote directories on ${GREENSTREET_HOST}...${NC}"
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
+GIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "dev")
+echo "build.commit=${GIT_COMMIT}" > rust-rewrite/monmon-rs/build.properties
+echo "build.number=${GIT_COUNT}" >> rust-rewrite/monmon-rs/build.properties
+
+echo -e "${BLUE}${BOLD}==> [1/4] Preparing remote directories on ${GREENSTREET_HOST} (commit: ${GIT_COMMIT}, build: ${GIT_COUNT})...${NC}"
 ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/rust-rewrite/monmon-rs ${REMOTE_DIR}/rust-rewrite/legmon-rs ${REMOTE_DIR}/rust-rewrite/rauthy/bootstrap ${REMOTE_DIR}/rust-rewrite/rauthy/data ${REMOTE_DIR}/public ${REMOTE_DIR}/logs"
 
 echo -e "${BLUE}${BOLD}==> [2/4] Syncing source code, templates, and configs to ${GREENSTREET_HOST}...${NC}"
@@ -51,7 +56,7 @@ if [[ -f .env ]]; then
 fi
 
 echo -e "${BLUE}${BOLD}==> [3/4] Building Rust container images natively on ${GREENSTREET_HOST}...${NC}"
-ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml build"
+ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && BUILD_COMMIT=${GIT_COMMIT} BUILD_NUMBER=${GIT_COUNT} docker compose -f docker-compose.rust.yaml build"
 
 echo -e "${BLUE}${BOLD}==> [4/4] Starting Rust stack on ${GREENSTREET_HOST} via run_prod.sh...${NC}"
 ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && ./run_prod.sh"

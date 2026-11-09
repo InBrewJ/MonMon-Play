@@ -71,8 +71,8 @@ pub async fn get_settings(
         pending_users,
         approved_users,
         region: "UK".to_string(),
-        build_commit: "f687677".to_string(),
-        build_number: "v1.0.0-rs".to_string(),
+        build_commit: crate::BUILD_COMMIT.to_string(),
+        build_number: crate::BUILD_NUMBER.to_string(),
     };
 
     tmpl.render()

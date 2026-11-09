@@ -21,6 +21,8 @@ mod spog;
 mod statement;
 
 pub const BUILD_HASH: &str = env!("BUILD_HASH");
+pub const BUILD_COMMIT: &str = env!("BUILD_COMMIT");
+pub const BUILD_NUMBER: &str = env!("BUILD_NUMBER");
 
 use askama::Template;
 use axum::{

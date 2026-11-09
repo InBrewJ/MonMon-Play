@@ -1,6 +1,10 @@
 FROM rust:bookworm AS builder
 WORKDIR /build
-COPY Cargo.toml Cargo.lock build.rs ./
+ARG BUILD_COMMIT
+ARG BUILD_NUMBER
+ENV BUILD_COMMIT=$BUILD_COMMIT
+ENV BUILD_NUMBER=$BUILD_NUMBER
+COPY Cargo.toml Cargo.lock build.rs build.properties* ./
 COPY templates ./templates
 COPY src ./src
 RUN cargo build --release

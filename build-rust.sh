@@ -16,7 +16,12 @@ if ! command -v cargo >/dev/null 2>&1 && [ -d "$HOME/.cargo/bin" ]; then
     export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
-echo -e "${BLUE}${BOLD}==> [1/3] Building monmon-rs native release binary...${NC}"
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
+GIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "dev")
+echo "build.commit=${GIT_COMMIT}" > rust-rewrite/monmon-rs/build.properties
+echo "build.number=${GIT_COUNT}" >> rust-rewrite/monmon-rs/build.properties
+
+echo -e "${BLUE}${BOLD}==> [1/3] Building monmon-rs native release binary (commit: ${GIT_COMMIT}, build: ${GIT_COUNT})...${NC}"
 (cd rust-rewrite/monmon-rs && cargo build --release)
 
 echo -e "${BLUE}${BOLD}==> [2/3] Building legmon-rs native release binary...${NC}"
