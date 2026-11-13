@@ -1694,14 +1694,16 @@ body.modal-scroll-locked {
 }
 
 .day-card.is-today,
-.day-card.today {
+.day-card.today,
+.recipe-card.is-today {
   border: 2px solid #ffffff !important;
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.2), 0 4px 14px rgba(0, 0, 0, 0.4);
   position: relative;
 }
 
 :root[data-theme="light"] .day-card.is-today,
-:root[data-theme="light"] .day-card.today {
+:root[data-theme="light"] .day-card.today,
+:root[data-theme="light"] .recipe-card.is-today {
   border: 2px solid #0f172a !important;
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.1), 0 4px 14px rgba(0, 0, 0, 0.08);
 }

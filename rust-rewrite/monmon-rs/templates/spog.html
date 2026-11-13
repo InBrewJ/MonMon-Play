@@ -107,6 +107,35 @@
                         </div>
                     </div>
                 </details>
+
+                <details class="spog-details-accordion" open style="margin-top: 0.5rem;">
+                    <summary>
+                        <span><i class="fas fa-scale-balanced" style="color: var(--primary); margin-right: 6px;"></i>Baseline: £{{ metrics.baseline }}</span>
+                    </summary>
+                    <div class="spog-details-content" style="text-align: left;">
+                        <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px;">
+                            Essential living baseline before discretionary savings:
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.86rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Current spending plan allowance:</span>
+                                <b>£{{ metrics.surplus }}</b>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">+ All recurring outgoings:</span>
+                                <b>£{{ metrics.outgoing_total }}</b>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--border-color); padding-top: 4px; font-weight: 700;">
+                                <span>Baseline:</span>
+                                <span style="color: var(--primary); font-size: 0.95rem;">£{{ metrics.baseline }}</span>
+                            </div>
+                            <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px; border-top: 1px dotted var(--border-color); padding-top: 4px; display: flex; justify-content: space-between;">
+                                <span>Equivalent calculation:</span>
+                                <span>Income (£{{ metrics.incoming_total }}) − Savings (£{{ metrics.savings_plan_total }})</span>
+                            </div>
+                        </div>
+                    </div>
+                </details>
             </div>
 
             <!-- Card 3: Savings Goals -->
@@ -127,9 +156,42 @@
                     </div>
                 </div>
 
+                <!-- Payday Transfers & Priority List -->
+                <div style="margin-top: 0.85rem; text-align: left;">
+                    <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.45rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span><i class="fas fa-exchange-alt" style="color: var(--primary); margin-right: 4px;"></i> Payday Transfer List</span>
+                        <span style="font-weight: 600; text-transform: none; font-size: 0.75rem; color: var(--text-main);">Total: £{{ metrics.savings_plan_total }}</span>
+                    </div>
+                    {% if metrics.savings_plan_items.is_empty() %}
+                        <div style="padding: 10px; border-radius: 6px; background: var(--card-bg-subtle); border: 1px dashed var(--border-color); font-size: 0.82rem; color: var(--text-muted); text-align: center;">
+                            No items configured in active savings plan.
+                        </div>
+                    {% else %}
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            {% for item in metrics.savings_plan_items %}
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem;">
+                                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                                        <span class="badge-pill" style="font-size: 0.7rem; font-weight: 800; background: var(--primary); color: #fff; padding: 1px 6px; border-radius: 4px;">#{{ item.priority }}</span>
+                                        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                            <div style="font-weight: 700; color: var(--text-main); line-height: 1.2;">{{ item.name }}</div>
+                                            <div style="font-size: 0.72rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
+                                                <i class="fas fa-arrow-right" style="font-size: 0.65rem; color: var(--primary);"></i>
+                                                <span>{{ item.destination_label }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style="font-weight: 700; color: #10b981; font-size: 0.9rem; margin-left: 8px; white-space: nowrap;">
+                                        £{{ item.monthly_amount }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
                 <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 0.85rem; padding-top: 0.5rem; border-top: 1px dashed var(--border-color);">
                     <a href="/savingsPlan" class="btn-action" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-main); text-decoration: none; font-weight: 600;" title="Expand Savings & Payoff Plan">
-                        <span>Expand Plan</span>
+                        <span>Manage Savings Plan</span>
                         <i class="fas fa-expand-alt" style="color: var(--primary);"></i>
                     </a>
                 </div>

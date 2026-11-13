@@ -44,6 +44,7 @@
         var total = 0;
         for (var i = 0; i < txs.length; i++) {
             var raw = (txs[i].category || 'general').toLowerCase();
+            if (raw.indexOf('transfer') !== -1) continue;
             if (!map[raw]) {
                 map[raw] = {
                     category: formatCategoryName(raw),
@@ -365,8 +366,14 @@
             cycleRanges = buildFallbackCycleRanges(1);
         }
 
-        allTransactions = rawPayload.transactions || [];
-        categoryData = rawPayload.histogram || [];
+        allTransactions = (rawPayload.transactions || []).filter(function(t) {
+            var c = (t.category || '').toLowerCase();
+            return c.indexOf('transfer') === -1;
+        });
+        categoryData = (rawPayload.histogram || []).filter(function(h) {
+            var c = (h.rawCategory || h.category || '').toLowerCase();
+            return c.indexOf('transfer') === -1;
+        });
         if (categoryData.length === 0 && allTransactions.length > 0) {
             categoryData = buildCategoryHistogram(allTransactions);
             categoryData.sort(function(a, b) { return b.total - a.total; });

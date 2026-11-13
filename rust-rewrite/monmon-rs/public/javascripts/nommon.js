@@ -383,12 +383,114 @@
             tabRecipeCountEl.textContent = recipes.length;
         }
 
-        recipes.forEach(function (rec, idx) {
+        // 1. Identify today's schedule from currentPlan.days to highlight & prioritize today's meals
+        var dayNames = [
+            { full: 'sunday', short: 'sun' },
+            { full: 'monday', short: 'mon' },
+            { full: 'tuesday', short: 'tue' },
+            { full: 'wednesday', short: 'wed' },
+            { full: 'thursday', short: 'thu' },
+            { full: 'friday', short: 'fri' },
+            { full: 'saturday', short: 'sat' }
+        ];
+        var now = new Date();
+        var todayInfo = dayNames[now.getDay()];
+
+        function matchesToday(dayString) {
+            if (!dayString || typeof dayString !== 'string') return false;
+            var str = dayString.toLowerCase();
+            if (str.indexOf(todayInfo.full) !== -1) return true;
+            var re = new RegExp('\\b' + todayInfo.short + '\\b', 'i');
+            return re.test(str);
+        }
+
+        var planDays = (currentPlan && currentPlan.days) ? currentPlan.days : [];
+        var todayDay = null;
+        for (var dIdx = 0; dIdx < planDays.length; dIdx++) {
+            if (matchesToday(planDays[dIdx].dayName)) {
+                todayDay = planDays[dIdx];
+                break;
+            }
+        }
+        if (!todayDay && planDays.length === 7) {
+            todayDay = planDays[(now.getDay() + 6) % 7];
+        }
+
+        function getMatchScore(mealText, recipeTitle) {
+            if (!mealText || !recipeTitle) return 0;
+            var m = mealText.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim();
+            var r = recipeTitle.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim();
+            if (m.indexOf(r) !== -1 || r.indexOf(m) !== -1) return 100;
+            var stopWords = { with:1, and:1, the:1, for:1, from:1, day:1, batch:1, cook:1, meal:1, fresh:1, leftover:1, reheated:1, on:1, warm:1, slices:1, sliced:1, diced:1, steamed:1, baked:1, bowl:1, toast:1 };
+            var mWords = m.split(/\s+/).filter(function(w) { return w.length > 2 && !stopWords[w]; });
+            var rWords = r.split(/\s+/).filter(function(w) { return w.length > 2 && !stopWords[w]; });
+            if (!mWords.length || !rWords.length) return 0;
+            var matches = 0;
+            for (var w = 0; w < rWords.length; w++) {
+                if (mWords.indexOf(rWords[w]) !== -1) matches++;
+            }
+            return matches / Math.min(mWords.length, rWords.length);
+        }
+
+        var mealSlots = [
+            { type: 'Breakfast', icon: 'fas fa-sun', iconColor: '#eab308', text: todayDay ? (todayDay.breakfast || '') : '', order: 1 },
+            { type: 'Lunch', icon: 'fas fa-bread-slice', iconColor: '#f97316', text: todayDay ? (todayDay.lunch || '') : '', order: 2 },
+            { type: 'Dinner', icon: 'fas fa-bowl-food', iconColor: '#10b981', text: todayDay ? (todayDay.dinner || '') : '', order: 3 }
+        ];
+
+        var usedIndices = {};
+        var todayRecipes = [];
+        mealSlots.forEach(function(slot) {
+            if (!slot.text) return;
+            var bestIdx = -1;
+            var bestScore = 0.25;
+            for (var rIdx = 0; rIdx < recipes.length; rIdx++) {
+                if (usedIndices[rIdx]) continue;
+                var score = getMatchScore(slot.text, recipes[rIdx].title);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIdx = rIdx;
+                }
+            }
+            if (bestIdx !== -1) {
+                usedIndices[bestIdx] = true;
+                todayRecipes.push({
+                    recipe: recipes[bestIdx],
+                    slot: slot,
+                    isToday: true
+                });
+            }
+        });
+
+        var otherRecipes = [];
+        for (var oIdx = 0; oIdx < recipes.length; oIdx++) {
+            if (!usedIndices[oIdx]) {
+                otherRecipes.push({
+                    recipe: recipes[oIdx],
+                    slot: null,
+                    isToday: false
+                });
+            }
+        }
+
+        // Arrange today's recipes at top by breakfast, lunch, dinner, followed by remainder
+        var orderedList = todayRecipes.concat(otherRecipes);
+
+        orderedList.forEach(function (item, idx) {
+            var rec = item.recipe;
+            var isToday = item.isToday;
+            var slot = item.slot;
+
             var box = document.createElement('div');
-            box.style.border = '1px solid var(--border-color)';
+            box.className = 'recipe-card' + (isToday ? ' is-today' : '');
+            box.style.border = isToday ? '2px solid var(--primary, #0284c7)' : '1px solid var(--border-color)';
             box.style.borderRadius = '8px';
             box.style.padding = '1rem';
-            box.style.background = 'var(--card-bg-subtle)';
+            box.style.background = isToday ? 'var(--card-bg)' : 'var(--card-bg-subtle)';
+            box.style.marginBottom = '1rem';
+            if (isToday) {
+                box.style.boxShadow = '0 0 14px rgba(2, 132, 199, 0.25), 0 4px 14px rgba(0, 0, 0, 0.12)';
+            }
 
             var ingredientsHtml = '';
             if (rec.ingredientsUsed && rec.ingredientsUsed.length) {
@@ -408,11 +510,21 @@
                     '</ol>';
             }
 
+            var todayBadgeHtml = '';
+            if (isToday && slot) {
+                todayBadgeHtml = '<span class="day-today-badge" style="margin-left: 8px; display: inline-flex; align-items: center; gap: 4px; background: var(--primary, #0284c7); color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">' +
+                    '<i class="' + slot.icon + '" style="color: ' + slot.iconColor + ';"></i> Today · ' + escapeHtml(slot.type) +
+                    '</span>';
+            }
+
             box.innerHTML =
                 '<div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 0.4rem;">' +
-                '  <h4 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-main);">' +
-                '    <i class="fas fa-kitchen-set" style="color: var(--primary); margin-right: 6px;"></i>' + escapeHtml(rec.title || ('Recipe ' + (idx + 1))) +
-                '  </h4>' +
+                '  <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">' +
+                '    <h4 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-main); display: inline-flex; align-items: center;">' +
+                '      <i class="fas fa-kitchen-set" style="color: var(--primary); margin-right: 6px;"></i>' + escapeHtml(rec.title || ('Recipe ' + (idx + 1))) +
+                '    </h4>' +
+                todayBadgeHtml +
+                '  </div>' +
                 '  <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 10px;">' +
                 (rec.servings ? '<span><i class="fas fa-users"></i> ' + rec.servings + ' servings</span>' : '') +
                 (rec.prepTimeMinutes ? '<span><i class="far fa-clock"></i> Prep: ' + rec.prepTimeMinutes + 'm</span>' : '') +

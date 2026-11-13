@@ -208,6 +208,7 @@ pub async fn build_dig_data(
           AND latitude IS NOT NULL
           AND longitude IS NOT NULL
           AND amount > 0
+          AND LOWER(COALESCE(category, '')) NOT LIKE '%transfer%'
         ORDER BY timestamp DESC NULLS LAST, id DESC
         LIMIT $2
         "#,
@@ -245,6 +246,7 @@ pub async fn build_dig_data(
         FROM bank_transaction
         WHERE (userid = $1 OR user_id = $1)
           AND amount > 0
+          AND LOWER(COALESCE(category, '')) NOT LIKE '%transfer%'
         GROUP BY COALESCE(NULLIF(TRIM(category), ''), 'general')
         ORDER BY total_spent DESC
         "#,
@@ -274,6 +276,7 @@ pub async fn build_dig_data(
         for t in &transactions {
             if t.amount <= 0.0 { continue; }
             let cat = if t.category.trim().is_empty() { "general" } else { t.category.trim() };
+            if cat.to_lowercase().contains("transfer") { continue; }
             let entry = map.entry(cat.to_string()).or_insert((0, 0.0));
             entry.0 += 1;
             entry.1 += t.amount as f64;
@@ -396,4 +399,27 @@ pub async fn get_dig_data_api(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(dig_data))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_category_name() {
+        assert_eq!(format_category_name("groceries"), "Groceries");
+        assert_eq!(format_category_name("eating_out"), "Eating Out");
+        assert_eq!(format_category_name("entertainment"), "Entertainment");
+    }
+
+    #[test]
+    fn test_is_transfer_category() {
+        let is_transfer = |cat: &str| cat.to_lowercase().contains("transfer");
+        assert!(is_transfer("transfers"));
+        assert!(is_transfer("transfer"));
+        assert!(is_transfer("p2p_transfer"));
+        assert!(!is_transfer("groceries"));
+        assert!(!is_transfer("eating_out"));
+        assert!(!is_transfer("general"));
+    }
 }

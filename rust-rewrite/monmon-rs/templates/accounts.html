@@ -134,12 +134,15 @@
                 <div style="margin-bottom: 0.75rem;">
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Account Type</label>
                     <select id="type" name="type" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
-                        <option value="CURRENT" {% if let Some(a) = editing_account %}{% if a.account_type == "CURRENT" %}selected{% endif %}{% endif %}>Current Account</option>
-                        <option value="SHORT_TERM_SAVINGS" {% if let Some(a) = editing_account %}{% if a.account_type == "SHORT_TERM_SAVINGS" %}selected{% endif %}{% endif %}>Savings Account</option>
+                        <option value="CURRENT" {% if let Some(a) = editing_account %}{% if a.account_type == "CURRENT" || a.account_type == "DEBIT" %}selected{% endif %}{% endif %}>Current / Debit Account</option>
                         <option value="CREDIT" {% if let Some(a) = editing_account %}{% if a.account_type == "CREDIT" %}selected{% endif %}{% endif %}>Credit Card</option>
+                        <option value="DEBIT_SHARED_BILLS" {% if let Some(a) = editing_account %}{% if a.account_type == "DEBIT_SHARED_BILLS" %}selected{% endif %}{% endif %}>Shared Bills (Debit)</option>
+                        <option value="SHORT_TERM_SAVINGS" {% if let Some(a) = editing_account %}{% if a.account_type == "SHORT_TERM_SAVINGS" || a.account_type == "SAVINGS" %}selected{% endif %}{% endif %}>Savings Account (Short Term)</option>
+                        <option value="LONG_TERM_SAVINGS" {% if let Some(a) = editing_account %}{% if a.account_type == "LONG_TERM_SAVINGS" %}selected{% endif %}{% endif %}>Savings Account (Long Term / ISA)</option>
                         <option value="LOAN" {% if let Some(a) = editing_account %}{% if a.account_type == "LOAN" %}selected{% endif %}{% endif %}>Loan</option>
                         <option value="MORTGAGE" {% if let Some(a) = editing_account %}{% if a.account_type == "MORTGAGE" %}selected{% endif %}{% endif %}>Mortgage</option>
                         <option value="PENSION" {% if let Some(a) = editing_account %}{% if a.account_type == "PENSION" %}selected{% endif %}{% endif %}>Pension</option>
+                        <option value="INVESTMENT" {% if let Some(a) = editing_account %}{% if a.account_type == "INVESTMENT" %}selected{% endif %}{% endif %}>Investment</option>
                     </select>
                 </div>
                 <div style="margin-bottom: 1rem;">

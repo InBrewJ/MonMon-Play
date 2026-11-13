@@ -33,10 +33,26 @@ pub struct SpogSpendingPlanDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SpogSavingsPlanItemDto {
+    pub id: i64,
+    pub priority: i32,
+    pub name: String,
+    pub monthly_amount: Pence,
+    pub item_type: String,
+    pub account_name: Option<String>,
+    pub account_type: Option<String>,
+    pub destination_label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpogMetrics {
     pub incoming_total: Pence,
     pub outgoing_total: Pence,
     pub surplus: Pence,
+    pub baseline: Pence,
+    pub savings_plan_total: Pence,
+    pub savings_plan_items: Vec<SpogSavingsPlanItemDto>,
     pub next_pay_day: i32,
     pub next_pay_date: String,
     pub days_between_paydays: i32,
@@ -261,7 +277,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     // Surplus & Allowances (accounting for active Savings Plan percentage)
     let savings_plan_row = sqlx::query(
         r#"
-        SELECT savingspercentage
+        SELECT id, savingspercentage
         FROM savings_plan
         WHERE (userid = $1 OR user_id = $1)
           AND (archived IS NULL OR archived = false)
@@ -273,14 +289,78 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     .fetch_optional(pool)
     .await?;
 
-    let savings_percentage: i32 = savings_plan_row
-        .map(|r| r.get::<i32, _>("savingspercentage"))
-        .unwrap_or(0);
+    let (active_plan_id, savings_percentage) = match savings_plan_row {
+        Some(r) => (Some(r.get::<i64, _>("id")), r.get::<i32, _>("savingspercentage")),
+        None => (None, 0),
+    };
     let savings_plan_cost = incoming_total * (savings_percentage as f64 / 100.0);
     let surplus = (incoming_total - outgoing_total - savings_plan_cost).max(Pence::ZERO);
     let max_per_day = surplus.checked_div_days(days_between_paydays as i64);
     let max_per_week = max_per_day * 7i64;
     let max_per_month = surplus;
+
+    let baseline = surplus + outgoing_total;
+
+    // Fetch active Savings Plan priority items for Payday transfers overview
+    let mut savings_plan_items = Vec::new();
+    if let Some(pid) = active_plan_id {
+        let items_rows = sqlx::query(
+            r#"
+            SELECT
+                i.id, i.name, COALESCE(i.monthlyamount, 0.0)::real AS monthlyamount,
+                COALESCE(i.priority, 1) AS priority,
+                COALESCE(i.type, 'SAVINGS_TARGET') AS item_type,
+                a.name AS account_name,
+                a.type AS account_type
+            FROM savings_plan_item i
+            LEFT JOIN account a ON a.id = i.account_id
+            WHERE i.savings_plan_id = $1
+              AND (i.archived IS NULL OR i.archived = false)
+            ORDER BY i.priority ASC NULLS LAST, i.id ASC
+            "#,
+        )
+        .bind(pid)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        for r in items_rows {
+            let item_type: String = r.get("item_type");
+            let acc_name: Option<String> = r.get("account_name");
+            let acc_type: Option<String> = r.get("account_type");
+            let monthly_amt_f: f32 = r.get("monthlyamount");
+            let monthly_amount = Pence::from_pounds_f32(monthly_amt_f);
+
+            let dest_label = if let Some(ref aname) = acc_name {
+                let type_desc = match acc_type.as_deref().unwrap_or("").to_uppercase().as_str() {
+                    "CREDIT" => "Credit Card",
+                    "SHORT_TERM_SAVINGS" | "SAVINGS" => "Savings Account",
+                    "LONG_TERM_SAVINGS" => "Long-term Savings / ISA",
+                    "DEBIT" | "CURRENT" => "Debit Account",
+                    "DEBIT_SHARED_BILLS" => "Shared Bills Account",
+                    "LOAN" => "Loan",
+                    "MORTGAGE" => "Mortgage",
+                    "PENSION" => "Pension",
+                    "INVESTMENT" => "Investment",
+                    _ => "Account",
+                };
+                format!("{} ({})", aname, type_desc)
+            } else {
+                "No linked account".to_string()
+            };
+
+            savings_plan_items.push(SpogSavingsPlanItemDto {
+                id: r.get("id"),
+                priority: r.get("priority"),
+                name: r.get("name"),
+                monthly_amount,
+                item_type,
+                account_name: acc_name,
+                account_type: acc_type,
+                destination_label: dest_label,
+            });
+        }
+    }
 
     // 4. Accounts & Balances and Freshness Calculation
     let accounts_rows = sqlx::query(
@@ -476,15 +556,26 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         });
     }
 
-    // Group accounts
+    // Group accounts in specified order:
+    // 1. debit (CURRENT, DEBIT)
+    // 2. credit (CREDIT)
+    // 3. shared debit bills (DEBIT_SHARED_BILLS)
+    // 4. savings accounts (SHORT_TERM_SAVINGS, LONG_TERM_SAVINGS, SAVINGS)
+    // 5. loans & mortgages (LOAN, MORTGAGE)
+    // 6. pensions and investments (PENSION, INVESTMENT)
     let mut account_groups = Vec::new();
-    let group_defs: [(&str, &str, &[&str]); 5] = [
+    let group_defs: [(&str, &str, &[&str]); 6] = [
         (
-            "Current & Debit Accounts",
+            "Debit Accounts",
             "fas fa-university",
-            &["CURRENT", "DEBIT", "DEBIT_SHARED_BILLS"],
+            &["CURRENT", "DEBIT"],
         ),
         ("Credit Cards", "fas fa-credit-card", &["CREDIT"]),
+        (
+            "Shared Debit Bills",
+            "fas fa-file-invoice-dollar",
+            &["DEBIT_SHARED_BILLS"],
+        ),
         (
             "Savings Accounts",
             "fas fa-piggy-bank",
@@ -495,7 +586,11 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
             "fas fa-hand-holding-usd",
             &["LOAN", "MORTGAGE"],
         ),
-        ("Pensions & Investments", "fas fa-landmark", &["PENSION"]),
+        (
+            "Pensions & Investments",
+            "fas fa-landmark",
+            &["PENSION", "INVESTMENT"],
+        ),
     ];
 
     for (g_name, g_icon, g_types) in group_defs {
@@ -809,6 +904,9 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         incoming_total,
         outgoing_total,
         surplus,
+        baseline,
+        savings_plan_total: savings_plan_cost,
+        savings_plan_items,
         next_pay_day,
         next_pay_date: cycle_end.format("%Y-%m-%d").to_string(),
         days_between_paydays,
@@ -1208,5 +1306,21 @@ mod tests {
         assert_eq!(daily_diff, Pence::from_pounds_f64(15.00));
         assert_eq!(abs_daily, Pence::from_pounds_f64(15.00));
         assert_eq!(format!("{}", abs_daily), "15.00");
+    }
+
+    #[test]
+    fn test_baseline_formula_identity() {
+        // baseline = (allowance from monthly spending plan) + (all outgoings)
+        //          = (income) - (all items from saving plan together)
+        let income = Pence::from_pounds_f64(3450.00);
+        let outgoings = Pence::from_pounds_f64(1200.00);
+        let savings_allocation = Pence::from_pounds_f64(500.00);
+        let surplus = income - outgoings - savings_allocation; // 1750.00
+
+        let baseline_from_allowance = surplus + outgoings; // 2950.00
+        let baseline_from_income = income - savings_allocation; // 2950.00
+
+        assert_eq!(baseline_from_allowance, baseline_from_income);
+        assert_eq!(baseline_from_allowance, Pence::from_pounds_f64(2950.00));
     }
 }

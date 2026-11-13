@@ -85,6 +85,7 @@ pub struct OutgoingViewDto {
     pub pause_reason: Option<String>,
     pub account_id: Option<i64>,
     pub account_name: Option<String>,
+    pub account_type: Option<String>,
     pub is_yearly: bool,
     pub is_due_now: bool,
     pub frequency_label: String,
@@ -244,6 +245,12 @@ pub struct OutgoingForm {
     pub starting_year: Option<i32>,
     #[serde(default)]
     pub frequency: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_checkbox")]
+    pub bill: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_checkbox")]
+    pub rent: Option<bool>,
+    #[serde(default, alias = "hiddenFromTotal", deserialize_with = "deserialize_checkbox")]
+    pub hidden_from_total: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -428,6 +435,7 @@ pub async fn get_outgoings_page(
             pause_reason: o.pause_reason.clone(),
             account_id: o.account_id,
             account_name: o.account_name.clone(),
+            account_type: o.account_type.clone(),
             is_yearly,
             is_due_now,
             frequency_label: o.get_frequency_label(),
@@ -510,6 +518,7 @@ pub async fn get_edit_outgoing_page(
             pause_reason: o.pause_reason.clone(),
             account_id: o.account_id,
             account_name: o.account_name.clone(),
+            account_type: o.account_type.clone(),
             is_yearly,
             is_due_now,
             frequency_label: o.get_frequency_label(),
@@ -571,9 +580,9 @@ pub async fn post_update_outgoing_form(
         outgoing_month,
         year_interval,
         starting_year,
-        bill: Some(true),
-        rent: Some(false),
-        hidden_from_total: Some(false),
+        bill: Some(form.bill.unwrap_or(false)),
+        rent: Some(form.rent.unwrap_or(false)),
+        hidden_from_total: Some(form.hidden_from_total.unwrap_or(false)),
     };
     db::update_outgoing(&state.pool, id, &user_id, &update)
         .await
@@ -603,9 +612,9 @@ pub async fn post_update_outgoing_form_direct(
             outgoing_month,
             year_interval,
             starting_year,
-            bill: Some(true),
-            rent: Some(false),
-            hidden_from_total: Some(false),
+            bill: Some(form.bill.unwrap_or(false)),
+            rent: Some(form.rent.unwrap_or(false)),
+            hidden_from_total: Some(form.hidden_from_total.unwrap_or(false)),
         };
         db::update_outgoing(&state.pool, id, &user_id, &update)
             .await
@@ -632,9 +641,9 @@ pub async fn post_outgoing_form(
         outgoing_month,
         year_interval,
         starting_year,
-        bill: Some(true),
-        rent: Some(false),
-        hidden_from_total: Some(false),
+        bill: Some(form.bill.unwrap_or(false)),
+        rent: Some(form.rent.unwrap_or(false)),
+        hidden_from_total: Some(form.hidden_from_total.unwrap_or(false)),
         account_id: form.account_id,
         user_id,
     };
@@ -859,6 +868,26 @@ pub async fn get_bin_account(
         })?;
 
     Ok(Redirect::to("/myAccounts"))
+}
+
+pub async fn get_bin_outgoing(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    if !is_authenticated(&headers) {
+        return Ok(Redirect::to("/login"));
+    }
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    db::archive_outgoing(&state.pool, id, &user_id)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => (StatusCode::FORBIDDEN, format!("Access denied: Outgoing #{} not found or owned by another user.", id)),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
+
+    Ok(Redirect::to("/myOutgoings"))
 }
 
 pub async fn get_balances_page(
