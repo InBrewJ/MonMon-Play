@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>MonMon Incomings</title>
+    {% include "nav_head.html" %}
+</head>
+<body>
+
+{% include "nav_header.html" %}
+
+    <main class="w3-content" style="max-width: 1200px; padding: 0 1rem 3rem 1rem;">
+        <div class="w3-card w3-padding w3-round" style="box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">
+                    <i class="fas fa-money-bill-wave" style="color: #10b981; margin-right: 6px;"></i> Incomings ({{ incomings.len() }})
+                </div>
+                <button type="button" class="btn-action" onclick="openIncomingModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: #10b981; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
+                    <i class="fas fa-plus"></i> Add Incoming
+                </button>
+            </div>
+
+            <!-- Desktop View -->
+            <div class="desktop-view" style="overflow-x: auto;">
+                <table class="w3-table w3-striped">
+                    <thead>
+                        <tr style="text-align: left; color: var(--text-muted); font-size: 0.85rem;">
+                            <th>Name</th>
+                            <th>Target Account</th>
+                            <th>Net Value</th>
+                            <th>Payday</th>
+                            <th>Day of Month</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if incomings.is_empty() %}
+                            <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No incomings configured. Click <b>+ Add Incoming</b> above.</td></tr>
+                        {% else %}
+                            {% for inc in incomings %}
+                                <tr id="incoming-{{ inc.id }}">
+                                    <td><b>{{ inc.name }}</b></td>
+                                    <td>
+                                        {% if let Some(acc) = inc.account_name %}
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--primary); font-weight: 600; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; border: 1px solid var(--border-color);">
+                                                <i class="fas fa-university" style="margin-right: 4px;"></i>{{ acc }}
+                                            </span>
+                                        {% else %}
+                                            <span style="color: var(--text-muted); font-size: 0.85rem;">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="color: var(--success); font-weight: 600;">£{{ inc.net_value }}</td>
+                                    <td>
+                                        {% if inc.payday.unwrap_or(false) %}
+                                            <span class="badge-pill badge-payday-yes" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); padding:2px 8px; border-radius:4px; font-size:0.8rem; font-weight: 600;"><i class="fas fa-check"></i> Primary Payday</span>
+                                        {% else %}
+                                            <span class="badge-pill badge-payday-no" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding:2px 8px; border-radius:4px; font-size:0.8rem;">Secondary</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if inc.is_adjusted %}
+                                            <span title="Adjusted from {{ inc.incoming_month_day }} for this month{% if inc.payday.unwrap_or(false) %} (working day anchoring){% endif %}">
+                                                <b>Day {{ inc.effective_day }}</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: var(--danger);"></i></sup>
+                                            </span>
+                                        {% else %}
+                                            Day {{ inc.incoming_month_day }}
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: right; white-space: nowrap;">
+                                        <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" title="Edit" style="color: var(--primary); text-decoration: none; margin-right: 12px;">
+                                            <i class="fas fa-pen"></i>
+                                        </a>
+                                        <a href="/binIncoming/{{ inc.id }}" class="btn-action btn-delete" title="Delete" style="color: var(--danger); text-decoration: none;" onclick="return confirm('Are you sure you want to delete this incoming?');">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Mobile View -->
+            <div class="mobile-cards-view" style="display: none;">
+                {% for inc in incomings %}
+                    <div class="item-card" id="card-incoming-{{ inc.id }}" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                        <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div class="item-card-title" style="font-weight: 700; color: var(--text-main);">{{ inc.name }}</div>
+                            <div style="text-align: right;">
+                                <span class="badge-pill" style="{% if inc.is_adjusted %}background: var(--danger-light); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3);{% else %}background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3);{% endif %} padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                                    {% if inc.is_adjusted %}
+                                        Day {{ inc.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: var(--danger);"></i></sup>
+                                    {% else %}
+                                        Day {{ inc.incoming_month_day }}
+                                    {% endif %}
+                                </span>
+                                {% if inc.is_adjusted %}
+                                    <div style="margin-top: 3px;">
+                                        <span class="badge-pill" style="background: var(--danger-light); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;" title="Anchored from Day {{ inc.incoming_month_day }} to last working day">
+                                            <i class="fas fa-calendar-alt"></i> Anchored from {{ inc.incoming_month_day }}
+                                        </span>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; background: var(--card-bg-subtle); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); margin-bottom: 8px;">
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">Net</div>
+                                <div class="stat-cell-val" style="font-weight: 600; color: var(--success);">£{{ inc.net_value }}</div>
+                            </div>
+                            <div class="stat-cell">
+                                <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.75rem;">Payday</div>
+                                <div class="stat-cell-val">
+                                    {% if inc.payday.unwrap_or(false) %}
+                                        <span class="badge-pill badge-payday-yes" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;"><i class="fas fa-check"></i> Primary Payday</span>
+                                    {% else %}
+                                        <span class="badge-pill badge-payday-no" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding:2px 8px; border-radius:4px; font-size:0.75rem;">Secondary</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="item-card-actions" style="border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 8px; display: flex; gap: 8px;">
+                            <a href="/editIncoming/{{ inc.id }}#incoming-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fas fa-pen"></i> Edit
+                            </a>
+                            <a href="/binIncoming/{{ inc.id }}" class="btn-action btn-delete" style="padding: 4px 12px; background: var(--danger-light); border: 1px solid rgba(248, 113, 113, 0.3); color: var(--danger); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" onclick="return confirm('Are you sure you want to delete this incoming?');">
+                                <i class="fas fa-trash-alt"></i> Delete
+                            </a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </main>
+
+    <!-- Add / Edit Incoming Modal -->
+    <div id="incoming-modal" class="modal-backdrop" style="display: {% if editing %}flex{% else %}none{% endif %}; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 1000; overflow-y: auto; padding: 1rem; -webkit-overflow-scrolling: touch;">
+        <div class="modal-content-card" style="background: var(--card-bg); color: var(--text-main); padding: 1.5rem; border-radius: 12px; max-width: 500px; width: 100%; margin: auto; position: relative; border: 1px solid var(--border-color); max-height: calc(100dvh - 2rem); overflow-y: auto;">
+            <button type="button" onclick="closeIncomingModal()" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.4rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 1rem;">
+                <i class="fas {% if editing %}fa-edit{% else %}fa-plus-circle{% endif %}" style="color: #10b981; margin-right: 6px;"></i>
+                {% if editing %}Amend Incoming{% else %}Add New Incoming{% endif %}
+            </div>
+            <form id="incoming-modal-form" method="POST" action="{% if let Some(i) = editing_incoming %}/updateIncoming/{{ i.id }}{% else %}/incoming{% endif %}">
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Incoming Name</label>
+                    <input id="incoming-name" name="name" type="text" required value="{% if let Some(i) = editing_incoming %}{{ i.name }}{% endif %}" placeholder="e.g. Salary, Side gig" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Target Account</label>
+                    <select id="incoming-account" name="account_id" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                        <option value="">-- None / Select Target Account --</option>
+                        {% for a in accounts %}
+                            <option value="{{ a.id }}" {% if let Some(i) = editing_incoming %}{% if a.is_selected(i.account_id) %}selected{% endif %}{% endif %}>
+                                {{ a.name }} ({{ a.account_type }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Net Value (£)</label>
+                    <input name="netValue" type="number" step="0.01" required value="{% if let Some(i) = editing_incoming %}{{ i.net_value }}{% endif %}" placeholder="0.00" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 0.85rem;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Day of Month</label>
+                    <input name="incomingMonthDay" type="number" min="1" max="31" required value="{% if let Some(i) = editing_incoming %}{{ i.incoming_month_day }}{% endif %}" placeholder="Day of month (1-31)" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
+                </div>
+                <div style="margin-bottom: 1.25rem;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-main);">
+                        <input type="checkbox" id="incoming-payday" name="payday" value="true" {% if let Some(i) = editing_incoming %}{% if i.payday.unwrap_or(false) %}checked{% endif %}{% endif %} style="width: 18px; height: 18px; accent-color: #10b981; cursor: pointer;">
+                        <span><i class="fas fa-coins" style="color: #10b981; margin-right: 4px;"></i> Is this Payday?</span>
+                    </label>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-left: 26px; margin-top: 2px;">
+                        Designates this incoming as the primary cycle cutoff for spending pace and allowance calculations.
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" onclick="closeIncomingModal()" style="padding: 8px 16px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main); border-radius: 6px; cursor: pointer;">Cancel</button>
+                    <button type="submit" id="incoming-submit-btn" style="padding: 8px 16px; background: #10b981; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">{% if editing %}Save Changes{% else %}Add Incoming{% endif %}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% include "nav_scripts.html" %}
+
+    <script>
+        function openIncomingModal() {
+            document.getElementById('incoming-modal').style.display = 'flex';
+        }
+        function closeIncomingModal() {
+            {% if editing %}
+                window.location.href = '/myIncomings';
+            {% else %}
+                document.getElementById('incoming-modal').style.display = 'none';
+            {% endif %}
+        }
+    </script>
+</body>
+</html>

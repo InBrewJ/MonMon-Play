@@ -22,16 +22,16 @@ REMOTE_DIR="/home/${REMOTE_USER}/app"
 
 echo -e "${BLUE}${BOLD}==> [1/4] Checking legmon-rs local compilation...${NC}"
 if command -v cargo >/dev/null 2>&1; then
-    (cd rust-rewrite/legmon-rs && cargo check --quiet)
+    (cd modules/legmon-rs && cargo check --quiet)
     echo -e "${GREEN}✓ legmon-rs local check passed.${NC}"
 fi
 
 echo -e "${BLUE}${BOLD}==> [2/4] Syncing legmon-rs source and Dockerfile to ${GREENSTREET_HOST}...${NC}"
-ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/rust-rewrite/legmon-rs"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/legmon-rs"
 rsync -avz --delete \
     --exclude 'target' \
-    rust-rewrite/legmon-rs/ \
-    "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/legmon-rs/"
+    modules/legmon-rs/ \
+    "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/legmon-rs/"
 scp docker-compose.rust.yaml "${GREENSTREET_HOST}:${REMOTE_DIR}/"
 if [[ -f .env ]]; then
     scp .env "${GREENSTREET_HOST}:${REMOTE_DIR}/.env"

@@ -1113,6 +1113,8 @@ body.modal-scroll-locked {
 .waiting-list-modal-overlay {
   overscroll-behavior: contain !important;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y !important;
+  overflow-y: auto !important;
 }
 
 .modal-content-card,
@@ -1121,7 +1123,9 @@ body.modal-scroll-locked {
 .waiting-list-modal-card {
   overscroll-behavior: contain !important;
   -webkit-overflow-scrolling: touch;
-  max-height: 90vh;
+  touch-action: pan-y !important;
+  max-height: calc(100dvh - 2rem);
+  max-height: calc(100vh - 2rem);
   overflow-y: auto;
 }
 
@@ -1135,19 +1139,30 @@ body.modal-scroll-locked {
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
   z-index: 1000;
-  align-items: center;
-  justify-content: center;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
   padding: 1rem;
+  box-sizing: border-box;
+}
+
+.modal-backdrop[style*="display: flex"],
+.modal-backdrop[style*="display:flex"],
+.modal-backdrop.open {
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .modal-content-card {
+  margin: auto;
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 480px;
-  max-height: 90vh;
+  max-height: calc(100dvh - 2rem);
+  max-height: calc(100vh - 2rem);
   overflow-y: auto;
   animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }

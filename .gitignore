@@ -22,17 +22,17 @@ keys/
 **/target/
 
 # Rauthy runtime data, state, and rendered secret configs
-rust-rewrite/rauthy/data/
-rust-rewrite/rauthy/config.toml
-rust-rewrite/rauthy/bootstrap/clients.json
-rust-rewrite/rauthy/bootstrap/users.json
-rust-rewrite/monmon-rs/build.properties
+modules/rauthy/data/
+modules/rauthy/config.toml
+modules/rauthy/bootstrap/clients.json
+modules/rauthy/bootstrap/users.json
+modules/monmon-rs/build.properties
 db/.pgpass
 .pgpass
 backups/
 __pycache__/
 *.pyc
-rust-rewrite/legmon-rs/scripts/output/
+modules/legmon-rs/scripts/output/
 
 
 

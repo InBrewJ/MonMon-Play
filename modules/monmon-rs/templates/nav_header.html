@@ -1,0 +1,508 @@
+<!-- MonMon Full-Page Blocking & Blurring Loading Overlay -->
+<div id="monmon-page-loader" class="monmon-loader-overlay" aria-hidden="true" role="status" aria-live="polite">
+    <div class="monmon-loader-card">
+        <div class="monmon-loader-anim-wrap">
+            <div class="monmon-loader-ring"></div>
+            <img src="/assets/images/monmon-monster.svg" alt="MonMon" class="monmon-loader-monster" width="60" height="60" />
+        </div>
+        <div class="monmon-loader-label" id="monmon-loader-text">Loading...</div>
+        <div class="monmon-loader-subtext">Crunching the numbers</div>
+    </div>
+</div>
+
+<style>
+.monmon-loader-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    z-index: 2147483647;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+}
+
+.monmon-loader-overlay.is-active {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: all !important;
+    cursor: wait;
+}
+
+.monmon-loader-card {
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.6), 0 0 30px rgba(99, 102, 241, 0.3);
+    border-radius: 20px;
+    padding: 28px 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 220px;
+    max-width: 90vw;
+    text-align: center;
+    transform: scale(0.92) translateZ(0);
+    -webkit-transform: scale(0.92) translateZ(0);
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.monmon-loader-overlay.is-active .monmon-loader-card {
+    transform: scale(1) translateZ(0) !important;
+    -webkit-transform: scale(1) translateZ(0) !important;
+}
+
+.monmon-loader-anim-wrap {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.monmon-loader-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 3px solid rgba(99, 102, 241, 0.2);
+    border-top-color: #6366f1;
+    border-right-color: #a855f7;
+    animation: monmon-loader-spin 1s cubic-bezier(0.55, 0.15, 0.45, 0.85) infinite;
+}
+
+.monmon-loader-monster {
+    width: 56px;
+    height: 56px;
+    animation: monmon-loader-bounce 1.5s ease-in-out infinite;
+    filter: drop-shadow(0 4px 12px rgba(99, 102, 241, 0.5));
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.monmon-loader-label {
+    color: #f8fafc;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 3px;
+    font-family: inherit;
+}
+
+.monmon-loader-subtext {
+    color: #94a3b8;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+
+@keyframes monmon-loader-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes monmon-loader-bounce {
+    0%, 100% {
+        transform: translateY(0) scale(1);
+    }
+    50% {
+        transform: translateY(-9px) scale(1.05);
+    }
+}
+</style>
+
+<script>
+(function() {
+    var loader = document.getElementById('monmon-page-loader');
+    if (!loader) return;
+
+    var timer = null;
+
+    function showLoader(customLabel, customSubtext) {
+        if (!loader) return;
+        if (customLabel) {
+            var labelEl = document.getElementById('monmon-loader-text');
+            if (labelEl) labelEl.textContent = customLabel;
+        }
+        if (customSubtext) {
+            var subEl = loader.querySelector('.monmon-loader-subtext');
+            if (subEl) subEl.textContent = customSubtext;
+        }
+        loader.classList.add('is-active');
+        loader.setAttribute('aria-hidden', 'false');
+        clearTimeout(timer);
+        // Safety timeout: auto-hide after 12s if network hangs or aborts
+        timer = setTimeout(hideLoader, 12000);
+    }
+
+    function hideLoader() {
+        if (!loader) return;
+        loader.classList.remove('is-active');
+        loader.setAttribute('aria-hidden', 'true');
+        clearTimeout(timer);
+    }
+
+    window.showMonmonLoader = showLoader;
+    window.hideMonmonLoader = hideLoader;
+
+    // Hide loader immediately on pageshow (e.g. Back/Forward browser cache navigation)
+    window.addEventListener('pageshow', function() {
+        hideLoader();
+    });
+
+    // Also trigger loader on beforeunload so any page navigation displays it
+    window.addEventListener('beforeunload', function() {
+        showLoader();
+    });
+
+    // Intercept clicks on links that perform page navigation
+    document.addEventListener('click', function(e) {
+        if (loader.classList.contains('is-active')) return;
+
+        var target = e.target;
+        var anchor = target.closest ? target.closest('a') : null;
+        if (!anchor) return;
+
+        // Skip modifier keys (Ctrl+click, Cmd+click, Shift+click, Alt+click, middle click)
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+
+        // Skip target="_blank"
+        if (anchor.target && anchor.target !== '_self') return;
+
+        // Skip download links
+        if (anchor.hasAttribute('download')) return;
+
+        // Skip elements opting out with data-no-loader
+        if (anchor.hasAttribute('data-no-loader') || anchor.classList.contains('no-loader')) return;
+
+        var href = anchor.getAttribute('href');
+        if (!href) return;
+
+        // Skip in-page anchors, javascript:, mailto:, tel:
+        if (href === '#' || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+
+        // Check if internal navigation link
+        try {
+            var url = new URL(anchor.href, window.location.href);
+            if (url.origin !== window.location.origin) return;
+            // Skip hash changes on same page
+            if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+        } catch (err) {}
+
+        // Friendly contextual text based on target
+        var targetText = "Loading...";
+        var subtext = "Crunching the numbers";
+        var lowerHref = href.toLowerCase();
+        if (lowerHref.indexOf('outgoings') !== -1) {
+            targetText = "Loading Outgoings...";
+            subtext = "Retrieving recurring bills & rent";
+        } else if (lowerHref.indexOf('incomings') !== -1) {
+            targetText = "Loading Incomings...";
+            subtext = "Calculating paydays & income";
+        } else if (lowerHref.indexOf('account') !== -1) {
+            targetText = "Loading Accounts...";
+            subtext = "Opening account manager";
+        } else if (lowerHref.indexOf('balances') !== -1) {
+            targetText = "Loading Balances...";
+            subtext = "Tallying accounts";
+        } else if (lowerHref.indexOf('spog') !== -1) {
+            targetText = "Loading Overview...";
+            subtext = "Checking pots and surplus";
+        } else if (lowerHref.indexOf('plan') !== -1 && lowerHref.indexOf('savings') === -1) {
+            targetText = "Loading Plans...";
+            subtext = "Retrieving spending allowances";
+        } else if (lowerHref.indexOf('pot') !== -1) {
+            targetText = "Loading Monthly Pot...";
+            subtext = "Fetching pot configuration";
+        } else if (lowerHref.indexOf('savings') !== -1) {
+            targetText = "Loading Savings Plan...";
+            subtext = "Calculating living allowances";
+        } else if (lowerHref.indexOf('spendingpace') !== -1 || lowerHref.indexOf('historicspent') !== -1) {
+            targetText = "Analyzing Spending...";
+            subtext = "Comparing daily pace";
+        } else if (lowerHref.indexOf('networth') !== -1) {
+            targetText = "Calculating Net Worth...";
+            subtext = "Summing total assets";
+        } else if (lowerHref.indexOf('nommon') !== -1) {
+            targetText = "Loading NomMon...";
+            subtext = "Organising meal ingredients";
+        } else if (lowerHref.indexOf('bank') !== -1) {
+            targetText = "Connecting Bank Sync...";
+            subtext = "Syncing accounts & transactions";
+        } else if (lowerHref.indexOf('dig') !== -1) {
+            targetText = "Loading Monzo Dig...";
+            subtext = "Plotting spending heatmap";
+        } else if (lowerHref.indexOf('settings') !== -1) {
+            targetText = "Loading Settings...";
+            subtext = "Loading your preferences";
+        } else if (lowerHref.indexOf('legmon') !== -1) {
+            targetText = "Loading Statements...";
+            subtext = "Preparing statement parser";
+        } else if (lowerHref.indexOf('transfer') !== -1) {
+            targetText = "Opening Transfer Window...";
+            subtext = "Calculating payday transfers";
+        }
+
+        showLoader(targetText, subtext);
+    }, true);
+
+    // Also intercept form submissions (e.g. settings, outgoings create/edit, pot update)
+    document.addEventListener('submit', function(e) {
+        var form = e.target;
+        if (form.hasAttribute('data-no-loader') || form.classList.contains('no-loader')) return;
+        if (e.defaultPrevented) return;
+        showLoader('Saving changes...', 'Updating MonMon');
+    }, true);
+})();
+</script>
+
+<div id="ticker">
+    <div id="ticker-placeholder" class="ticker-placeholder">
+        <span style="color: #60a5fa; font-weight: 700; margin-right: 8px;"><i class="far fa-calendar-alt"></i> Today</span> · <span style="color: var(--ticker-text, #cbd5e1);">Loading date...</span>
+    </div>
+</div>
+<script>
+    (function() {
+        function renderLiveTicker() {
+            var ticker = document.getElementById('ticker');
+            if (!ticker) return;
+            var now = new Date();
+            var day = now.getDate();
+            var suffix = "th";
+            if (day === 1 || day === 21 || day === 31) {
+                suffix = "st";
+            } else if (day === 2 || day === 22) {
+                suffix = "nd";
+            } else if (day === 3 || day === 23) {
+                suffix = "rd";
+            }
+            var dateStr = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+            var timeStr = now.toLocaleTimeString('en-GB');
+            ticker.innerHTML = "<span style='color: #60a5fa; font-weight: 700; margin-right: 8px;'><i class='far fa-calendar-alt'></i> Today: Day " + day + " (" + day + suffix + ")</span> · <span style='color: #cbd5e1;'>" + dateStr + " " + timeStr + "</span>";
+        }
+        renderLiveTicker();
+        if (!window.__monmonTickerInterval) {
+            window.__monmonTickerInterval = setInterval(renderLiveTicker, 1000);
+        }
+    })();
+</script>
+
+<!-- Header with Brand, Disco Ball, Search and Theme Toggle -->
+<header class="app-header">
+    <div class="header-brand-group">
+        <h1>
+            <a href="/spog" title="MonMon">
+                <img src="/assets/images/monmon-monster.svg" alt="MonMon Monster" class="monmon-logo-icon" width="38" height="38" />
+                <span>MonMon</span>
+            </a>
+        </h1>
+
+        <div id="disco-header-slot" class="disco-header-slot" style="display: none;" role="button" aria-label="Disco mode toggle" title="🎉 Payday Disco Mode!">
+            <div class="disco-hanger"></div>
+            <div class="disco-ball-wrapper">
+                <div class="disco-ball" id="disco-ball"></div>
+            </div>
+            <span class="disco-badge">PAYDAY!</span>
+        </div>
+    </div>
+
+    <div class="header-actions-group">
+        <!-- Global Expandable Search Bar -->
+        <div class="header-search-container" id="header-search-container">
+            <div class="header-search-input-wrap">
+                <i class="fas fa-search header-search-icon" id="header-search-trigger" title="Search MonMon (Press / or Ctrl+K)"></i>
+                <input type="text"
+                       id="global-search-input"
+                       class="header-search-input"
+                       placeholder="Search... (/)"
+                       autocomplete="off"
+                       spellcheck="false"
+                       aria-label="Search MonMon" />
+                <button type="button" id="header-search-clear" class="header-search-clear" aria-label="Clear search" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
+                <span class="header-search-spinner" id="header-search-spinner" style="display: none;">
+                    <i class="fas fa-circle-notch fa-spin"></i>
+                </span>
+                <kbd class="header-search-kbd-hint" id="header-search-kbd">/</kbd>
+            </div>
+
+            <!-- Search Results Dropdown -->
+            <div class="header-search-dropdown" id="header-search-dropdown" style="display: none;">
+                <div class="header-search-results-list" id="header-search-results-list" role="listbox"></div>
+                <div class="header-search-footer" id="header-search-footer">
+                    <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+                    <span><kbd>↵</kbd> select</span>
+                    <span><kbd>esc</kbd> close</span>
+                </div>
+            </div>
+        </div>
+
+        <button id="theme-toggle" class="theme-toggle-btn" type="button" aria-label="Toggle theme" title="Switch to Light/Dark Mode">
+            <i class="fas fa-sun" id="theme-toggle-icon"></i>
+            <span id="theme-toggle-text">Light Mode</span>
+        </button>
+    </div>
+</header>
+
+<!-- Navigation crumbs & Drawer toggle -->
+<nav class="crumbs" id="main-nav">
+    <div class="nav-bar-inner">
+        <button id="nav-toggle" class="nav-chevron-toggle" type="button" aria-label="Toggle navigation options">
+            <i class="fas fa-chevron-right" id="nav-toggle-icon"></i>
+            <span class="nav-toggle-text">Menu</span>
+        </button>
+        <div class="nav-current-crumb-pill">
+            <a href="/spog" class="current-crumb-link"><i class="fas fa-compass"></i> Menu</a>
+        </div>
+        <div class="user-chip nav-user-chip" id="nav-user-chip" title="Signed in user" style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 0.8rem; border-radius: 9999px; background: var(--card-bg-subtle, rgba(255,255,255,0.05)); border: 1px solid var(--border-color); text-decoration: none;">
+            <i class="fas fa-user-circle" style="color: var(--primary);"></i>
+            <span id="nav-username-display" style="font-weight: 600; color: var(--text-main);">User</span>
+        </div>
+    </div>
+</nav>
+<script>
+(function() {
+    try {
+        var p = window.location.pathname.toLowerCase();
+        var link = document.querySelector('.current-crumb-link');
+        if (!link) return;
+        var map = [
+            ['/spog', 'SPOG', 'fas fa-chart-pie'],
+            ['/myoutgoings', 'Outgoings', 'fas fa-credit-card'],
+            ['/editoutgoing', 'Outgoings', 'fas fa-credit-card'],
+            ['/myaccounts', 'Accounts', 'fas fa-university'],
+            ['/editaccount', 'Accounts', 'fas fa-university'],
+            ['/myincomings', 'Incomings', 'fas fa-hand-holding-usd'],
+            ['/editincoming', 'Incomings', 'fas fa-hand-holding-usd'],
+            ['/mybalances', 'Balances', 'fas fa-money-check-alt'],
+            ['/myplans', 'Plans', 'fas fa-sliders-h'],
+            ['/mymonthlypot', 'Monthly Pot', 'fas fa-archive'],
+            ['/savingsplan', 'Savings Plan', 'fas fa-piggy-bank'],
+            ['/editsavingsplanitem', 'Savings Plan', 'fas fa-piggy-bank'],
+            ['/spendingpace', 'Spending Pace', 'fas fa-tachometer-alt'],
+            ['/historicspent', 'Historic Spent', 'fas fa-history'],
+            ['/networth', 'Net Worth', 'fas fa-landmark'],
+            ['/nommon', 'NomMon', 'fas fa-utensils'],
+            ['/bank', 'Bank Sync', 'fas fa-exchange-alt'],
+            ['/monzo-dig', 'Monzo Dig', 'fas fa-map-marked-alt'],
+            ['/dig', 'Monzo Dig', 'fas fa-map-marked-alt'],
+            ['/settings', 'Settings', 'fas fa-cog'],
+            ['/legmon', 'LegMon Statements', 'fas fa-file-invoice'],
+            ['/transfers', 'Transfer Window', 'fas fa-exchange-alt'],
+            ['/transfer-window', 'Transfer Window', 'fas fa-exchange-alt']
+        ];
+        for (var i = 0; i < map.length; i++) {
+            if (p.indexOf(map[i][0].toLowerCase()) === 0) {
+                link.href = map[i][0];
+                link.title = 'Reload ' + map[i][1];
+                link.innerHTML = '<i class="' + map[i][2] + '"></i> ' + map[i][1];
+                break;
+            }
+        }
+    } catch (e) {}
+})();
+</script>
+
+<!-- Left-hand slide-out navigation drawer -->
+<div id="nav-backdrop" class="nav-drawer-backdrop"></div>
+<aside id="nav-drawer" class="nav-drawer" aria-label="Main Navigation">
+    <div class="nav-drawer-header">
+        <div class="nav-drawer-brand">
+            <img src="/assets/images/monmon-monster.svg" alt="MonMon" width="30" height="30" />
+            <span>MonMon</span>
+        </div>
+        <div class="user-chip" id="drawer-user-chip" style="margin-left: auto; margin-right: 8px; font-size: 0.78rem; padding: 2px 8px;">
+            <i class="fas fa-user-circle" style="color: var(--primary);"></i>
+            <span id="drawer-username-display" style="font-weight: 600;">User</span>
+        </div>
+        <button id="nav-drawer-close" class="nav-drawer-close" type="button" aria-label="Close navigation">&times;</button>
+    </div>
+    <div class="nav-drawer-content">
+        <ol class="nav-drawer-list" id="nav-crumbs-list">
+            <li class="drawer-crumb"><a href="/spog"><i class="fas fa-chart-pie"></i> SPOG</a></li>
+            <li class="drawer-crumb"><a href="/myOutgoings"><i class="fas fa-credit-card"></i> Outgoings</a></li>
+            <li class="drawer-crumb"><a href="/myAccounts"><i class="fas fa-university"></i> Accounts</a></li>
+            <li class="drawer-crumb"><a href="/myIncomings"><i class="fas fa-money-bill-wave"></i> Incomings</a></li>
+            <li class="drawer-crumb"><a href="/myBalances"><i class="fas fa-coins"></i> Balances</a></li>
+            <li class="drawer-crumb"><a href="/myPlans"><i class="fas fa-sliders-h"></i> Plans</a></li>
+            <li class="drawer-crumb"><a href="/myMonthlyPot"><i class="fas fa-archive"></i> Monthly Pot</a></li>
+            <li class="drawer-crumb"><a href="/savingsPlan"><i class="fas fa-piggy-bank"></i> Savings Plan</a></li>
+            <li class="drawer-crumb"><a href="/transfers"><i class="fas fa-exchange-alt"></i> Transfer Window</a></li>
+            <li class="drawer-crumb"><a href="/spendingPace"><i class="fas fa-chart-line"></i> Spending Pace</a></li>
+            <li class="drawer-crumb"><a href="/historicSpent"><i class="fas fa-history"></i> Historic Spent</a></li>
+            <li class="drawer-crumb"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
+            <li class="drawer-crumb"><a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a></li>
+            <li class="drawer-crumb"><a href="/bank"><i class="fas fa-exchange-alt"></i> Bank Sync</a></li>
+            <li class="drawer-crumb"><a href="/dig"><i class="fas fa-map-marked-alt"></i> Monzo Dig</a></li>
+            <li class="drawer-crumb"><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
+            <li class="drawer-divider"></li>
+            <li class="drawer-crumb drawer-logout"><a href="/centralLogout"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+        </ol>
+    </div>
+</aside>
+<script>
+(function() {
+    function resolveUser() {
+        var username = "";
+        try {
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i++) {
+                var c = cookies[i].trim();
+                if (c.indexOf('user_id=') === 0) {
+                    username = c.substring(8);
+                    break;
+                }
+                if (c.indexOf('monmon_session=') === 0) {
+                    var s = c.substring(15);
+                    if (s && s !== 'authenticated') {
+                        username = s;
+                        break;
+                    }
+                }
+            }
+        } catch (e) {}
+
+        function applyUser(name) {
+            if (!name) return;
+            var navEl = document.getElementById('nav-username-display');
+            if (navEl) navEl.textContent = name;
+            var drawerEl = document.getElementById('drawer-username-display');
+            if (drawerEl) drawerEl.textContent = name;
+        }
+
+        if (username) {
+            applyUser(username);
+        } else {
+            fetch('/api/user/accessStatus')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.userId && data.userId !== 'guest') {
+                        applyUser(data.userId);
+                    }
+                })
+                .catch(function() {});
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', resolveUser);
+    } else {
+        resolveUser();
+    }
+})();
+</script>

@@ -8,7 +8,7 @@ Spoilers: I did end up reading some of the code. Literally how can you not. I al
 
 ## HOW IT WENT
 
-In short, Gemini 3.8 Flash started with a [vague plan](rust-rewrite/README.md), then:
+In short, Gemini 3.8 Flash started with a [vague plan](modules/README.md), then:
 
 - wrote migration / playwright tests for most GETs and some POSTs to compare the Java and Rust versions
 - chose to use its own hand rolled auth (monmon-auth) which I then steered back towards RAuthy

@@ -18,32 +18,32 @@ REMOTE_DIR="/home/${REMOTE_USER}/app"
 
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
 GIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "dev")
-echo "build.commit=${GIT_COMMIT}" > rust-rewrite/monmon-rs/build.properties
-echo "build.number=${GIT_COUNT}" >> rust-rewrite/monmon-rs/build.properties
+echo "build.commit=${GIT_COMMIT}" > modules/monmon-rs/build.properties
+echo "build.number=${GIT_COUNT}" >> modules/monmon-rs/build.properties
 
 echo -e "${BLUE}${BOLD}==> [1/4] Preparing remote directories on ${GREENSTREET_HOST} (commit: ${GIT_COMMIT}, build: ${GIT_COUNT})...${NC}"
-ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/rust-rewrite/monmon-rs ${REMOTE_DIR}/rust-rewrite/legmon-rs ${REMOTE_DIR}/rust-rewrite/rauthy/bootstrap ${REMOTE_DIR}/rust-rewrite/rauthy/data ${REMOTE_DIR}/public ${REMOTE_DIR}/logs"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/monmon-rs ${REMOTE_DIR}/modules/legmon-rs ${REMOTE_DIR}/modules/rauthy/bootstrap ${REMOTE_DIR}/modules/rauthy/data ${REMOTE_DIR}/public ${REMOTE_DIR}/logs"
 
 echo -e "${BLUE}${BOLD}==> [2/4] Syncing source code, templates, and configs to ${GREENSTREET_HOST}...${NC}"
 # Copy monmon-rs source, templates, Dockerfile, Cargo files
 rsync -avz --delete \
     --exclude 'target' \
-    rust-rewrite/monmon-rs/ \
-    "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/monmon-rs/"
+    modules/monmon-rs/ \
+    "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/monmon-rs/"
 
 # Copy legmon-rs source, Dockerfile, Cargo files
 rsync -avz --delete \
     --exclude 'target' \
-    rust-rewrite/legmon-rs/ \
-    "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/legmon-rs/"
+    modules/legmon-rs/ \
+    "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/legmon-rs/"
 
 # Copy rauthy configuration template and bootstrap templates
-scp rust-rewrite/rauthy/config.toml.template "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/rauthy/"
-rsync -avz --exclude 'clients.json' --exclude 'users.json' rust-rewrite/rauthy/bootstrap/ "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/rauthy/bootstrap/"
+scp modules/rauthy/config.toml.template "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/rauthy/"
+rsync -avz --exclude 'clients.json' --exclude 'users.json' modules/rauthy/bootstrap/ "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/rauthy/bootstrap/"
 
 # Copy public static directory
 rsync -avz public/ "${GREENSTREET_HOST}:${REMOTE_DIR}/public/"
-rsync -avz public/ "${GREENSTREET_HOST}:${REMOTE_DIR}/rust-rewrite/monmon-rs/public/"
+rsync -avz public/ "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/monmon-rs/public/"
 
 # Copy compose and run script
 scp docker-compose.rust.yaml "${GREENSTREET_HOST}:${REMOTE_DIR}/"

@@ -8,9 +8,9 @@ services:
     environment:
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     volumes:
-      - ./rust-rewrite/rauthy/config.toml:/app/rauthy.cfg:ro
-      - ./rust-rewrite/rauthy/bootstrap:/app/bootstrap:ro
-      - ./rust-rewrite/rauthy/data:/app/data
+      - ./modules/rauthy/config.toml:/app/rauthy.cfg:ro
+      - ./modules/rauthy/bootstrap:/app/bootstrap:ro
+      - ./modules/rauthy/data:/app/data
     network_mode: host
     restart: always
 
@@ -18,7 +18,7 @@ services:
     container_name: legmon-rs
     image: legmon-rs:latest
     build:
-      context: ./rust-rewrite/legmon-rs
+      context: ./modules/legmon-rs
       dockerfile: Dockerfile
     env_file:
       - .env
@@ -33,7 +33,7 @@ services:
     container_name: monmon-rs
     image: monmon-rs:latest
     build:
-      context: ./rust-rewrite/monmon-rs
+      context: ./modules/monmon-rs
       dockerfile: Dockerfile
     env_file:
       - .env

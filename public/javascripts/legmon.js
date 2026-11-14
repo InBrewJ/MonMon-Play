@@ -722,13 +722,13 @@
         var tooltip = document.getElementById('statement-preview-tooltip');
         if (!canvas || !tooltip) return;
 
-        canvas.onmousemove = function(e) {
+        function handlePointer(clientX, clientY) {
             var rect = canvas.getBoundingClientRect();
-            var mouseX = e.clientX - rect.left;
-            var mouseY = e.clientY - rect.top;
+            var mouseX = clientX - rect.left;
+            var mouseY = clientY - rect.top;
 
             var hit = null;
-            var minDist = 18;
+            var minDist = 24;
             for (var i = 0; i < currentRenderedPoints.length; i++) {
                 var p = currentRenderedPoints[i];
                 var dist = Math.hypot(p.x - mouseX, p.y - mouseY);
@@ -755,6 +755,22 @@
                 tooltip.style.display = 'block';
             } else {
                 tooltip.style.display = 'none';
+            }
+        }
+
+        canvas.onmousemove = function(e) {
+            handlePointer(e.clientX, e.clientY);
+        };
+
+        canvas.ontouchstart = function(e) {
+            if (e.touches && e.touches.length > 0) {
+                handlePointer(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        };
+
+        canvas.ontouchmove = function(e) {
+            if (e.touches && e.touches.length > 0) {
+                handlePointer(e.touches[0].clientX, e.touches[0].clientY);
             }
         };
 

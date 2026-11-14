@@ -8,7 +8,7 @@
 
 The "Ship of Theseus" migration of MonMon to Rust with Rauthy (modern Passkey / WebAuthn OIDC) is feature-complete and has passed exhaustive end-to-end and database contract testing:
 
-- **Database Contract Tests**: 58/58 passed (`node --test rust-rewrite/tests-contract/*.test.mjs`)
+- **Database Contract Tests**: 58/58 passed (`node --test modules/tests-contract/*.test.mjs`)
 - **Browser E2E Tests (Playwright)**: 43/43 desktop & mobile passed (`npx playwright test`)
 - **Key Modules Migrated**:
   1. **Core Financial Engine**: SPOG calculation, daily spend pacing, surplus forecasting, and erratic balance jumping detection.

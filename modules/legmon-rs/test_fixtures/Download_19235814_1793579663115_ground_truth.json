@@ -1,0 +1,16 @@
+{
+  "bank": "NS&I",
+  "startDate": "2026-11-02",
+  "endDate": "2026-11-02",
+  "openingBalance": 2175.00,
+  "closingBalance": 2175.00,
+  "summary": {
+    "transactionCount": 0,
+    "paidInCount": 0,
+    "paidOutCount": 0,
+    "totalPaidIn": "0.00",
+    "totalPaidOut": "0.00",
+    "net": "0.00"
+  },
+  "rows": []
+}

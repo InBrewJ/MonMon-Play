@@ -63,6 +63,22 @@
             }
             el = el.parentElement;
         }
+
+        // Also check if modal itself or its inner content card is scrollable
+        if (modal) {
+            var mStyle = window.getComputedStyle(modal);
+            if ((mStyle.overflowY === 'auto' || mStyle.overflowY === 'scroll') && (modal.scrollHeight > modal.clientHeight)) {
+                return modal;
+            }
+            var cards = modal.querySelectorAll('.modal-content-card, .w3-modal-content, [id$="-body"]');
+            for (var i = 0; i < cards.length; i++) {
+                var c = cards[i];
+                var cStyle = window.getComputedStyle(c);
+                if ((cStyle.overflowY === 'auto' || cStyle.overflowY === 'scroll') && (c.scrollHeight > c.clientHeight)) {
+                    return c;
+                }
+            }
+        }
         return null;
     }
 

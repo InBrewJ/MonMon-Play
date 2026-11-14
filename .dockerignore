@@ -1,7 +1,7 @@
 .git
 .github
 node_modules
-rust-rewrite
+modules
 legmon
 db
 target/streams

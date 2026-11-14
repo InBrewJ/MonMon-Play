@@ -43,9 +43,9 @@ replacements = {
 }
 
 templates = [
-    ("rust-rewrite/rauthy/config.toml.template", "rust-rewrite/rauthy/config.toml"),
-    ("rust-rewrite/rauthy/bootstrap/clients.json.template", "rust-rewrite/rauthy/bootstrap/clients.json"),
-    ("rust-rewrite/rauthy/bootstrap/users.json.template", "rust-rewrite/rauthy/bootstrap/users.json"),
+    ("modules/rauthy/config.toml.template", "modules/rauthy/config.toml"),
+    ("modules/rauthy/bootstrap/clients.json.template", "modules/rauthy/bootstrap/clients.json"),
+    ("modules/rauthy/bootstrap/users.json.template", "modules/rauthy/bootstrap/users.json"),
 ]
 
 for src, dst in templates:
@@ -69,21 +69,21 @@ if [ -n "${DB_PASSWORD:-}" ] && docker ps --format '{{.Names}}' | grep -q '^post
 fi
 
 # 4. Check if Rauthy encryption key / bootstrap secrets were rotated
-CURRENT_KID=$(docker run --rm -v "$APP_DIR/rust-rewrite/rauthy/data:/data:ro" alpine sh -c "if [ -f /data/state_machine/db/hiqlite.db ]; then apk add --no-cache sqlite >/dev/null 2>&1 && sqlite3 /data/state_machine/db/hiqlite.db \"SELECT secret_kid FROM clients WHERE id='monmon-web';\"; fi" 2>/dev/null || true)
+CURRENT_KID=$(docker run --rm -v "$APP_DIR/modules/rauthy/data:/data:ro" alpine sh -c "if [ -f /data/state_machine/db/hiqlite.db ]; then apk add --no-cache sqlite >/dev/null 2>&1 && sqlite3 /data/state_machine/db/hiqlite.db \"SELECT secret_kid FROM clients WHERE id='monmon-web';\"; fi" 2>/dev/null || true)
 if [ -n "$CURRENT_KID" ] && [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ]; then
     echo "Detected Rauthy secret key rotation ($CURRENT_KID -> $ACTIVE_KEY_ID). Re-bootstrapping Rauthy while preserving passkeys..."
     docker compose -f docker-compose.rust.yaml stop rauthy || true
 
     PASSKEY_SQL="/tmp/rauthy_passkeys_restore.sql"
     mkdir -p "$APP_DIR/backups"
-    docker run --rm -v "$APP_DIR/rust-rewrite/rauthy/data:/data:ro" -v "$APP_DIR/backups:/backups" alpine sh -c "
+    docker run --rm -v "$APP_DIR/modules/rauthy/data:/data:ro" -v "$APP_DIR/backups:/backups" alpine sh -c "
         cp -f /data/state_machine/db/hiqlite.db /backups/rauthy_pre_rotation.sqlite 2>/dev/null || true
         apk add --no-cache sqlite >/dev/null 2>&1
         sqlite3 /data/state_machine/db/hiqlite.db \".mode insert passkeys\" \"SELECT * FROM passkeys;\"
         sqlite3 /data/state_machine/db/hiqlite.db \"SELECT 'UPDATE users SET webauthn_user_id = ''' || webauthn_user_id || ''' WHERE id = ''' || id || ''';' FROM users WHERE webauthn_user_id IS NOT NULL;\"
     " > "$PASSKEY_SQL" 2>/dev/null || true
 
-    docker run --rm -v "$APP_DIR/rust-rewrite/rauthy:/rauthy" alpine sh -c "rm -rf /rauthy/data/* /rauthy/data/.[!.]* 2>/dev/null || true"
+    docker run --rm -v "$APP_DIR/modules/rauthy:/rauthy" alpine sh -c "rm -rf /rauthy/data/* /rauthy/data/.[!.]* 2>/dev/null || true"
 
     docker compose -f docker-compose.rust.yaml up -d rauthy
     echo "Waiting for Rauthy bootstrap to complete..."
@@ -98,7 +98,7 @@ if [ -n "$CURRENT_KID" ] && [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ]; then
     if [ -s "$PASSKEY_SQL" ]; then
         echo "Restoring registered WebAuthn passkeys into Rauthy..."
         docker compose -f docker-compose.rust.yaml stop rauthy
-        docker run --rm -v "$APP_DIR/rust-rewrite/rauthy/data:/data" -v "$PASSKEY_SQL:/restore.sql:ro" alpine sh -c "
+        docker run --rm -v "$APP_DIR/modules/rauthy/data:/data" -v "$PASSKEY_SQL:/restore.sql:ro" alpine sh -c "
             apk add --no-cache sqlite >/dev/null 2>&1
             sqlite3 /data/state_machine/db/hiqlite.db < /restore.sql
         "
