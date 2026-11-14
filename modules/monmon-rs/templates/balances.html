@@ -95,7 +95,7 @@
                                     {% for a in accounts %}
                                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; cursor: pointer; padding: 0.25rem 0.4rem; border-radius: 4px;" class="account-check-item">
                                         <input type="checkbox" class="account-filter-chk" value="{{ a.id }}" style="accent-color: var(--primary); cursor: pointer;" />
-                                        <span class="account-palette-dot" data-account-id="{{ a.id }}" style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #6366f1; flex-shrink: 0;"></span>
+                                        <span class="account-palette-dot" data-account-id="{{ a.id }}" data-account-name="{{ a.name }}" style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #6366f1; flex-shrink: 0;"></span>
                                         <span style="flex-grow: 1; color: var(--text-main); font-weight: 500;">{{ a.name }}</span>
                                         <span style="font-size: 0.7rem; color: var(--text-muted);">{{ a.account_type }}</span>
                                     </label>
@@ -125,8 +125,10 @@
 
                 <!-- Legend & Indicators -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted); flex-wrap: wrap; gap: 8px;">
-                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-                        <span><span style="display: inline-block; width: 12px; height: 3px; background: var(--primary); vertical-align: middle; margin-right: 4px;"></span> Balance Line</span>
+                    <div id="chart-legend-container" style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                        <div id="chart-legend-accounts" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <span><span style="display: inline-block; width: 12px; height: 3px; background: var(--primary); vertical-align: middle; margin-right: 4px;"></span> Balance Line</span>
+                        </div>
                         <span><span style="display: inline-block; width: 12px; height: 2px; border-top: 2px dashed #10b981; vertical-align: middle; margin-right: 4px;"></span> Payday</span>
                     </div>
                     <span id="chart-range-label">Showing Last 2 Months</span>
@@ -259,16 +261,84 @@ window.preselectedAccountId = {% if let Some(id) = selected_account_id %}{{ id }
 
 (function() {
     // 1. Interactive Chart Logic
-    var palette = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#14b8a6', '#e11d48', '#3b82f6'];
+    var ACCOUNT_PALETTE = [
+        '#6366f1', '#f59e0b', '#06b6d4', '#ec4899', '#3b82f6', '#f97316',
+        '#a855f7', '#14b8a6', '#ef4444', '#84cc16', '#e11d48', '#0ea5e9',
+        '#d946ef', '#eab308', '#8b5cf6', '#22c55e', '#fb7185', '#38bdf8',
+        '#f43f5e', '#2dd4bf', '#c084fc', '#fb923c', '#4ade80', '#facc15',
+        '#818cf8', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#a78bfa',
+        '#fdba74', '#f87171', '#a3e635', '#e879f9'
+    ];
+
+    function hashAccountTitle(title) {
+        if (!title) return 0;
+        var clean = String(title).trim().toLowerCase();
+        var hash = 5381;
+        for (var i = 0; i < clean.length; i++) {
+            hash = ((hash << 5) + hash) + clean.charCodeAt(i);
+            hash = hash & hash;
+        }
+        return Math.abs(hash);
+    }
+
+    function getAccountColor(accountTitle) {
+        if (!accountTitle) return '#6366f1';
+        var h = hashAccountTitle(accountTitle);
+        return ACCOUNT_PALETTE[h % ACCOUNT_PALETTE.length];
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     var selectedRange = '2m';
     var accountColors = {};
 
     var dots = document.querySelectorAll('.account-palette-dot');
-    dots.forEach(function(dot, idx) {
-        var accId = dot.getAttribute('data-account-id');
-        var col = palette[idx % palette.length];
-        accountColors[accId] = col;
-        dot.style.background = col;
+    var accountList = [];
+    dots.forEach(function(dot) {
+        accountList.push({
+            id: String(dot.getAttribute('data-account-id')),
+            name: dot.getAttribute('data-account-name') || '',
+            dot: dot
+        });
+    });
+
+    var usedColors = new Set();
+    accountList.forEach(function(acc) {
+        var pref = getAccountColor(acc.name);
+        if (!usedColors.has(pref)) {
+            accountColors[acc.id] = pref;
+            usedColors.add(pref);
+        }
+    });
+    accountList.forEach(function(acc) {
+        if (!accountColors[acc.id]) {
+            var startIdx = hashAccountTitle(acc.name) % ACCOUNT_PALETTE.length;
+            var chosen = null;
+            for (var step = 1; step < ACCOUNT_PALETTE.length; step++) {
+                var candidate = ACCOUNT_PALETTE[(startIdx + step) % ACCOUNT_PALETTE.length];
+                if (!usedColors.has(candidate)) {
+                    chosen = candidate;
+                    break;
+                }
+            }
+            if (!chosen) chosen = ACCOUNT_PALETTE[startIdx];
+            accountColors[acc.id] = chosen;
+            usedColors.add(chosen);
+        }
+    });
+
+    accountList.forEach(function(acc) {
+        if (acc.dot) {
+            acc.dot.style.background = accountColors[acc.id];
+        }
     });
 
     var selectedAccountIds = new Set((window.defaultAccountIds || []).map(String));
@@ -493,13 +563,60 @@ window.preselectedAccountId = {% if let Some(id) = selected_account_id %}{{ id }
         // Group points by accountId
         var groups = {};
         filtered.forEach(function(pt) {
-            if (!groups[pt.accountId]) groups[pt.accountId] = { id: pt.accountId, name: pt.accountName, points: [] };
-            groups[pt.accountId].points.push(pt);
+            var accKey = String(pt.accountId);
+            if (!groups[accKey]) groups[accKey] = { id: accKey, name: pt.accountName, points: [] };
+            groups[accKey].points.push(pt);
         });
+
+        // Ensure collision-free distinct colors for all currently visible groups on the chart
+        var activeColors = {};
+        var currentUsed = new Set();
+        Object.keys(groups).forEach(function(accId) {
+            var grp = groups[accId];
+            var col = accountColors[accId] || getAccountColor(grp.name);
+            if (!currentUsed.has(col)) {
+                activeColors[accId] = col;
+                currentUsed.add(col);
+            }
+        });
+        Object.keys(groups).forEach(function(accId) {
+            if (!activeColors[accId]) {
+                var grp = groups[accId];
+                var startIdx = hashAccountTitle(grp.name) % ACCOUNT_PALETTE.length;
+                var chosen = null;
+                for (var step = 1; step < ACCOUNT_PALETTE.length; step++) {
+                    var candidate = ACCOUNT_PALETTE[(startIdx + step) % ACCOUNT_PALETTE.length];
+                    if (!currentUsed.has(candidate)) {
+                        chosen = candidate;
+                        break;
+                    }
+                }
+                if (!chosen) chosen = ACCOUNT_PALETTE[startIdx];
+                activeColors[accId] = chosen;
+                currentUsed.add(chosen);
+            }
+        });
+
+        // Update Legend under chart with colored indicators for each active account
+        var legendAccountsContainer = document.getElementById('chart-legend-accounts');
+        if (legendAccountsContainer) {
+            var legendHtml = '';
+            var groupKeys = Object.keys(groups);
+            if (groupKeys.length === 0) {
+                legendHtml = '<span><span style="display: inline-block; width: 12px; height: 3px; background: var(--primary); vertical-align: middle; margin-right: 4px;"></span> Balance Line</span>';
+            } else {
+                groupKeys.forEach(function(accId) {
+                    var grp = groups[accId];
+                    var col = activeColors[accId] || '#6366f1';
+                    legendHtml += '<span><span style="display: inline-block; width: 12px; height: 3px; background: ' + col + '; vertical-align: middle; margin-right: 4px; border-radius: 1px;"></span> ' + escapeHtml(grp.name) + '</span>';
+                });
+            }
+            legendAccountsContainer.innerHTML = legendHtml;
+        }
 
         Object.keys(groups).forEach(function(accId) {
             var grp = groups[accId];
-            var col = accountColors[accId] || '#6366f1';
+            var col = activeColors[accId] || '#6366f1';
             ctx.strokeStyle = col;
             ctx.lineWidth = 2.5;
             ctx.lineJoin = 'round';
