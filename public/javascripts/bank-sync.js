@@ -188,8 +188,8 @@
             verifyForm.addEventListener('submit', verifyMonzoAndTbl);
         }
 
-        // Add loading feedback to Rotate Token, Disconnect, Connect, and Statement upload forms
-        var actionForms = document.querySelectorAll('form[action="/bank/monzo/refresh"], form[action="/bank/monzo/disconnect"], form[action="/bank/statement/upload"], form[action="/bank/monzo/connect"]');
+        // Add loading feedback to Rotate Token, Disconnect, and Connect forms
+        var actionForms = document.querySelectorAll('form[action="/bank/monzo/refresh"], form[action="/bank/monzo/disconnect"], form[action="/bank/monzo/connect"]');
         actionForms.forEach(function(f) {
             f.addEventListener('submit', function() {
                 var btn = f.querySelector('button[type="submit"]');

@@ -5,11 +5,56 @@
     function initLegmon() {
         checkStatus();
         initUploadForm();
-        // Check if upload was recently triggered or pending statements exist
-        var pendingCard = document.querySelector('[data-has-pending-statement="true"]');
-        if (pendingCard) {
-            // Check status immediately
-            checkStatus();
+
+        // Check if statement upload processing was triggered (via redirect or sessionStorage)
+        var urlParams = new URLSearchParams(window.location.search);
+        var isProcessingFromUrl = urlParams.get('statementProcessing') === 'true';
+        var isProcessingFromStorage = false;
+        try {
+            isProcessingFromStorage = sessionStorage.getItem('legmon_processing') === 'true';
+        } catch (e) {}
+
+        if (isProcessingFromUrl || isProcessingFromStorage) {
+            // Clean up statementProcessing parameter from URL without page reload
+            if (isProcessingFromUrl && window.history && window.history.replaceState) {
+                urlParams.delete('statementProcessing');
+                var newSearch = urlParams.toString();
+                var newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '') + window.location.hash;
+                window.history.replaceState(null, '', newUrl);
+            }
+
+            var existingIds = new Set();
+            try {
+                var stored = sessionStorage.getItem('legmon_existing_ids');
+                if (stored) {
+                    var parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed)) {
+                        parsed.forEach(function(id) { existingIds.add(String(id)); });
+                    }
+                }
+            } catch (e) {}
+
+            var processingContainer = document.getElementById('legmon-processing-container');
+            var processingText = document.getElementById('legmon-processing-text');
+            var errorBanner = document.getElementById('legmon-error-banner');
+            var successBanner = document.getElementById('legmon-success-banner');
+
+            if (errorBanner) errorBanner.style.display = 'none';
+            if (successBanner) successBanner.style.display = 'none';
+            if (processingContainer) {
+                processingContainer.style.display = 'flex';
+                if (processingText) {
+                    processingText.textContent = 'Statement accepted. LegMon is running OCR & analyzing transactions...';
+                }
+            }
+
+            startPollingForStatement(existingIds);
+        } else {
+            // Check if pending statements exist on load
+            var pendingCard = document.querySelector('[data-has-pending-statement="true"]');
+            if (pendingCard) {
+                checkStatus();
+            }
         }
     }
 
@@ -153,80 +198,36 @@
         var form = document.getElementById('legmon-upload-form') || document.querySelector('#statement-upload form');
         if (!form) return;
 
+        form.setAttribute('data-no-loader', 'true');
+        form.classList.add('no-loader');
+
         form.addEventListener('submit', function(e) {
             var fileInput = document.getElementById('legmon-pdf-input') || form.querySelector('input[type="file"]');
             if (!fileInput || !fileInput.files || !fileInput.files[0]) {
                 return;
             }
 
-            e.preventDefault();
+            // Suppress the global "Saving changes..." modal
+            window.suppressGlobalLoader = true;
 
-            var processingContainer = document.getElementById('legmon-processing-container');
-            var processingText = document.getElementById('legmon-processing-text');
-            var errorBanner = document.getElementById('legmon-error-banner');
-            var errorText = document.getElementById('legmon-error-text');
-            var successBanner = document.getElementById('legmon-success-banner');
-            var submitBtn = document.getElementById('legmon-upload-btn') || form.querySelector('button[type="submit"]');
-
-            if (errorBanner) errorBanner.style.display = 'none';
-            if (successBanner) successBanner.style.display = 'none';
-            if (processingContainer) {
-                processingContainer.style.display = 'flex';
-                if (processingText) processingText.textContent = 'Uploading statement PDF to LegMon...';
-            }
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Processing...';
-            }
-
-            var existingIds = new Set();
+            // Record all existing pending statement IDs currently in DOM so we can detect newly created statement on reload
+            var existingIds = [];
             document.querySelectorAll('.pending-statement-card').forEach(function(el) {
                 var cardId = el.id.replace('pending-statement-card-', '');
-                if (cardId) existingIds.add(cardId);
+                if (cardId) existingIds.push(cardId);
             });
+            try {
+                sessionStorage.setItem('legmon_existing_ids', JSON.stringify(existingIds));
+                sessionStorage.setItem('legmon_processing', 'true');
+            } catch (err) {}
 
-            var formData = new FormData(form);
+            var submitBtn = document.getElementById('legmon-upload-btn') || form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Uploading PDF...';
+            }
 
-            fetch(form.action || '/bank/statement/upload', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(function(res) {
-                if (!res.ok) {
-                    return res.text().then(function(t) {
-                        var errMsg = 'Upload failed';
-                        try {
-                            var p = JSON.parse(t);
-                            errMsg = p.error || p.message || errMsg;
-                        } catch (ex) {
-                            errMsg = t || errMsg;
-                        }
-                        throw new Error(errMsg);
-                    });
-                }
-                return res.json().catch(function() { return { status: 'processing' }; });
-            })
-            .then(function(data) {
-                if (processingText) {
-                    processingText.textContent = 'Statement accepted. LegMon is running OCR & analyzing transactions...';
-                }
-                startPollingForStatement(existingIds);
-            })
-            .catch(function(err) {
-                if (processingContainer) processingContainer.style.display = 'none';
-                if (errorBanner) {
-                    errorBanner.style.display = 'flex';
-                    if (errorText) errorText.textContent = err.message || 'Statement upload failed.';
-                }
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload &amp; Run LegMon';
-                }
-            });
+            // Allow natural form POST to proceed so the page reloads as usual
         });
     }
 
@@ -242,25 +243,86 @@
         var fileInput = document.getElementById('legmon-pdf-input') || document.querySelector('#statement-upload input[type="file"]');
 
         var attempts = 0;
-        var maxAttempts = 40; // 60 seconds (1.5s interval)
+        var maxAttempts = 60; // 90 seconds (1.5s interval)
 
-        pollingTimeoutId = setTimeout(function() {
-            if (pollingIntervalId) clearInterval(pollingIntervalId);
-            if (processingContainer) processingContainer.style.display = 'none';
-            if (errorBanner) {
-                errorBanner.style.display = 'flex';
-                if (errorText) errorText.textContent = 'Statement extraction timed out. Please check LegMon Service Logs.';
+        function cleanupPollingState() {
+            if (pollingIntervalId) {
+                clearInterval(pollingIntervalId);
+                pollingIntervalId = null;
             }
+            if (pollingTimeoutId) {
+                clearTimeout(pollingTimeoutId);
+                pollingTimeoutId = null;
+            }
+            try {
+                sessionStorage.removeItem('legmon_processing');
+                sessionStorage.removeItem('legmon_existing_ids');
+            } catch (e) {}
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload &amp; Run LegMon';
             }
-        }, 60000);
+            if (fileInput) fileInput.value = '';
+        }
 
-        pollingIntervalId = setInterval(function() {
+        function triggerError(msg) {
+            cleanupPollingState();
+            if (processingContainer) processingContainer.style.display = 'none';
+            if (errorBanner) {
+                errorBanner.style.display = 'flex';
+                if (errorText) errorText.textContent = msg || 'Statement extraction failed.';
+            }
+        }
+
+        function triggerSuccess(newStmt) {
+            cleanupPollingState();
+            if (processingContainer) processingContainer.style.display = 'none';
+            if (successBanner) successBanner.style.display = 'flex';
+
+            // Ensure card is rendered in DOM
+            var card = document.getElementById('pending-statement-card-' + newStmt.id);
+            if (!card) {
+                renderPendingStatementCard(newStmt);
+                card = document.getElementById('pending-statement-card-' + newStmt.id);
+            }
+
+            // Auto-select matched account if available
+            var select = document.getElementById('stmt-account-' + newStmt.id);
+            if (select) {
+                if (newStmt.matchedAccountId) {
+                    select.value = String(newStmt.matchedAccountId);
+                }
+                if (!select.value && select.options.length > 1) {
+                    var bankLower = (newStmt.bankName || '').toLowerCase();
+                    for (var i = 1; i < select.options.length; i++) {
+                        var optText = select.options[i].text.toLowerCase();
+                        if (bankLower && (optText.indexOf(bankLower) !== -1 || bankLower.indexOf(optText) !== -1)) {
+                            select.selectedIndex = i;
+                            break;
+                        }
+                    }
+                    if (!select.value && select.options.length > 1) {
+                        select.selectedIndex = 1;
+                    }
+                }
+            }
+
+            // Show the balance preview graph modal
+            if (window.openStatementPreview) {
+                window.openStatementPreview(newStmt.id, !!newStmt.isTxList, true);
+            }
+
+            checkStatus();
+        }
+
+        pollingTimeoutId = setTimeout(function() {
+            triggerError('Statement extraction timed out after 90 seconds. Please check LegMon Service Logs.');
+        }, 90000);
+
+        function checkPending() {
             attempts++;
             if (attempts > maxAttempts) {
-                clearInterval(pollingIntervalId);
+                triggerError('Statement extraction timed out. Please check LegMon Service Logs.');
                 return;
             }
 
@@ -272,52 +334,48 @@
                 .then(function(data) {
                     var list = data.pendingStatements || [];
                     var newStmt = null;
+                    var errorStmt = null;
+
                     for (var i = 0; i < list.length; i++) {
                         var stmt = list[i];
-                        if (!existingIds.has(String(stmt.id)) && stmt.status === 'PENDING') {
-                            newStmt = stmt;
-                            break;
+                        var stmtIdStr = String(stmt.id);
+                        if (!existingIds.has(stmtIdStr)) {
+                            if (stmt.status === 'ERROR') {
+                                errorStmt = stmt;
+                                break;
+                            } else if (stmt.status === 'PENDING') {
+                                newStmt = stmt;
+                                break;
+                            }
                         }
                     }
 
+                    if (errorStmt) {
+                        triggerError(errorStmt.errorMessage || 'LegMon encountered an error parsing statement.');
+                        return;
+                    }
+
                     if (newStmt) {
-                        clearInterval(pollingIntervalId);
-                        clearTimeout(pollingTimeoutId);
+                        triggerSuccess(newStmt);
+                        return;
+                    }
 
-                        if (processingContainer) processingContainer.style.display = 'none';
-                        if (successBanner) successBanner.style.display = 'flex';
-                        if (submitBtn) {
-                            submitBtn.disabled = false;
-                            submitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload &amp; Run LegMon';
-                        }
-                        if (fileInput) fileInput.value = '';
-
-                        renderPendingStatementCard(newStmt);
-                        checkStatus();
-                    } else if (attempts % 3 === 0) {
+                    if (attempts % 3 === 0) {
                         fetch('/api/legmon/logs')
                             .then(function(r) { return r.json(); })
                             .then(function(logData) {
                                 if (logData.hasError && logData.lastError) {
-                                    clearInterval(pollingIntervalId);
-                                    clearTimeout(pollingTimeoutId);
-
-                                    if (processingContainer) processingContainer.style.display = 'none';
-                                    if (errorBanner) {
-                                        errorBanner.style.display = 'flex';
-                                        if (errorText) errorText.textContent = 'LegMon Error: ' + logData.lastError;
-                                    }
-                                    if (submitBtn) {
-                                        submitBtn.disabled = false;
-                                        submitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload &amp; Run LegMon';
-                                    }
+                                    triggerError('LegMon Error: ' + logData.lastError);
                                 }
                             })
                             .catch(function() {});
                     }
                 })
                 .catch(function(err) {});
-        }, 1500);
+        }
+
+        checkPending();
+        pollingIntervalId = setInterval(checkPending, 1500);
     }
 
     function checkStatus() {
@@ -424,10 +482,12 @@
             .replace(/'/g, '&#039;');
     }
 
-    window.openStatementPreview = function(stmtId, isTxList) {
+    window.openStatementPreview = function(stmtId, isTxList, silent) {
         var accSelect = document.getElementById('stmt-account-' + stmtId);
         if (!accSelect || !accSelect.value) {
-            alert('Please select an account to match with this statement first.');
+            if (!silent) {
+                alert('Please select an account to match with this statement first.');
+            }
             if (accSelect) accSelect.focus();
             return;
         }

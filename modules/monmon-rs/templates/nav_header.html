@@ -135,6 +135,7 @@
 
     function showLoader(customLabel, customSubtext) {
         if (!loader) return;
+        if (window.suppressGlobalLoader) return;
         if (customLabel) {
             var labelEl = document.getElementById('monmon-loader-text');
             if (labelEl) labelEl.textContent = customLabel;
@@ -162,11 +163,13 @@
 
     // Hide loader immediately on pageshow (e.g. Back/Forward browser cache navigation)
     window.addEventListener('pageshow', function() {
+        window.suppressGlobalLoader = false;
         hideLoader();
     });
 
     // Also trigger loader on beforeunload so any page navigation displays it
     window.addEventListener('beforeunload', function() {
+        if (window.suppressGlobalLoader) return;
         showLoader();
     });
 
@@ -264,7 +267,9 @@
     // Also intercept form submissions (e.g. settings, outgoings create/edit, pot update)
     document.addEventListener('submit', function(e) {
         var form = e.target;
+        if (window.suppressGlobalLoader) return;
         if (form.hasAttribute('data-no-loader') || form.classList.contains('no-loader')) return;
+        if (form.id === 'legmon-upload-form' || (form.action && form.action.indexOf('/bank/statement/upload') !== -1)) return;
         if (e.defaultPrevented) return;
         showLoader('Saving changes...', 'Updating MonMon');
     }, true);

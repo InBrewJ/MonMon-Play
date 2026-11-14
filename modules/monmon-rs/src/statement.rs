@@ -958,7 +958,7 @@ pub async fn upload_statement_form(
                         .into_response());
                 }
                 return Ok(Redirect::to(
-                    "/bank?info=Statement+PDF+uploaded+successfully.+LegMon+OCR+extraction+in+progress...",
+                    "/bank?statementProcessing=true&info=Statement+PDF+uploaded+successfully.+LegMon+OCR+extraction+in+progress...",
                 )
                 .into_response());
             }
