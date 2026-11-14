@@ -269,6 +269,7 @@ pub struct BalanceForm {
     pub account_id: i64,
     #[serde(alias = "value")]
     pub balance: f32,
+    pub datetime: Option<String>,
 }
 
 pub async fn get_accounts_page(
@@ -1277,57 +1278,7 @@ pub async fn get_balances_page(
     let chart_balances_json = serde_json::to_string(&chart_points).unwrap_or_else(|_| "[]".to_string());
 
     // 3. Compute paydays across the last 2 years up to 2 months into the future
-    let payday_day: i32 = sqlx::query(
-        r#"
-        SELECT COALESCE(
-            (SELECT incomingmonthday FROM incoming 
-             WHERE (userid = $1 OR user_id = $1) 
-               AND (archived IS NULL OR archived = false) 
-               AND (payday = true OR type = 'SALARY') 
-             ORDER BY id ASC LIMIT 1),
-            25
-        ) AS payday
-        "#,
-    )
-    .bind(&user_id)
-    .fetch_one(&state.pool)
-    .await
-    .map(|r| r.get::<Option<i32>, _>("payday").unwrap_or(25))
-    .unwrap_or(25);
-
-    let today = chrono::Local::now().date_naive();
-    let mut paydays = Vec::new();
-    let current_year = today.year();
-    let current_month = today.month() as i32;
-    for month_offset in -24..=2 {
-        let mut target_m = current_month + month_offset;
-        let mut target_y = current_year;
-        while target_m < 1 {
-            target_m += 12;
-            target_y -= 1;
-        }
-        while target_m > 12 {
-            target_m -= 12;
-            target_y += 1;
-        }
-        let m = target_m as u32;
-        let max_days = match m {
-            4 | 6 | 9 | 11 => 30,
-            2 => if (target_y % 4 == 0 && target_y % 100 != 0) || (target_y % 400 == 0) { 29 } else { 28 },
-            _ => 31,
-        };
-        let d = (payday_day as u32).min(max_days);
-        if let Some(date) = chrono::NaiveDate::from_ymd_opt(target_y, m, d) {
-            let dt = date.and_hms_opt(9, 0, 0).unwrap().and_local_timezone(chrono::Utc).unwrap();
-            let ts = dt.timestamp();
-            paydays.push(serde_json::json!({
-                "timestamp": ts,
-                "label": "Payday",
-                "dateStr": date.format("%d %b %Y").to_string()
-            }));
-        }
-    }
-    let paydays_json = serde_json::to_string(&paydays).unwrap_or_else(|_| "[]".to_string());
+    let paydays_json = compute_paydays_json(&state.pool, &user_id).await;
 
     // 4. Default account IDs (Monthly Pot accounts, or all accounts)
     let pot_accounts_rows = sqlx::query(
@@ -1377,10 +1328,21 @@ pub async fn post_balance_form(
 ) -> Result<Redirect, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let ts = if let Some(ref dt_str) = form.datetime {
+        chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M")
+            .map(|dt| dt.and_utc().timestamp())
+            .or_else(|_| {
+                chrono::NaiveDate::parse_from_str(dt_str, "%Y-%m-%d")
+                    .map(|d| d.and_hms_opt(12, 0, 0).unwrap().and_utc().timestamp())
+            })
+            .unwrap_or_else(|_| chrono::Utc::now().timestamp())
+    } else {
+        chrono::Utc::now().timestamp()
+    };
     let new_bal = NewBalance {
         account_id: form.account_id,
         value: form.balance,
-        timestamp: Some(chrono::Utc::now().timestamp()),
+        timestamp: Some(ts),
         user_id,
     };
     db::create_balance(&state.pool, &new_bal)
@@ -1461,4 +1423,58 @@ pub async fn unpause_outgoing_web(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Redirect::to("/myOutgoings"))
+}
+
+pub async fn compute_paydays_json(pool: &sqlx::PgPool, user_id: &str) -> String {
+    let payday_day: i32 = sqlx::query(
+        r#"
+        SELECT COALESCE(
+            (SELECT incomingmonthday FROM incoming 
+             WHERE (userid = $1 OR user_id = $1) 
+               AND (archived IS NULL OR archived = false) 
+               AND (payday = true OR type = 'SALARY') 
+             ORDER BY id ASC LIMIT 1),
+            25
+        ) AS payday
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map(|r| r.get::<Option<i32>, _>("payday").unwrap_or(25))
+    .unwrap_or(25);
+
+    let today = chrono::Local::now().date_naive();
+    let mut paydays = Vec::new();
+    let current_year = today.year();
+    let current_month = today.month() as i32;
+    for month_offset in -24..=2 {
+        let mut target_m = current_month + month_offset;
+        let mut target_y = current_year;
+        while target_m < 1 {
+            target_m += 12;
+            target_y -= 1;
+        }
+        while target_m > 12 {
+            target_m -= 12;
+            target_y += 1;
+        }
+        let m = target_m as u32;
+        let max_days = match m {
+            4 | 6 | 9 | 11 => 30,
+            2 => if (target_y % 4 == 0 && target_y % 100 != 0) || (target_y % 400 == 0) { 29 } else { 28 },
+            _ => 31,
+        };
+        let d = (payday_day as u32).min(max_days);
+        if let Some(date) = chrono::NaiveDate::from_ymd_opt(target_y, m, d) {
+            let dt = date.and_hms_opt(9, 0, 0).unwrap().and_local_timezone(chrono::Utc).unwrap();
+            let ts = dt.timestamp();
+            paydays.push(serde_json::json!({
+                "timestamp": ts,
+                "label": "Payday",
+                "dateStr": date.format("%d %b %Y").to_string()
+            }));
+        }
+    }
+    serde_json::to_string(&paydays).unwrap_or_else(|_| "[]".to_string())
 }

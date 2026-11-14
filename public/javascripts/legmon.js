@@ -565,16 +565,34 @@
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Overwriting & Importing...';
             }
+            // Append or update overridden anchorBalance and anchorDate before submit
+            var overrideBalInput = document.getElementById('preview-override-anchor-bal');
+            var overrideDateInput = document.getElementById('preview-override-anchor-date');
+            if (overrideBalInput && overrideBalInput.value !== '') {
+                var hiddenBal = form.querySelector('input[name="anchorBalance"]');
+                if (!hiddenBal) {
+                    hiddenBal = document.createElement('input');
+                    hiddenBal.type = 'hidden';
+                    hiddenBal.name = 'anchorBalance';
+                    form.appendChild(hiddenBal);
+                }
+                hiddenBal.value = overrideBalInput.value;
+            }
+            if (overrideDateInput && overrideDateInput.value !== '') {
+                var hiddenDate = form.querySelector('input[name="anchorDate"]');
+                if (!hiddenDate) {
+                    hiddenDate = document.createElement('input');
+                    hiddenDate.type = 'hidden';
+                    hiddenDate.name = 'anchorDate';
+                    form.appendChild(hiddenDate);
+                }
+                hiddenDate.value = overrideDateInput.value;
+            }
             form.submit();
         }
     };
 
-    function renderPreviewModal(stmtId, data) {
-        var loading = document.getElementById('preview-modal-loading');
-        var content = document.getElementById('preview-modal-content');
-        if (loading) loading.style.display = 'none';
-        if (content) content.style.display = 'block';
-
+    function updatePreviewMetrics(data) {
         var accEl = document.getElementById('preview-account-name');
         if (accEl) accEl.textContent = data.accountName || 'Selected Account';
 
@@ -604,6 +622,92 @@
             } else {
                 warnEl.innerHTML = 'ℹ️ <strong>Fresh History:</strong> No existing balance entries in this range will be deleted. This will insert the verified balance trajectory and import ' + data.transactionCount + ' transactions into ' + escapeHtml(data.accountName) + '.';
             }
+        }
+    }
+
+    function renderPreviewModal(stmtId, data) {
+        var loading = document.getElementById('preview-modal-loading');
+        var content = document.getElementById('preview-modal-content');
+        if (loading) loading.style.display = 'none';
+        if (content) content.style.display = 'block';
+
+        updatePreviewMetrics(data);
+
+        // Feature B: Populate override inputs
+        var overrideBalInput = document.getElementById('preview-override-anchor-bal');
+        var overrideDateInput = document.getElementById('preview-override-anchor-date');
+        if (overrideBalInput && !overrideBalInput.dataset.userEdited) {
+            overrideBalInput.value = data.anchorBalance != null ? data.anchorBalance.toFixed(2) : '';
+        }
+        if (overrideDateInput && !overrideDateInput.dataset.userEdited) {
+            overrideDateInput.value = data.anchorDateStr || data.endDate || '';
+        }
+
+        var refreshTimer = null;
+        function triggerPreviewRefresh() {
+            var accSelect = document.getElementById('stmt-account-' + stmtId);
+            var accountId = accSelect ? accSelect.value : (currentPreviewData ? currentPreviewData.accountId : '');
+            var bal = overrideBalInput ? overrideBalInput.value : '';
+            var dt = overrideDateInput ? overrideDateInput.value : '';
+            var q = '?accountId=' + encodeURIComponent(accountId);
+            if (bal !== '') q += '&anchorBalance=' + encodeURIComponent(bal);
+            if (dt !== '') q += '&anchorDate=' + encodeURIComponent(dt);
+
+            fetch('/api/bank/statement/' + stmtId + '/preview' + q)
+                .then(function(res) { return res.json(); })
+                .then(function(refreshed) {
+                    if (refreshed.status === 'ok') {
+                        currentPreviewData = refreshed;
+                        updatePreviewMetrics(refreshed);
+                        drawPreviewChart(refreshed);
+                    }
+                })
+                .catch(function() {});
+        }
+
+        if (overrideBalInput && !overrideBalInput._hasListener) {
+            overrideBalInput._hasListener = true;
+            overrideBalInput.addEventListener('input', function() {
+                overrideBalInput.dataset.userEdited = 'true';
+                if (refreshTimer) clearTimeout(refreshTimer);
+                refreshTimer = setTimeout(triggerPreviewRefresh, 350);
+            });
+        }
+
+        if (overrideDateInput && !overrideDateInput._hasListener) {
+            overrideDateInput._hasListener = true;
+            overrideDateInput.addEventListener('change', function() {
+                overrideDateInput.dataset.userEdited = 'true';
+                triggerPreviewRefresh();
+            });
+        }
+
+        var btnAlignPayday = document.getElementById('btn-preview-align-payday');
+        if (btnAlignPayday && !btnAlignPayday._hasListener) {
+            btnAlignPayday._hasListener = true;
+            btnAlignPayday.addEventListener('click', function() {
+                var paydays = window.paydays || [];
+                if (!paydays.length) {
+                    try {
+                        var pj = document.getElementById('paydays-json');
+                        if (pj) paydays = JSON.parse(pj.textContent);
+                    } catch (e) {}
+                }
+                var nowSec = Math.floor(Date.now() / 1000);
+                var pastPaydays = paydays.filter(function(p) { return p.timestamp <= nowSec; });
+                if (pastPaydays.length > 0) {
+                    var lastP = pastPaydays[pastPaydays.length - 1];
+                    var d = new Date(lastP.timestamp * 1000);
+                    var y = d.getFullYear();
+                    var m = String(d.getMonth() + 1).padStart(2, '0');
+                    var day = String(d.getDate()).padStart(2, '0');
+                    if (overrideDateInput) {
+                        overrideDateInput.value = y + '-' + m + '-' + day;
+                        overrideDateInput.dataset.userEdited = 'true';
+                        triggerPreviewRefresh();
+                    }
+                }
+            });
         }
 
         var confirmBtn = document.getElementById('btn-final-confirm-overwrite');

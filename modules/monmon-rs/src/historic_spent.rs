@@ -52,15 +52,15 @@ pub fn get_account_start_balance_with_inflow(
         return 0.0;
     }
 
-    // 1. Check if an explicit balance was recorded on or shortly after payday (within 24h)
-    for &(t, v) in balances {
-        if t >= cycle_start_sec && t <= cycle_start_sec + 86400 {
-            return ((v * 100.0).round()) / 100.0;
-        }
-    }
-
-    // 2. If no explicit balance on payday, but we have a payday inflow:
+    // 1. If this account receives payday salary inflow:
     if payday_inflow > 0.0 {
+        // Check if an explicit balance was recorded on or shortly after payday (within 24 hours after cycle_start_sec)
+        for &(t, v) in balances {
+            if t >= cycle_start_sec && t <= cycle_start_sec + 86400 {
+                return ((v * 100.0).round()) / 100.0;
+            }
+        }
+        // If no explicit balance on payday, latest balance recorded before cycle_start_sec + payday_inflow
         let mut latest_before = None;
         for &(t, v) in balances {
             if t < cycle_start_sec {
@@ -75,29 +75,9 @@ pub fn get_account_start_balance_with_inflow(
         return ((payday_inflow * 100.0).round()) / 100.0;
     }
 
-    // 3. Fallback balance object:
-    // a. Balance near cycle start (within 24 hours around cycle_start_sec)
-    let mut best_near_start = None;
-    let mut best_dist = i64::MAX;
-    for &(t, v) in balances {
-        let dist = (t - cycle_start_sec).abs();
-        if dist <= 86400 && dist < best_dist {
-            best_dist = dist;
-            best_near_start = Some(v);
-        }
-    }
-    if let Some(v) = best_near_start {
-        return ((v * 100.0).round()) / 100.0;
-    }
-
-    // b. Earliest balance recorded within the cycle
-    for &(t, v) in balances {
-        if t >= cycle_start_sec && t < cycle_end_sec {
-            return ((v * 100.0).round()) / 100.0;
-        }
-    }
-
-    // c. Latest before cycle_start_sec
+    // 2. For non-salary accounts (payday_inflow == 0.0):
+    // The opening balance at cycle start is the latest balance recorded BEFORE cycle_start_sec.
+    // Any balance recorded on or after cycle_start_sec is an update within the cycle (e.g. transfer in).
     let mut latest_before = None;
     for &(t, v) in balances {
         if t < cycle_start_sec {
@@ -108,6 +88,14 @@ pub fn get_account_start_balance_with_inflow(
     }
     if let Some(v) = latest_before {
         return ((v * 100.0).round()) / 100.0;
+    }
+
+    // 3. Fallback: If no balance exists before cycle start (e.g. newly created account),
+    // pick earliest balance recorded on or after cycle_start_sec
+    for &(t, v) in balances {
+        if t >= cycle_start_sec && t < cycle_end_sec {
+            return ((v * 100.0).round()) / 100.0;
+        }
     }
 
     ((balances[0].1 * 100.0).round()) / 100.0
@@ -175,13 +163,32 @@ pub fn calculate_account_net_spent(
         return (((start_bal - end_bal) * 100.0).round()) / 100.0;
     }
 
-    let mut start_idx = None;
-    let mut best_dist = i64::MAX;
+    // First, find latest balance before cycle_start_sec
+    let mut latest_before_idx = None;
     for (i, &(t, _)) in balances.iter().enumerate() {
-        let dist = (t - cycle_start_sec).abs();
-        if dist <= 86400 && dist < best_dist {
-            best_dist = dist;
-            start_idx = Some(i);
+        if t < cycle_start_sec {
+            latest_before_idx = Some(i);
+        } else {
+            break;
+        }
+    }
+
+    let mut start_idx = None;
+    if let Some(lb_idx) = latest_before_idx {
+        let lb_val = ((balances[lb_idx].1 * 100.0).round()) / 100.0;
+        if (lb_val - start_bal).abs() < 0.01 {
+            start_idx = Some(lb_idx);
+        }
+    }
+
+    if start_idx.is_none() {
+        let mut best_dist = i64::MAX;
+        for (i, &(t, _)) in balances.iter().enumerate() {
+            let dist = (t - cycle_start_sec).abs();
+            if dist <= 86400 && dist < best_dist {
+                best_dist = dist;
+                start_idx = Some(i);
+            }
         }
     }
     if start_idx.is_none() {
@@ -193,13 +200,7 @@ pub fn calculate_account_net_spent(
         }
     }
     if start_idx.is_none() {
-        for (i, &(t, _)) in balances.iter().enumerate() {
-            if t < cycle_start_sec {
-                start_idx = Some(i);
-            } else {
-                break;
-            }
-        }
+        start_idx = latest_before_idx;
     }
 
     let mut total_net_spent = 0.0f32;
@@ -1623,5 +1624,50 @@ mod tests {
         let next = find_next_payday_date(as_of, 31);
         assert_eq!(last, NaiveDate::from_ymd_opt(2026, 10, 30).unwrap());
         assert_eq!(next, NaiveDate::from_ymd_opt(2026, 11, 30).unwrap());
+    }
+
+    #[test]
+    fn test_payday_transfer_between_accounts_is_neutral() {
+        let oct30_midnight = NaiveDate::from_ymd_opt(2026, 10, 30)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_local_timezone(chrono::Utc)
+            .unwrap()
+            .timestamp();
+        let oct30_end = oct30_midnight + 86400 * 31;
+
+        // t0: before payday, somewhere else has balance 500
+        let t0 = oct30_midnight - 3600 * 12;
+        // t1: payday morning, salary account has 2000
+        let t1 = oct30_midnight + 3600 * 9;
+        // t3: payday afternoon, salary account transferred 500 out, so now 1500
+        let t3 = oct30_midnight + 3600 * 14;
+        // t4: payday evening, somewhere else received 500, now 1000
+        let t4 = oct30_midnight + 3600 * 16;
+
+        let salary_bals = vec![(t1, 2000.0), (t3, 1500.0)];
+        let savings_bals = vec![(t0, 500.0), (t4, 1000.0)];
+
+        // Salary account: payday_inflow = 2000.0
+        let start_salary = get_account_start_balance_with_inflow(&salary_bals, oct30_midnight, oct30_end, 2000.0);
+        let end_salary = get_account_end_balance(&salary_bals, oct30_midnight, oct30_end, true, t4 + 3600);
+        let salary_spent = calculate_account_net_spent(&salary_bals, oct30_midnight, t4 + 3600, start_salary, end_salary);
+
+        assert_eq!(start_salary, 2000.0);
+        assert_eq!(end_salary, 1500.0);
+        assert_eq!(salary_spent, 500.0); // Dropped by 500
+
+        // Savings account: payday_inflow = 0.0 (non-salary account)
+        let start_savings = get_account_start_balance_with_inflow(&savings_bals, oct30_midnight, oct30_end, 0.0);
+        let end_savings = get_account_end_balance(&savings_bals, oct30_midnight, oct30_end, true, t4 + 3600);
+        let savings_spent = calculate_account_net_spent(&savings_bals, oct30_midnight, t4 + 3600, start_savings, end_savings);
+
+        assert_eq!(start_savings, 500.0); // Kept 500 from t0 before payday
+        assert_eq!(end_savings, 1000.0);
+        assert_eq!(savings_spent, -500.0); // Gained 500 (negative spend)
+
+        // Net effect across both accounts: 500 + (-500) = 0 (Transfer neutral!)
+        assert_eq!(salary_spent + savings_spent, 0.0);
     }
 }

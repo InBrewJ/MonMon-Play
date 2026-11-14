@@ -42,6 +42,17 @@
                         {% endfor %}
                     </select>
 
+                    <label for="balance-datetime" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-top: 0.85rem; display: block;">
+                        <span>Effective Date &amp; Time</span>
+                        <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted); float: right;">Defaults to Now</span>
+                    </label>
+                    <div style="display: flex; gap: 6px; align-items: stretch; margin-top: 4px;">
+                        <input id="balance-datetime" type="datetime-local" name="datetime" style="flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); font-size: 0.85rem;" />
+                        <button type="button" id="btn-balance-payday" class="w3-button w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); white-space: nowrap; padding: 8px 10px; font-size: 0.8rem; font-weight: 600;" title="Set date to last payday">
+                            <i class="fas fa-calendar-day" style="color: var(--primary);"></i> Payday
+                        </button>
+                    </div>
+
                     <button type="submit" class="w3-button w3-round" style="width: 100%; margin-top: 1rem; background: var(--primary); color: #fff; font-weight: 700; padding: 10px; border-radius: 6px; cursor: pointer;">
                         <i class="fas fa-save" style="margin-right: 6px;"></i> Save Balance
                     </button>
@@ -653,6 +664,33 @@ function loadErraticBalances() {
             if (container) container.innerHTML = '<div style="color: #ef4444; padding: 1rem;">Failed to load erratic balances: ' + err.message + '</div>';
         });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    var btnPayday = document.getElementById('btn-balance-payday');
+    var dtInput = document.getElementById('balance-datetime');
+    if (btnPayday && dtInput) {
+        btnPayday.addEventListener('click', function() {
+            var nowSec = Math.floor(Date.now() / 1000);
+            var paydays = window.paydays || [];
+            var pastPaydays = paydays.filter(function(p) { return p.timestamp <= nowSec; });
+            if (pastPaydays.length > 0) {
+                var lastP = pastPaydays[pastPaydays.length - 1];
+                var d = new Date(lastP.timestamp * 1000);
+                // Format to YYYY-MM-DDTHH:MM
+                var y = d.getFullYear();
+                var m = String(d.getMonth() + 1).padStart(2, '0');
+                var day = String(d.getDate()).padStart(2, '0');
+                dtInput.value = y + '-' + m + '-' + day + 'T12:00';
+            } else {
+                var now = new Date();
+                var y = now.getFullYear();
+                var m = String(now.getMonth() + 1).padStart(2, '0');
+                var day = String(now.getDate()).padStart(2, '0');
+                dtInput.value = y + '-' + m + '-' + day + 'T12:00';
+            }
+        });
+    }
+});
 </script>
 </body>
 </html>

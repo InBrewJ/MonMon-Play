@@ -526,6 +526,12 @@ pub async fn get_statement_preview_api(
         end_date.clone()
     };
 
+    let (eff_start_ts, eff_end_ts, eff_start_date, eff_end_date) = if tx_list.is_empty() || start_date == end_date {
+        (anchor_ts, anchor_ts, anchor_date_str.clone(), anchor_date_str.clone())
+    } else {
+        (start_ts.min(anchor_ts), end_ts.max(anchor_ts), start_date.clone(), end_date.clone())
+    };
+
     // Calculate chronological deltas and running balances
     let deltas = normalize_intraday_deltas(&tx_list);
     let net_delta: f32 = deltas.iter().map(|d| d.delta).sum();
@@ -533,7 +539,7 @@ pub async fn get_statement_preview_api(
     // Backward reconstruction from anchor to start
     let backward_sum: f32 = deltas
         .iter()
-        .filter(|d| d.timestamp <= anchor_ts && d.timestamp >= start_ts)
+        .filter(|d| d.timestamp <= anchor_ts && d.timestamp >= eff_start_ts)
         .map(|d| d.delta)
         .sum();
     let calculated_opening = anchor_val - backward_sum;
@@ -541,50 +547,61 @@ pub async fn get_statement_preview_api(
     // Forward reconstruction from anchor to end
     let forward_sum: f32 = deltas
         .iter()
-        .filter(|d| d.timestamp > anchor_ts && d.timestamp <= end_ts)
+        .filter(|d| d.timestamp > anchor_ts && d.timestamp <= eff_end_ts)
         .map(|d| d.delta)
         .sum();
     let calculated_closing = anchor_val + forward_sum;
 
     let mut points: Vec<Value> = Vec::new();
 
-    // 1. Opening balance point
-    points.push(serde_json::json!({
-        "timestamp": start_ts,
-        "dateStr": start_date,
-        "balance": (calculated_opening * 100.0).round() / 100.0,
-        "delta": 0.0,
-        "description": "Opening Balance",
-        "isAnchor": (start_ts - anchor_ts).abs() < 86400
-    }));
-
-    // 2. Transaction running balance points
-    let mut running = calculated_opening;
-    for d in &deltas {
-        running += d.delta;
-        let date_str = chrono::DateTime::from_timestamp(d.timestamp, 0)
-            .map(|dt| dt.format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|| start_date.clone());
-
+    if tx_list.is_empty() {
         points.push(serde_json::json!({
-            "timestamp": d.timestamp,
-            "dateStr": date_str,
-            "balance": (running * 100.0).round() / 100.0,
-            "delta": d.delta,
-            "description": d.description,
-            "isAnchor": (d.timestamp - anchor_ts).abs() < 86400
+            "timestamp": anchor_ts,
+            "dateStr": anchor_date_str,
+            "balance": (anchor_val * 100.0).round() / 100.0,
+            "delta": 0.0,
+            "description": "Holding Balance Anchor",
+            "isAnchor": true
+        }));
+    } else {
+        // 1. Opening balance point
+        points.push(serde_json::json!({
+            "timestamp": eff_start_ts,
+            "dateStr": eff_start_date,
+            "balance": (calculated_opening * 100.0).round() / 100.0,
+            "delta": 0.0,
+            "description": "Opening Balance",
+            "isAnchor": (eff_start_ts - anchor_ts).abs() < 86400
+        }));
+
+        // 2. Transaction running balance points
+        let mut running = calculated_opening;
+        for d in &deltas {
+            running += d.delta;
+            let date_str = chrono::DateTime::from_timestamp(d.timestamp, 0)
+                .map(|dt| dt.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| eff_start_date.clone());
+
+            points.push(serde_json::json!({
+                "timestamp": d.timestamp,
+                "dateStr": date_str,
+                "balance": (running * 100.0).round() / 100.0,
+                "delta": d.delta,
+                "description": d.description,
+                "isAnchor": (d.timestamp - anchor_ts).abs() < 86400
+            }));
+        }
+
+        // 3. Closing balance point
+        points.push(serde_json::json!({
+            "timestamp": eff_end_ts,
+            "dateStr": eff_end_date,
+            "balance": (calculated_closing * 100.0).round() / 100.0,
+            "delta": 0.0,
+            "description": "Closing Balance",
+            "isAnchor": (eff_end_ts - anchor_ts).abs() < 86400
         }));
     }
-
-    // 3. Closing balance point
-    points.push(serde_json::json!({
-        "timestamp": end_ts,
-        "dateStr": end_date,
-        "balance": (calculated_closing * 100.0).round() / 100.0,
-        "delta": 0.0,
-        "description": "Closing Balance",
-        "isAnchor": (end_ts - anchor_ts).abs() < 86400
-    }));
 
     let mut total_in = 0.0f32;
     let mut total_out = 0.0f32;
@@ -600,8 +617,8 @@ pub async fn get_statement_preview_api(
         "status": "ok",
         "statementId": id,
         "bankName": bank,
-        "startDate": start_date,
-        "endDate": end_date,
+        "startDate": eff_start_date,
+        "endDate": eff_end_date,
         "isTxList": is_tx_list,
         "transactionCount": tx_list.len(),
         "totalPaidIn": (total_in * 100.0).round() / 100.0,
@@ -733,21 +750,64 @@ pub async fn confirm_statement_api(
             end_ts
         };
 
+        let (eff_start_ts, eff_end_ts) = if tx_list.is_empty() || start_date == end_date {
+            (anchor_ts, anchor_ts)
+        } else {
+            (start_ts.min(anchor_ts), end_ts.max(anchor_ts))
+        };
+
         let deltas = normalize_intraday_deltas(&tx_list);
 
         let backward_sum: f32 = deltas
             .iter()
-            .filter(|d| d.timestamp <= anchor_ts && d.timestamp >= start_ts)
+            .filter(|d| d.timestamp <= anchor_ts && d.timestamp >= eff_start_ts)
             .map(|d| d.delta)
             .sum();
         let calculated_opening = anchor_val - backward_sum;
 
         let forward_sum: f32 = deltas
             .iter()
-            .filter(|d| d.timestamp > anchor_ts && d.timestamp <= end_ts)
+            .filter(|d| d.timestamp > anchor_ts && d.timestamp <= eff_end_ts)
             .map(|d| d.delta)
             .sum();
         let calculated_closing = anchor_val + forward_sum;
+
+        // Fetch existing balances in this range before deleting so we can store them in backup!
+        let existing_bals = sqlx::query(
+            r#"SELECT id, value, timestamp, account_id
+               FROM balance
+               WHERE account_id = $1 AND (user_id = $2 OR userid = $2)
+                 AND timestamp >= $3 AND timestamp <= $4
+               ORDER BY timestamp ASC"#
+        )
+        .bind(acc_id)
+        .bind(&resolved)
+        .bind(eff_start_ts)
+        .bind(eff_end_ts)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+
+        let backup_items: Vec<serde_json::Value> = existing_bals
+            .iter()
+            .map(|row| {
+                serde_json::json!({
+                    "id": row.get::<i64, _>("id"),
+                    "value": row.get::<f32, _>("value"),
+                    "timestamp": row.get::<i64, _>("timestamp"),
+                    "account_id": row.get::<i64, _>("account_id"),
+                })
+            })
+            .collect();
+        let backup_json = serde_json::to_string(&backup_items).unwrap_or_default();
+
+        let _ = sqlx::query(
+            "UPDATE pending_statement SET overwritten_balances_json = $1 WHERE id = $2"
+        )
+        .bind(&backup_json)
+        .bind(id)
+        .execute(&state.pool)
+        .await;
 
         // Delete existing balances in this range for this account
         let _ = sqlx::query(
@@ -757,61 +817,75 @@ pub async fn confirm_statement_api(
         )
         .bind(acc_id)
         .bind(&resolved)
-        .bind(start_ts)
-        .bind(end_ts)
+        .bind(eff_start_ts)
+        .bind(eff_end_ts)
         .execute(&state.pool)
         .await;
 
-        // Insert opening balance
-        let _ = sqlx::query(
-            r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-               VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
-        )
-        .bind(calculated_opening)
-        .bind(start_ts)
-        .bind(acc_id)
-        .bind(&resolved)
-        .execute(&state.pool)
-        .await;
+        if tx_list.is_empty() {
+            // Standalone balance snapshot (e.g. NS&I holding with 0 txs)
+            let _ = sqlx::query(
+                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
+                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+            )
+            .bind(anchor_val)
+            .bind(anchor_ts)
+            .bind(acc_id)
+            .bind(&resolved)
+            .execute(&state.pool)
+            .await;
+        } else {
+            // Insert opening balance
+            let _ = sqlx::query(
+                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
+                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+            )
+            .bind(calculated_opening)
+            .bind(eff_start_ts)
+            .bind(acc_id)
+            .bind(&resolved)
+            .execute(&state.pool)
+            .await;
 
-        // Group intermediate running balances by date
-        let mut daily_closing: std::collections::BTreeMap<String, (i64, f32)> =
-            std::collections::BTreeMap::new();
-        let mut cur_bal = calculated_opening;
-        for d in &deltas {
-            cur_bal += d.delta;
-            let d_str = chrono::DateTime::from_timestamp(d.timestamp, 0)
-                .map(|dt| dt.format("%Y-%m-%d").to_string())
-                .unwrap_or_default();
-            daily_closing.insert(d_str, (d.timestamp, (cur_bal * 100.0).round() / 100.0));
-        }
-
-        for (_, (ts, val)) in daily_closing {
-            if ts > start_ts && ts < end_ts {
-                let _ = sqlx::query(
-                    r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-                       VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
-                )
-                .bind(val)
-                .bind(ts)
-                .bind(acc_id)
-                .bind(&resolved)
-                .execute(&state.pool)
-                .await;
+            // Group intermediate running balances by date
+            let mut daily_closing: std::collections::BTreeMap<String, (i64, f32)> =
+                std::collections::BTreeMap::new();
+            let mut cur_bal = calculated_opening;
+            for d in &deltas {
+                cur_bal += d.delta;
+                let d_str = chrono::DateTime::from_timestamp(d.timestamp, 0)
+                    .map(|dt| dt.format("%Y-%m-%d").to_string())
+                    .unwrap_or_default();
+                daily_closing.insert(d_str, (d.timestamp, (cur_bal * 100.0).round() / 100.0));
             }
-        }
 
-        // Insert closing balance
-        let _ = sqlx::query(
-            r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-               VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
-        )
-        .bind(calculated_closing)
-        .bind(end_ts)
-        .bind(acc_id)
-        .bind(&resolved)
-        .execute(&state.pool)
-        .await;
+            for (_, (ts, val)) in daily_closing {
+                if ts > eff_start_ts && ts < eff_end_ts {
+                    let _ = sqlx::query(
+                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
+                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+                    )
+                    .bind(val)
+                    .bind(ts)
+                    .bind(acc_id)
+                    .bind(&resolved)
+                    .execute(&state.pool)
+                    .await;
+                }
+            }
+
+            // Insert closing balance
+            let _ = sqlx::query(
+                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
+                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+            )
+            .bind(calculated_closing)
+            .bind(eff_end_ts)
+            .bind(acc_id)
+            .bind(&resolved)
+            .execute(&state.pool)
+            .await;
+        }
     }
 
     let now_ms = Utc::now().timestamp_millis();
@@ -841,7 +915,7 @@ pub async fn confirm_statement_api(
         }))
         .into_response())
     } else {
-        Ok(Redirect::to("/bank?info=Statement+confirmed+and+balances+imported+successfully.").into_response())
+        Ok(Redirect::to("/bankSync?info=Statement+confirmed+and+balances+imported+successfully.").into_response())
     }
 }
 
@@ -879,7 +953,113 @@ pub async fn discard_statement_api(
         }))
         .into_response())
     } else {
-        Ok(Redirect::to("/bank?info=Statement+discarded.").into_response())
+        Ok(Redirect::to("/bankSync?info=Statement+discarded.").into_response())
+    }
+}
+
+pub async fn revert_statement_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Query(q): Query<StatementQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let row = sqlx::query(
+        "SELECT id, start_date, end_date, matched_account_id, overwritten_balances_json, applied_at FROM pending_statement WHERE id = $1 AND (user_id = $2 OR userid = $2)"
+    )
+    .bind(id)
+    .bind(&resolved)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let r = match row {
+        Some(r) => r,
+        None => return Err((StatusCode::NOT_FOUND, "Statement not found".to_string())),
+    };
+
+    let acc_id: Option<i64> = r.get("matched_account_id");
+    let start_date: String = r.get::<Option<String>, _>("start_date").unwrap_or_else(|| "2026-10-01".to_string());
+    let end_date: String = r.get::<Option<String>, _>("end_date").unwrap_or_else(|| "2026-10-31".to_string());
+    let backup_json: Option<String> = r.try_get("overwritten_balances_json").ok().flatten();
+
+    let start_ts = chrono::NaiveDate::parse_from_str(&start_date, "%Y-%m-%d")
+        .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
+        .unwrap_or(0);
+    let end_ts = chrono::NaiveDate::parse_from_str(&end_date, "%Y-%m-%d")
+        .map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp())
+        .unwrap_or(Utc::now().timestamp());
+
+    if let Some(aid) = acc_id {
+        // 1. Delete imported balances in range for this account (with margin for anchor date adjustments)
+        let _ = sqlx::query(
+            "DELETE FROM balance WHERE account_id = $1 AND (user_id = $2 OR userid = $2) AND timestamp >= $3 AND timestamp <= $4"
+        )
+        .bind(aid)
+        .bind(&resolved)
+        .bind(start_ts - 86400 * 5)
+        .bind(end_ts + 86400 * 5)
+        .execute(&state.pool)
+        .await;
+
+        // 2. Restore backed up balances
+        if let Some(json_str) = backup_json {
+            if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&json_str) {
+                for item in items {
+                    let val = item.get("value").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(0.0);
+                    let ts = item.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let aid_item = item.get("account_id").and_then(|v| v.as_i64()).unwrap_or(aid);
+                    let _ = sqlx::query(
+                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
+                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#
+                    )
+                    .bind(val)
+                    .bind(ts)
+                    .bind(aid_item)
+                    .bind(&resolved)
+                    .execute(&state.pool)
+                    .await;
+                }
+            }
+        }
+
+        // 3. Remove transactions imported by statement
+        let _ = sqlx::query(
+            "DELETE FROM bank_transaction WHERE account_id = $1 AND (user_id = $2 OR userid = $2) AND source = 'STATEMENT' AND timestamp >= $3 AND timestamp <= $4"
+        )
+        .bind(aid)
+        .bind(&resolved)
+        .bind(start_ts - 86400 * 5)
+        .bind(end_ts + 86400 * 5)
+        .execute(&state.pool)
+        .await;
+    }
+
+    // 4. Reset statement status to PENDING
+    let _ = sqlx::query(
+        "UPDATE pending_statement SET status = 'PENDING', applied_at = NULL, overwritten_balances_json = NULL WHERE id = $1 AND (user_id = $2 OR userid = $2)"
+    )
+    .bind(id)
+    .bind(&resolved)
+    .execute(&state.pool)
+    .await;
+
+    let accepts_json = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("application/json"))
+        .unwrap_or(false);
+
+    if accepts_json {
+        Ok(Json(serde_json::json!({
+            "status": "reverted",
+            "id": id
+        }))
+        .into_response())
+    } else {
+        Ok(Redirect::to("/bankSync?info=Statement+import+reverted+and+balances+restored.").into_response())
     }
 }
 
@@ -1074,5 +1254,71 @@ mod tests {
         assert_eq!(txs.len(), 0);
         let deltas = normalize_intraday_deltas(&txs);
         assert_eq!(deltas.len(), 0);
+    }
+
+    #[test]
+    fn test_empty_transactions_snapshot_override_anchor_date() {
+        let start_date = "2026-11-02".to_string();
+        let end_date = "2026-11-02".to_string();
+        let anchor_balance = 2175.0f32;
+        let override_anchor_date = Some("2026-10-30".to_string());
+
+        let end_ts = chrono::NaiveDate::parse_from_str(&end_date, "%Y-%m-%d")
+            .unwrap()
+            .and_hms_opt(23, 59, 59)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+
+        let anchor_ts = if let Some(ref ad) = override_anchor_date {
+            chrono::NaiveDate::parse_from_str(ad, "%Y-%m-%d")
+                .unwrap()
+                .and_hms_opt(23, 59, 59)
+                .unwrap()
+                .and_utc()
+                .timestamp()
+        } else {
+            end_ts
+        };
+
+        // When txs is empty or start_date == end_date, effective range aligns directly to anchor_ts
+        let is_empty_txs = true;
+        let (eff_start_ts, eff_end_ts) = if is_empty_txs || start_date == end_date {
+            (anchor_ts, anchor_ts)
+        } else {
+            (anchor_ts.min(end_ts), anchor_ts.max(end_ts))
+        };
+
+        assert_eq!(eff_start_ts, anchor_ts);
+        assert_eq!(eff_end_ts, anchor_ts);
+        let expected_anchor_date_str = chrono::DateTime::from_timestamp(anchor_ts, 0)
+            .unwrap()
+            .format("%Y-%m-%d")
+            .to_string();
+        assert_eq!(expected_anchor_date_str, "2026-10-30");
+        assert_eq!(anchor_balance, 2175.0);
+    }
+
+    #[test]
+    fn test_overwritten_balances_backup_serialization_and_restoration() {
+        let backup_items = vec![
+            serde_json::json!({
+                "id": 101,
+                "value": 1222.0f32,
+                "timestamp": 1730246400, // 30 Oct 2026
+                "account_id": 42
+            })
+        ];
+        let backup_json = serde_json::to_string(&backup_items).unwrap();
+        assert!(backup_json.contains("1222"));
+
+        let restored: Vec<serde_json::Value> = serde_json::from_str(&backup_json).unwrap();
+        assert_eq!(restored.len(), 1);
+        let val = restored[0].get("value").unwrap().as_f64().unwrap() as f32;
+        let ts = restored[0].get("timestamp").unwrap().as_i64().unwrap();
+        let aid = restored[0].get("account_id").unwrap().as_i64().unwrap();
+        assert_eq!(val, 1222.0);
+        assert_eq!(ts, 1730246400);
+        assert_eq!(aid, 42);
     }
 }

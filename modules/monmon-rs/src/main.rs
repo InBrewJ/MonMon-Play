@@ -316,6 +316,12 @@ async fn main() {
     .execute(&pool)
     .await;
 
+    let _ = sqlx::query(
+        "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS overwritten_balances_json TEXT"
+    )
+    .execute(&pool)
+    .await;
+
     let state = Arc::new(AppState { pool });
 
     let app = Router::new()
@@ -556,9 +562,11 @@ async fn main() {
         .route("/api/bank/statement/:id/preview", get(statement::get_statement_preview_api))
         .route("/api/bank/statement/:id/confirm", post(statement::confirm_statement_api))
         .route("/api/bank/statement/:id/discard", post(statement::discard_statement_api))
+        .route("/api/bank/statement/:id/revert", post(statement::revert_statement_handler))
         .route("/bank/statement/upload", post(statement::upload_statement_form))
         .route("/bank/statement/:id/confirm", post(statement::confirm_statement_api))
         .route("/bank/statement/:id/discard", post(statement::discard_statement_api))
+        .route("/bank/statement/:id/revert", post(statement::revert_statement_handler))
         .route("/assets/*path", get(serve_asset_handler))
         .route("/public/*path", get(serve_asset_handler))
         .route("/favicon.ico", get(serve_favicon_handler))

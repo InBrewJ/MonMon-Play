@@ -117,6 +117,16 @@ impl PendingStatementDto {
     pub fn formatted_opening(&self) -> String {
         format!("{:.2}", self.opening_balance.unwrap_or(0.0))
     }
+    pub fn matched_account_name<'a>(&self, accounts: &'a [AccountOptionDto]) -> &'a str {
+        if let Some(mid) = self.matched_account_id {
+            for a in accounts {
+                if a.id == mid {
+                    return &a.name;
+                }
+            }
+        }
+        "Unlinked Account"
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +165,8 @@ pub struct BankSyncTemplate {
     pub txs_count: usize,
     pub recent_transactions: Vec<BankTransactionDto>,
     pub pending_statements: Vec<PendingStatementDto>,
+    pub confirmed_statements: Vec<PendingStatementDto>,
+    pub paydays_json: String,
     pub accounts: Vec<AccountOptionDto>,
     pub accounts_json: String,
     pub info_message: Option<String>,
@@ -321,6 +333,49 @@ pub async fn get_bank_sync_page(
         })
         .collect();
 
+    // Query confirmed statements (for Feature A Rollback / Revert)
+    let conf_rows = sqlx::query(
+        r#"
+        SELECT id, COALESCE(job_id, '') AS job_id, COALESCE(bank_name, 'Unknown Bank') AS bank_name,
+               COALESCE(start_date, '') AS start_date, COALESCE(end_date, '') AS end_date,
+               opening_balance, closing_balance, COALESCE(transaction_count, 0) AS transaction_count,
+               total_paid_in, total_paid_out, matched_account_id, COALESCE(status, 'CONFIRMED') AS status
+        FROM pending_statement
+        WHERE (userid = $1 OR user_id = $1) AND status = 'CONFIRMED'
+        ORDER BY applied_at DESC NULLS LAST, id DESC
+        LIMIT 5
+        "#,
+    )
+    .bind(&resolved)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let confirmed_statements: Vec<PendingStatementDto> = conf_rows
+        .into_iter()
+        .map(|r| {
+            let bank: String = r.get("bank_name");
+            let is_tx_list = bank.to_lowercase().contains("transaction") || bank.to_lowercase().contains("txn");
+            PendingStatementDto {
+                id: r.get("id"),
+                job_id: r.get("job_id"),
+                bank_name: bank,
+                start_date: r.get("start_date"),
+                end_date: r.get("end_date"),
+                opening_balance: r.get("opening_balance"),
+                closing_balance: r.get("closing_balance"),
+                transaction_count: r.get("transaction_count"),
+                total_paid_in: r.get("total_paid_in"),
+                total_paid_out: r.get("total_paid_out"),
+                matched_account_id: r.get("matched_account_id"),
+                status: r.get("status"),
+                is_tx_list,
+            }
+        })
+        .collect();
+
+    let paydays_json = crate::management::compute_paydays_json(&state.pool, &resolved).await;
+
     // Query accounts
     let acc_rows = sqlx::query(
         r#"
@@ -367,6 +422,8 @@ pub async fn get_bank_sync_page(
         txs_count,
         recent_transactions: txs.into_iter().take(20).collect(),
         pending_statements,
+        confirmed_statements,
+        paydays_json,
         accounts,
         accounts_json,
         info_message: query.info,
