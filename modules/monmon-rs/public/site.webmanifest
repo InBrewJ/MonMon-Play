@@ -1,0 +1,27 @@
+{
+  "name": "MonMon",
+  "short_name": "MonMon",
+  "description": "Intelligent Single-Pane-of-Glass Personal Finance & NomMon Meal Planning",
+  "start_url": "/spog",
+  "display": "standalone",
+  "background_color": "#0a0414",
+  "theme_color": "#1e1438",
+  "icons": [
+    {
+      "src": "/assets/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/images/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

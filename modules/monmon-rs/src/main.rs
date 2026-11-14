@@ -561,6 +561,10 @@ async fn main() {
         .route("/bank/statement/:id/discard", post(statement::discard_statement_api))
         .route("/assets/*path", get(serve_asset_handler))
         .route("/public/*path", get(serve_asset_handler))
+        .route("/favicon.ico", get(serve_favicon_handler))
+        .route("/apple-touch-icon.png", get(serve_apple_touch_icon_handler))
+        .route("/apple-touch-icon-precomposed.png", get(serve_apple_touch_icon_handler))
+        .route("/site.webmanifest", get(serve_manifest_handler))
         .layer(axum::middleware::map_response(apply_cache_control_headers))
         .with_state(state);
 
@@ -1152,6 +1156,7 @@ async fn serve_asset_handler(
         "woff2" => "font/woff2",
         "ttf" => "font/ttf",
         "json" => "application/json",
+        "webmanifest" => "application/manifest+json",
         _ => "application/octet-stream",
     };
 
@@ -1190,4 +1195,16 @@ async fn serve_asset_handler(
     }
 
     response
+}
+
+async fn serve_apple_touch_icon_handler(req: axum::extract::Request) -> Response {
+    serve_asset_handler(axum::extract::Path("images/apple-touch-icon.png".to_string()), req).await
+}
+
+async fn serve_favicon_handler(req: axum::extract::Request) -> Response {
+    serve_asset_handler(axum::extract::Path("images/favicon.png".to_string()), req).await
+}
+
+async fn serve_manifest_handler(req: axum::extract::Request) -> Response {
+    serve_asset_handler(axum::extract::Path("site.webmanifest".to_string()), req).await
 }

@@ -66,6 +66,18 @@ pub fn compute_fingerprint(data: &str) -> u64 {
     hasher.finish()
 }
 
+/// Compute a hash fingerprint covering both the system prompt instructions and the user/context prompt.
+/// Any change to either the AI prompt wording or the underlying financial data will alter the fingerprint,
+/// automatically invalidating cached advice.
+pub fn compute_prompt_fingerprint(system_prompt: &str, user_prompt: &str) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    system_prompt.hash(&mut hasher);
+    user_prompt.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub fn clear_ed_cache(user_id: &str) {
     if let Ok(mut cache) = SPOG_CACHE.write() {
         cache.remove(user_id);
@@ -310,7 +322,7 @@ pub async fn ed_says_spog_api(
 
     let system_prompt = build_spog_system_prompt();
     let user_prompt = build_spog_context_prompt(&metrics);
-    let current_fp = compute_fingerprint(&user_prompt);
+    let current_fp = compute_prompt_fingerprint(system_prompt, &user_prompt);
 
     // 1. Check cache if not forcing refresh: valid if within TTL AND underlying data unchanged
     if !force {
@@ -528,7 +540,7 @@ pub async fn ed_says_outgoings_api(
         &accounts,
         &latest_balances,
     );
-    let current_fp = compute_fingerprint(&user_prompt);
+    let current_fp = compute_prompt_fingerprint(system_prompt, &user_prompt);
 
     // 1. Check cache: valid if within 1 week TTL AND outgoings/accounts unchanged
     if !force {
@@ -677,7 +689,7 @@ pub async fn ed_says_networth_api(
 
     let system_prompt = build_networth_system_prompt();
     let user_prompt = build_networth_context_prompt(&nw);
-    let current_fp = compute_fingerprint(&user_prompt);
+    let current_fp = compute_prompt_fingerprint(system_prompt, &user_prompt);
 
     // 1. Check cache: valid if within 1 month TTL AND net worth/assets unchanged
     if !force {
@@ -934,6 +946,23 @@ mod tests {
 
         assert_eq!(fp1, fp2);
         assert_ne!(fp1, fp3);
+    }
+
+    #[test]
+    fn test_fingerprint_changes_when_prompt_changes() {
+        let sys1 = "You are Ed, sharp-witted financial advisor.";
+        let sys2 = "You are Ed, warm and friendly financial advisor.";
+        let user1 = "Income: £3000";
+        let user2 = "Income: £3500";
+
+        let fp_base = compute_prompt_fingerprint(sys1, user1);
+        let fp_same = compute_prompt_fingerprint(sys1, user1);
+        let fp_diff_sys = compute_prompt_fingerprint(sys2, user1);
+        let fp_diff_user = compute_prompt_fingerprint(sys1, user2);
+
+        assert_eq!(fp_base, fp_same);
+        assert_ne!(fp_base, fp_diff_sys, "Changing system prompt must invalidate cache");
+        assert_ne!(fp_base, fp_diff_user, "Changing user data/prompt must invalidate cache");
     }
 }
 
