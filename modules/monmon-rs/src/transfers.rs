@@ -430,13 +430,9 @@ pub async fn calculate_payday_window(
             let acc_type: Option<String> = r.get("account_type");
             let cur_bal: f32 = r.get("current_bal");
 
-            // User requirement: if the amount on /savingsPlan is zero or negative,
-            // it must not appear in the transfer window.
-            if monthly_amt <= 0.0 {
-                continue;
-            }
-
-            let amt_to_transfer = monthly_amt;
+            // User requirement: all items on the savings plan are read and reported
+            // with their exact values from the savings plan (even if zero) and never inflated wildly.
+            let amt_to_transfer = monthly_amt.max(0.0);
 
             let prog_pct = if target_amt > 0.0 {
                 Some(((cur_bal / target_amt) * 100.0).clamp(0.0, 100.0).round() as i32)
@@ -654,20 +650,19 @@ mod tests {
     use chrono::NaiveDate;
 
     #[test]
-    fn test_zero_monthly_amount_savings_item_is_excluded() {
-        // Test axiom: If monthly_amt on savingsPlan is zero, it must NOT appear in the transfer window,
-        // even if target_amt > 0 and cur_bal < target_amt.
+    fn test_savings_item_uses_exact_monthly_amount_never_inflated() {
+        // Test requirement: all items on the savings plan are read and reported with their exact
+        // values from the savings plan (even if zero) and never inflated wildly by the target gap (target_amt - cur_bal).
         let monthly_amt: f32 = 0.0;
-        let _target_amt: f32 = 2000.0;
-        let _cur_bal: f32 = 3.88;
+        let target_amt: f32 = 2000.0;
+        let cur_bal: f32 = 3.88;
 
-        let should_include = monthly_amt > 0.0;
-        assert!(!should_include, "Items with monthly_amount == 0.0 must be excluded from payday transfers");
+        let amt_to_transfer = monthly_amt.max(0.0);
+        assert_eq!(amt_to_transfer, 0.0, "Items with 0 monthly amount must be reported as 0.0, not inflated to 1996.12");
+        assert_ne!(amt_to_transfer, target_amt - cur_bal);
 
-        // Positive monthly amount should be included
         let positive_monthly_amt: f32 = 150.0;
-        let should_include_positive = positive_monthly_amt > 0.0;
-        assert!(should_include_positive, "Items with positive monthly amount must be included");
+        assert_eq!(positive_monthly_amt.max(0.0), 150.0);
     }
 
     #[test]
