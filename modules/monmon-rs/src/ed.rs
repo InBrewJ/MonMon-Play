@@ -21,9 +21,67 @@ pub struct EdQuery {
 }
 
 impl EdQuery {
+    #[allow(dead_code)]
     pub fn get_user_id(&self) -> String {
         self.user_id.clone().unwrap_or_else(|| "demo".to_string())
     }
+}
+
+/// Extracts the signed in user ID or username from request cookies.
+/// Ensures that authenticated users are always resolved to their own identity
+/// rather than falling back to demo data.
+pub fn extract_signed_in_user_or_default(headers: &HeaderMap, query_uid: Option<&str>) -> String {
+    // 1. If signed in via cookie, ALWAYS prioritize the signed-in user's credentials
+    if let Some(cookie_hdr) = headers.get(axum::http::header::COOKIE) {
+        if let Ok(cookie_str) = cookie_hdr.to_str() {
+            for part in cookie_str.split(';') {
+                let part = part.trim();
+                if let Some(val) = part.strip_prefix("user_id=") {
+                    let v = val.trim();
+                    if !v.is_empty() && v != "demo" {
+                        return v.to_string();
+                    }
+                }
+                if let Some(val) = part.strip_prefix("monmon_session=") {
+                    let v = val.trim();
+                    if !v.is_empty() && v != "authenticated" && v != "demo" {
+                        return v.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Fall back to query param if explicitly specified
+    if let Some(uid) = query_uid {
+        let trimmed = uid.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    // 3. Fall back to any cookie (including demo if that's what's in cookie)
+    if let Some(cookie_hdr) = headers.get(axum::http::header::COOKIE) {
+        if let Ok(cookie_str) = cookie_hdr.to_str() {
+            for part in cookie_str.split(';') {
+                let part = part.trim();
+                if let Some(val) = part.strip_prefix("user_id=") {
+                    let v = val.trim();
+                    if !v.is_empty() {
+                        return v.to_string();
+                    }
+                }
+                if let Some(val) = part.strip_prefix("monmon_session=") {
+                    let v = val.trim();
+                    if !v.is_empty() && v != "authenticated" {
+                        return v.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    "demo".to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -313,7 +371,7 @@ pub async fn ed_says_spog_api(
     headers: HeaderMap,
     Query(q): Query<EdQuery>,
 ) -> Result<Json<EdSaysResponse>, (StatusCode, String)> {
-    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
+    let raw_uid = extract_signed_in_user_or_default(&headers, q.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let metrics = crate::spog::calculate_spog(&state.pool, &resolved)
         .await
@@ -499,9 +557,11 @@ fn build_outgoings_context_prompt(
 
 pub async fn ed_says_outgoings_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(q): Query<EdQuery>,
 ) -> Result<Json<EdSaysResponse>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+    let raw_uid = extract_signed_in_user_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let outgoings = crate::db::list_outgoings(&state.pool, &resolved)
         .await
         .unwrap_or_default();
@@ -679,9 +739,11 @@ fn build_networth_context_prompt(nw: &NetWorthDto) -> String {
 
 pub async fn ed_says_networth_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(q): Query<EdQuery>,
 ) -> Result<Json<EdSaysResponse>, (StatusCode, String)> {
-    let resolved = resolve_user_id(&state.pool, &q.get_user_id()).await;
+    let raw_uid = extract_signed_in_user_or_default(&headers, q.user_id.as_deref());
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let nw = crate::net_worth::calculate_net_worth(&state.pool, &resolved)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -965,6 +1027,62 @@ mod tests {
         assert_eq!(fp_base, fp_same);
         assert_ne!(fp_base, fp_diff_sys, "Changing system prompt must invalidate cache");
         assert_ne!(fp_base, fp_diff_user, "Changing user data/prompt must invalidate cache");
+    }
+
+    #[test]
+    fn test_extract_signed_in_user_or_default() {
+        use axum::http::header;
+
+        // 1. Signed in user in monmon_session cookie
+        let mut h1 = HeaderMap::new();
+        h1.insert(
+            header::COOKIE,
+            "theme=dark; monmon_session=jason@urawizard.com; other=123"
+                .parse()
+                .unwrap(),
+        );
+        assert_eq!(
+            extract_signed_in_user_or_default(&h1, None),
+            "jason@urawizard.com"
+        );
+
+        // 2. Signed in user in user_id cookie
+        let mut h2 = HeaderMap::new();
+        h2.insert(
+            header::COOKIE,
+            "user_id=27d0a6c0-e04e-4e4b-97e5-182f4d1e23f0"
+                .parse()
+                .unwrap(),
+        );
+        assert_eq!(
+            extract_signed_in_user_or_default(&h2, None),
+            "27d0a6c0-e04e-4e4b-97e5-182f4d1e23f0"
+        );
+
+        // 3. Signed in cookie wins over query param (e.g. ?userId=demo)
+        let mut h3 = HeaderMap::new();
+        h3.insert(
+            header::COOKIE,
+            "monmon_session=jason@urawizard.com".parse().unwrap(),
+        );
+        assert_eq!(
+            extract_signed_in_user_or_default(&h3, Some("demo")),
+            "jason@urawizard.com"
+        );
+
+        // 4. No cookie, explicit query param
+        let h4 = HeaderMap::new();
+        assert_eq!(
+            extract_signed_in_user_or_default(&h4, Some("alice")),
+            "alice"
+        );
+
+        // 5. No cookie, no query param -> defaults to demo
+        let h5 = HeaderMap::new();
+        assert_eq!(
+            extract_signed_in_user_or_default(&h5, None),
+            "demo"
+        );
     }
 }
 
