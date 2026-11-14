@@ -103,6 +103,7 @@ if [ -n "$CURRENT_KID" ] && { [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ] || [ "${HAS
         docker run --rm -v "$APP_DIR/modules/rauthy/data:/data" -v "$PASSKEY_SQL:/restore.sql:ro" alpine sh -c "
             apk add --no-cache sqlite >/dev/null 2>&1
             sqlite3 /data/state_machine/db/hiqlite.db < /restore.sql
+            sqlite3 /data/state_machine/db/hiqlite.db \"UPDATE users SET webauthn_user_id = (SELECT passkey_user_id FROM passkeys WHERE user_id = users.id) WHERE id IN (SELECT user_id FROM passkeys);\"
         "
         rm -f "$PASSKEY_SQL"
     fi
