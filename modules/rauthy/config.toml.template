@@ -16,6 +16,7 @@ secret_api = "__RAUTHY_SECRET_API__"
 [encryption]
 keys = [
     "__RAUTHY_ENC_KEY_ID__/__RAUTHY_ENC_KEY__",
+    "2026-11-08/kDLJ0mf7fzm4bcObgY7Ygfr04r0fo8oeRHomHgHMYyU=",
 ]
 key_active = "__RAUTHY_ENC_KEY_ID__"
 
