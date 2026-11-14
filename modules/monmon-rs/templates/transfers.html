@@ -175,6 +175,11 @@
             color: #eab308;
             border: 1px solid rgba(234, 179, 8, 0.3);
         }
+        .badge-outgoings {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
         .badge-savings {
             background: rgba(99, 102, 241, 0.15);
             color: #818cf8;
@@ -393,106 +398,223 @@
             {% if next_window.items.is_empty() %}
             <div style="background: var(--card-bg, #1e293b); border: 1px dashed var(--border-color, #334155); border-radius: 12px; padding: 2.5rem; text-align: center; color: var(--text-muted, #94a3b8);">
                 <i class="fas fa-check-circle fa-2x" style="color: #10b981; margin-bottom: 10px;"></i>
-                <p style="margin: 0; font-size: 0.95rem;">No active savings plan targets or yearly reserve outgoings configured for this payday.</p>
+                <p style="margin: 0; font-size: 0.95rem;">No active savings plan targets or account outgoings configured for this payday.</p>
             </div>
             {% else %}
             <div id="transfer-cards-container-next">
-                {% for item in next_window.items %}
-                <div class="transfer-card" id="card-{{ item.id }}" data-item-id="{{ item.id }}" data-window="next">
-                    <div class="transfer-card-header">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <label class="checkbox-label" title="Mark transfer as completed">
-                                <input type="checkbox" onchange="toggleTransferDone('next', '{{ item.id }}')" id="chk-next-{{ item.id }}">
-                            </label>
-                            <h4 class="transfer-title">
-                                {{ item.title }}
-                            </h4>
-                        </div>
-                        <span class="badge-transfer-type {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}badge-sinking{% else %}badge-savings{% endif %}">
-                            {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}
-                            <i class="fas fa-shield-alt"></i> MonMon Calculated Reserve
-                            {% else %}
-                            <i class="fas fa-bullseye"></i> Savings Target
-                            {% endif %}
+                {% if !next_window.outgoings_items.is_empty() %}
+                <div style="margin-bottom: 2rem;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.9rem;">
+                            <i class="fas fa-file-invoice-dollar"></i>
                         </span>
-                    </div>
-
-                    <div class="transfer-flow-row">
-                        <span>From:</span>
-                        <span class="account-pill"><i class="fas fa-university"></i> {{ item.source_account_name }}</span>
-                        <i class="fas fa-arrow-right" style="color: var(--primary, #6366f1);"></i>
-                        <span>To:</span>
-                        <span class="account-pill" style="border-color: rgba(99, 102, 241, 0.4);"><i class="fas fa-piggy-bank" style="color: var(--primary, #6366f1);"></i> {{ item.destination_account_name }}</span>
-                    </div>
-
-                    <div class="transfer-stats-grid">
-                        <div>
-                            <span class="stat-item-label">Amount to Transfer</span>
-                            <div class="stat-item-val" style="color: #38bdf8; font-size: 1.15rem;">£{{ item.amount_formatted }}</div>
-                        </div>
-                        {% if let Some(dest_bal) = item.current_destination_balance_formatted %}
-                        <div>
-                            <span class="stat-item-label">Target Balance</span>
-                            <div class="stat-item-val">£{{ dest_bal }}</div>
-                        </div>
-                        {% endif %}
-                        {% if let Some(tgt) = item.target_amount_formatted %}
-                        <div>
-                            <span class="stat-item-label">Goal Target</span>
-                            <div class="stat-item-val">£{{ tgt }}</div>
-                        </div>
-                        {% endif %}
-                        {% if let Some(prog) = item.progress_pct %}
-                        <div>
-                            <span class="stat-item-label">Target Progress</span>
-                            <div class="stat-item-val" style="color: #10b981;">{{ prog }}%</div>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    {% if !item.breakdown.is_empty() %}
-                    <div style="margin-bottom: 10px;">
-                        <button type="button" class="breakdown-toggle-btn" onclick="toggleBreakdown('next-{{ item.id }}')">
-                            <i class="fas fa-chevron-down" id="icon-next-{{ item.id }}"></i> View {{ item.breakdown.len() }} upcoming annual bills covered
-                        </button>
-                        <div id="breakdown-next-{{ item.id }}" style="display: none; background: var(--card-bg-subtle, #0f172a); border: 1px solid var(--border-color, #334155); border-radius: 6px; padding: 6px 10px; margin-top: 6px;">
-                            <table class="breakdown-table">
-                                <thead>
-                                    <tr>
-                                        <th>Upcoming Bill</th>
-                                        <th>Cost</th>
-                                        <th>Due Date</th>
-                                        <th>Monthly Reserve</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for b in item.breakdown %}
-                                    <tr>
-                                        <td><strong>{{ b.name }}</strong></td>
-                                        <td>£{{ b.cost_formatted }}</td>
-                                        <td>{{ b.due_date }}</td>
-                                        <td style="color: #38bdf8; font-weight: 700;">£{{ b.monthly_saving_formatted }}/mo</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Stacked Action Bar -->
-                    <div class="transfer-actions-bar">
+                        <h4 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--text-main, #f8fafc);">
+                            Account Outgoings Cover ({{ next_window.outgoings_items.len() }})
+                        </h4>
                         <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
-                            {{ item.description }}
+                            • Funds needed in other accounts to pay upcoming bills
                         </span>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
-                                <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
+                    </div>
+
+                    {% for item in next_window.outgoings_items %}
+                    <div class="transfer-card" id="card-{{ item.id }}" data-item-id="{{ item.id }}" data-window="next">
+                        <div class="transfer-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="checkbox-label" title="Mark transfer as completed">
+                                    <input type="checkbox" onchange="toggleTransferDone('next', '{{ item.id }}')" id="chk-next-{{ item.id }}">
+                                </label>
+                                <h4 class="transfer-title">
+                                    {{ item.title }}
+                                </h4>
+                            </div>
+                            <span class="badge-transfer-type badge-outgoings">
+                                <i class="fas fa-file-invoice-dollar"></i> Outgoings Cover
+                            </span>
+                        </div>
+
+                        <div class="transfer-flow-row">
+                            <span>From:</span>
+                            <span class="account-pill"><i class="fas fa-university"></i> {{ item.source_account_name }}</span>
+                            <i class="fas fa-arrow-right" style="color: var(--primary, #6366f1);"></i>
+                            <span>To:</span>
+                            <span class="account-pill" style="border-color: rgba(56, 189, 248, 0.4);"><i class="fas fa-wallet" style="color: #38bdf8;"></i> {{ item.destination_account_name }}</span>
+                        </div>
+
+                        <div class="transfer-stats-grid">
+                            <div>
+                                <span class="stat-item-label">Amount to Transfer</span>
+                                <div class="stat-item-val" style="color: #38bdf8; font-size: 1.15rem;">£{{ item.amount_formatted }}</div>
+                            </div>
+                            {% if let Some(dest_bal) = item.current_destination_balance_formatted %}
+                            <div>
+                                <span class="stat-item-label">Account Balance</span>
+                                <div class="stat-item-val">£{{ dest_bal }}</div>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <span class="stat-item-label">Total Outgoings</span>
+                                <div class="stat-item-val">£{{ item.amount_formatted }}</div>
+                            </div>
+                        </div>
+
+                        {% if !item.breakdown.is_empty() %}
+                        <div style="margin-bottom: 10px;">
+                            <button type="button" class="breakdown-toggle-btn" onclick="toggleBreakdown('next-{{ item.id }}')">
+                                <i class="fas fa-chevron-down" id="icon-next-{{ item.id }}"></i> View {{ item.breakdown.len() }} outgoing{% if item.breakdown.len() != 1 %}s{% endif %} covered
                             </button>
+                            <div id="breakdown-next-{{ item.id }}" style="display: none; background: var(--card-bg-subtle, #0f172a); border: 1px solid var(--border-color, #334155); border-radius: 6px; padding: 6px 10px; margin-top: 6px;">
+                                <table class="breakdown-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Outgoing Name</th>
+                                            <th>Cost</th>
+                                            <th>Due Day</th>
+                                            <th>Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for b in item.breakdown %}
+                                        <tr>
+                                            <td><strong>{{ b.name }}</strong></td>
+                                            <td>£{{ b.cost_formatted }}</td>
+                                            <td>{{ b.due_date }}</td>
+                                            <td style="color: #38bdf8; font-weight: 700;">£{{ b.monthly_saving_formatted }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Stacked Action Bar -->
+                        <div class="transfer-actions-bar">
+                            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                                {{ item.description }}
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                    <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
+                                </button>
+                            </div>
                         </div>
                     </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
+                {% endif %}
+
+                {% if !next_window.savings_items.is_empty() %}
+                <div style="margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 0.9rem;">
+                            <i class="fas fa-piggy-bank"></i>
+                        </span>
+                        <h4 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--text-main, #f8fafc);">
+                            Savings & Sinking Fund Transfers ({{ next_window.savings_items.len() }})
+                        </h4>
+                        <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                            • Savings plan goals & MonMon calculated annual bills reserve
+                        </span>
+                    </div>
+
+                    {% for item in next_window.savings_items %}
+                    <div class="transfer-card" id="card-{{ item.id }}" data-item-id="{{ item.id }}" data-window="next">
+                        <div class="transfer-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="checkbox-label" title="Mark transfer as completed">
+                                    <input type="checkbox" onchange="toggleTransferDone('next', '{{ item.id }}')" id="chk-next-{{ item.id }}">
+                                </label>
+                                <h4 class="transfer-title">
+                                    {{ item.title }}
+                                </h4>
+                            </div>
+                            <span class="badge-transfer-type {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}badge-sinking{% else %}badge-savings{% endif %}">
+                                {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}
+                                <i class="fas fa-shield-alt"></i> MonMon Calculated Reserve
+                                {% else %}
+                                <i class="fas fa-bullseye"></i> Savings Target
+                                {% endif %}
+                            </span>
+                        </div>
+
+                        <div class="transfer-flow-row">
+                            <span>From:</span>
+                            <span class="account-pill"><i class="fas fa-university"></i> {{ item.source_account_name }}</span>
+                            <i class="fas fa-arrow-right" style="color: var(--primary, #6366f1);"></i>
+                            <span>To:</span>
+                            <span class="account-pill" style="border-color: rgba(99, 102, 241, 0.4);"><i class="fas fa-piggy-bank" style="color: var(--primary, #6366f1);"></i> {{ item.destination_account_name }}</span>
+                        </div>
+
+                        <div class="transfer-stats-grid">
+                            <div>
+                                <span class="stat-item-label">Amount to Transfer</span>
+                                <div class="stat-item-val" style="color: #38bdf8; font-size: 1.15rem;">£{{ item.amount_formatted }}</div>
+                            </div>
+                            {% if let Some(dest_bal) = item.current_destination_balance_formatted %}
+                            <div>
+                                <span class="stat-item-label">Target Balance</span>
+                                <div class="stat-item-val">£{{ dest_bal }}</div>
+                            </div>
+                            {% endif %}
+                            {% if let Some(tgt) = item.target_amount_formatted %}
+                            <div>
+                                <span class="stat-item-label">Goal Target</span>
+                                <div class="stat-item-val">£{{ tgt }}</div>
+                            </div>
+                            {% endif %}
+                            {% if let Some(prog) = item.progress_pct %}
+                            <div>
+                                <span class="stat-item-label">Target Progress</span>
+                                <div class="stat-item-val" style="color: #10b981;">{{ prog }}%</div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        {% if !item.breakdown.is_empty() %}
+                        <div style="margin-bottom: 10px;">
+                            <button type="button" class="breakdown-toggle-btn" onclick="toggleBreakdown('next-{{ item.id }}')">
+                                <i class="fas fa-chevron-down" id="icon-next-{{ item.id }}"></i> View {{ item.breakdown.len() }} upcoming annual bills covered
+                            </button>
+                            <div id="breakdown-next-{{ item.id }}" style="display: none; background: var(--card-bg-subtle, #0f172a); border: 1px solid var(--border-color, #334155); border-radius: 6px; padding: 6px 10px; margin-top: 6px;">
+                                <table class="breakdown-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Upcoming Bill</th>
+                                            <th>Cost</th>
+                                            <th>Due Date</th>
+                                            <th>Monthly Reserve</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for b in item.breakdown %}
+                                        <tr>
+                                            <td><strong>{{ b.name }}</strong></td>
+                                            <td>£{{ b.cost_formatted }}</td>
+                                            <td>{{ b.due_date }}</td>
+                                            <td style="color: #38bdf8; font-weight: 700;">£{{ b.monthly_saving_formatted }}/mo</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Stacked Action Bar -->
+                        <div class="transfer-actions-bar">
+                            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                                {{ item.description }}
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                    <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
             {% endif %}
         </div>
@@ -550,72 +672,189 @@
             </div>
             {% else %}
             <div id="transfer-cards-container-last">
-                {% for item in last_window.items %}
-                <div class="transfer-card" id="card-last-{{ item.id }}" data-item-id="{{ item.id }}" data-window="last">
-                    <div class="transfer-card-header">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <label class="checkbox-label" title="Mark transfer as completed">
-                                <input type="checkbox" onchange="toggleTransferDone('last', '{{ item.id }}')" id="chk-last-{{ item.id }}">
-                            </label>
-                            <h4 class="transfer-title">
-                                {{ item.title }}
-                            </h4>
-                        </div>
-                        <span class="badge-transfer-type {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}badge-sinking{% else %}badge-savings{% endif %}">
-                            {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}
-                            <i class="fas fa-shield-alt"></i> MonMon Calculated Reserve
-                            {% else %}
-                            <i class="fas fa-bullseye"></i> Savings Target
-                            {% endif %}
+                {% if !last_window.outgoings_items.is_empty() %}
+                <div style="margin-bottom: 2rem;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.9rem;">
+                            <i class="fas fa-file-invoice-dollar"></i>
                         </span>
-                    </div>
-
-                    <div class="transfer-flow-row">
-                        <span>From:</span>
-                        <span class="account-pill"><i class="fas fa-university"></i> {{ item.source_account_name }}</span>
-                        <i class="fas fa-arrow-right" style="color: var(--primary, #6366f1);"></i>
-                        <span>To:</span>
-                        <span class="account-pill" style="border-color: rgba(99, 102, 241, 0.4);"><i class="fas fa-piggy-bank" style="color: var(--primary, #6366f1);"></i> {{ item.destination_account_name }}</span>
-                    </div>
-
-                    <div class="transfer-stats-grid">
-                        <div>
-                            <span class="stat-item-label">Amount Transferred</span>
-                            <div class="stat-item-val" style="color: #38bdf8; font-size: 1.15rem;">£{{ item.amount_formatted }}</div>
-                        </div>
-                        {% if let Some(dest_bal) = item.current_destination_balance_formatted %}
-                        <div>
-                            <span class="stat-item-label">Current Balance</span>
-                            <div class="stat-item-val">£{{ dest_bal }}</div>
-                        </div>
-                        {% endif %}
-                        {% if let Some(tgt) = item.target_amount_formatted %}
-                        <div>
-                            <span class="stat-item-label">Goal Target</span>
-                            <div class="stat-item-val">£{{ tgt }}</div>
-                        </div>
-                        {% endif %}
-                        {% if let Some(prog) = item.progress_pct %}
-                        <div>
-                            <span class="stat-item-label">Progress</span>
-                            <div class="stat-item-val" style="color: #10b981;">{{ prog }}%</div>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Stacked Action Bar -->
-                    <div class="transfer-actions-bar">
+                        <h4 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--text-main, #f8fafc);">
+                            Account Outgoings Cover ({{ last_window.outgoings_items.len() }})
+                        </h4>
                         <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
-                            {{ item.description }}
+                            • Funds needed in other accounts to pay upcoming bills
                         </span>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
-                                <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
+                    </div>
+
+                    {% for item in last_window.outgoings_items %}
+                    <div class="transfer-card" id="card-last-{{ item.id }}" data-item-id="{{ item.id }}" data-window="last">
+                        <div class="transfer-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="checkbox-label" title="Mark transfer as completed">
+                                    <input type="checkbox" onchange="toggleTransferDone('last', '{{ item.id }}')" id="chk-last-{{ item.id }}">
+                                </label>
+                                <h4 class="transfer-title">
+                                    {{ item.title }}
+                                </h4>
+                            </div>
+                            <span class="badge-transfer-type badge-outgoings">
+                                <i class="fas fa-file-invoice-dollar"></i> Outgoings Cover
+                            </span>
+                        </div>
+
+                        <div class="transfer-flow-row">
+                            <span>From:</span>
+                            <span class="account-pill"><i class="fas fa-university"></i> {{ item.source_account_name }}</span>
+                            <i class="fas fa-arrow-right" style="color: var(--primary, #6366f1);"></i>
+                            <span>To:</span>
+                            <span class="account-pill" style="border-color: rgba(56, 189, 248, 0.4);"><i class="fas fa-wallet" style="color: #38bdf8;"></i> {{ item.destination_account_name }}</span>
+                        </div>
+
+                        <div class="transfer-stats-grid">
+                            <div>
+                                <span class="stat-item-label">Amount Transferred</span>
+                                <div class="stat-item-val" style="color: #38bdf8; font-size: 1.15rem;">£{{ item.amount_formatted }}</div>
+                            </div>
+                            {% if let Some(dest_bal) = item.current_destination_balance_formatted %}
+                            <div>
+                                <span class="stat-item-label">Account Balance</span>
+                                <div class="stat-item-val">£{{ dest_bal }}</div>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <span class="stat-item-label">Total Outgoings</span>
+                                <div class="stat-item-val">£{{ item.amount_formatted }}</div>
+                            </div>
+                        </div>
+
+                        {% if !item.breakdown.is_empty() %}
+                        <div style="margin-bottom: 10px;">
+                            <button type="button" class="breakdown-toggle-btn" onclick="toggleBreakdown('last-{{ item.id }}')">
+                                <i class="fas fa-chevron-down" id="icon-last-{{ item.id }}"></i> View {{ item.breakdown.len() }} outgoing{% if item.breakdown.len() != 1 %}s{% endif %} covered
                             </button>
+                            <div id="breakdown-last-{{ item.id }}" style="display: none; background: var(--card-bg-subtle, #0f172a); border: 1px solid var(--border-color, #334155); border-radius: 6px; padding: 6px 10px; margin-top: 6px;">
+                                <table class="breakdown-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Outgoing Name</th>
+                                            <th>Cost</th>
+                                            <th>Due Day</th>
+                                            <th>Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for b in item.breakdown %}
+                                        <tr>
+                                            <td><strong>{{ b.name }}</strong></td>
+                                            <td>£{{ b.cost_formatted }}</td>
+                                            <td>{{ b.due_date }}</td>
+                                            <td style="color: #38bdf8; font-weight: 700;">£{{ b.monthly_saving_formatted }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Stacked Action Bar -->
+                        <div class="transfer-actions-bar">
+                            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                                {{ item.description }}
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                    <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
+                                </button>
+                            </div>
                         </div>
                     </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
+                {% endif %}
+
+                {% if !last_window.savings_items.is_empty() %}
+                <div style="margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 0.9rem;">
+                            <i class="fas fa-piggy-bank"></i>
+                        </span>
+                        <h4 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--text-main, #f8fafc);">
+                            Savings & Sinking Fund Transfers ({{ last_window.savings_items.len() }})
+                        </h4>
+                        <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                            • Savings plan goals & MonMon calculated annual bills reserve
+                        </span>
+                    </div>
+
+                    {% for item in last_window.savings_items %}
+                    <div class="transfer-card" id="card-last-{{ item.id }}" data-item-id="{{ item.id }}" data-window="last">
+                        <div class="transfer-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="checkbox-label" title="Mark transfer as completed">
+                                    <input type="checkbox" onchange="toggleTransferDone('last', '{{ item.id }}')" id="chk-last-{{ item.id }}">
+                                </label>
+                                <h4 class="transfer-title">
+                                    {{ item.title }}
+                                </h4>
+                            </div>
+                            <span class="badge-transfer-type {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}badge-sinking{% else %}badge-savings{% endif %}">
+                                {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}
+                                <i class="fas fa-shield-alt"></i> MonMon Calculated Reserve
+                                {% else %}
+                                <i class="fas fa-bullseye"></i> Savings Target
+                                {% endif %}
+                            </span>
+                        </div>
+
+                        <div class="transfer-flow-row">
+                            <span>From:</span>
+                            <span class="account-pill"><i class="fas fa-university"></i> {{ item.source_account_name }}</span>
+                            <i class="fas fa-arrow-right" style="color: var(--primary, #6366f1);"></i>
+                            <span>To:</span>
+                            <span class="account-pill" style="border-color: rgba(99, 102, 241, 0.4);"><i class="fas fa-piggy-bank" style="color: var(--primary, #6366f1);"></i> {{ item.destination_account_name }}</span>
+                        </div>
+
+                        <div class="transfer-stats-grid">
+                            <div>
+                                <span class="stat-item-label">Amount Transferred</span>
+                                <div class="stat-item-val" style="color: #38bdf8; font-size: 1.15rem;">£{{ item.amount_formatted }}</div>
+                            </div>
+                            {% if let Some(dest_bal) = item.current_destination_balance_formatted %}
+                            <div>
+                                <span class="stat-item-label">Current Balance</span>
+                                <div class="stat-item-val">£{{ dest_bal }}</div>
+                            </div>
+                            {% endif %}
+                            {% if let Some(tgt) = item.target_amount_formatted %}
+                            <div>
+                                <span class="stat-item-label">Goal Target</span>
+                                <div class="stat-item-val">£{{ tgt }}</div>
+                            </div>
+                            {% endif %}
+                            {% if let Some(prog) = item.progress_pct %}
+                            <div>
+                                <span class="stat-item-label">Progress</span>
+                                <div class="stat-item-val" style="color: #10b981;">{{ prog }}%</div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Stacked Action Bar -->
+                        <div class="transfer-actions-bar">
+                            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                                {{ item.description }}
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                    <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
             {% endif %}
         </div>

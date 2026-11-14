@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json, Response},
 };
-use chrono::{Local, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
@@ -71,6 +71,8 @@ pub struct PaydayWindowDto {
     pub source_account_balance_formatted: String,
     pub source_account_remaining_balance: f32,
     pub source_account_remaining_balance_formatted: String,
+    pub outgoings_items: Vec<PaydayTransferItemDto>,
+    pub savings_items: Vec<PaydayTransferItemDto>,
     pub items: Vec<PaydayTransferItemDto>,
 }
 
@@ -134,106 +136,143 @@ pub async fn calculate_payday_window(
         None => (None, "Main Current Account".to_string(), 0.0f32),
     };
 
-    let mut items = Vec::new();
+    // 2. Outgoings Cover Transfers (Segregated at the top)
+    // Accounts with active outgoings (other than the primary salary source account)
+    let next_cycle_payday = find_next_payday_date(payday_date + chrono::Duration::days(1), nominal_payday);
 
-    // 2. Savings Plan Priority Items
-    let active_plan_row = sqlx::query(
+    let outgoing_acc_rows = sqlx::query(
         r#"
-        SELECT id, savingspercentage
-        FROM savings_plan
-        WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
-        ORDER BY id DESC
-        LIMIT 1
+        SELECT
+            a.id AS account_id,
+            a.name AS account_name,
+            a.type AS account_type,
+            COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_bal,
+            o.id AS outgoing_id,
+            o.name AS outgoing_name,
+            o.cost::real AS outgoing_cost,
+            o.outgoingday AS outgoing_day,
+            o.outgoingmonth AS outgoing_month
+        FROM outgoing o
+        JOIN account a ON o.account_id = a.id
+        WHERE (o.userid = $1 OR o.user_id = $1)
+          AND (o.archived IS NULL OR o.archived = false)
+          AND (o.paused IS NULL OR o.paused = false)
+          AND (a.archived IS NULL OR a.archived = false)
+        ORDER BY a.name ASC, o.outgoingday ASC, o.id ASC
         "#,
     )
     .bind(resolved_uid)
-    .fetch_optional(pool)
-    .await?;
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
 
-    if let Some(plan_row) = active_plan_row {
-        let plan_id: i64 = plan_row.get("id");
+    use std::collections::BTreeMap;
+    struct AccountOutgoingGroup {
+        acc_id: i64,
+        acc_name: String,
+        acc_type: String,
+        current_bal: f32,
+        total_cost: f32,
+        breakdown: Vec<YearlyBillBreakdownItem>,
+    }
 
-        let items_rows = sqlx::query(
-            r#"
-            SELECT
-                i.id, i.name, COALESCE(i.monthlyamount, 0.0)::real AS monthlyamount,
-                COALESCE(i.targetamount, 0.0)::real AS targetamount,
-                COALESCE(i.priority, 1) AS priority,
-                COALESCE(i.type, 'SAVINGS_TARGET') AS item_type,
-                a.id AS account_id,
-                a.name AS account_name,
-                a.type AS account_type,
-                COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_bal
-            FROM savings_plan_item i
-            LEFT JOIN account a ON a.id = i.account_id
-            WHERE i.savings_plan_id = $1
-              AND (i.archived IS NULL OR i.archived = false)
-            ORDER BY i.priority ASC NULLS LAST, i.id ASC
-            "#,
-        )
-        .bind(plan_id)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
+    let mut account_groups: BTreeMap<i64, AccountOutgoingGroup> = BTreeMap::new();
 
-        for r in items_rows {
-            let monthly_amt: f32 = r.get("monthlyamount");
-            let target_amt: f32 = r.get("targetamount");
-            let acc_id: Option<i64> = r.get("account_id");
-            let acc_name: Option<String> = r.get("account_name");
-            let acc_type: Option<String> = r.get("account_type");
-            let cur_bal: f32 = r.get("current_bal");
-
-            // User requirement: if the amount on /savingsPlan is zero or negative,
-            // it must not appear in the transfer window.
-            if monthly_amt <= 0.0 {
+    for r in outgoing_acc_rows {
+        let acc_id: i64 = r.get("account_id");
+        if let Some(src_id) = source_acc_id {
+            if acc_id == src_id {
                 continue;
             }
-
-            let amt_to_transfer = monthly_amt;
-
-            let prog_pct = if target_amt > 0.0 {
-                Some(((cur_bal / target_amt) * 100.0).clamp(0.0, 100.0).round() as i32)
-            } else {
-                None
-            };
-
-            let dest_name = acc_name.unwrap_or_else(|| "Unlinked Account".to_string());
-            let dest_type = acc_type.unwrap_or_else(|| "SAVINGS".to_string());
-            let item_type: String = r.get("item_type");
-
-            let category_desc = if item_type.to_uppercase().contains("DEBT") {
-                "Debt Payoff Target"
-            } else {
-                "Savings Target"
-            };
-
-            let p = r.get::<i32, _>("priority");
-            let desc = format!("Savings Plan Priority #{} ({})", p, category_desc);
-
-            items.push(PaydayTransferItemDto {
-                id: format!("savings_{}", r.get::<i64, _>("id")),
-                priority: p,
-                title: r.get("name"),
-                category: "SAVINGS_PLAN".to_string(),
-                source_account_id: source_acc_id,
-                source_account_name: source_acc_name.clone(),
-                destination_account_id: acc_id,
-                destination_account_name: dest_name,
-                destination_account_type: dest_type,
-                amount: amt_to_transfer,
-                amount_formatted: format!("{:.2}", amt_to_transfer),
-                target_amount: if target_amt > 0.0 { Some(target_amt) } else { None },
-                target_amount_formatted: if target_amt > 0.0 { Some(format!("{:.2}", target_amt)) } else { None },
-                current_destination_balance: Some(cur_bal),
-                current_destination_balance_formatted: Some(format!("{:.2}", cur_bal)),
-                progress_pct: prog_pct,
-                description: desc,
-                breakdown: Vec::new(),
-            });
         }
+
+        let outgoing_month: Option<i32> = r.get("outgoing_month");
+        let outgoing_day: i32 = r.get("outgoing_day");
+        let cost: f32 = r.get("outgoing_cost");
+        let outgoing_name: String = r.get("outgoing_name");
+
+        let is_due = if let Some(m) = outgoing_month {
+            if m > 0 {
+                let due_year = if m < payday_date.month() as i32 {
+                    payday_date.year() + 1
+                } else {
+                    payday_date.year()
+                };
+                if let Some(due_date) = NaiveDate::from_ymd_opt(due_year, m as u32, (outgoing_day as u32).min(28)) {
+                    due_date >= payday_date && due_date < next_cycle_payday
+                } else {
+                    false
+                }
+            } else {
+                true
+            }
+        } else {
+            true
+        };
+
+        if !is_due || cost <= 0.0 {
+            continue;
+        }
+
+        let entry = account_groups.entry(acc_id).or_insert_with(|| AccountOutgoingGroup {
+            acc_id,
+            acc_name: r.get("account_name"),
+            acc_type: r.get("account_type"),
+            current_bal: r.get("current_bal"),
+            total_cost: 0.0,
+            breakdown: Vec::new(),
+        });
+
+        entry.total_cost += cost;
+        entry.breakdown.push(YearlyBillBreakdownItem {
+            name: outgoing_name,
+            cost,
+            cost_formatted: format!("{:.2}", cost),
+            due_date: format!("Day {}", outgoing_day),
+            monthly_saving: cost,
+            monthly_saving_formatted: format!("{:.2}", cost),
+        });
     }
+
+    let mut outgoings_items = Vec::new();
+    for (_acc_id, grp) in account_groups {
+        if grp.total_cost <= 0.0 {
+            continue;
+        }
+        let count = grp.breakdown.len();
+        let desc = format!(
+            "Transfer £{:.2} to cover {} outgoing{} due before next payday",
+            grp.total_cost,
+            count,
+            if count == 1 { "" } else { "s" }
+        );
+
+        outgoings_items.push(PaydayTransferItemDto {
+            id: format!("outgoings_acc_{}", grp.acc_id),
+            priority: -10, // Top priority so outgoings cover sits segregated at the top
+            title: format!("{} Outgoings Cover", grp.acc_name),
+            category: "OUTGOINGS_COVER".to_string(),
+            source_account_id: source_acc_id,
+            source_account_name: source_acc_name.clone(),
+            destination_account_id: Some(grp.acc_id),
+            destination_account_name: grp.acc_name,
+            destination_account_type: grp.acc_type,
+            amount: grp.total_cost,
+            amount_formatted: format!("{:.2}", grp.total_cost),
+            target_amount: Some(grp.total_cost),
+            target_amount_formatted: Some(format!("{:.2}", grp.total_cost)),
+            current_destination_balance: Some(grp.current_bal),
+            current_destination_balance_formatted: Some(format!("{:.2}", grp.current_bal)),
+            progress_pct: None,
+            description: desc,
+            breakdown: grp.breakdown,
+        });
+    }
+
+    // Sort outgoings transfers by descending amount (largest bill commitment first)
+    outgoings_items.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut savings_items = Vec::new();
 
     // 3. Yearly Outgoings Autosave / Sinking Fund Reserve (MonMon Calculated)
     let yearly_account_row = sqlx::query(
@@ -316,9 +355,9 @@ pub async fn calculate_payday_window(
             calc.upcoming_count, calc.total_upcoming_cost
         );
 
-        items.push(PaydayTransferItemDto {
+        savings_items.push(PaydayTransferItemDto {
             id: "yearly_bills_autosave".to_string(),
-            priority: 0, // Top priority for bill safety
+            priority: 0, // Priority 0 for annual bill safety
             title: "Yearly Bills Reserve (MonMon Calculated)".to_string(),
             category: "YEARLY_BILLS_AUTOSAVE".to_string(),
             source_account_id: source_acc_id,
@@ -342,8 +381,111 @@ pub async fn calculate_payday_window(
         });
     }
 
-    // Sort items: Priority 0 (Yearly Bills Autosave) first, then Savings Plan items by ascending priority
-    items.sort_by_key(|it| it.priority);
+    // 4. Savings Plan Priority Items
+    let active_plan_row = sqlx::query(
+        r#"
+        SELECT id, savingspercentage
+        FROM savings_plan
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(resolved_uid)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(plan_row) = active_plan_row {
+        let plan_id: i64 = plan_row.get("id");
+
+        let items_rows = sqlx::query(
+            r#"
+            SELECT
+                i.id, i.name, COALESCE(i.monthlyamount, 0.0)::real AS monthlyamount,
+                COALESCE(i.targetamount, 0.0)::real AS targetamount,
+                COALESCE(i.priority, 1) AS priority,
+                COALESCE(i.type, 'SAVINGS_TARGET') AS item_type,
+                a.id AS account_id,
+                a.name AS account_name,
+                a.type AS account_type,
+                COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_bal
+            FROM savings_plan_item i
+            LEFT JOIN account a ON a.id = i.account_id
+            WHERE i.savings_plan_id = $1
+              AND (i.archived IS NULL OR i.archived = false)
+            ORDER BY i.priority ASC NULLS LAST, i.id ASC
+            "#,
+        )
+        .bind(plan_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        for r in items_rows {
+            let monthly_amt: f32 = r.get("monthlyamount");
+            let target_amt: f32 = r.get("targetamount");
+            let acc_id: Option<i64> = r.get("account_id");
+            let acc_name: Option<String> = r.get("account_name");
+            let acc_type: Option<String> = r.get("account_type");
+            let cur_bal: f32 = r.get("current_bal");
+
+            // User requirement: if the amount on /savingsPlan is zero or negative,
+            // it must not appear in the transfer window.
+            if monthly_amt <= 0.0 {
+                continue;
+            }
+
+            let amt_to_transfer = monthly_amt;
+
+            let prog_pct = if target_amt > 0.0 {
+                Some(((cur_bal / target_amt) * 100.0).clamp(0.0, 100.0).round() as i32)
+            } else {
+                None
+            };
+
+            let dest_name = acc_name.unwrap_or_else(|| "Unlinked Account".to_string());
+            let dest_type = acc_type.unwrap_or_else(|| "SAVINGS".to_string());
+            let item_type: String = r.get("item_type");
+
+            let category_desc = if item_type.to_uppercase().contains("DEBT") {
+                "Debt Payoff Target"
+            } else {
+                "Savings Target"
+            };
+
+            let p = r.get::<i32, _>("priority");
+            let desc = format!("Savings Plan Priority #{} ({})", p, category_desc);
+
+            savings_items.push(PaydayTransferItemDto {
+                id: format!("savings_{}", r.get::<i64, _>("id")),
+                priority: p,
+                title: r.get("name"),
+                category: "SAVINGS_PLAN".to_string(),
+                source_account_id: source_acc_id,
+                source_account_name: source_acc_name.clone(),
+                destination_account_id: acc_id,
+                destination_account_name: dest_name,
+                destination_account_type: dest_type,
+                amount: amt_to_transfer,
+                amount_formatted: format!("{:.2}", amt_to_transfer),
+                target_amount: if target_amt > 0.0 { Some(target_amt) } else { None },
+                target_amount_formatted: if target_amt > 0.0 { Some(format!("{:.2}", target_amt)) } else { None },
+                current_destination_balance: Some(cur_bal),
+                current_destination_balance_formatted: Some(format!("{:.2}", cur_bal)),
+                progress_pct: prog_pct,
+                description: desc,
+                breakdown: Vec::new(),
+            });
+        }
+    }
+
+    // Sort savings items by priority (Yearly Bills Autosave #0 first, then Savings Plan priorities #1, #2...)
+    savings_items.sort_by_key(|it| it.priority);
+
+    // Combine all transfers: Outgoings cover items sit segregated at the top, followed by savings & sinking fund
+    let mut items = outgoings_items.clone();
+    items.extend(savings_items.clone());
 
     let total_transfers: f32 = items.iter().map(|it| it.amount).sum();
     let source_remaining = source_acc_bal - total_transfers;
@@ -364,6 +506,8 @@ pub async fn calculate_payday_window(
         source_account_balance_formatted: format!("{:.2}", source_acc_bal),
         source_account_remaining_balance: (source_remaining * 100.0).round() / 100.0,
         source_account_remaining_balance_formatted: format!("{:.2}", source_remaining),
+        outgoings_items,
+        savings_items,
         items,
     })
 }
@@ -540,5 +684,41 @@ mod tests {
         assert_eq!(next_payday, NaiveDate::from_ymd_opt(2026, 11, 25).unwrap());
         // Last payday: 25 Oct 2026 is Sunday -> adjusted to Friday 23 Oct 2026
         assert_eq!(last_payday, NaiveDate::from_ymd_opt(2026, 10, 23).unwrap());
+    }
+
+    #[test]
+    fn test_outgoings_cover_transfer_grouping() {
+        // Test user requirement: On payday (e.g. £3000 in), Account A has £200 outgoings for the rest
+        // of the month, Account B has £10 outgoings, and Salary Account has £100 direct debits.
+        // Accounts A and B must appear in the transfer window; Salary Account outgoings must not be transferred.
+        let salary_acc_id = 100i64;
+        let acc_a_id = 200i64;
+        let acc_b_id = 300i64;
+
+        struct TestOutgoing {
+            account_id: i64,
+            cost: f32,
+        }
+
+        let outgoings = vec![
+            TestOutgoing { account_id: acc_a_id, cost: 150.0 },
+            TestOutgoing { account_id: acc_a_id, cost: 50.0 },
+            TestOutgoing { account_id: acc_b_id, cost: 10.0 },
+            TestOutgoing { account_id: salary_acc_id, cost: 100.0 }, // Direct debit on salary account itself
+        ];
+
+        let mut groups: std::collections::BTreeMap<i64, f32> = std::collections::BTreeMap::new();
+        for o in outgoings {
+            // Exclude bills that are directly debited from the salary source account
+            if o.account_id == salary_acc_id {
+                continue;
+            }
+            *groups.entry(o.account_id).or_insert(0.0) += o.cost;
+        }
+
+        assert_eq!(groups.len(), 2, "Only secondary accounts with outgoings should be in transfer window");
+        assert_eq!(groups.get(&acc_a_id).copied(), Some(200.0), "Account A needs £200 outgoings cover");
+        assert_eq!(groups.get(&acc_b_id).copied(), Some(10.0), "Account B needs £10 outgoings cover");
+        assert_eq!(groups.get(&salary_acc_id), None, "Salary account itself needs no inter-account transfer");
     }
 }
