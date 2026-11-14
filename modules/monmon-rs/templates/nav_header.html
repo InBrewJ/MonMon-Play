@@ -42,6 +42,8 @@
     visibility: visible !important;
     pointer-events: all !important;
     cursor: wait;
+    transition: none !important;
+    -webkit-transition: none !important;
 }
 
 .monmon-loader-card {
@@ -65,6 +67,8 @@
 .monmon-loader-overlay.is-active .monmon-loader-card {
     transform: scale(1) translateZ(0) !important;
     -webkit-transform: scale(1) translateZ(0) !important;
+    transition: none !important;
+    -webkit-transition: none !important;
 }
 
 .monmon-loader-anim-wrap {
@@ -146,6 +150,8 @@
         }
         loader.classList.add('is-active');
         loader.setAttribute('aria-hidden', 'false');
+        // Force synchronous WebKit layout reflow so changes paint immediately
+        void loader.offsetHeight;
         clearTimeout(timer);
         // Safety timeout: auto-hide after 12s if network hangs or aborts
         timer = setTimeout(hideLoader, 12000);
@@ -200,12 +206,15 @@
         if (href === '#' || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
 
         // Check if internal navigation link
+        var destinationUrl = null;
         try {
-            var url = new URL(anchor.href, window.location.href);
-            if (url.origin !== window.location.origin) return;
+            destinationUrl = new URL(anchor.href, window.location.href);
+            if (destinationUrl.origin !== window.location.origin) return;
             // Skip hash changes on same page
-            if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
-        } catch (err) {}
+            if (destinationUrl.pathname === window.location.pathname && destinationUrl.search === window.location.search && destinationUrl.hash) return;
+        } catch (err) {
+            return;
+        }
 
         // Friendly contextual text based on target
         var targetText = "Loading...";
@@ -261,7 +270,15 @@
             subtext = "Calculating payday transfers";
         }
 
+        // On iOS Safari, native link navigation freezes painting of newly toggled DOM elements
+        // unless default navigation is prevented and rescheduled on the next event loop tick.
+        var targetHref = anchor.href;
+        e.preventDefault();
         showLoader(targetText, subtext);
+
+        setTimeout(function() {
+            window.location.href = targetHref;
+        }, 25);
     }, true);
 
     // Also intercept form submissions (e.g. settings, outgoings create/edit, pot update)
