@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::Html,
 };
-use chrono::{Local, NaiveDate, Utc};
+use chrono::{Datelike, Local, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
@@ -36,26 +36,68 @@ pub fn find_next_payday_date(as_of: NaiveDate, nominal_payday: i32) -> NaiveDate
 
 /// Computes start balance of an account for a given cycle window matching Java HistoricSpentCalculator
 pub fn get_account_start_balance(balances: &[(i64, f32)], cycle_start_sec: i64, cycle_end_sec: i64) -> f32 {
+    get_account_start_balance_with_inflow(balances, cycle_start_sec, cycle_end_sec, 0.0)
+}
+
+pub fn get_account_start_balance_with_inflow(
+    balances: &[(i64, f32)],
+    cycle_start_sec: i64,
+    cycle_end_sec: i64,
+    payday_inflow: f32,
+) -> f32 {
     if balances.is_empty() {
-        return 0.0;
+        return if payday_inflow > 0.0 { ((payday_inflow * 100.0).round()) / 100.0 } else { 0.0 };
     }
-    // If earliest recorded balance is after cycle_end_sec, account did not exist yet
     if balances[0].0 > cycle_end_sec {
         return 0.0;
     }
+
     // 1. Check if an explicit balance was recorded on or shortly after payday (within 24h)
     for &(t, v) in balances {
         if t >= cycle_start_sec && t <= cycle_start_sec + 86400 {
             return ((v * 100.0).round()) / 100.0;
         }
     }
-    // 2. Earliest balance recorded within the cycle
+
+    // 2. If no explicit balance on payday, but we have a payday inflow:
+    if payday_inflow > 0.0 {
+        let mut latest_before = None;
+        for &(t, v) in balances {
+            if t < cycle_start_sec {
+                latest_before = Some(v);
+            } else {
+                break;
+            }
+        }
+        if let Some(lb) = latest_before {
+            return (((lb + payday_inflow) * 100.0).round()) / 100.0;
+        }
+        return ((payday_inflow * 100.0).round()) / 100.0;
+    }
+
+    // 3. Fallback balance object:
+    // a. Balance near cycle start (within 24 hours around cycle_start_sec)
+    let mut best_near_start = None;
+    let mut best_dist = i64::MAX;
+    for &(t, v) in balances {
+        let dist = (t - cycle_start_sec).abs();
+        if dist <= 86400 && dist < best_dist {
+            best_dist = dist;
+            best_near_start = Some(v);
+        }
+    }
+    if let Some(v) = best_near_start {
+        return ((v * 100.0).round()) / 100.0;
+    }
+
+    // b. Earliest balance recorded within the cycle
     for &(t, v) in balances {
         if t >= cycle_start_sec && t < cycle_end_sec {
             return ((v * 100.0).round()) / 100.0;
         }
     }
-    // 3. Fallback: latest balance recorded before cycle_start_sec
+
+    // c. Latest before cycle_start_sec
     let mut latest_before = None;
     for &(t, v) in balances {
         if t < cycle_start_sec {
@@ -67,6 +109,7 @@ pub fn get_account_start_balance(balances: &[(i64, f32)], cycle_start_sec: i64, 
     if let Some(v) = latest_before {
         return ((v * 100.0).round()) / 100.0;
     }
+
     ((balances[0].1 * 100.0).round()) / 100.0
 }
 
@@ -178,6 +221,16 @@ pub fn calculate_account_net_spent(
 
     if !has_transition {
         return (((start_bal - end_bal) * 100.0).round()) / 100.0;
+    }
+
+    // If start_bal was adjusted with payday inflow (i.e. start_bal differs from start balance object),
+    // reconcile the starting difference into total_net_spent
+    if let Some(s_idx) = start_idx {
+        let obj_val = ((balances[s_idx].1 * 100.0).round()) / 100.0;
+        if obj_val != start_bal {
+            let start_offset = start_bal - obj_val;
+            total_net_spent += start_offset;
+        }
     }
 
     ((total_net_spent * 100.0).round()) / 100.0
@@ -313,24 +366,398 @@ pub struct HistoricSpentTemplate {
 }
 
 #[derive(Debug, Clone)]
-struct PotRecord {
+pub struct PotRecord {
     #[allow(dead_code)]
-    id: i64,
-    name: String,
-    created_at: Option<i64>,
-    last_updated: Option<i64>,
-    archived: bool,
-    food: Option<f32>,
-    fuel: Option<f32>,
-    transport: Option<f32>,
-    fun: Option<f32>,
-    accounts: Vec<i64>,
+    pub id: i64,
+    pub name: String,
+    pub created_at: Option<i64>,
+    pub last_updated: Option<i64>,
+    pub archived: bool,
+    pub food: Option<f32>,
+    pub fuel: Option<f32>,
+    pub transport: Option<f32>,
+    pub fun: Option<f32>,
+    pub accounts: Vec<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IncomingRecord {
+    pub id: i64,
+    #[allow(dead_code)]
+    pub name: String,
+    pub net_value: f32,
+    #[allow(dead_code)]
+    pub gross_value: Option<f32>,
+    pub incoming_month_day: i32,
+    pub payday: bool,
+    pub account_id: Option<i64>,
+    pub created_at: Option<i64>,
+    pub archived_at: Option<i64>,
+    pub archived: bool,
+    pub history_json: Option<String>,
+}
+
+impl IncomingRecord {
+    pub fn get_effective_net_value_for_cycle(&self, cycle_start_sec: i64, _cycle_end_sec: i64) -> f32 {
+        if let Some(ref json_str) = self.history_json {
+            if let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(json_str) {
+                for entry in entries {
+                    if let Some(ts_val) = entry.get("timestamp").and_then(|v| v.as_i64()) {
+                        let ts_sec = if ts_val > 100_000_000_000 { ts_val / 1000 } else { ts_val };
+                        if ts_sec >= cycle_start_sec {
+                            if let Some(nv) = entry.get("netValue").and_then(|v| v.as_f64()) {
+                                return nv as f32;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.net_value
+    }
+
+    pub fn get_effective_incoming_month_day(&self, cycle_start: NaiveDate) -> i32 {
+        if let Some(ref json_str) = self.history_json {
+            let cycle_start_sec = cycle_start
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(chrono::Utc)
+                .unwrap()
+                .timestamp();
+            if let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(json_str) {
+                for entry in entries {
+                    if let Some(ts_val) = entry.get("timestamp").and_then(|v| v.as_i64()) {
+                        let ts_sec = if ts_val > 100_000_000_000 { ts_val / 1000 } else { ts_val };
+                        if ts_sec >= cycle_start_sec {
+                            if let Some(imd) = entry.get("incomingMonthDay").and_then(|v| v.as_i64()) {
+                                return imd as i32;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.incoming_month_day
+    }
+}
+
+pub fn normalize_to_epoch_sec(ts: Option<i64>) -> Option<i64> {
+    ts.map(|t| if t > 100_000_000_000 { t / 1000 } else { t })
+}
+
+pub fn get_effective_start_sec(inc: &IncomingRecord, all_incomings: &[IncomingRecord]) -> i64 {
+    if let Some(created_sec) = normalize_to_epoch_sec(inc.created_at) {
+        if created_sec > 0 {
+            return created_sec;
+        }
+    }
+
+    let mut preceding: Vec<&IncomingRecord> = all_incomings
+        .iter()
+        .filter(|other| other.id != inc.id && other.archived)
+        .filter(|other| {
+            if inc.payday || other.payday {
+                return inc.payday && other.payday;
+            }
+            if let (Some(a1), Some(a2)) = (inc.account_id, other.account_id) {
+                return a1 == a2;
+            }
+            true
+        })
+        .filter(|other| {
+            if inc.archived {
+                let inc_arch = normalize_to_epoch_sec(inc.archived_at);
+                let other_arch = normalize_to_epoch_sec(other.archived_at);
+                if let (Some(ia), Some(oa)) = (inc_arch, other_arch) {
+                    if ia != oa {
+                        return oa < ia;
+                    }
+                }
+                return other.id < inc.id;
+            }
+            true
+        })
+        .collect();
+
+    preceding.sort_by(|a, b| {
+        let a_arch = normalize_to_epoch_sec(a.archived_at);
+        let b_arch = normalize_to_epoch_sec(b.archived_at);
+        if let (Some(aa), Some(ba)) = (a_arch, b_arch) {
+            if aa != ba {
+                return ba.cmp(&aa);
+            }
+        }
+        b.id.cmp(&a.id)
+    });
+
+    if let Some(latest) = preceding.first() {
+        if let Some(arch_sec) = normalize_to_epoch_sec(latest.archived_at) {
+            if arch_sec > 0 {
+                return arch_sec;
+            }
+        }
+    }
+
+    0
+}
+
+pub fn get_account_payday_inflow(
+    acc_id: i64,
+    cycle_incomings: &[&IncomingRecord],
+    cycle_start: NaiveDate,
+    cycle_start_sec: i64,
+    cycle_end_sec: i64,
+) -> f32 {
+    let mut total = 0.0f32;
+    for inc in cycle_incomings {
+        if inc.account_id == Some(acc_id) {
+            let is_payday_item = inc.payday || inc.get_effective_incoming_month_day(cycle_start) == cycle_start.day() as i32;
+            if is_payday_item {
+                let val = inc.get_effective_net_value_for_cycle(cycle_start_sec, cycle_end_sec);
+                if val > 0.0 {
+                    total += val;
+                }
+            }
+        }
+    }
+    ((total * 100.0).round()) / 100.0
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivePotInterval {
+    pub pot: PotRecord,
+    pub start: i64,
+    pub end: i64,
+}
+
+impl ActivePotInterval {
+    pub fn is_active_in(&self, cycle_start_sec: i64, cycle_end_sec: i64) -> bool {
+        let overlap = self.end.min(cycle_end_sec) - self.start.max(cycle_start_sec);
+        overlap > 0
+    }
+}
+
+pub fn compute_pot_intervals(monthly_pots: &[PotRecord]) -> Vec<ActivePotInterval> {
+    if monthly_pots.is_empty() {
+        return Vec::new();
+    }
+    let mut sorted = monthly_pots.to_vec();
+    sorted.sort_by(|p1, p2| {
+        let t1 = normalize_to_epoch_sec(p1.created_at)
+            .or_else(|| normalize_to_epoch_sec(p1.last_updated))
+            .unwrap_or(0);
+        let t2 = normalize_to_epoch_sec(p2.created_at)
+            .or_else(|| normalize_to_epoch_sec(p2.last_updated))
+            .unwrap_or(0);
+        if t1 != t2 {
+            return t1.cmp(&t2);
+        }
+        p1.id.cmp(&p2.id)
+    });
+
+    let mut intervals: Vec<ActivePotInterval> = Vec::new();
+    let n = sorted.len();
+    for i in 0..n {
+        let p = &sorted[i];
+        let p_created = normalize_to_epoch_sec(p.created_at).unwrap_or(0);
+        let p_updated = normalize_to_epoch_sec(p.last_updated).unwrap_or(0);
+        let start = if p_created > 0 {
+            p_created
+        } else if p_updated > 0 {
+            p_updated
+        } else if i == 0 {
+            i64::MIN
+        } else {
+            intervals[i - 1].start
+        };
+
+        let mut next_start = i64::MAX;
+        if i + 1 < n {
+            let next = &sorted[i + 1];
+            let n_created = normalize_to_epoch_sec(next.created_at).unwrap_or(0);
+            let n_updated = normalize_to_epoch_sec(next.last_updated).unwrap_or(0);
+            if n_created > 0 {
+                next_start = n_created;
+            } else if n_updated > 0 {
+                next_start = n_updated;
+            }
+        }
+
+        let mut end = next_start;
+        if p.archived && p_updated > 0 {
+            end = end.min(p_updated);
+        }
+
+        intervals.push(ActivePotInterval {
+            pot: p.clone(),
+            start,
+            end,
+        });
+    }
+    intervals
+}
+
+pub fn find_active_pots_in_cycle(
+    intervals: &[ActivePotInterval],
+    cycle_start_sec: i64,
+    cycle_end_sec: i64,
+) -> Vec<ActivePotInterval> {
+    intervals
+        .iter()
+        .filter(|int| int.is_active_in(cycle_start_sec, cycle_end_sec))
+        .cloned()
+        .collect()
+}
+
+pub fn find_active_pot_for_cycle(
+    monthly_pots: &[PotRecord],
+    cycle_start_sec: i64,
+    cycle_end_sec: i64,
+) -> Option<PotRecord> {
+    if monthly_pots.is_empty() {
+        return None;
+    }
+    let intervals = compute_pot_intervals(monthly_pots);
+    let active = find_active_pots_in_cycle(&intervals, cycle_start_sec, cycle_end_sec);
+    if let Some(last) = active.last() {
+        return Some(last.pot.clone());
+    }
+    intervals
+        .iter()
+        .rev()
+        .find(|int| int.start <= cycle_end_sec)
+        .map(|int| int.pot.clone())
+}
+
+#[derive(Debug, Clone)]
+pub struct OutgoingRecord {
+    #[allow(dead_code)]
+    pub id: i64,
+    #[allow(dead_code)]
+    pub name: String,
+    pub cost: f32,
+    #[allow(dead_code)]
+    pub outgoing_day: i32,
+    pub outgoing_month: Option<i32>,
+    pub year_interval: Option<i32>,
+    pub starting_year: Option<i32>,
+    pub bill: bool,
+    pub rent: bool,
+    pub hidden_from_total: bool,
+    pub paused: bool,
+    pub archived: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PlanRecord {
+    #[allow(dead_code)]
+    pub id: i64,
+    pub plan_type: String,
+    pub split: f32,
+}
+
+pub fn calculate_monthly_allowance(
+    incomings: &[&IncomingRecord],
+    outgoings: &[OutgoingRecord],
+    plans: &[PlanRecord],
+    as_of: NaiveDate,
+) -> f32 {
+    use chrono::Datelike;
+    let first_monthly_savings_goal = plans
+        .iter()
+        .find(|p| p.plan_type == "MONTHLY_SAVINGS_GOAL" || p.plan_type == "SAVINGS_GOAL");
+    let first_rent_share = plans.iter().find(|p| p.plan_type == "RENT_SHARE");
+    let first_bill_share = plans.iter().find(|p| p.plan_type == "BILL_SHARE");
+
+    let mut adjusted_outgoings_total = 0.0f32;
+    for o in outgoings {
+        if o.archived || o.paused || o.hidden_from_total {
+            continue;
+        }
+        let is_yearly = o.outgoing_month.map_or(false, |m| m > 0);
+        if is_yearly {
+            let target_month = o.outgoing_month.unwrap_or(1);
+            if target_month != as_of.month() as i32 {
+                continue;
+            }
+            let interval = o.year_interval.unwrap_or(1).max(1);
+            if interval > 1 {
+                let start = o.starting_year.unwrap_or(as_of.year());
+                if as_of.year() < start || (as_of.year() - start) % interval != 0 {
+                    continue;
+                }
+            }
+        }
+        let mut cost = o.cost;
+        if let Some(bs) = first_bill_share {
+            if o.bill {
+                cost *= bs.split;
+            }
+        }
+        if let Some(rs) = first_rent_share {
+            if o.rent {
+                cost *= rs.split;
+            }
+        }
+        adjusted_outgoings_total += cost;
+    }
+
+    let incoming_total: f32 = incomings.iter().map(|i| i.net_value).sum();
+    let outgoing_total = ((adjusted_outgoings_total * 100.0).round()) / 100.0;
+    let mut surplus = ((incoming_total - outgoing_total) * 100.0).round() / 100.0;
+
+    let savings_goal_percent = first_monthly_savings_goal.map(|p| p.split).unwrap_or(0.0);
+    let savings_cost = savings_goal_percent * incoming_total;
+    surplus -= savings_cost;
+
+    ((surplus * 100.0).round()) / 100.0
+}
+
+pub async fn get_accounts_spent_sum_map(
+    pool: &PgPool,
+    user_id: &str,
+    start_sec: i64,
+    end_sec: i64,
+) -> HashMap<i64, f32> {
+    let rows = sqlx::query(
+        r#"
+        SELECT account_id, COALESCE(SUM(amount), 0.0)::real AS sum
+        FROM bank_transaction
+        WHERE (user_id = $1 OR userid = $1)
+          AND timestamp >= $2 AND timestamp <= $3
+          AND amount > 0
+          AND (category IS NULL OR lower(category) NOT IN ('transfers', 'savings', 'pots'))
+          AND (description IS NULL OR (
+              lower(description) NOT LIKE '%saving%'
+              AND lower(description) NOT LIKE '%pot%'
+              AND lower(description) NOT LIKE '%isa%'
+              AND lower(description) NOT LIKE '%marcus%'
+              AND lower(description) NOT LIKE '%chip%'
+              AND lower(description) NOT LIKE '%vanguard%'
+          ))
+        GROUP BY account_id
+        "#,
+    )
+    .bind(user_id)
+    .bind(start_sec)
+    .bind(end_sec)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut map = HashMap::new();
+    for r in rows {
+        let acc_id: i64 = r.get("account_id");
+        let sum: f32 = r.get("sum");
+        map.insert(acc_id, sum);
+    }
+    map
 }
 
 pub async fn calculate_historic_cycles(
     pool: &PgPool,
     user_id: &str,
-    num_cycles: usize,
+    _num_cycles: usize,
 ) -> Result<Vec<HistoricCycleDto>, sqlx::Error> {
     let spog = crate::spog::calculate_spog(pool, user_id).await?;
     let nominal_payday = spog.next_pay_day.max(1);
@@ -338,7 +765,7 @@ pub async fn calculate_historic_cycles(
 
     let accounts_rows = sqlx::query(
         r#"
-        SELECT id, name, type
+        SELECT id, name, type, COALESCE(ledger_mode, 'ABL') AS ledger_mode
         FROM account
         WHERE (userid = $1 OR user_id = $1)
           AND (archived IS NULL OR archived = false)
@@ -353,16 +780,19 @@ pub async fn calculate_historic_cycles(
     let mut ledger_accounts = Vec::new();
     let mut ledger_account_ids = Vec::new();
     let mut account_names_map: HashMap<i64, (String, String)> = HashMap::new();
+    let mut account_ledger_modes: HashMap<i64, String> = HashMap::new();
 
     for r in accounts_rows {
         let acc_id: i64 = r.get("id");
         let name: String = r.get("name");
         let acc_type: String = r.get("type");
+        let ledger_mode: String = r.get("ledger_mode");
         let t_upper = acc_type.to_uppercase();
         account_names_map.insert(acc_id, (name.clone(), acc_type.clone()));
+        account_ledger_modes.insert(acc_id, ledger_mode.clone());
         if t_upper != "LOAN" && t_upper != "MORTGAGE" && t_upper != "PENSION" {
             ledger_account_ids.push(acc_id);
-            ledger_accounts.push((acc_id, name, acc_type));
+            ledger_accounts.push((acc_id, name, acc_type, ledger_mode));
         }
     }
 
@@ -424,15 +854,141 @@ pub async fn calculate_historic_cycles(
         });
     }
 
+    // Load all incomings (including archived & history)
+    let incoming_rows = sqlx::query(
+        r#"
+        SELECT id, name, COALESCE(netvalue, 0.0)::real AS netvalue,
+               grossvalue::real AS grossvalue,
+               COALESCE(incomingmonthday, 1) AS incomingmonthday,
+               COALESCE(payday, false) AS payday,
+               account_id,
+               COALESCE(created_at, 0)::bigint AS created_at,
+               archived_at::bigint AS archived_at,
+               COALESCE(archived, false) AS archived,
+               history_json
+        FROM incoming
+        WHERE (userid = $1 OR user_id = $1)
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut incomings: Vec<IncomingRecord> = Vec::new();
+    for r in incoming_rows {
+        incomings.push(IncomingRecord {
+            id: r.get("id"),
+            name: r.get("name"),
+            net_value: r.get("netvalue"),
+            gross_value: r.get("grossvalue"),
+            incoming_month_day: r.get("incomingmonthday"),
+            payday: r.get("payday"),
+            account_id: r.get("account_id"),
+            created_at: r.get("created_at"),
+            archived_at: r.get("archived_at"),
+            archived: r.get("archived"),
+            history_json: r.get("history_json"),
+        });
+    }
+
+    // Load all outgoings
+    let outgoing_rows = sqlx::query(
+        r#"
+        SELECT id, name, COALESCE(cost, 0.0)::real AS cost,
+               COALESCE(outgoingday, 1) AS outgoingday,
+               outgoingmonth, yearinterval, startingyear,
+               COALESCE(bill, false) AS bill,
+               COALESCE(rent, false) AS rent,
+               COALESCE(hiddenfromtotal, false) AS hiddenfromtotal,
+               COALESCE(paused, false) AS paused,
+               COALESCE(archived, false) AS archived
+        FROM outgoing
+        WHERE (userid = $1 OR user_id = $1)
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut outgoings: Vec<OutgoingRecord> = Vec::new();
+    for r in outgoing_rows {
+        outgoings.push(OutgoingRecord {
+            id: r.get("id"),
+            name: r.get("name"),
+            cost: r.get("cost"),
+            outgoing_day: r.get("outgoingday"),
+            outgoing_month: r.get("outgoingmonth"),
+            year_interval: r.get("yearinterval"),
+            starting_year: r.get("startingyear"),
+            bill: r.get("bill"),
+            rent: r.get("rent"),
+            hidden_from_total: r.get("hiddenfromtotal"),
+            paused: r.get("paused"),
+            archived: r.get("archived"),
+        });
+    }
+
+    // Load plans
+    let plan_rows = sqlx::query(
+        r#"
+        SELECT id, type, COALESCE(split, 0.0)::real AS split
+        FROM plan
+        WHERE (userid = $1 OR user_id = $1)
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut plans: Vec<PlanRecord> = Vec::new();
+    for r in plan_rows {
+        plans.push(PlanRecord {
+            id: r.get("id"),
+            plan_type: r.get("type"),
+            split: r.get("split"),
+        });
+    }
+
     let balance_map = load_account_balances(pool, &ledger_account_ids)
         .await
         .unwrap_or_default();
 
+    // Determine earliest date across all account balances
+    let mut min_balance_sec = i64::MAX;
+    for bals in balance_map.values() {
+        for &(t, _) in bals {
+            if t > 0 && t < min_balance_sec {
+                min_balance_sec = t;
+            }
+        }
+    }
+
+    let earliest_date = if min_balance_sec != i64::MAX {
+        chrono::DateTime::from_timestamp(min_balance_sec, 0)
+            .map(|dt| dt.date_naive())
+            .unwrap_or(today - chrono::Months::new(6))
+    } else {
+        today - chrono::Months::new(6)
+    };
+
+    let min_allowed = today - chrono::Months::new(6);
+    let earliest_date = if earliest_date > min_allowed { min_allowed } else { earliest_date };
+    let max_allowed = today - chrono::Months::new(24);
+    let earliest_date = if earliest_date < max_allowed { max_allowed } else { earliest_date };
+
+    let pot_intervals = compute_pot_intervals(&pots);
+
     let mut cycles = Vec::new();
     let current_cycle_start = find_last_payday_date(today, nominal_payday);
     let mut curr_cycle_start = current_cycle_start;
+    let mut cycle_count = 0;
 
-    for _ in 0..num_cycles.max(1) {
+    while !curr_cycle_start.lt(&earliest_date) && cycle_count < 36 {
+        cycle_count += 1;
         let curr_cycle_end = find_next_payday_date(curr_cycle_start, nominal_payday);
         let is_current = today >= curr_cycle_start && today < curr_cycle_end;
 
@@ -463,56 +1019,142 @@ pub async fn calculate_historic_cycles(
             days_in_cycle
         };
 
-        // Determine active pot for this cycle (latest monthly pot created on or before cycle end)
-        let active_pot = pots
-            .iter()
-            .filter(|p| {
-                let ct = p.created_at.map(|ts| if ts > 100_000_000_000 { ts / 1000 } else { ts }).unwrap_or(0);
-                ct <= end_sec
-            })
-            .last()
-            .or_else(|| pots.last());
+        // Determine active pot for this cycle (using last monthly pot in active interval if multiple)
+        let active_intervals_in_cycle = find_active_pots_in_cycle(&pot_intervals, start_sec, end_sec);
+        let active_pot = if !active_intervals_in_cycle.is_empty() {
+            Some(active_intervals_in_cycle.last().unwrap().pot.clone())
+        } else {
+            find_active_pot_for_cycle(&pots, start_sec, end_sec)
+        };
 
-        let pot_account_ids: Vec<i64> = if let Some(p) = active_pot {
+        // Resolve accountSourcePot (if pot has no accounts, inherit from subsequent pot or default to debit accounts)
+        let pot_account_ids: Vec<i64> = if let Some(ref p) = active_pot {
             if !p.accounts.is_empty() {
                 p.accounts.clone()
             } else {
-                ledger_account_ids.clone()
+                let mut found_accounts = Vec::new();
+                if let Some(idx) = pots.iter().position(|x| x.id == p.id) {
+                    for later in &pots[(idx + 1)..] {
+                        if !later.accounts.is_empty() {
+                            found_accounts = later.accounts.clone();
+                            break;
+                        }
+                    }
+                }
+                if !found_accounts.is_empty() {
+                    found_accounts
+                } else {
+                    ledger_account_ids.clone()
+                }
             }
         } else {
             ledger_account_ids.clone()
         };
+
+        // Filter incomings active during this cycle
+        let cycle_incomings: Vec<&IncomingRecord> = if is_current {
+            incomings.iter().filter(|i| !i.archived).collect()
+        } else {
+            incomings
+                .iter()
+                .filter(|i| {
+                    let start_sec_eff = get_effective_start_sec(i, &incomings);
+                    let pay_sec = if i.payday {
+                        start_sec
+                    } else {
+                        let day = i.get_effective_incoming_month_day(curr_cycle_start);
+                        let mut pay_date = curr_cycle_start.with_day(day as u32).unwrap_or(curr_cycle_start);
+                        if pay_date < curr_cycle_start {
+                            let next_m = curr_cycle_start + chrono::Duration::days(32);
+                            pay_date = next_m.with_day(day.min(28) as u32).unwrap_or(curr_cycle_start);
+                        }
+                        pay_date
+                            .and_hms_opt(0, 0, 0)
+                            .unwrap()
+                            .and_local_timezone(chrono::Utc)
+                            .unwrap()
+                            .timestamp()
+                    };
+                    if start_sec_eff > pay_sec + 86400 {
+                        return false;
+                    }
+                    if i.archived {
+                        let arch_sec = normalize_to_epoch_sec(i.archived_at);
+                        match arch_sec {
+                            Some(as_sec) => as_sec > pay_sec + 86400,
+                            None => false,
+                        }
+                    } else {
+                        true
+                    }
+                })
+                .collect()
+        };
+
+        let mut monthly_income = 0.0f32;
+        for inc in &cycle_incomings {
+            let eff = inc.get_effective_net_value_for_cycle(start_sec, end_sec);
+            if eff > 0.0 {
+                monthly_income += eff;
+            }
+        }
+        if monthly_income <= 0.0 && !incomings.is_empty() {
+            for inc in incomings.iter().filter(|i| !i.archived) {
+                let eff = inc.get_effective_net_value_for_cycle(start_sec, end_sec);
+                if eff > 0.0 {
+                    monthly_income += eff;
+                }
+            }
+        }
+        monthly_income = ((monthly_income * 100.0).round()) / 100.0;
+
+        // TBL transactions map for this cycle
+        let tbl_spent_by_account = get_accounts_spent_sum_map(pool, user_id, start_sec, effective_end_sec).await;
 
         let mut starting_total_balance = 0.0f32;
         let mut ending_total_balance = 0.0f32;
         let mut cycle_spent = 0.0f32;
         let mut raw_pot_spent = 0.0f32;
         let mut total_savings_inflow = 0.0f32;
+        let mut starting_pot_budget = 0.0f32;
+        let mut ending_pot_budget = 0.0f32;
         let mut account_breakdowns = Vec::new();
 
-        for &(acc_id, ref acc_name, ref acc_type) in &ledger_accounts {
+        for &(acc_id, ref acc_name, ref acc_type, ref ledger_mode) in &ledger_accounts {
             let empty_vec = Vec::new();
             let bals = balance_map.get(&acc_id).unwrap_or(&empty_vec);
             if bals.is_empty() {
                 continue;
             }
             if bals[0].0 > effective_end_sec {
-                continue; // Account didn't exist yet
+                continue;
             }
 
-            let start_bal = get_account_start_balance(bals, start_sec, end_sec);
+            let acc_inflow = get_account_payday_inflow(acc_id, &cycle_incomings, curr_cycle_start, start_sec, end_sec);
+            let start_bal = get_account_start_balance_with_inflow(bals, start_sec, end_sec, acc_inflow);
             let end_bal = get_account_end_balance(bals, start_sec, end_sec, is_current, effective_end_sec);
-            let acc_spent = calculate_account_net_spent(bals, start_sec, effective_end_sec, start_bal, end_bal);
+
+            let is_tbl_active = ledger_mode == "TBL"
+                && acc_type.to_uppercase() != "PENSION"
+                && acc_type.to_uppercase() != "LOAN";
+
+            let acc_spent = if is_current && is_tbl_active && tbl_spent_by_account.contains_key(&acc_id) {
+                tbl_spent_by_account[&acc_id]
+            } else {
+                calculate_account_net_spent(bals, start_sec, effective_end_sec, start_bal, end_bal)
+            };
+
             let is_pot_account = pot_account_ids.contains(&acc_id);
+            if is_pot_account {
+                starting_pot_budget += start_bal;
+                ending_pot_budget += end_bal;
+                raw_pot_spent += acc_spent;
+            }
 
             let t_upper = acc_type.to_uppercase();
             let is_savings = t_upper.contains("SAVING");
             if is_savings && acc_spent < 0.0 {
                 total_savings_inflow += -acc_spent;
-            }
-
-            if is_pot_account {
-                raw_pot_spent += acc_spent;
             }
 
             starting_total_balance += start_bal;
@@ -533,20 +1175,50 @@ pub async fn calculate_historic_cycles(
         let pot_spent = (((raw_pot_spent - total_savings_inflow).max(0.0) * 100.0).round()) / 100.0;
         starting_total_balance = ((starting_total_balance * 100.0).round()) / 100.0;
         ending_total_balance = ((ending_total_balance * 100.0).round()) / 100.0;
+        starting_pot_budget = ((starting_pot_budget * 100.0).round()) / 100.0;
+        let _ = ending_pot_budget;
+
         let actual_daily_spend = if days_elapsed > 0 {
             (((cycle_spent / days_elapsed as f32) * 100.0).round()) / 100.0
         } else {
             0.0
         };
 
-        let monthly_income = spog.incoming_total.to_pounds_f32();
-        let pot_allowance = spog.surplus.to_pounds_f32();
+        // Pot Allowance / Budget
+        let allowance_incomings = if !cycle_incomings.is_empty() {
+            cycle_incomings.clone()
+        } else {
+            incomings.iter().filter(|i| !i.archived).collect()
+        };
+        let cycle_allowance = calculate_monthly_allowance(&allowance_incomings, &outgoings, &plans, curr_cycle_start);
+
+        let pot_allowance = if is_current {
+            spog.surplus.to_pounds_f32()
+        } else if cycle_allowance > 0.0 {
+            cycle_allowance
+        } else if let Some(ref p) = active_pot {
+            let plan_sum = p.food.unwrap_or(0.0) + p.fuel.unwrap_or(0.0) + p.transport.unwrap_or(0.0) + p.fun.unwrap_or(0.0);
+            if plan_sum > 0.0 {
+                plan_sum
+            } else if starting_pot_budget > 0.0 {
+                starting_pot_budget
+            } else {
+                monthly_income
+            }
+        } else if starting_pot_budget > 0.0 {
+            starting_pot_budget
+        } else {
+            monthly_income
+        };
+        let pot_allowance = ((pot_allowance * 100.0).round()) / 100.0;
 
         let diff = pot_spent - pot_allowance;
         let is_over = diff > 0.0;
         let absolute_pot_overspend = ((diff.abs()) * 100.0).round() / 100.0;
         let utilization = if pot_allowance > 0.0 {
             ((pot_spent / pot_allowance) * 100.0).clamp(0.0, 150.0)
+        } else if monthly_income > 0.0 {
+            ((cycle_spent / monthly_income) * 100.0).clamp(0.0, 150.0)
         } else {
             0.0
         };
@@ -557,42 +1229,35 @@ pub async fn calculate_historic_cycles(
             curr_cycle_end.format("%d %b %Y")
         );
 
-        // Build pots configured in period snapshots
+        // Build pots configured in period snapshots (matching Java HistoricPotSnapshot)
         let mut pots_in_period = Vec::new();
-        let cycle_pots: Vec<&PotRecord> = pots
-            .iter()
-            .filter(|p| {
-                let ct = p.created_at.map(|ts| if ts > 100_000_000_000 { ts / 1000 } else { ts }).unwrap_or(0);
-                ct <= end_sec
-            })
-            .collect();
+        let display_intervals = active_intervals_in_cycle;
+        let num_display = display_intervals.len();
 
-        let num_cycle_pots = cycle_pots.len();
-        for (p_idx, p) in cycle_pots.iter().enumerate() {
-            let is_first = p_idx == 0;
-            let is_last = p_idx + 1 == num_cycle_pots;
+        for (idx, interval) in display_intervals.iter().enumerate() {
+            let p = &interval.pot;
+            let is_first = idx == 0;
+            let is_last = idx + 1 == num_display;
             let is_intermediary = !is_first && !is_last;
-
-            let arch_sec = p.last_updated.map(|ts| if ts > 100_000_000_000 { ts / 1000 } else { ts });
-            let is_archived_in_period = p.archived && arch_sec.map(|t| t <= end_sec).unwrap_or(false);
-            let archived_date_human_readable = if let Some(ts) = arch_sec {
-                if let Some(dt) = chrono::DateTime::from_timestamp(ts, 0) {
-                    dt.format("%d %b %Y").to_string()
-                } else {
-                    "Archived".to_string()
-                }
+            let is_archived_in_period = interval.end <= end_sec;
+            let archived_date_human_readable = if is_archived_in_period {
+                chrono::DateTime::from_timestamp(interval.end, 0)
+                    .map(|dt| dt.format("%d %b %Y").to_string())
+                    .unwrap_or_else(|| "Replaced".to_string())
+            } else if p.archived {
+                p.last_updated
+                    .and_then(|ts| normalize_to_epoch_sec(Some(ts)))
+                    .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
+                    .map(|dt| dt.format("%d %b %Y").to_string())
+                    .unwrap_or_else(|| "Archived".to_string())
             } else {
                 "Active".to_string()
             };
 
-            let created_at_human_readable = if let Some(ts) = p.created_at {
-                let s = if ts > 100_000_000_000 { ts / 1000 } else { ts };
-                chrono::DateTime::from_timestamp(s, 0)
-                    .map(|dt| dt.format("%d %b %Y").to_string())
-                    .unwrap_or_else(|| "—".to_string())
-            } else {
-                "—".to_string()
-            };
+            let created_at_human_readable = normalize_to_epoch_sec(p.created_at)
+                .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
+                .map(|dt| dt.format("%d %b %Y").to_string())
+                .unwrap_or_else(|| "—".to_string());
 
             let mut plan_summary = p.name.clone();
             let mut sec_parts = Vec::new();
@@ -612,6 +1277,9 @@ pub async fn calculate_historic_cycles(
                 plan_summary = format!("{} ({})", plan_summary, sec_parts.join(", "));
             }
 
+            let pot_start_boundary = interval.start.max(start_sec);
+            let pot_end_boundary = interval.end.min(effective_end_sec);
+
             let p_accounts: Vec<i64> = if !p.accounts.is_empty() {
                 p.accounts.clone()
             } else {
@@ -629,9 +1297,25 @@ pub async fn calculate_historic_cycles(
                     .cloned()
                     .unwrap_or_else(|| ("Account".to_string(), "DEBIT".to_string()));
 
-                let bal_on_date = get_account_end_balance(bals, start_sec, end_sec, is_current, effective_end_sec);
-                let pa_start_bal = get_account_start_balance(bals, start_sec, end_sec);
-                let pa_spent = ((pa_start_bal - bal_on_date).max(0.0) * 100.0).round() / 100.0;
+                let start_bal_on_date = if pot_start_boundary <= start_sec + 86400 {
+                    get_account_start_balance(bals, start_sec, end_sec)
+                } else {
+                    let b = get_account_end_balance(bals, 0, pot_start_boundary, false, pot_start_boundary);
+                    if b == 0.0 {
+                        get_account_start_balance(bals, start_sec, end_sec)
+                    } else {
+                        b
+                    }
+                };
+
+                let bal_on_date = get_account_end_balance(
+                    bals,
+                    start_sec,
+                    pot_end_boundary,
+                    is_current && pot_end_boundary == effective_end_sec,
+                    pot_end_boundary,
+                );
+                let pa_spent = ((start_bal_on_date - bal_on_date).max(0.0) * 100.0).round() / 100.0;
                 pot_window_spent += pa_spent;
 
                 account_snapshots.push(AccountBalanceSnapshotDto {
@@ -711,21 +1395,21 @@ pub async fn get_historic_spent_page(
     let has_history = !cycles.is_empty();
     let completed_cycles: Vec<&HistoricCycleDto> = cycles.iter().filter(|c| !c.is_current_cycle).collect();
     let avg_spend = if !completed_cycles.is_empty() {
-        let sum: f32 = completed_cycles.iter().map(|c| c.pot_spent).sum();
+        let sum: f32 = completed_cycles.iter().map(|c| c.total_spent).sum();
         ((sum / completed_cycles.len() as f32) * 100.0).round() / 100.0
     } else {
-        cycles.first().map(|c| c.pot_spent).unwrap_or(0.0)
+        cycles.first().map(|c| c.total_spent).unwrap_or(0.0)
     };
 
-    let highest = completed_cycles.iter().max_by(|a, b| a.pot_spent.partial_cmp(&b.pot_spent).unwrap());
-    let lowest = completed_cycles.iter().min_by(|a, b| a.pot_spent.partial_cmp(&b.pot_spent).unwrap());
+    let highest = completed_cycles.iter().max_by(|a, b| a.total_spent.partial_cmp(&b.total_spent).unwrap());
+    let lowest = completed_cycles.iter().min_by(|a, b| a.total_spent.partial_cmp(&b.total_spent).unwrap());
 
     let tmpl = HistoricSpentTemplate {
         has_history,
         average_monthly_spend: avg_spend,
-        highest_spent: highest.map(|h| h.pot_spent),
+        highest_spent: highest.map(|h| h.total_spent),
         highest_spent_range: highest.map(|h| h.cycle_date_range.clone()),
-        lowest_spent: lowest.map(|l| l.pot_spent),
+        lowest_spent: lowest.map(|l| l.total_spent),
         lowest_spent_range: lowest.map(|l| l.cycle_date_range.clone()),
         cycles,
     };
@@ -776,6 +1460,145 @@ mod tests {
 
         let end = get_account_end_balance(&balances, 1000, 3000, false, 3000);
         assert_eq!(end, 180.0);
+    }
+
+    #[test]
+    fn test_start_balance_reconciles_payday_inflow_when_no_explicit_snapshot() {
+        let balances = vec![
+            (1000, 500.0), // Recorded before cycle start
+        ];
+        // Cycle starts at 2000, payday inflow is 1500.0
+        let start = get_account_start_balance_with_inflow(&balances, 2000, 4000, 1500.0);
+        assert_eq!(start, 2000.0); // 500 + 1500
+
+        // In calculate_account_net_spent, reconciliation offset applies
+        let balances2 = vec![
+            (1000, 500.0),
+            (2500, 1800.0),
+        ];
+        // 2000 start bal (with inflow), 1800 end bal -> 200 net spent
+        let net = calculate_account_net_spent(&balances2, 2000, 4000, 2000.0, 1800.0);
+        assert_eq!(net, 200.0);
+    }
+
+    #[test]
+    fn test_salary_timeline_axiom_honors_historic_edit_and_preceding_job_transition() {
+        let june2025_sec = NaiveDate::from_ymd_opt(2025, 6, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_local_timezone(chrono::Utc)
+            .unwrap()
+            .timestamp();
+
+        let old_job = IncomingRecord {
+            id: 1,
+            name: "Old Job Salary".to_string(),
+            net_value: 4168.00,
+            gross_value: Some(4168.00),
+            incoming_month_day: 30,
+            payday: true,
+            account_id: Some(1),
+            created_at: None,
+            archived_at: Some(june2025_sec),
+            archived: true,
+            history_json: None,
+        };
+
+        let oct29_26_sec = NaiveDate::from_ymd_opt(2026, 10, 29)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_local_timezone(chrono::Utc)
+            .unwrap()
+            .timestamp();
+
+        let occasio_insights = IncomingRecord {
+            id: 2,
+            name: "Occasio Insights".to_string(),
+            net_value: 2642.83,
+            gross_value: Some(2642.83),
+            incoming_month_day: 30,
+            payday: true,
+            account_id: Some(1),
+            created_at: Some(june2025_sec),
+            archived_at: None,
+            archived: false,
+            history_json: Some(format!(
+                "[{{\"timestamp\":{},\"netValue\":3111.96,\"grossValue\":3111.96,\"name\":\"Occasio Insights\",\"incomingMonthDay\":30,\"payDay\":true}}]",
+                oct29_26_sec
+            )),
+        };
+
+        let all_incomings = vec![occasio_insights.clone(), old_job.clone()];
+
+        // 1. Current cycle in October 2026 (30 Oct 2026 - 30 Nov 2026): £2,642.83
+        let oct30_26_sec = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap().and_hms_opt(0, 0, 0).unwrap().and_local_timezone(chrono::Utc).unwrap().timestamp();
+        let eff_oct = occasio_insights.get_effective_net_value_for_cycle(oct30_26_sec, oct30_26_sec + 86400 * 30);
+        assert_eq!(eff_oct, 2642.83);
+
+        // 2. September 2026 cycle (30 Sep 2026 - 30 Oct 2026): £3,111.96 (from historyJson snapshot)
+        let sep30_26_sec = NaiveDate::from_ymd_opt(2026, 9, 30).unwrap().and_hms_opt(0, 0, 0).unwrap().and_local_timezone(chrono::Utc).unwrap().timestamp();
+        let eff_sep = occasio_insights.get_effective_net_value_for_cycle(sep30_26_sec, oct30_26_sec);
+        assert_eq!(eff_sep, 3111.96);
+
+        // 3. Before June 2025 (e.g. May 30 2025): oldJob was active, occasioInsights was not yet active
+        let may30_25_sec = NaiveDate::from_ymd_opt(2025, 5, 30).unwrap().and_hms_opt(0, 0, 0).unwrap().and_local_timezone(chrono::Utc).unwrap().timestamp();
+        let start_occasio = get_effective_start_sec(&occasio_insights, &all_incomings);
+        assert_eq!(start_occasio, june2025_sec);
+        assert!(start_occasio > may30_25_sec + 86400); // occasio not active in May 2025
+
+        let eff_may = old_job.get_effective_net_value_for_cycle(may30_25_sec, may30_25_sec + 86400 * 30);
+        assert_eq!(eff_may, 4168.00);
+    }
+
+    #[test]
+    fn test_pot_intervals_match_java_replacement_chronology() {
+        let sep1_sec = 1000000;
+        let oct1_sec = 2000000;
+
+        let old_pot = PotRecord {
+            id: 1,
+            name: "Old Pot".to_string(),
+            created_at: Some(sep1_sec),
+            last_updated: Some(oct1_sec),
+            archived: true,
+            food: Some(200.0),
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![1],
+        };
+
+        let new_pot = PotRecord {
+            id: 2,
+            name: "New Pot".to_string(),
+            created_at: Some(oct1_sec),
+            last_updated: None,
+            archived: false,
+            food: Some(300.0),
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![1, 2],
+        };
+
+        let intervals = compute_pot_intervals(&[old_pot, new_pot]);
+        assert_eq!(intervals.len(), 2);
+        assert_eq!(intervals[0].start, sep1_sec);
+        assert_eq!(intervals[0].end, oct1_sec); // ended when new pot started
+        assert_eq!(intervals[1].start, oct1_sec);
+        assert_eq!(intervals[1].end, i64::MAX);
+
+        // Check active in September cycle: only old pot is active
+        let sep_active = find_active_pots_in_cycle(&intervals, sep1_sec, oct1_sec);
+        assert_eq!(sep_active.len(), 1);
+        assert_eq!(sep_active[0].pot.id, 1);
+
+        // Check active in October cycle: new pot is active
+        let oct_active = find_active_pots_in_cycle(&intervals, oct1_sec, oct1_sec + 86400 * 31);
+        assert_eq!(oct_active.len(), 1);
+        assert_eq!(oct_active[0].pot.id, 2);
     }
 
     #[test]

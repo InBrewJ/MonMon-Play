@@ -1226,10 +1226,28 @@ pub async fn get_spending_pace_page(
     let cycle_date_range = selected.cycle_date_range.clone();
     let pot_account_ids = selected.pot_account_ids.clone();
 
-    // Load balances for pot accounts
+    // Load balances and ledger modes for pot accounts
     let balance_map = crate::historic_spent::load_account_balances(&state.pool, &pot_account_ids)
         .await
         .unwrap_or_default();
+
+    let account_rows = sqlx::query(
+        "SELECT id, COALESCE(ledger_mode, 'ABL') AS ledger_mode, type FROM account WHERE id = ANY($1)",
+    )
+    .bind(&pot_account_ids)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut account_ledger_modes: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+    for r in account_rows {
+        let aid: i64 = r.get("id");
+        let lm: String = r.get("ledger_mode");
+        let atype: String = r.get("type");
+        if atype.to_uppercase() != "PENSION" && atype.to_uppercase() != "LOAN" {
+            account_ledger_modes.insert(aid, lm);
+        }
+    }
 
     // Build 5-day chunks
     let mut chunks = Vec::new();
@@ -1277,9 +1295,21 @@ pub async fn get_spending_pace_page(
             } else {
                 chunk_end_sec
             };
+
+            let tbl_map = crate::historic_spent::get_accounts_spent_sum_map(
+                &state.pool,
+                &user_id,
+                chunk_start_sec,
+                effective_end_sec,
+            )
+            .await;
+
             let mut s = 0.0f32;
             for pid in &pot_account_ids {
-                if let Some(bals) = balance_map.get(pid) {
+                let is_tbl = account_ledger_modes.get(pid).map(|m| m == "TBL").unwrap_or(false);
+                if is_tbl && tbl_map.contains_key(pid) {
+                    s += tbl_map[pid];
+                } else if let Some(bals) = balance_map.get(pid) {
                     s += crate::historic_spent::calculate_account_spent(
                         bals,
                         chunk_start_sec,
@@ -1477,5 +1507,19 @@ mod tests {
         let bills_cost = Pence::from_pounds_f64(450.00);
         let bills_only_baseline = surplus + bills_cost; // 2200.00
         assert_eq!(bills_only_baseline, Pence::from_pounds_f64(2200.00));
+    }
+
+    #[test]
+    fn test_spending_pace_chunk_calculations() {
+        // 5 days elapsed, £150 spent -> £30.00 / day
+        let total_spent = Pence::from_pounds_f64(150.00);
+        let days_elapsed = 5i64;
+        let pace = total_spent.checked_div_days(days_elapsed);
+        assert_eq!(pace, Pence::from_pounds_f64(30.00));
+
+        let max_per_day = Pence::from_pounds_f64(12.56);
+        let diff = pace - max_per_day;
+        assert_eq!(diff, Pence::from_pounds_f64(17.44));
+        assert!(pace > max_per_day);
     }
 }
