@@ -781,6 +781,7 @@ pub async fn calculate_historic_cycles(
 
     let mut ledger_accounts = Vec::new();
     let mut ledger_account_ids = Vec::new();
+    let mut debit_account_ids = Vec::new();
     let mut account_names_map: HashMap<i64, (String, String)> = HashMap::new();
     let mut account_ledger_modes: HashMap<i64, String> = HashMap::new();
 
@@ -794,15 +795,18 @@ pub async fn calculate_historic_cycles(
         account_ledger_modes.insert(acc_id, ledger_mode.clone());
         if t_upper != "LOAN" && t_upper != "MORTGAGE" && t_upper != "PENSION" {
             ledger_account_ids.push(acc_id);
-            ledger_accounts.push((acc_id, name, acc_type, ledger_mode));
+            ledger_accounts.push((acc_id, name, acc_type.clone(), ledger_mode));
+            if t_upper == "DEBIT" {
+                debit_account_ids.push(acc_id);
+            }
         }
     }
 
     // Load monthly pots for user
     let pot_rows = sqlx::query(
         r#"
-        SELECT id, name, createdat, lastupdated, COALESCE(archived, false) AS archived,
-               spendingplanfood, spendingplanfuel, spendingplantransport, spendingplanfun
+        SELECT id, spending_plan_name, createdat, lastupdated, COALESCE(archived, false) AS archived,
+               spending_plan_food, spending_plan_fuel, spending_plan_transport, spending_plan_fun
         FROM pot
         WHERE (userid = $1 OR user_id = $1)
           AND type = 'MONTHLY'
@@ -814,7 +818,7 @@ pub async fn calculate_historic_cycles(
     .await
     .unwrap_or_default();
 
-    let pot_ids: Vec<i64> = pot_rows.iter().map(|r| r.get("id")).collect();
+    let pot_ids: Vec<i64> = pot_rows.iter().filter_map(|r| r.try_get("id").ok()).collect();
     let pot_accounts_rows = if !pot_ids.is_empty() {
         sqlx::query(
             r#"
@@ -840,18 +844,18 @@ pub async fn calculate_historic_cycles(
 
     let mut pots: Vec<PotRecord> = Vec::new();
     for r in pot_rows {
-        let pid: i64 = r.get("id");
+        let pid: i64 = r.try_get("id").unwrap_or(0);
         let accounts = pot_accounts_map.get(&pid).cloned().unwrap_or_default();
         pots.push(PotRecord {
             id: pid,
-            name: r.get("name"),
-            created_at: r.get("createdat"),
-            last_updated: r.get("lastupdated"),
-            archived: r.get("archived"),
-            food: r.get("spendingplanfood"),
-            fuel: r.get("spendingplanfuel"),
-            transport: r.get("spendingplantransport"),
-            fun: r.get("spendingplanfun"),
+            name: r.try_get::<Option<String>, _>("spending_plan_name").ok().flatten().unwrap_or_default(),
+            created_at: r.try_get("createdat").ok(),
+            last_updated: r.try_get("lastupdated").ok(),
+            archived: r.try_get("archived").unwrap_or(false),
+            food: r.try_get("spending_plan_food").ok(),
+            fuel: r.try_get("spending_plan_fuel").ok(),
+            transport: r.try_get("spending_plan_transport").ok(),
+            fun: r.try_get("spending_plan_fun").ok(),
             accounts,
         });
     }
@@ -1046,11 +1050,11 @@ pub async fn calculate_historic_cycles(
                 if !found_accounts.is_empty() {
                     found_accounts
                 } else {
-                    ledger_account_ids.clone()
+                    debit_account_ids.clone()
                 }
             }
         } else {
-            ledger_account_ids.clone()
+            debit_account_ids.clone()
         };
 
         // Filter incomings active during this cycle
