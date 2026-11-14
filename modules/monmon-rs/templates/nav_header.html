@@ -1,6 +1,7 @@
 <!-- MonMon Full-Page Blocking & Blurring Loading Overlay -->
 <div id="monmon-page-loader" class="monmon-loader-overlay" aria-hidden="true" role="status" aria-live="polite">
     <div class="monmon-loader-card">
+        <button type="button" class="monmon-loader-close" id="monmon-loader-close" aria-label="Dismiss loader" title="Dismiss">&times;</button>
         <div class="monmon-loader-anim-wrap">
             <div class="monmon-loader-ring"></div>
             <img src="/assets/images/monmon-monster.svg" alt="MonMon" class="monmon-loader-monster" width="60" height="60" />
@@ -47,6 +48,7 @@
 }
 
 .monmon-loader-card {
+    position: relative;
     background: rgba(30, 41, 59, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.15);
     box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.6), 0 0 30px rgba(99, 102, 241, 0.3);
@@ -62,6 +64,36 @@
     transform: scale(0.92) translateZ(0);
     -webkit-transform: scale(0.92) translateZ(0);
     transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.monmon-loader-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.45rem;
+    font-weight: 300;
+    line-height: 1;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: color 0.15s ease, background-color 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 2;
+}
+
+.monmon-loader-close:hover,
+.monmon-loader-close:focus {
+    color: #f8fafc;
+    background: rgba(255, 255, 255, 0.12);
+    outline: none;
 }
 
 .monmon-loader-overlay.is-active .monmon-loader-card {
@@ -166,6 +198,22 @@
 
     window.showMonmonLoader = showLoader;
     window.hideMonmonLoader = hideLoader;
+
+    // Allow user to dismiss loader via the 'x' button or Escape key
+    var closeBtn = document.getElementById('monmon-loader-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            hideLoader();
+        });
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && loader && loader.classList.contains('is-active')) {
+            hideLoader();
+        }
+    });
 
     // Hide loader immediately on pageshow (e.g. Back/Forward browser cache navigation)
     window.addEventListener('pageshow', function() {
