@@ -68,10 +68,12 @@ if [ -n "${DB_PASSWORD:-}" ] && docker ps --format '{{.Names}}' | grep -q '^post
     docker exec postgres-monmon psql -U postgres -c "ALTER USER postgres WITH PASSWORD '${DB_PASSWORD}';" >/dev/null 2>&1 || true
 fi
 
-# 4. Check if Rauthy encryption key / bootstrap secrets were rotated
+# 4. Check if Rauthy encryption key was rotated or if clients (monmon-web & thread-web) need initial bootstrapping
 CURRENT_KID=$(docker run --rm -v "$APP_DIR/modules/rauthy/data:/data:ro" alpine sh -c "if [ -f /data/state_machine/db/hiqlite.db ]; then apk add --no-cache sqlite >/dev/null 2>&1 && sqlite3 /data/state_machine/db/hiqlite.db \"SELECT secret_kid FROM clients WHERE id='monmon-web';\"; fi" 2>/dev/null || true)
-if [ -n "$CURRENT_KID" ] && [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ]; then
-    echo "Detected Rauthy secret key rotation ($CURRENT_KID -> $ACTIVE_KEY_ID). Re-bootstrapping Rauthy while preserving passkeys..."
+HAS_THREAD_CLIENT=$(docker run --rm -v "$APP_DIR/modules/rauthy/data:/data:ro" alpine sh -c "if [ -f /data/state_machine/db/hiqlite.db ]; then apk add --no-cache sqlite >/dev/null 2>&1 && sqlite3 /data/state_machine/db/hiqlite.db \"SELECT count(*) FROM clients WHERE id='thread-web';\"; fi" 2>/dev/null || echo 0)
+
+if [ -n "$CURRENT_KID" ] && { [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ] || [ "${HAS_THREAD_CLIENT:-0}" = "0" ]; }; then
+    echo "Syncing Rauthy clients / key state (kid: $CURRENT_KID, thread-web present: ${HAS_THREAD_CLIENT:-0}). Bootstrapping while preserving passkeys..."
     docker compose -f docker-compose.rust.yaml stop rauthy || true
 
     PASSKEY_SQL="/tmp/rauthy_passkeys_restore.sql"
@@ -106,64 +108,10 @@ if [ -n "$CURRENT_KID" ] && [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ]; then
     fi
 fi
 
-# 5. Stop any conflicting legacy JVM containers and ensure thread-web client is registered
-echo "Ensuring no legacy port conflicts and syncing Rauthy clients..."
+# 5. Stop any conflicting legacy JVM containers
+echo "Ensuring no legacy port conflicts..."
 docker update --restart=no legmon monmon 2>/dev/null || true
 docker stop legmon monmon 2>/dev/null || true
-
-docker run --rm -v "$APP_DIR/modules/rauthy/data:/data" alpine sh -c "
-    if [ -f /data/state_machine/db/hiqlite.db ]; then
-        apk add --no-cache sqlite >/dev/null 2>&1
-        HAS_THREAD=\$(sqlite3 /data/state_machine/db/hiqlite.db \"SELECT count(*) FROM clients WHERE id='thread-web';\" 2>/dev/null || echo 0)
-        if [ \"\$HAS_THREAD\" = \"0\" ]; then
-            sqlite3 /data/state_machine/db/hiqlite.db \"
-                INSERT OR IGNORE INTO clients (
-                    id, name, enabled, confidential, secret, secret_kid,
-                    redirect_uris, post_logout_redirect_uris, allowed_origins,
-                    flows_enabled, access_token_alg, id_token_alg,
-                    auth_code_lifetime, access_token_lifetime, scopes, default_scopes,
-                    challenge, force_mfa, client_uri, contacts,
-                    backchannel_logout_uri, restrict_group_prefix, claims, claims_at_root,
-                    allowed_resources, default_aud
-                ) VALUES (
-                    'thread-web',
-                    'Thread',
-                    1,
-                    1,
-                    (SELECT secret FROM clients WHERE id='monmon-web'),
-                    (SELECT secret_kid FROM clients WHERE id='monmon-web'),
-                    'https://thread.dryark.uk/callback,http://localhost:3001/callback,http://127.0.0.1:3001/callback',
-                    'https://thread.dryark.uk/,http://localhost:3001/',
-                    'https://thread.dryark.uk,http://localhost:3001,http://127.0.0.1:3001',
-                    'authorization_code,refresh_token',
-                    'RS256',
-                    'RS256',
-                    60,
-                    3600,
-                    'openid,profile,email',
-                    'openid,profile,email',
-                    NULL,
-                    0,
-                    NULL,
-                    NULL,
-                    NULL,
-                    NULL,
-                    NULL,
-                    0,
-                    NULL,
-                    NULL
-                );
-            \"
-        fi
-        sqlite3 /data/state_machine/db/hiqlite.db \"
-            UPDATE clients SET
-                redirect_uris = 'http://localhost:9000/callback,http://localhost:9001/callback,https://monmon.dryark.uk/callback,https://thread.dryark.uk/callback,http://localhost:3001/callback,http://127.0.0.1:3001/callback',
-                post_logout_redirect_uris = 'http://localhost:9000/?defaulturlafterlogout,http://localhost:9001/?defaulturlafterlogout,https://monmon.dryark.uk/?defaulturlafterlogout,https://thread.dryark.uk/,http://localhost:3001/',
-                allowed_origins = 'http://localhost:9000,http://localhost:9001,http://localhost:8085,https://monmon.dryark.uk,https://thread.dryark.uk,http://localhost:3001,http://127.0.0.1:3001'
-            WHERE id='monmon-web' AND redirect_uris NOT LIKE '%thread.dryark.uk%';
-        \"
-    fi
-" 2>/dev/null || true
 
 # 6. Start unified Rust stack (monmon-rs, legmon-rs, rauthy) via docker compose
 echo "Starting MonMon Rust stack via docker compose..."
