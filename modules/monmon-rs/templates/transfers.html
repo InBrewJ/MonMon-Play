@@ -146,6 +146,66 @@
             color: #ef4444;
             background: rgba(239, 68, 68, 0.08);
         }
+        /* Coverage Indicator Card */
+        .coverage-indicator-card {
+            border-radius: 12px;
+            padding: 1.1rem 1.3rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.2s ease;
+        }
+        .coverage-covered {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+        }
+        .coverage-shortfall {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+        }
+        .coverage-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            letter-spacing: 0.02em;
+        }
+        .pill-green {
+            background: rgba(16, 185, 129, 0.18);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+        }
+        .pill-red {
+            background: rgba(239, 68, 68, 0.18);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+        }
+        .checklist-toggle {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: 2px solid var(--border-color, #475569);
+            background: var(--card-bg-subtle, #0f172a);
+            color: transparent;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            padding: 0;
+            flex-shrink: 0;
+            font-size: 0.75rem;
+        }
+        .checklist-toggle:hover {
+            border-color: #10b981;
+            color: rgba(16, 185, 129, 0.5);
+        }
+        .transfer-card.is-done .checklist-toggle {
+            background: #10b981;
+            border-color: #10b981;
+            color: #ffffff;
+        }
         .transfer-card-header {
             display: flex;
             justify-content: space-between;
@@ -254,21 +314,48 @@
             border-color: var(--primary, #6366f1);
             color: #ffffff;
         }
-        .checkbox-label {
+        /* Custom Checklist Checkbox */
+        .transfer-chk-box {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
             cursor: pointer;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--text-main, #f8fafc);
+            margin: 0;
+            padding: 0;
             user-select: none;
+            flex-shrink: 0;
         }
-        .checkbox-label input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            accent-color: var(--success, #10b981);
+        .transfer-chk-box input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
             cursor: pointer;
+            height: 0;
+            width: 0;
+        }
+        .transfer-chk-mark {
+            width: 26px;
+            height: 26px;
+            border-radius: 7px;
+            border: 2px solid var(--border-color, #475569);
+            background: var(--card-bg-subtle, #0f172a);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: transparent;
+            font-size: 0.82rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+        .transfer-chk-box:hover .transfer-chk-mark {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+            color: rgba(16, 185, 129, 0.6);
+        }
+        .transfer-chk-box input[type="checkbox"]:checked ~ .transfer-chk-mark,
+        .transfer-card.is-done .transfer-chk-mark {
+            background: #10b981;
+            border-color: #10b981;
+            color: #ffffff;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.45);
         }
         .breakdown-toggle-btn {
             background: none;
@@ -379,6 +466,49 @@
                 </div>
             </div>
 
+            <!-- Funding & Savings Coverage Indicator -->
+            <div class="coverage-indicator-card {% if next_window.is_fully_covered %}coverage-covered{% else %}coverage-shortfall{% endif %}">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div>
+                            {% if next_window.is_fully_covered %}
+                            <i class="fas fa-check-circle" style="color: #10b981; font-size: 1.5rem;"></i>
+                            {% else %}
+                            <i class="fas fa-exclamation-triangle" style="color: #ef4444; font-size: 1.5rem;"></i>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-size: 0.96rem; font-weight: 800; color: var(--text-main, #f8fafc);">
+                                    {% if next_window.is_fully_covered %}
+                                    Fully Covered by Savings & Monthly Allocation
+                                    {% else %}
+                                    Transfer Shortfall Exceeds Monthly Savings Budget
+                                    {% endif %}
+                                </span>
+                                <span class="coverage-pill {% if next_window.is_fully_covered %}pill-green{% else %}pill-red{% endif %}">
+                                    {% if next_window.is_fully_covered %}
+                                    <i class="fas fa-shield-alt"></i> +£{{ next_window.funding_cushion_formatted }} Reserve Cushion
+                                    {% else %}
+                                    <i class="fas fa-arrow-down"></i> -£{{ next_window.funding_cushion_formatted }} Deficit
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin-top: 4px;">
+                                Monthly Savings Budget ({{ next_window.savings_percentage }}% slider): <strong>£{{ next_window.monthly_savings_budget_formatted }}</strong>
+                                • Available Funds in Debit, Shared Bills & Savings: <strong>£{{ next_window.available_liquid_funds_formatted }}</strong>
+                                • Total Funding Capacity: <strong>£{{ next_window.total_funding_capacity_formatted }}</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="text-align: right;">
+                        <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Required Transfers</span>
+                        <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ next_window.total_to_transfer_formatted }}</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Itemized Transfer Cards -->
             <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-main, #f8fafc);">
@@ -420,8 +550,9 @@
                     <div class="transfer-card" id="card-{{ item.id }}" data-item-id="{{ item.id }}" data-window="next">
                         <div class="transfer-card-header">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <label class="checkbox-label" title="Mark transfer as completed">
-                                    <input type="checkbox" onchange="toggleTransferDone('next', '{{ item.id }}')" id="chk-next-{{ item.id }}">
+                                <label class="transfer-chk-box" title="Mark transfer as completed" onclick="event.stopPropagation();">
+                                    <input type="checkbox" id="chk-next-{{ item.id }}" onchange="toggleTransferDone('next', '{{ item.id }}')">
+                                    <span class="transfer-chk-mark"><i class="fas fa-check"></i></span>
                                 </label>
                                 <h4 class="transfer-title">
                                     {{ item.title }}
@@ -521,8 +652,9 @@
                     <div class="transfer-card" id="card-{{ item.id }}" data-item-id="{{ item.id }}" data-window="next">
                         <div class="transfer-card-header">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <label class="checkbox-label" title="Mark transfer as completed">
-                                    <input type="checkbox" onchange="toggleTransferDone('next', '{{ item.id }}')" id="chk-next-{{ item.id }}">
+                                <label class="transfer-chk-box" title="Mark transfer as completed" onclick="event.stopPropagation();">
+                                    <input type="checkbox" id="chk-next-{{ item.id }}" onchange="toggleTransferDone('next', '{{ item.id }}')">
+                                    <span class="transfer-chk-mark"><i class="fas fa-check"></i></span>
                                 </label>
                                 <h4 class="transfer-title">
                                     {{ item.title }}
@@ -649,6 +781,49 @@
                 </div>
             </div>
 
+            <!-- Funding & Savings Coverage Indicator -->
+            <div class="coverage-indicator-card {% if last_window.is_fully_covered %}coverage-covered{% else %}coverage-shortfall{% endif %}">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div>
+                            {% if last_window.is_fully_covered %}
+                            <i class="fas fa-check-circle" style="color: #10b981; font-size: 1.5rem;"></i>
+                            {% else %}
+                            <i class="fas fa-exclamation-triangle" style="color: #ef4444; font-size: 1.5rem;"></i>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-size: 0.96rem; font-weight: 800; color: var(--text-main, #f8fafc);">
+                                    {% if last_window.is_fully_covered %}
+                                    Fully Covered by Savings & Monthly Allocation
+                                    {% else %}
+                                    Transfer Shortfall Exceeds Monthly Savings Budget
+                                    {% endif %}
+                                </span>
+                                <span class="coverage-pill {% if last_window.is_fully_covered %}pill-green{% else %}pill-red{% endif %}">
+                                    {% if last_window.is_fully_covered %}
+                                    <i class="fas fa-shield-alt"></i> +£{{ last_window.funding_cushion_formatted }} Reserve Cushion
+                                    {% else %}
+                                    <i class="fas fa-arrow-down"></i> -£{{ last_window.funding_cushion_formatted }} Deficit
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin-top: 4px;">
+                                Monthly Savings Budget ({{ last_window.savings_percentage }}% slider): <strong>£{{ last_window.monthly_savings_budget_formatted }}</strong>
+                                • Available Funds in Debit, Shared Bills & Savings: <strong>£{{ last_window.available_liquid_funds_formatted }}</strong>
+                                • Total Funding Capacity: <strong>£{{ last_window.total_funding_capacity_formatted }}</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="text-align: right;">
+                        <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Required Transfers</span>
+                        <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ last_window.total_to_transfer_formatted }}</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Itemized Transfer Cards -->
             <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-main, #f8fafc);">
@@ -690,8 +865,9 @@
                     <div class="transfer-card" id="card-last-{{ item.id }}" data-item-id="{{ item.id }}" data-window="last">
                         <div class="transfer-card-header">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <label class="checkbox-label" title="Mark transfer as completed">
-                                    <input type="checkbox" onchange="toggleTransferDone('last', '{{ item.id }}')" id="chk-last-{{ item.id }}">
+                                <label class="transfer-chk-box" title="Mark transfer as completed" onclick="event.stopPropagation();">
+                                    <input type="checkbox" id="chk-last-{{ item.id }}" onchange="toggleTransferDone('last', '{{ item.id }}')">
+                                    <span class="transfer-chk-mark"><i class="fas fa-check"></i></span>
                                 </label>
                                 <h4 class="transfer-title">
                                     {{ item.title }}
@@ -791,8 +967,9 @@
                     <div class="transfer-card" id="card-last-{{ item.id }}" data-item-id="{{ item.id }}" data-window="last">
                         <div class="transfer-card-header">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <label class="checkbox-label" title="Mark transfer as completed">
-                                    <input type="checkbox" onchange="toggleTransferDone('last', '{{ item.id }}')" id="chk-last-{{ item.id }}">
+                                <label class="transfer-chk-box" title="Mark transfer as completed" onclick="event.stopPropagation();">
+                                    <input type="checkbox" id="chk-last-{{ item.id }}" onchange="toggleTransferDone('last', '{{ item.id }}')">
+                                    <span class="transfer-chk-mark"><i class="fas fa-check"></i></span>
                                 </label>
                                 <h4 class="transfer-title">
                                     {{ item.title }}

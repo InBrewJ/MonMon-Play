@@ -71,6 +71,18 @@ pub struct PaydayWindowDto {
     pub source_account_balance_formatted: String,
     pub source_account_remaining_balance: f32,
     pub source_account_remaining_balance_formatted: String,
+    pub monthly_income: f32,
+    pub monthly_income_formatted: String,
+    pub savings_percentage: i32,
+    pub monthly_savings_budget: f32,
+    pub monthly_savings_budget_formatted: String,
+    pub available_liquid_funds: f32,
+    pub available_liquid_funds_formatted: String,
+    pub total_funding_capacity: f32,
+    pub total_funding_capacity_formatted: String,
+    pub funding_cushion: f32,
+    pub funding_cushion_formatted: String,
+    pub is_fully_covered: bool,
     pub outgoings_items: Vec<PaydayTransferItemDto>,
     pub savings_items: Vec<PaydayTransferItemDto>,
     pub items: Vec<PaydayTransferItemDto>,
@@ -396,6 +408,11 @@ pub async fn calculate_payday_window(
     .fetch_optional(pool)
     .await?;
 
+    let savings_percentage: i32 = active_plan_row
+        .as_ref()
+        .map(|r| r.get("savingspercentage"))
+        .unwrap_or(0);
+
     if let Some(plan_row) = active_plan_row {
         let plan_id: i64 = plan_row.get("id");
 
@@ -486,6 +503,46 @@ pub async fn calculate_payday_window(
     let total_transfers: f32 = items.iter().map(|it| it.amount).sum();
     let source_remaining = source_acc_bal - total_transfers;
 
+    // Monthly income total (e.g. from salary and incoming records)
+    let monthly_income: f32 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(netvalue), 0.0)::real
+        FROM incoming
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+        "#,
+    )
+    .bind(resolved_uid)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0.0);
+
+    // Available liquid funds across debit, shared_debit_bills, and savings accounts
+    let available_liquid_funds: f32 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(latest_bal), 0.0)::real
+        FROM (
+            SELECT a.id,
+                   COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS latest_bal
+            FROM account a
+            WHERE (a.userid = $1 OR a.user_id = $1)
+              AND (a.archived IS NULL OR a.archived = false)
+              AND UPPER(a.type) IN ('DEBIT', 'CURRENT', 'DEBIT_SHARED_BILLS', 'SHARED_DEBIT_BILLS', 'SAVINGS', 'SHORT_TERM_SAVINGS', 'LONG_TERM_SAVINGS')
+        ) t
+        WHERE latest_bal > 0.0
+        "#,
+    )
+    .bind(resolved_uid)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0.0);
+
+    let monthly_savings_budget = (monthly_income * (savings_percentage as f32 / 100.0) * 100.0).round() / 100.0;
+    let total_funding_capacity = ((monthly_savings_budget + available_liquid_funds) * 100.0).round() / 100.0;
+    let funding_cushion_val = total_funding_capacity - total_transfers;
+    let is_fully_covered = funding_cushion_val >= 0.0;
+    let funding_cushion = (funding_cushion_val.abs() * 100.0).round() / 100.0;
+
     let payday_display = payday_date.format("%A, %e %b %Y").to_string();
 
     Ok(PaydayWindowDto {
@@ -502,6 +559,18 @@ pub async fn calculate_payday_window(
         source_account_balance_formatted: format!("{:.2}", source_acc_bal),
         source_account_remaining_balance: (source_remaining * 100.0).round() / 100.0,
         source_account_remaining_balance_formatted: format!("{:.2}", source_remaining),
+        monthly_income: (monthly_income * 100.0).round() / 100.0,
+        monthly_income_formatted: format!("{:.2}", monthly_income),
+        savings_percentage,
+        monthly_savings_budget,
+        monthly_savings_budget_formatted: format!("{:.2}", monthly_savings_budget),
+        available_liquid_funds: (available_liquid_funds * 100.0).round() / 100.0,
+        available_liquid_funds_formatted: format!("{:.2}", available_liquid_funds),
+        total_funding_capacity,
+        total_funding_capacity_formatted: format!("{:.2}", total_funding_capacity),
+        funding_cushion,
+        funding_cushion_formatted: format!("{:.2}", funding_cushion),
+        is_fully_covered,
         outgoings_items,
         savings_items,
         items,

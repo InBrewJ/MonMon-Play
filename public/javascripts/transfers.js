@@ -169,8 +169,8 @@
             card.dataset.hasClickListener = 'true';
 
             card.addEventListener('click', function (e) {
-                // If clicked inside interactive controls (buttons, links, form inputs, tables), don't intercept
-                if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input') || e.target.closest('table') || e.target.closest('.breakdown-toggle-btn')) {
+                // If clicked inside interactive controls (buttons, links, form inputs, labels, tables), don't intercept
+                if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input') || e.target.closest('label') || e.target.closest('table') || e.target.closest('.breakdown-toggle-btn')) {
                     return;
                 }
                 var windowType = card.getAttribute('data-window');
