@@ -65,6 +65,9 @@ pub struct OutgoingsTemplate {
     pub current_month_name: String,
     pub editing: bool,
     pub editing_outgoing: Option<Outgoing>,
+    pub yearly_bills_account_id: Option<i64>,
+    pub yearly_bills_monthly_saving: f32,
+    pub yearly_bills_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +93,7 @@ pub struct OutgoingViewDto {
     pub is_due_now: bool,
     pub frequency_label: String,
     pub next_due_label: String,
+    pub is_calculated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -440,13 +444,73 @@ pub async fn get_outgoings_page(
             is_due_now,
             frequency_label: o.get_frequency_label(),
             next_due_label,
+            is_calculated: false,
         }
     }).collect();
+
+    let yearly_bills_account_id: Option<i64> = sqlx::query_scalar(
+        "SELECT yearly_bills_account_id FROM user_access WHERE (userid = $1 OR username = $1) LIMIT 1"
+    )
+    .bind(&user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .flatten();
+
+    let nominal_payday: i32 = sqlx::query_scalar(
+        "SELECT incomingmonthday FROM incoming WHERE (userid = $1 OR user_id = $1) AND payday = true LIMIT 1"
+    )
+    .bind(&user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .flatten()
+    .unwrap_or(25);
+
+    let (yearly_bills_monthly_saving, yearly_bills_count) =
+        crate::models::calculate_yearly_bills_monthly_saving(today, nominal_payday, &outgoings);
+
+    let mut outgoing_dtos = outgoing_dtos;
+    if let Some(target_acc_id) = yearly_bills_account_id {
+        if yearly_bills_monthly_saving > 0.0 {
+            let target_acc = accounts.iter().find(|a| a.id == target_acc_id);
+            let (acc_name, acc_type) = match target_acc {
+                Some(a) => (Some(a.name.clone()), Some(a.account_type.clone())),
+                None => (None, None),
+            };
+            let calculated_dto = OutgoingViewDto {
+                id: -999,
+                name: "Yearly Bills Reserve".to_string(),
+                cost: yearly_bills_monthly_saving,
+                outgoing_day: nominal_payday,
+                effective_day: nominal_payday as u32,
+                is_adjusted: false,
+                outgoing_month: None,
+                year_interval: None,
+                starting_year: None,
+                bill: true,
+                rent: false,
+                hidden_from_total: false,
+                paused: false,
+                pause_reason: None,
+                account_id: Some(target_acc_id),
+                account_name: acc_name,
+                account_type: acc_type,
+                is_yearly: false,
+                is_due_now: true,
+                frequency_label: "Monthly (Calculated)".to_string(),
+                next_due_label: "Every Payday".to_string(),
+                is_calculated: true,
+            };
+            outgoing_dtos.push(calculated_dto);
+        }
+    }
 
     let outgoing_total: f32 = outgoing_dtos.iter()
         .filter(|o| !o.paused && !o.hidden_from_total && o.is_due_now)
         .map(|o| o.cost)
         .sum();
+    let outgoing_total = ((outgoing_total * 100.0).round()) / 100.0;
 
     let tmpl = OutgoingsTemplate {
         outgoings: outgoing_dtos,
@@ -456,6 +520,9 @@ pub async fn get_outgoings_page(
         current_month_name,
         editing: false,
         editing_outgoing: None,
+        yearly_bills_account_id,
+        yearly_bills_monthly_saving,
+        yearly_bills_count,
     };
     tmpl.render()
         .map(|html| Html(html).into_response())
@@ -523,13 +590,73 @@ pub async fn get_edit_outgoing_page(
             is_due_now,
             frequency_label: o.get_frequency_label(),
             next_due_label,
+            is_calculated: false,
         }
     }).collect();
+
+    let yearly_bills_account_id: Option<i64> = sqlx::query_scalar(
+        "SELECT yearly_bills_account_id FROM user_access WHERE (userid = $1 OR username = $1) LIMIT 1"
+    )
+    .bind(&user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .flatten();
+
+    let nominal_payday: i32 = sqlx::query_scalar(
+        "SELECT incomingmonthday FROM incoming WHERE (userid = $1 OR user_id = $1) AND payday = true LIMIT 1"
+    )
+    .bind(&user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .flatten()
+    .unwrap_or(25);
+
+    let (yearly_bills_monthly_saving, yearly_bills_count) =
+        crate::models::calculate_yearly_bills_monthly_saving(today, nominal_payday, &outgoings);
+
+    let mut outgoing_dtos = outgoing_dtos;
+    if let Some(target_acc_id) = yearly_bills_account_id {
+        if yearly_bills_monthly_saving > 0.0 {
+            let target_acc = accounts.iter().find(|a| a.id == target_acc_id);
+            let (acc_name, acc_type) = match target_acc {
+                Some(a) => (Some(a.name.clone()), Some(a.account_type.clone())),
+                None => (None, None),
+            };
+            let calculated_dto = OutgoingViewDto {
+                id: -999,
+                name: "Yearly Bills Reserve".to_string(),
+                cost: yearly_bills_monthly_saving,
+                outgoing_day: nominal_payday,
+                effective_day: nominal_payday as u32,
+                is_adjusted: false,
+                outgoing_month: None,
+                year_interval: None,
+                starting_year: None,
+                bill: true,
+                rent: false,
+                hidden_from_total: false,
+                paused: false,
+                pause_reason: None,
+                account_id: Some(target_acc_id),
+                account_name: acc_name,
+                account_type: acc_type,
+                is_yearly: false,
+                is_due_now: true,
+                frequency_label: "Monthly (Calculated)".to_string(),
+                next_due_label: "Every Payday".to_string(),
+                is_calculated: true,
+            };
+            outgoing_dtos.push(calculated_dto);
+        }
+    }
 
     let outgoing_total: f32 = outgoing_dtos.iter()
         .filter(|o| !o.paused && !o.hidden_from_total && o.is_due_now)
         .map(|o| o.cost)
         .sum();
+    let outgoing_total = ((outgoing_total * 100.0).round()) / 100.0;
 
     let tmpl = OutgoingsTemplate {
         outgoings: outgoing_dtos,
@@ -539,10 +666,47 @@ pub async fn get_edit_outgoing_page(
         current_month_name,
         editing,
         editing_outgoing,
+        yearly_bills_account_id,
+        yearly_bills_monthly_saving,
+        yearly_bills_count,
     };
     tmpl.render()
         .map(|html| Html(html).into_response())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct YearlyBillsTargetAccountForm {
+    #[serde(alias = "accountId")]
+    pub account_id: Option<String>,
+}
+
+pub async fn post_yearly_bills_target_account(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(form): Form<YearlyBillsTargetAccountForm>,
+) -> Result<Redirect, (StatusCode, String)> {
+    if !is_authenticated(&headers) {
+        return Ok(Redirect::to("/login"));
+    }
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let acc_id: Option<i64> = form
+        .account_id
+        .as_deref()
+        .and_then(|s| s.trim().parse::<i64>().ok())
+        .filter(|&id| id > 0);
+
+    let _ = sqlx::query(
+        "UPDATE user_access SET yearly_bills_account_id = $1 WHERE (userid = $2 OR username = $2)",
+    )
+    .bind(acc_id)
+    .bind(&user_id)
+    .execute(&state.pool)
+    .await;
+
+    Ok(Redirect::to("/myOutgoings?tab=yearly"))
 }
 
 fn resolve_frequency_fields(form: &OutgoingForm) -> (Option<i32>, Option<i32>, Option<i32>) {

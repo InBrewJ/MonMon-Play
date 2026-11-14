@@ -297,6 +297,12 @@ async fn main() {
 
     let _ = passkey::init_passkey_table(&pool).await;
 
+    let _ = sqlx::query(
+        "ALTER TABLE user_access ADD COLUMN IF NOT EXISTS yearly_bills_account_id BIGINT REFERENCES account(id) ON DELETE SET NULL"
+    )
+    .execute(&pool)
+    .await;
+
     let state = Arc::new(AppState { pool });
 
     let app = Router::new()
@@ -321,6 +327,8 @@ async fn main() {
         .route("/settings/rejectUser/:id", post(admin::reject_user_handler))
         .route("/waitinglist", get(admin::get_waiting_list))
         .route("/myOutgoings", get(management::get_outgoings_page))
+        .route("/myOutgoings/yearlyTargetAccount", post(management::post_yearly_bills_target_account))
+        .route("/api/outgoings/yearly-target-account", post(management::post_yearly_bills_target_account))
         .route("/editOutgoing/:id", get(management::get_edit_outgoing_page))
         .route("/updateOutgoing/:id", post(management::post_update_outgoing_form))
         .route("/updateOutgoing", post(management::post_update_outgoing_form_direct))

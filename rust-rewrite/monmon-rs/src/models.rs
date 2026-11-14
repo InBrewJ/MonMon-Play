@@ -1,4 +1,4 @@
-use chrono::Datelike;
+use chrono::{Datelike, Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -205,6 +205,102 @@ pub fn total_effective_outgoings(outgoings: &[Outgoing], as_of: chrono::NaiveDat
         .sum()
 }
 
+/// Counts how many paydays occur strictly between `today` and `due_date`.
+/// If today is on or after `due_date`, returns 0.
+/// If today itself is an actual payday, that payday is counted since it is an immediate opportunity
+/// to top up the reserve before the bill is due.
+pub fn count_paydays_between(today: NaiveDate, due_date: NaiveDate, nominal_payday: i32) -> u32 {
+    if today >= due_date {
+        return 0;
+    }
+    let mut count = 0;
+    let nominal = nominal_payday.max(1);
+
+    // If today is an actual payday, count it
+    let today_payday = crate::anchoring::get_actual_payday_date(nominal, today.year(), today.month());
+    if today == today_payday && today < due_date {
+        count += 1;
+    }
+
+    let mut probe_date = if today == today_payday {
+        today + Duration::days(1)
+    } else {
+        today
+    };
+
+    loop {
+        let next_pay = crate::anchoring::find_next_payday_date(probe_date, nominal);
+        if next_pay < due_date {
+            count += 1;
+            probe_date = next_pay + Duration::days(1);
+        } else {
+            break;
+        }
+        if count > 120 {
+            break;
+        }
+    }
+    count
+}
+
+/// Calculates the monthly sinking fund amount needed across all active upcoming yearly outgoings.
+/// For each yearly bill:
+/// - If it is due in the current month, the bill itself is due now as an active outgoing, so no sinking fund top-up this month.
+/// - Otherwise, divides the bill cost by the number of remaining paydays before the bill is due.
+/// Returns (total_monthly_saving, count_of_upcoming_bills).
+pub fn calculate_yearly_bills_monthly_saving(
+    as_of: NaiveDate,
+    nominal_payday: i32,
+    outgoings: &[Outgoing],
+) -> (f32, usize) {
+    let mut total_monthly_saving: f32 = 0.0;
+    let mut count_upcoming_bills = 0;
+
+    for o in outgoings {
+        if !o.is_yearly() {
+            continue;
+        }
+        if o.paused.unwrap_or(false) || o.hidden_from_total.unwrap_or(false) || o.archived.unwrap_or(false) {
+            continue;
+        }
+        let target_month = match o.outgoing_month {
+            Some(m) if m > 0 => m,
+            _ => continue,
+        };
+
+        // If the outgoing is due in the current month, it is an active outgoing this month.
+        // It is paid directly this month, so do not double-bill with a sinking fund top-up.
+        if o.is_due_in_month(as_of) {
+            continue;
+        }
+
+        let next_due_year = o.get_next_due_year(as_of);
+        let mut due_date = crate::anchoring::get_actual_outgoing_date(
+            o.outgoing_day,
+            next_due_year,
+            target_month as u32,
+        );
+        if due_date <= as_of {
+            let interval = o.get_year_interval();
+            due_date = crate::anchoring::get_actual_outgoing_date(
+                o.outgoing_day,
+                next_due_year + interval,
+                target_month as u32,
+            );
+        }
+
+        let paydays_remaining = count_paydays_between(as_of, due_date, nominal_payday);
+        if paydays_remaining > 0 {
+            let per_payday = o.cost / (paydays_remaining as f32);
+            total_monthly_saving += per_payday;
+            count_upcoming_bills += 1;
+        }
+    }
+
+    let rounded = ((total_monthly_saving * 100.0).round()) / 100.0;
+    (rounded, count_upcoming_bills)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewOutgoing {
@@ -387,5 +483,97 @@ mod tests {
         // In July 2026: only monthly (50) = 50
         let july_total = total_effective_outgoings(&list, NaiveDate::from_ymd_opt(2026, 7, 15).unwrap());
         assert_eq!(july_total, 50.0);
+    }
+
+    #[test]
+    fn test_count_paydays_between_two_months_ahead() {
+        // Today is June 10, 2026. Payday nominal 25. Due date August 10, 2026.
+        // Paydays: 2026-06-25, 2026-07-24 (both before 2026-08-10) -> 2 paydays
+        let today = NaiveDate::from_ymd_opt(2026, 6, 10).unwrap();
+        let due = NaiveDate::from_ymd_opt(2026, 8, 10).unwrap();
+        let count = count_paydays_between(today, due, 25);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_count_paydays_between_after_payday_leaves_one_month() {
+        // Today is June 28, 2026 (after June 25 payday). Due date August 10, 2026.
+        // Only remaining payday is July 24 -> 1 payday
+        let today = NaiveDate::from_ymd_opt(2026, 6, 28).unwrap();
+        let due = NaiveDate::from_ymd_opt(2026, 8, 10).unwrap();
+        let count = count_paydays_between(today, due, 25);
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_count_paydays_between_on_due_date_or_after_is_zero() {
+        let today = NaiveDate::from_ymd_opt(2026, 8, 10).unwrap();
+        let due = NaiveDate::from_ymd_opt(2026, 8, 10).unwrap();
+        assert_eq!(count_paydays_between(today, due, 25), 0);
+    }
+
+    #[test]
+    fn test_calculate_yearly_bills_monthly_saving_user_car_insurance_example() {
+        let mut car_insurance = make_test_outgoing(Some(8), Some(1), None);
+        car_insurance.cost = 1000.0;
+        car_insurance.outgoing_day = 10;
+        let outgoings = vec![car_insurance];
+
+        // 1. In June before payday (June 10) -> 2 paydays remaining -> £500.00/mo
+        let (saving_june, count_june) = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 6, 10).unwrap(),
+            25,
+            &outgoings,
+        );
+        assert_eq!(count_june, 1);
+        assert_eq!(saving_june, 500.00);
+
+        // 2. In June after payday (June 28) -> 1 payday remaining -> £1000.00/mo
+        let (saving_late_june, count_late_june) = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 6, 28).unwrap(),
+            25,
+            &outgoings,
+        );
+        assert_eq!(count_late_june, 1);
+        assert_eq!(saving_late_june, 1000.00);
+
+        // 3. In August (due month) -> 0 saving because bill itself is due as an active outgoing this month
+        let (saving_aug, count_aug) = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 8, 5).unwrap(),
+            25,
+            &outgoings,
+        );
+        assert_eq!(count_aug, 0);
+        assert_eq!(saving_aug, 0.0);
+    }
+
+    #[test]
+    fn test_calculate_yearly_bills_monthly_saving_multiple_bills_and_paused() {
+        let mut bill_aug = make_test_outgoing(Some(8), Some(1), None);
+        bill_aug.cost = 1000.0;
+        bill_aug.outgoing_day = 10;
+
+        let mut bill_nov = make_test_outgoing(Some(11), Some(1), None);
+        bill_nov.cost = 120.0;
+        bill_nov.outgoing_day = 15;
+
+        let mut paused_bill = make_test_outgoing(Some(9), Some(1), None);
+        paused_bill.cost = 300.0;
+        paused_bill.paused = Some(true);
+
+        let outgoings = vec![bill_aug, bill_nov, paused_bill];
+
+        // On June 10:
+        // bill_aug: 2 paydays -> 1000 / 2 = 500
+        // bill_nov: June, July, Aug, Sept, Oct paydays = 5 paydays -> 120 / 5 = 24
+        // paused_bill is ignored
+        // Total = 524.00
+        let (saving, count) = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 6, 10).unwrap(),
+            25,
+            &outgoings,
+        );
+        assert_eq!(count, 2);
+        assert_eq!(saving, 524.00);
     }
 }

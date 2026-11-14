@@ -1,3 +1,4 @@
+use crate::models::Outgoing;
 use crate::money::Pence;
 use askama::Template;
 use chrono::{Datelike, Local};
@@ -275,6 +276,56 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         }
     }
 
+    let yearly_bills_acc_id: Option<i64> = sqlx::query_scalar(
+        "SELECT yearly_bills_account_id FROM user_access WHERE (userid = $1 OR username = $1) LIMIT 1"
+    )
+    .bind(&user_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None)
+    .flatten();
+
+    let mut yearly_bills_monthly_saving = 0.0f32;
+    if yearly_bills_acc_id.is_some() {
+        let yearly_rows = sqlx::query_as::<_, Outgoing>(
+            r#"
+            SELECT id, name, cost, outgoingday, bill, rent, hiddenfromtotal, paused,
+                   outgoingmonth, startingyear, yearinterval, account_id, user_id,
+                   pause_reason, paused_at, archived
+            FROM outgoing
+            WHERE (userid = $1 OR user_id = $1)
+              AND (archived IS NULL OR archived = false)
+              AND (hiddenfromtotal IS NULL OR hiddenfromtotal = false)
+              AND (paused IS NULL OR paused = false)
+              AND (outgoingmonth IS NOT NULL AND outgoingmonth > 0)
+            "#,
+        )
+        .bind(&user_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        let (saving, _) = crate::models::calculate_yearly_bills_monthly_saving(
+            today,
+            nominal_payday,
+            &yearly_rows,
+        );
+        yearly_bills_monthly_saving = saving;
+
+        if saving > 0.0 {
+            let saving_pence = Pence::from_pounds_f32(saving);
+            outgoing_total += saving_pence;
+            bills_cost += saving_pence;
+            let effective_payday =
+                crate::anchoring::get_effective_outgoing_day(nominal_payday, today) as i32;
+            if effective_payday <= today_day {
+                completed_outgoings += saving_pence;
+            } else {
+                pending_outgoings += saving_pence;
+            }
+        }
+    }
+
     // Surplus & Allowances (accounting for active Savings Plan percentage)
     let savings_plan_row = sqlx::query(
         r#"
@@ -463,6 +514,27 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
                 }
             } else {
                 pending += cost;
+            }
+        }
+
+        if yearly_bills_acc_id == Some(acc_id) && yearly_bills_monthly_saving > 0.0 {
+            let saving_pence = Pence::from_pounds_f32(yearly_bills_monthly_saving);
+            let eff_day =
+                crate::anchoring::get_effective_outgoing_day(nominal_payday, today) as i32;
+            let act_date = crate::anchoring::get_actual_outgoing_date(
+                nominal_payday,
+                current_year,
+                current_month as u32,
+            );
+            if eff_day <= today_day {
+                already_paid += saving_pence;
+                if latest_due_day.map_or(true, |d| eff_day >= d) {
+                    latest_due_day = Some(eff_day);
+                    latest_due_date = Some(act_date);
+                    latest_outgoing_name = Some("Yearly Bills Reserve".to_string());
+                }
+            } else {
+                pending += saving_pence;
             }
         }
 

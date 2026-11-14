@@ -13,22 +13,27 @@
 
         function applyTabFilter(tabName) {
             var visibleCount = 0;
+            var configPanel = document.getElementById('yearly-bills-config-panel');
+            if (configPanel) {
+                configPanel.style.display = (tabName === 'yearly') ? 'block' : 'none';
+            }
 
             function filterElement(el) {
                 var isYearly = el.getAttribute('data-is-yearly') === 'true';
-                var isDueNow = el.getAttribute('data-due-now') === 'true';
+                var isDueNow = el.getAttribute('data-due-now') === 'true' || el.getAttribute('data-is-due-now') === 'true';
                 var isPaused = el.getAttribute('data-is-paused') === 'true';
+                var isCalculated = el.getAttribute('data-is-calculated') === 'true';
                 var show = false;
 
                 if (tabName === 'all') {
                     show = true;
                 } else if (tabName === 'paused') {
-                    show = isPaused;
+                    show = isPaused && !isCalculated;
                 } else if (tabName === 'yearly') {
-                    show = isYearly;
+                    show = isYearly && !isCalculated;
                 } else {
                     // Default tab: 'active' / 'monthly' -> show monthly bills and yearly bills that roll around in current month
-                    show = !isYearly || isDueNow;
+                    show = (!isPaused && (!isYearly || isDueNow || isCalculated));
                 }
 
                 if (show) {
@@ -82,8 +87,23 @@
             });
         });
 
-        // Ensure default active filter ('Monthly and due now') is applied on initial load
-        applyTabFilter('active');
+        // Apply initial filter (checking URL ?tab= parameter or defaulting to 'active')
+        var urlParams = new URLSearchParams(window.location.search);
+        var initialTab = urlParams.get('tab') || 'active';
+        var initialBtn = document.querySelector('.outgoings-tab-btn[data-tab="' + initialTab + '"]');
+        if (initialBtn) {
+            tabBtns.forEach(function (b) {
+                b.classList.remove('active');
+                b.style.borderBottom = 'none';
+                b.style.fontWeight = '500';
+                b.style.color = 'var(--text-muted)';
+            });
+            initialBtn.classList.add('active');
+            initialBtn.style.borderBottom = '2px solid var(--primary)';
+            initialBtn.style.fontWeight = '700';
+            initialBtn.style.color = 'var(--primary)';
+        }
+        applyTabFilter(initialTab);
 
         // Form frequency toggle (Monthly vs Yearly)
         var freqSelect = document.getElementById('outgoing-frequency');
