@@ -299,6 +299,18 @@ async fn main() {
     let _ = passkey::init_passkey_table(&pool).await;
 
     let _ = sqlx::query(
+        "ALTER TABLE user_access ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)"
+    )
+    .execute(&pool)
+    .await;
+
+    let _ = sqlx::query(
+        "UPDATE user_access SET user_id = userid WHERE user_id IS NULL AND userid IS NOT NULL"
+    )
+    .execute(&pool)
+    .await;
+
+    let _ = sqlx::query(
         "ALTER TABLE user_access ADD COLUMN IF NOT EXISTS yearly_bills_account_id BIGINT REFERENCES account(id) ON DELETE SET NULL"
     )
     .execute(&pool)

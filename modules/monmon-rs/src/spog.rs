@@ -992,7 +992,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
 
     // Check yearly bills autosave to add to payday transfers count & total
     let yearly_account_row = sqlx::query(
-        "SELECT yearly_bills_account_id FROM user_access WHERE (user_id = $1 OR userid = $1) LIMIT 1"
+        "SELECT yearly_bills_account_id FROM user_access WHERE (userid = $1 OR username = $1) LIMIT 1"
     )
     .bind(&user_id)
     .fetch_optional(pool)
