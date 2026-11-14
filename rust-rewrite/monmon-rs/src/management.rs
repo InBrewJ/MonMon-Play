@@ -97,6 +97,8 @@ pub struct OutgoingViewDto {
     pub frequency_label: String,
     pub next_due_label: String,
     pub is_calculated: bool,
+    pub calculated_tooltip: Option<String>,
+    pub calculated_breakdown: Option<Vec<crate::models::YearlyBillItemBreakdown>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -448,6 +450,8 @@ pub async fn get_outgoings_page(
             frequency_label: o.get_frequency_label(),
             next_due_label,
             is_calculated: false,
+            calculated_tooltip: None,
+            calculated_breakdown: None,
         }
     }).collect();
 
@@ -490,6 +494,11 @@ pub async fn get_outgoings_page(
         target_balance,
     );
 
+    let actual_payday = crate::anchoring::get_actual_payday_date(nominal_payday, today.year(), today.month());
+    let effective_day = actual_payday.day();
+    let is_adjusted = effective_day as i32 != nominal_payday;
+    let tooltip_str = calc.format_tooltip();
+
     let mut outgoing_dtos = outgoing_dtos;
     if let Some(target_acc_id) = yearly_bills_account_id {
         if calc.monthly_saving > 0.0 {
@@ -503,8 +512,8 @@ pub async fn get_outgoings_page(
                 name: "Yearly Bills Reserve".to_string(),
                 cost: calc.monthly_saving,
                 outgoing_day: nominal_payday,
-                effective_day: nominal_payday as u32,
-                is_adjusted: false,
+                effective_day,
+                is_adjusted,
                 outgoing_month: None,
                 year_interval: None,
                 starting_year: None,
@@ -521,6 +530,8 @@ pub async fn get_outgoings_page(
                 frequency_label: "Monthly (Calculated)".to_string(),
                 next_due_label: "Every Payday".to_string(),
                 is_calculated: true,
+                calculated_tooltip: Some(tooltip_str.clone()),
+                calculated_breakdown: Some(calc.breakdown.clone()),
             };
             outgoing_dtos.push(calculated_dto);
         }
@@ -614,6 +625,8 @@ pub async fn get_edit_outgoing_page(
             frequency_label: o.get_frequency_label(),
             next_due_label,
             is_calculated: false,
+            calculated_tooltip: None,
+            calculated_breakdown: None,
         }
     }).collect();
 
@@ -656,6 +669,11 @@ pub async fn get_edit_outgoing_page(
         target_balance,
     );
 
+    let actual_payday = crate::anchoring::get_actual_payday_date(nominal_payday, today.year(), today.month());
+    let effective_day = actual_payday.day();
+    let is_adjusted = effective_day as i32 != nominal_payday;
+    let tooltip_str = calc.format_tooltip();
+
     let mut outgoing_dtos = outgoing_dtos;
     if let Some(target_acc_id) = yearly_bills_account_id {
         if calc.monthly_saving > 0.0 {
@@ -669,8 +687,8 @@ pub async fn get_edit_outgoing_page(
                 name: "Yearly Bills Reserve".to_string(),
                 cost: calc.monthly_saving,
                 outgoing_day: nominal_payday,
-                effective_day: nominal_payday as u32,
-                is_adjusted: false,
+                effective_day,
+                is_adjusted,
                 outgoing_month: None,
                 year_interval: None,
                 starting_year: None,
@@ -687,6 +705,8 @@ pub async fn get_edit_outgoing_page(
                 frequency_label: "Monthly (Calculated)".to_string(),
                 next_due_label: "Every Payday".to_string(),
                 is_calculated: true,
+                calculated_tooltip: Some(tooltip_str.clone()),
+                calculated_breakdown: Some(calc.breakdown.clone()),
             };
             outgoing_dtos.push(calculated_dto);
         }

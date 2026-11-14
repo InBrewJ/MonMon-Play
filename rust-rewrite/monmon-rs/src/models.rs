@@ -243,7 +243,19 @@ pub fn count_paydays_between(today: NaiveDate, due_date: NaiveDate, nominal_payd
     count
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YearlyBillItemBreakdown {
+    pub name: String,
+    pub total_cost: f32,
+    pub covered_amount: f32,
+    pub remaining_deficit: f32,
+    pub paydays_remaining: u32,
+    pub monthly_saving: f32,
+    pub due_date: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct YearlyBillsReserveCalculation {
     pub monthly_saving: f32,
@@ -251,6 +263,29 @@ pub struct YearlyBillsReserveCalculation {
     pub total_upcoming_cost: f32,
     pub remaining_deficit: f32,
     pub target_account_balance: f32,
+    pub breakdown: Vec<YearlyBillItemBreakdown>,
+}
+
+impl YearlyBillsReserveCalculation {
+    pub fn format_tooltip(&self) -> String {
+        if self.breakdown.is_empty() {
+            return "No upcoming yearly bills requiring savings.".to_string();
+        }
+        let mut lines = Vec::new();
+        for item in &self.breakdown {
+            let note = if item.covered_amount > 0.0 && item.remaining_deficit == 0.0 {
+                format!("£{:.2} (Fully funded: £0.00/mo)", item.total_cost)
+            } else if item.covered_amount > 0.0 {
+                format!("£{:.2}/mo (Due {}, £{:.2} covered, £{:.2} left over {} paydays)",
+                    item.monthly_saving, item.due_date, item.covered_amount, item.remaining_deficit, item.paydays_remaining)
+            } else {
+                format!("£{:.2}/mo (Due {}, £{:.2} over {} paydays)",
+                    item.monthly_saving, item.due_date, item.total_cost, item.paydays_remaining)
+            };
+            lines.push(format!("• {}: {}", item.name, note));
+        }
+        lines.join("\n")
+    }
 }
 
 /// Calculates the monthly sinking fund amount needed across all active upcoming yearly outgoings,
@@ -264,7 +299,7 @@ pub fn calculate_yearly_bills_monthly_saving(
     outgoings: &[Outgoing],
     target_account_balance: f32,
 ) -> YearlyBillsReserveCalculation {
-    let mut upcoming_items: Vec<(NaiveDate, u32, f32)> = Vec::new();
+    let mut upcoming_items: Vec<(NaiveDate, u32, f32, String)> = Vec::new();
 
     for o in outgoings {
         if !o.is_yearly() {
@@ -301,7 +336,7 @@ pub fn calculate_yearly_bills_monthly_saving(
 
         let paydays_remaining = count_paydays_between(as_of, due_date, nominal_payday);
         if paydays_remaining > 0 {
-            upcoming_items.push((due_date, paydays_remaining, o.cost));
+            upcoming_items.push((due_date, paydays_remaining, o.cost, o.name.clone()));
         }
     }
 
@@ -313,18 +348,32 @@ pub fn calculate_yearly_bills_monthly_saving(
     let mut total_remaining_deficit = 0.0f32;
     let mut total_monthly_saving = 0.0f32;
     let upcoming_count = upcoming_items.len();
+    let mut breakdown = Vec::with_capacity(upcoming_count);
 
-    for (_due_date, paydays_remaining, cost) in upcoming_items {
+    for (due_date, paydays_remaining, cost, name) in upcoming_items {
         total_upcoming_cost += cost;
         let covered = available_cash.min(cost);
         available_cash -= covered;
         let deficit = cost - covered;
         total_remaining_deficit += deficit;
 
-        if deficit > 0.0 && paydays_remaining > 0 {
-            let per_payday = deficit / (paydays_remaining as f32);
-            total_monthly_saving += per_payday;
-        }
+        let per_payday = if deficit > 0.0 && paydays_remaining > 0 {
+            ((deficit / (paydays_remaining as f32) * 100.0).round()) / 100.0
+        } else {
+            0.0
+        };
+        total_monthly_saving += per_payday;
+
+        let due_date_str = due_date.format("%b %Y").to_string();
+        breakdown.push(YearlyBillItemBreakdown {
+            name,
+            total_cost: ((cost * 100.0).round()) / 100.0,
+            covered_amount: ((covered * 100.0).round()) / 100.0,
+            remaining_deficit: ((deficit * 100.0).round()) / 100.0,
+            paydays_remaining,
+            monthly_saving: per_payday,
+            due_date: due_date_str,
+        });
     }
 
     let monthly_saving = ((total_monthly_saving * 100.0).round()) / 100.0;
@@ -338,6 +387,7 @@ pub fn calculate_yearly_bills_monthly_saving(
         total_upcoming_cost,
         remaining_deficit,
         target_account_balance,
+        breakdown,
     }
 }
 
@@ -656,5 +706,16 @@ mod tests {
         );
         assert_eq!(res_waterfall.monthly_saving, 324.00);
         assert_eq!(res_waterfall.remaining_deficit, 720.00);
+        assert_eq!(res_waterfall.breakdown.len(), 2);
+        assert_eq!(res_waterfall.breakdown[0].covered_amount, 400.00);
+        assert_eq!(res_waterfall.breakdown[0].remaining_deficit, 600.00);
+        assert_eq!(res_waterfall.breakdown[0].monthly_saving, 300.00);
+        assert_eq!(res_waterfall.breakdown[1].covered_amount, 0.00);
+        assert_eq!(res_waterfall.breakdown[1].remaining_deficit, 120.00);
+        assert_eq!(res_waterfall.breakdown[1].monthly_saving, 24.00);
+        let tooltip = res_waterfall.format_tooltip();
+        assert!(tooltip.contains("Test Outgoing"));
+        assert!(tooltip.contains("£300.00/mo"));
+        assert!(tooltip.contains("£400.00 covered"));
     }
 }

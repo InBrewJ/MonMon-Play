@@ -3,6 +3,112 @@
 <head>
     <title>MonMon Outgoings</title>
     {% include "nav_head.html" %}
+    <style>
+        .yearly-tooltip-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            vertical-align: middle;
+            margin-left: 6px;
+        }
+        .yearly-tooltip-wrap .info-icon {
+            font-size: 0.9rem;
+            color: #6366f1;
+            transition: color 0.15s ease, transform 0.15s ease;
+        }
+        .yearly-tooltip-wrap:hover .info-icon,
+        .yearly-tooltip-wrap:focus .info-icon,
+        .yearly-tooltip-wrap.active .info-icon {
+            color: #4338ca;
+            transform: scale(1.15);
+        }
+        .yearly-tooltip-popover {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            z-index: 9999;
+            width: 320px;
+            max-width: calc(100vw - 32px);
+            background: var(--card-bg, #ffffff);
+            color: var(--text-color, #1e293b);
+            border: 1px solid var(--border-color, #cbd5e1);
+            border-radius: 8px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+            padding: 0;
+            overflow: hidden;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            cursor: default;
+            text-align: left;
+            white-space: normal;
+        }
+        @media (hover: hover) and (pointer: fine) {
+            .yearly-tooltip-wrap:hover .yearly-tooltip-popover {
+                display: block;
+            }
+        }
+        .yearly-tooltip-wrap:focus-within .yearly-tooltip-popover,
+        .yearly-tooltip-wrap.active .yearly-tooltip-popover {
+            display: block;
+        }
+        .yearly-tooltip-header {
+            background: #e0e7ff;
+            color: #3730a3;
+            font-weight: 700;
+            font-size: 0.82rem;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #c7d2fe;
+        }
+        .yearly-tooltip-body {
+            padding: 10px 12px;
+        }
+        .yearly-tooltip-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .yearly-tooltip-item {
+            background: var(--card-bg-subtle, #f8fafc);
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 6px;
+            padding: 7px 9px;
+        }
+        .yearly-tooltip-item-main {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            color: var(--text-heading, #0f172a);
+            font-size: 0.82rem;
+            margin-bottom: 2px;
+        }
+        .yearly-tooltip-item-saving {
+            color: #4f46e5;
+            font-weight: 700;
+        }
+        .yearly-tooltip-item-sub {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.72rem;
+            color: var(--text-muted, #64748b);
+        }
+        .yearly-tooltip-footer {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--border-color, #cbd5e1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.78rem;
+            color: var(--text-muted, #64748b);
+        }
+    </style>
 </head>
 <body>
 
@@ -117,6 +223,45 @@
                                     <td class="col-name">
                                         <b>{{ o.name }}</b>
                                         {% if o.is_calculated %}
+                                            <span class="yearly-tooltip-wrap" tabindex="0" role="button" aria-haspopup="true" aria-label="Yearly bills breakdown" title="{% if let Some(t) = o.calculated_tooltip %}{{ t }}{% endif %}">
+                                                <i class="fas fa-info-circle info-icon"></i>
+                                                <div class="yearly-tooltip-popover">
+                                                    <div class="yearly-tooltip-header">
+                                                        <span><i class="fas fa-piggy-bank"></i> Yearly Bills Breakdown</span>
+                                                        <span style="font-size: 0.72rem; font-weight: 500; opacity: 0.85;">Sinking Fund</span>
+                                                    </div>
+                                                    <div class="yearly-tooltip-body">
+                                                        {% if let Some(items) = o.calculated_breakdown %}
+                                                            <div class="yearly-tooltip-list">
+                                                                {% for item in items %}
+                                                                    <div class="yearly-tooltip-item">
+                                                                        <div class="yearly-tooltip-item-main">
+                                                                            <span class="yearly-tooltip-item-name">{{ item.name }}</span>
+                                                                            <span class="yearly-tooltip-item-saving">£{{ item.monthly_saving }}/mo</span>
+                                                                        </div>
+                                                                        <div class="yearly-tooltip-item-sub">
+                                                                            <span>Due {{ item.due_date }} ({{ item.paydays_remaining }} paydays)</span>
+                                                                            <span>
+                                                                                {% if item.covered_amount > 0.0 && item.remaining_deficit == 0.0 %}
+                                                                                    <span style="color: #10b981; font-weight: 600;">£{{ item.total_cost }} funded</span>
+                                                                                {% else if item.covered_amount > 0.0 %}
+                                                                                    £{{ item.covered_amount }} covered · £{{ item.remaining_deficit }} left
+                                                                                {% else %}
+                                                                                    £{{ item.total_cost }} total
+                                                                                {% endif %}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                        <div class="yearly-tooltip-footer">
+                                                            <span>Monthly top-up on payday</span>
+                                                            <strong style="color: #ef4444;">£{{ o.cost }}</strong>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </span>
                                             <div style="margin-top: 3px;">
                                                 <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;">
                                                     <i class="fas fa-calculator"></i> MonMon Calculated
@@ -133,7 +278,13 @@
                                     <td>£{{ o.cost }}</td>
                                     <td>
                                         {% if o.is_calculated %}
-                                            <span title="Topped up on Payday">Payday (Day {{ o.outgoing_day }})</span>
+                                            {% if o.is_adjusted %}
+                                                <span title="Payday adjusted from Day {{ o.outgoing_day }} to Day {{ o.effective_day }} for short month or weekend">
+                                                    Payday (<b>Day {{ o.effective_day }}</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>)
+                                                </span>
+                                            {% else %}
+                                                <span title="Topped up on Payday">Payday (Day {{ o.outgoing_day }})</span>
+                                            {% endif %}
                                         {% else if o.is_adjusted %}
                                             <span title="Adjusted from {{ o.outgoing_day }} to {{ o.effective_day }} for this month">
                                                 <b>Day {{ o.effective_day }}</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
@@ -213,9 +364,52 @@
                          data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
                          data-is-calculated="{% if o.is_calculated %}true{% else %}false{% endif %}"
                          style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.is_yearly && !o.is_due_now %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04); border-left: 3px solid #6366f1;{% endif %}">
-                        <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                             <div class="item-card-title col-name" style="font-weight: 700; color: var(--text-main);">
-                                <b>{{ o.name }}</b>
+                                <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                    <b>{{ o.name }}</b>
+                                    {% if o.is_calculated %}
+                                        <span class="yearly-tooltip-wrap" tabindex="0" role="button" aria-haspopup="true" aria-label="Yearly bills breakdown" title="{% if let Some(t) = o.calculated_tooltip %}{{ t }}{% endif %}">
+                                            <i class="fas fa-info-circle info-icon"></i>
+                                            <div class="yearly-tooltip-popover">
+                                                <div class="yearly-tooltip-header">
+                                                    <span><i class="fas fa-piggy-bank"></i> Yearly Bills Breakdown</span>
+                                                    <span style="font-size: 0.72rem; font-weight: 500; opacity: 0.85;">Sinking Fund</span>
+                                                </div>
+                                                <div class="yearly-tooltip-body">
+                                                    {% if let Some(items) = o.calculated_breakdown %}
+                                                        <div class="yearly-tooltip-list">
+                                                            {% for item in items %}
+                                                                <div class="yearly-tooltip-item">
+                                                                    <div class="yearly-tooltip-item-main">
+                                                                        <span class="yearly-tooltip-item-name">{{ item.name }}</span>
+                                                                        <span class="yearly-tooltip-item-saving">£{{ item.monthly_saving }}/mo</span>
+                                                                    </div>
+                                                                    <div class="yearly-tooltip-item-sub">
+                                                                        <span>Due {{ item.due_date }} ({{ item.paydays_remaining }} paydays)</span>
+                                                                        <span>
+                                                                            {% if item.covered_amount > 0.0 && item.remaining_deficit == 0.0 %}
+                                                                                <span style="color: #10b981; font-weight: 600;">£{{ item.total_cost }} funded</span>
+                                                                            {% else if item.covered_amount > 0.0 %}
+                                                                                £{{ item.covered_amount }} covered · £{{ item.remaining_deficit }} left
+                                                                            {% else %}
+                                                                                £{{ item.total_cost }} total
+                                                                            {% endif %}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    {% endif %}
+                                                    <div class="yearly-tooltip-footer">
+                                                        <span>Monthly top-up on payday</span>
+                                                        <strong style="color: #ef4444;">£{{ o.cost }}</strong>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </span>
+                                    {% endif %}
+                                </div>
                                 {% if o.is_calculated %}
                                     <div style="margin-top: 2px;">
                                         <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;">
@@ -229,16 +423,20 @@
                                 {% endif %}
                             </div>
                             <div style="text-align: right;">
-                                <span class="badge-pill" style="{% if o.is_calculated %}background:#e0e7ff; color:#3730a3;{% else if o.is_adjusted %}background: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);{% else %}background:#e0e7ff; color:#3730a3;{% endif %} padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                                <span class="badge-pill" style="{% if o.is_adjusted %}background: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);{% else %}background:#e0e7ff; color:#3730a3;{% endif %} padding:2px 8px; border-radius:4px; font-size:0.75rem;">
                                     {% if o.is_calculated %}
-                                        Payday (Day {{ o.outgoing_day }})
+                                        {% if o.is_adjusted %}
+                                            Payday (Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>)
+                                        {% else %}
+                                            Payday (Day {{ o.outgoing_day }})
+                                        {% endif %}
                                     {% else if o.is_adjusted %}
                                         Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
                                     {% else %}
                                         Day {{ o.outgoing_day }}
                                     {% endif %}
                                 </span>
-                                {% if !o.is_calculated && o.is_adjusted %}
+                                {% if o.is_adjusted %}
                                     <div style="margin-top: 3px;">
                                         <span class="badge-pill" style="background: #fee2e2; color: #b91c1c; font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;" title="Shifted from Day {{ o.outgoing_day }} for short month or weekend/bank holiday">
                                             <i class="fas fa-calendar-alt"></i> Clamped from {{ o.outgoing_day }}
@@ -484,6 +682,23 @@
             if (urlParams.get('tab') === 'yearly') {
                 filterTab('yearly');
             }
+
+            document.addEventListener('click', function(e) {
+                var trigger = e.target.closest('.yearly-tooltip-wrap');
+                var openTooltips = document.querySelectorAll('.yearly-tooltip-wrap.active');
+                if (!trigger) {
+                    openTooltips.forEach(function(el) { el.classList.remove('active'); });
+                    return;
+                }
+                if (e.target.closest('.yearly-tooltip-popover')) {
+                    return;
+                }
+                var wasActive = trigger.classList.contains('active');
+                openTooltips.forEach(function(el) { el.classList.remove('active'); });
+                if (!wasActive) {
+                    trigger.classList.add('active');
+                }
+            });
         });
     </script>
     <script src="/assets/javascripts/edOutgoings.{{ crate::BUILD_HASH }}.js" type="text/javascript"></script>
