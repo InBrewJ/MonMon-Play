@@ -724,6 +724,7 @@ pub async fn get_accounts_spent_sum_map(
         SELECT account_id, COALESCE(SUM(amount), 0.0)::real AS sum
         FROM bank_transaction
         WHERE (user_id = $1 OR userid = $1)
+          AND account_id IS NOT NULL
           AND timestamp >= $2 AND timestamp <= $3
           AND amount > 0
           AND (category IS NULL OR lower(category) NOT IN ('transfers', 'savings', 'pots'))
@@ -747,9 +748,10 @@ pub async fn get_accounts_spent_sum_map(
 
     let mut map = HashMap::new();
     for r in rows {
-        let acc_id: i64 = r.get("account_id");
-        let sum: f32 = r.get("sum");
-        map.insert(acc_id, sum);
+        if let Some(acc_id) = r.try_get::<Option<i64>, _>("account_id").ok().flatten() {
+            let sum: f32 = r.try_get("sum").unwrap_or(0.0);
+            map.insert(acc_id, sum);
+        }
     }
     map
 }
@@ -831,9 +833,9 @@ pub async fn calculate_historic_cycles(
 
     let mut pot_accounts_map: HashMap<i64, Vec<i64>> = HashMap::new();
     for r in pot_accounts_rows {
-        let pid: i64 = r.get("pot_id");
-        let aid: i64 = r.get("account_id");
-        pot_accounts_map.entry(pid).or_default().push(aid);
+        if let (Ok(pid), Ok(aid)) = (r.try_get::<i64, _>("pot_id"), r.try_get::<i64, _>("account_id")) {
+            pot_accounts_map.entry(pid).or_default().push(aid);
+        }
     }
 
     let mut pots: Vec<PotRecord> = Vec::new();
