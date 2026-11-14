@@ -79,65 +79,60 @@ pub struct SavingsPoolItem {
 }
 
 pub fn calculate_outgoings_funding_plan(
-    outgoings_items: &[PaydayTransferItemDto],
+    source_acc_id: Option<i64>,
+    source_acc_name: &str,
+    source_acc_type: &str,
     mut savings_pool: Vec<SavingsPoolItem>,
     max_needed: Option<f32>,
 ) -> Vec<OutgoingsFundingStepDto> {
     let mut plan = Vec::new();
-    let mut remaining_cap = max_needed.unwrap_or(f32::MAX);
+    let mut remaining_cap = match max_needed {
+        Some(cap) => ((cap * 100.0).round()) / 100.0,
+        None => f32::MAX,
+    };
 
-    for out_item in outgoings_items {
-        if remaining_cap <= 0.005 {
-            break;
-        }
-        let dest_id = out_item.destination_account_id.unwrap_or(0);
-        let mut needed = out_item.amount.min(remaining_cap);
+    let target_dest_id = source_acc_id.unwrap_or(0);
 
-        while needed > 0.005 {
-            // Pick savings account with the highest remaining balance (excluding destination account)
-            let best_idx = savings_pool
-                .iter()
-                .enumerate()
-                .filter(|(_, s)| s.id != dest_id && s.remaining_bal > 0.005)
-                .max_by(|(_, a), (_, b)| {
-                    a.remaining_bal
-                        .partial_cmp(&b.remaining_bal)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .map(|(idx, _)| idx);
+    while remaining_cap > 0.005 {
+        // Pick savings account with the highest remaining balance (excluding destination account)
+        let best_idx = savings_pool
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.id != target_dest_id && s.remaining_bal > 0.005)
+            .max_by(|(_, a), (_, b)| {
+                a.remaining_bal
+                    .partial_cmp(&b.remaining_bal)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(idx, _)| idx);
 
-            match best_idx {
-                Some(idx) => {
-                    let savings = &mut savings_pool[idx];
-                    let take = ((needed.min(savings.remaining_bal) * 100.0).round()) / 100.0;
-                    if take <= 0.0 {
-                        break;
-                    }
-                    savings.remaining_bal = ((savings.remaining_bal - take) * 100.0).round() / 100.0;
-                    needed = ((needed - take) * 100.0).round() / 100.0;
-                    remaining_cap = ((remaining_cap - take) * 100.0).round() / 100.0;
-
-                    let summary = format!(
-                        "Covers outgoings in {}",
-                        out_item.destination_account_name
-                    );
-
-                    plan.push(OutgoingsFundingStepDto {
-                        from_savings_account_id: savings.id,
-                        from_savings_account_name: savings.name.clone(),
-                        from_savings_account_balance: (savings.initial_bal * 100.0).round() / 100.0,
-                        from_savings_account_balance_formatted: format!("{:.2}", savings.initial_bal),
-                        to_debit_account_id: dest_id,
-                        to_debit_account_name: out_item.destination_account_name.clone(),
-                        to_debit_account_type: out_item.destination_account_type.clone(),
-                        amount: take,
-                        amount_formatted: format!("{:.2}", take),
-                        for_outgoings_summary: summary,
-                    });
-                }
-                None => {
+        match best_idx {
+            Some(idx) => {
+                let savings = &mut savings_pool[idx];
+                let take = ((remaining_cap.min(savings.remaining_bal) * 100.0).round()) / 100.0;
+                if take <= 0.0 {
                     break;
                 }
+                savings.remaining_bal = ((savings.remaining_bal - take) * 100.0).round() / 100.0;
+                remaining_cap = ((remaining_cap - take) * 100.0).round() / 100.0;
+
+                let summary = format!("Tops up {} to cover planned transfers", source_acc_name);
+
+                plan.push(OutgoingsFundingStepDto {
+                    from_savings_account_id: savings.id,
+                    from_savings_account_name: savings.name.clone(),
+                    from_savings_account_balance: (savings.initial_bal * 100.0).round() / 100.0,
+                    from_savings_account_balance_formatted: format!("{:.2}", savings.initial_bal),
+                    to_debit_account_id: target_dest_id,
+                    to_debit_account_name: source_acc_name.to_string(),
+                    to_debit_account_type: source_acc_type.to_string(),
+                    amount: take,
+                    amount_formatted: format!("{:.2}", take),
+                    for_outgoings_summary: summary,
+                });
+            }
+            None => {
+                break;
             }
         }
     }
@@ -239,13 +234,14 @@ pub async fn calculate_payday_window(
     .fetch_optional(pool)
     .await?;
 
-    let (source_acc_id, source_acc_name, source_acc_bal) = match source_acc_row {
+    let (source_acc_id, source_acc_name, source_acc_type, source_acc_bal) = match source_acc_row {
         Some(r) => (
             Some(r.get::<i64, _>("id")),
             r.get::<String, _>("name"),
+            r.get::<String, _>("type"),
             r.get::<f32, _>("bal"),
         ),
-        None => (None, "Main Current Account".to_string(), 0.0f32),
+        None => (None, "Main Current Account".to_string(), "DEBIT".to_string(), 0.0f32),
     };
 
     // 2. Outgoings Cover Transfers (Segregated at the top)
@@ -467,30 +463,37 @@ pub async fn calculate_payday_window(
             calc.upcoming_count, calc.total_upcoming_cost
         );
 
-        savings_items.push(PaydayTransferItemDto {
-            id: "yearly_bills_autosave".to_string(),
-            priority: 0, // Priority 0 for annual bill safety
-            title: "Yearly Bills Reserve (MonMon Calculated)".to_string(),
-            category: "YEARLY_BILLS_AUTOSAVE".to_string(),
-            source_account_id: source_acc_id,
-            source_account_name: source_acc_name.clone(),
-            destination_account_id: dest_id,
-            destination_account_name: dest_name,
-            destination_account_type: dest_type,
-            amount: calc.monthly_saving,
-            amount_formatted: format!("{:.2}", calc.monthly_saving),
-            target_amount: Some(calc.total_upcoming_cost),
-            target_amount_formatted: Some(format!("{:.2}", calc.total_upcoming_cost)),
-            current_destination_balance: Some(dest_bal),
-            current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
-            progress_pct: if calc.total_upcoming_cost > 0.0 {
-                Some(((dest_bal / calc.total_upcoming_cost) * 100.0).clamp(0.0, 100.0).round() as i32)
-            } else {
-                None
-            },
-            description: desc,
-            breakdown: breakdown_items,
-        });
+        let is_self_transfer = match (source_acc_id, dest_id) {
+            (Some(s), Some(d)) if s == d => true,
+            _ => source_acc_name == dest_name,
+        };
+
+        if !is_self_transfer {
+            savings_items.push(PaydayTransferItemDto {
+                id: "yearly_bills_autosave".to_string(),
+                priority: 0, // Priority 0 for annual bill safety
+                title: "Yearly Bills Reserve (MonMon Calculated)".to_string(),
+                category: "YEARLY_BILLS_AUTOSAVE".to_string(),
+                source_account_id: source_acc_id,
+                source_account_name: source_acc_name.clone(),
+                destination_account_id: dest_id,
+                destination_account_name: dest_name,
+                destination_account_type: dest_type,
+                amount: calc.monthly_saving,
+                amount_formatted: format!("{:.2}", calc.monthly_saving),
+                target_amount: Some(calc.total_upcoming_cost),
+                target_amount_formatted: Some(format!("{:.2}", calc.total_upcoming_cost)),
+                current_destination_balance: Some(dest_bal),
+                current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
+                progress_pct: if calc.total_upcoming_cost > 0.0 {
+                    Some(((dest_bal / calc.total_upcoming_cost) * 100.0).clamp(0.0, 100.0).round() as i32)
+                } else {
+                    None
+                },
+                description: desc,
+                breakdown: breakdown_items,
+            });
+        }
     }
 
     // 4. Savings Plan Priority Items
@@ -549,6 +552,17 @@ pub async fn calculate_payday_window(
 
             let amt_to_transfer = monthly_amt.max(0.0);
             if amt_to_transfer < 0.005 {
+                continue;
+            }
+
+            // Exclude self-transfers where source account is identical to destination account:
+            // if target account is the salary/incoming source account, incoming salary directly lands
+            // there and covers the balance/overdraft; no outbound bank transfer is needed.
+            let is_self_transfer = match (source_acc_id, acc_id) {
+                (Some(s), Some(d)) if s == d => true,
+                _ => acc_name.as_ref() == Some(&source_acc_name),
+            };
+            if is_self_transfer {
                 continue;
             }
 
@@ -742,7 +756,13 @@ pub async fn calculate_payday_window(
                     topup, total_savings
                 )
             };
-            let plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool, Some(topup));
+            let plan = calculate_outgoings_funding_plan(
+                source_acc_id,
+                &source_acc_name,
+                &source_acc_type,
+                savings_pool,
+                Some(topup),
+            );
             (
                 true,
                 title,
@@ -762,7 +782,13 @@ pub async fn calculate_payday_window(
                 "Incoming (£{:.2}) and Available Savings (£{:.2}) are insufficient to cover £{:.2} transfers (Shortfall: £{:.2})",
                 monthly_income_rounded, total_savings, total_transfers_rounded, deficit
             );
-            let plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool, Some(total_savings));
+            let plan = calculate_outgoings_funding_plan(
+                source_acc_id,
+                &source_acc_name,
+                &source_acc_type,
+                savings_pool,
+                Some(total_savings),
+            );
             (
                 true,
                 title,
@@ -1036,28 +1062,6 @@ mod tests {
         // Say which savings accounts we need to transfer into which debit account to cover outgoings.
         // There may be multiple savings accounts that can cover the costs; take from the account
         // with the highest current balance first, then the next, then the next, and so on.
-        let outgoings_items = vec![
-            PaydayTransferItemDto {
-                id: "outgoings_acc_3620".to_string(),
-                priority: -10,
-                title: "First Direct Current ⬛ Outgoings Cover".to_string(),
-                category: "OUTGOINGS_COVER".to_string(),
-                source_account_id: Some(2),
-                source_account_name: "Natwest Reward Debit".to_string(),
-                destination_account_id: Some(3620),
-                destination_account_name: "First Direct Current ⬛".to_string(),
-                destination_account_type: "DEBIT".to_string(),
-                amount: 550.0,
-                amount_formatted: "550.00".to_string(),
-                target_amount: Some(550.0),
-                target_amount_formatted: Some("550.00".to_string()),
-                current_destination_balance: Some(180.0),
-                current_destination_balance_formatted: Some("180.00".to_string()),
-                progress_pct: None,
-                description: "Test".to_string(),
-                breakdown: Vec::new(),
-            },
-        ];
 
         // Scenario: Multiple savings accounts with varying balances
         // Savings A: £300 (second highest)
@@ -1084,21 +1088,53 @@ mod tests {
             },
         ];
 
-        let plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool, None);
+        let plan = calculate_outgoings_funding_plan(
+            Some(999),
+            "Natwest Reward Debit 💵💵💵",
+            "DEBIT",
+            savings_pool,
+            Some(550.0),
+        );
 
         assert_eq!(plan.len(), 2, "Should take from highest balance first (B: £400), then next (A: £150)");
-        // Step 1: Takes all £400 from Savings B (highest initial bal)
+        // Step 1: Takes all £400 from Savings B (highest initial bal) into Natwest
         assert_eq!(plan[0].from_savings_account_id, 2);
         assert_eq!(plan[0].from_savings_account_name, "Savings B (Premium Bonds)");
-        assert_eq!(plan[0].to_debit_account_id, 3620);
-        assert_eq!(plan[0].to_debit_account_name, "First Direct Current ⬛");
+        assert_eq!(plan[0].to_debit_account_id, 999);
+        assert_eq!(plan[0].to_debit_account_name, "Natwest Reward Debit 💵💵💵");
         assert_eq!(plan[0].amount, 400.0);
 
-        // Step 2: Takes remaining £150 from Savings A (next highest bal)
+        // Step 2: Takes remaining £150 from Savings A (next highest bal) into Natwest
         assert_eq!(plan[1].from_savings_account_id, 1);
         assert_eq!(plan[1].from_savings_account_name, "Savings A (Emergency)");
-        assert_eq!(plan[1].to_debit_account_id, 3620);
+        assert_eq!(plan[1].to_debit_account_id, 999);
+        assert_eq!(plan[1].to_debit_account_name, "Natwest Reward Debit 💵💵💵");
         assert_eq!(plan[1].amount, 150.0);
+    }
+
+    #[test]
+    fn test_self_transfers_excluded() {
+        let source_acc_id = Some(2i64);
+        let source_acc_name = "Natwest Reward Debit 💵💵💵".to_string();
+
+        let items = vec![
+            (Some(2i64), Some("Natwest Reward Debit 💵💵💵".to_string()), 250.0), // Self-transfer (same ID & name)
+            (Some(3620i64), Some("First Direct Current ⬛".to_string()), 150.0), // External transfer
+        ];
+
+        let mut filtered = Vec::new();
+        for (acc_id, acc_name, amt) in items {
+            let is_self_transfer = match (source_acc_id, acc_id) {
+                (Some(s), Some(d)) if s == d => true,
+                _ => acc_name.as_ref() == Some(&source_acc_name),
+            };
+            if !is_self_transfer {
+                filtered.push(amt);
+            }
+        }
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0], 150.0);
     }
 
     #[test]
