@@ -260,15 +260,10 @@ window.defaultAccountIds = {{ default_account_ids_json|safe }};
 window.preselectedAccountId = {% if let Some(id) = selected_account_id %}{{ id }}{% else %}null{% endif %};
 
 (function() {
-    // 1. Interactive Chart Logic
-    var ACCOUNT_PALETTE = [
-        '#6366f1', '#f59e0b', '#06b6d4', '#ec4899', '#3b82f6', '#f97316',
-        '#a855f7', '#14b8a6', '#ef4444', '#84cc16', '#e11d48', '#0ea5e9',
-        '#d946ef', '#eab308', '#8b5cf6', '#22c55e', '#fb7185', '#38bdf8',
-        '#f43f5e', '#2dd4bf', '#c084fc', '#fb923c', '#4ade80', '#facc15',
-        '#818cf8', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#a78bfa',
-        '#fdba74', '#f87171', '#a3e635', '#e879f9'
-    ];
+    // 1. Interactive Chart Logic — Dynamic Golden Angle Color Generator (Scales to 100+ accounts without collision)
+    var GOLDEN_ANGLE = 137.50776405;
+    var LIGHTNESS_LEVELS = [60, 68, 54, 64, 58, 66];
+    var SATURATION_LEVELS = [85, 90, 80, 88];
 
     function hashAccountTitle(title) {
         if (!title) return 0;
@@ -281,10 +276,30 @@ window.preselectedAccountId = {% if let Some(id) = selected_account_id %}{{ id }
         return Math.abs(hash);
     }
 
-    function getAccountColor(accountTitle) {
-        if (!accountTitle) return '#6366f1';
+    function getAccountColor(accountTitle, offset) {
+        if (!accountTitle) return { color: '#6366f1', hue: 240 };
+        offset = offset || 0;
         var h = hashAccountTitle(accountTitle);
-        return ACCOUNT_PALETTE[h % ACCOUNT_PALETTE.length];
+        var hue = Math.round(((h * GOLDEN_ANGLE) + (offset * GOLDEN_ANGLE)) % 360);
+        if (hue < 0) hue += 360;
+
+        // Ensure distinctness from Payday green dashed marker (around 150-168 deg)
+        if (hue >= 148 && hue <= 168) {
+            hue = (hue + 25) % 360;
+        }
+
+        var idx = Math.abs(h + offset);
+        var l = LIGHTNESS_LEVELS[idx % LIGHTNESS_LEVELS.length];
+        var s = SATURATION_LEVELS[idx % SATURATION_LEVELS.length];
+        return {
+            color: 'hsl(' + hue + ', ' + s + '%, ' + l + '%)',
+            hue: hue
+        };
+    }
+
+    function angularDist(h1, h2) {
+        var d = Math.abs(h1 - h2) % 360;
+        return d > 180 ? 360 - d : d;
     }
 
     function escapeHtml(str) {
@@ -310,29 +325,17 @@ window.preselectedAccountId = {% if let Some(id) = selected_account_id %}{{ id }
         });
     });
 
-    var usedColors = new Set();
+    var usedHues = [];
     accountList.forEach(function(acc) {
-        var pref = getAccountColor(acc.name);
-        if (!usedColors.has(pref)) {
-            accountColors[acc.id] = pref;
-            usedColors.add(pref);
+        var offset = 0;
+        var res = getAccountColor(acc.name, offset);
+        // Minimum angular distance across accounts so every account has a distinct hue
+        while (offset < 100 && usedHues.some(function(u) { return angularDist(res.hue, u) < 6; })) {
+            offset++;
+            res = getAccountColor(acc.name, offset);
         }
-    });
-    accountList.forEach(function(acc) {
-        if (!accountColors[acc.id]) {
-            var startIdx = hashAccountTitle(acc.name) % ACCOUNT_PALETTE.length;
-            var chosen = null;
-            for (var step = 1; step < ACCOUNT_PALETTE.length; step++) {
-                var candidate = ACCOUNT_PALETTE[(startIdx + step) % ACCOUNT_PALETTE.length];
-                if (!usedColors.has(candidate)) {
-                    chosen = candidate;
-                    break;
-                }
-            }
-            if (!chosen) chosen = ACCOUNT_PALETTE[startIdx];
-            accountColors[acc.id] = chosen;
-            usedColors.add(chosen);
-        }
+        accountColors[acc.id] = res.color;
+        usedHues.push(res.hue);
     });
 
     accountList.forEach(function(acc) {
@@ -570,30 +573,21 @@ window.preselectedAccountId = {% if let Some(id) = selected_account_id %}{{ id }
 
         // Ensure collision-free distinct colors for all currently visible groups on the chart
         var activeColors = {};
-        var currentUsed = new Set();
+        var currentUsedHues = [];
         Object.keys(groups).forEach(function(accId) {
             var grp = groups[accId];
-            var col = accountColors[accId] || getAccountColor(grp.name);
-            if (!currentUsed.has(col)) {
+            var col = accountColors[accId];
+            if (col) {
                 activeColors[accId] = col;
-                currentUsed.add(col);
-            }
-        });
-        Object.keys(groups).forEach(function(accId) {
-            if (!activeColors[accId]) {
-                var grp = groups[accId];
-                var startIdx = hashAccountTitle(grp.name) % ACCOUNT_PALETTE.length;
-                var chosen = null;
-                for (var step = 1; step < ACCOUNT_PALETTE.length; step++) {
-                    var candidate = ACCOUNT_PALETTE[(startIdx + step) % ACCOUNT_PALETTE.length];
-                    if (!currentUsed.has(candidate)) {
-                        chosen = candidate;
-                        break;
-                    }
+            } else {
+                var offset = 0;
+                var res = getAccountColor(grp.name, offset);
+                while (offset < 100 && currentUsedHues.some(function(u) { return angularDist(res.hue, u) < 6; })) {
+                    offset++;
+                    res = getAccountColor(grp.name, offset);
                 }
-                if (!chosen) chosen = ACCOUNT_PALETTE[startIdx];
-                activeColors[accId] = chosen;
-                currentUsed.add(chosen);
+                activeColors[accId] = res.color;
+                currentUsedHues.push(res.hue);
             }
         });
 
