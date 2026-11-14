@@ -38,6 +38,7 @@ pub struct EdSaysResponse {
 #[derive(Clone)]
 struct CacheEntry {
     text: String,
+    fingerprint: u64,
     timestamp_millis: i64,
     created_at: Instant,
 }
@@ -49,7 +50,33 @@ static OUTGOINGS_CACHE: LazyLock<RwLock<HashMap<String, CacheEntry>>> =
 static NETWORTH_CACHE: LazyLock<RwLock<HashMap<String, CacheEntry>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
-const CACHE_TTL: Duration = Duration::from_secs(15 * 60); // 15 minutes TTL
+/// Use-case specific TTLs for Ed AI advice:
+/// - SPOG: 1 day OR if any financial metric / balance changes
+/// - Outgoings: 1 week OR if any outgoing / commitment changes
+/// - Net Worth: 1 month OR if any asset, debt, or portfolio figure changes
+pub const SPOG_CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1 day
+pub const OUTGOINGS_CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60); // 1 week
+pub const NETWORTH_CACHE_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 1 month (30 days)
+
+pub fn compute_fingerprint(data: &str) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub fn clear_ed_cache(user_id: &str) {
+    if let Ok(mut cache) = SPOG_CACHE.write() {
+        cache.remove(user_id);
+    }
+    if let Ok(mut cache) = OUTGOINGS_CACHE.write() {
+        cache.remove(user_id);
+    }
+    if let Ok(mut cache) = NETWORTH_CACHE.write() {
+        cache.remove(user_id);
+    }
+}
 
 fn is_mistral_configured() -> bool {
     std::env::var("MISTRAL_API_KEY")
@@ -281,11 +308,15 @@ pub async fn ed_says_spog_api(
     let configured = is_mistral_configured();
     let force = q.force.unwrap_or(false);
 
-    // 1. Check cache if not forcing refresh
+    let system_prompt = build_spog_system_prompt();
+    let user_prompt = build_spog_context_prompt(&metrics);
+    let current_fp = compute_fingerprint(&user_prompt);
+
+    // 1. Check cache if not forcing refresh: valid if within TTL AND underlying data unchanged
     if !force {
         if let Ok(cache) = SPOG_CACHE.read() {
             if let Some(entry) = cache.get(&resolved) {
-                if entry.created_at.elapsed() < CACHE_TTL {
+                if entry.created_at.elapsed() < SPOG_CACHE_TTL && entry.fingerprint == current_fp {
                     return Ok(Json(EdSaysResponse {
                         ed_says: entry.text.clone(),
                         configured,
@@ -296,11 +327,8 @@ pub async fn ed_says_spog_api(
         }
     }
 
-    // 2. If Mistral is configured, build prompt and invoke Mistral
+    // 2. If Mistral is configured, invoke Mistral
     if configured {
-        let system_prompt = build_spog_system_prompt();
-        let user_prompt = build_spog_context_prompt(&metrics);
-
         match call_mistral(system_prompt, &user_prompt, 750).await {
             Ok(advice) => {
                 let now_ms = chrono::Utc::now().timestamp_millis();
@@ -309,6 +337,7 @@ pub async fn ed_says_spog_api(
                         resolved.clone(),
                         CacheEntry {
                             text: advice.clone(),
+                            fingerprint: current_fp,
                             timestamp_millis: now_ms,
                             created_at: Instant::now(),
                         },
@@ -482,11 +511,30 @@ pub async fn ed_says_outgoings_api(
     let configured = is_mistral_configured();
     let force = q.force.unwrap_or(false);
 
-    // 1. Check cache
+    let incoming_total: f32 = incomings.iter().map(|i| i.net_value).sum();
+    let outgoing_total: f32 = outgoings
+        .iter()
+        .filter(|o| !o.archived.unwrap_or(false) && !o.paused.unwrap_or(false))
+        .map(|o| o.cost)
+        .sum();
+    let surplus = (incoming_total - outgoing_total).max(0.0);
+
+    let system_prompt = build_outgoings_system_prompt();
+    let user_prompt = build_outgoings_context_prompt(
+        incoming_total,
+        outgoing_total,
+        surplus,
+        &outgoings,
+        &accounts,
+        &latest_balances,
+    );
+    let current_fp = compute_fingerprint(&user_prompt);
+
+    // 1. Check cache: valid if within 1 week TTL AND outgoings/accounts unchanged
     if !force {
         if let Ok(cache) = OUTGOINGS_CACHE.read() {
             if let Some(entry) = cache.get(&resolved) {
-                if entry.created_at.elapsed() < CACHE_TTL {
+                if entry.created_at.elapsed() < OUTGOINGS_CACHE_TTL && entry.fingerprint == current_fp {
                     return Ok(Json(EdSaysResponse {
                         ed_says: entry.text.clone(),
                         configured,
@@ -497,26 +545,8 @@ pub async fn ed_says_outgoings_api(
         }
     }
 
-    let incoming_total: f32 = incomings.iter().map(|i| i.net_value).sum();
-    let outgoing_total: f32 = outgoings
-        .iter()
-        .filter(|o| !o.archived.unwrap_or(false) && !o.paused.unwrap_or(false))
-        .map(|o| o.cost)
-        .sum();
-    let surplus = (incoming_total - outgoing_total).max(0.0);
-
     // 2. If Mistral is configured, call Mistral
     if configured {
-        let system_prompt = build_outgoings_system_prompt();
-        let user_prompt = build_outgoings_context_prompt(
-            incoming_total,
-            outgoing_total,
-            surplus,
-            &outgoings,
-            &accounts,
-            &latest_balances,
-        );
-
         match call_mistral(system_prompt, &user_prompt, 750).await {
             Ok(advice) => {
                 let now_ms = chrono::Utc::now().timestamp_millis();
@@ -525,6 +555,7 @@ pub async fn ed_says_outgoings_api(
                         resolved.clone(),
                         CacheEntry {
                             text: advice.clone(),
+                            fingerprint: current_fp,
                             timestamp_millis: now_ms,
                             created_at: Instant::now(),
                         },
@@ -644,11 +675,15 @@ pub async fn ed_says_networth_api(
     let configured = is_mistral_configured();
     let force = q.force.unwrap_or(false);
 
-    // 1. Check cache
+    let system_prompt = build_networth_system_prompt();
+    let user_prompt = build_networth_context_prompt(&nw);
+    let current_fp = compute_fingerprint(&user_prompt);
+
+    // 1. Check cache: valid if within 1 month TTL AND net worth/assets unchanged
     if !force {
         if let Ok(cache) = NETWORTH_CACHE.read() {
             if let Some(entry) = cache.get(&resolved) {
-                if entry.created_at.elapsed() < CACHE_TTL {
+                if entry.created_at.elapsed() < NETWORTH_CACHE_TTL && entry.fingerprint == current_fp {
                     return Ok(Json(EdSaysResponse {
                         ed_says: entry.text.clone(),
                         configured,
@@ -661,9 +696,6 @@ pub async fn ed_says_networth_api(
 
     // 2. If Mistral is configured, call Mistral
     if configured {
-        let system_prompt = build_networth_system_prompt();
-        let user_prompt = build_networth_context_prompt(&nw);
-
         match call_mistral(system_prompt, &user_prompt, 750).await {
             Ok(advice) => {
                 let now_ms = chrono::Utc::now().timestamp_millis();
@@ -672,6 +704,7 @@ pub async fn ed_says_networth_api(
                         resolved.clone(),
                         CacheEntry {
                             text: advice.clone(),
+                            fingerprint: current_fp,
                             timestamp_millis: now_ms,
                             created_at: Instant::now(),
                         },
@@ -880,6 +913,27 @@ mod tests {
         assert!(prompt.contains("4% Safe Withdrawal Rule: £5200.00/year (£433.33/month)"));
         assert!(prompt.contains("Campervan (Vehicle): £50000.00 [Solar setup]"));
         assert!(prompt.contains("Current Portfolio Food Coverage: 124% of monthly food covered"));
+    }
+
+    #[test]
+    fn test_cache_ttl_durations() {
+        assert_eq!(SPOG_CACHE_TTL, Duration::from_secs(86400)); // 1 day
+        assert_eq!(OUTGOINGS_CACHE_TTL, Duration::from_secs(604800)); // 1 week
+        assert_eq!(NETWORTH_CACHE_TTL, Duration::from_secs(2592000)); // 30 days
+    }
+
+    #[test]
+    fn test_fingerprint_changes_when_data_changes() {
+        let p1 = "Balance: 1000";
+        let p2 = "Balance: 1000";
+        let p3 = "Balance: 1050";
+
+        let fp1 = compute_fingerprint(p1);
+        let fp2 = compute_fingerprint(p2);
+        let fp3 = compute_fingerprint(p3);
+
+        assert_eq!(fp1, fp2);
+        assert_ne!(fp1, fp3);
     }
 }
 
