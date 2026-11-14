@@ -106,11 +106,70 @@ if [ -n "$CURRENT_KID" ] && [ "$CURRENT_KID" != "$ACTIVE_KEY_ID" ]; then
     fi
 fi
 
-# 5. Start unified Rust stack (monmon-rs, legmon-rs, rauthy) via docker compose
+# 5. Stop any conflicting legacy JVM containers and ensure thread-web client is registered
+echo "Ensuring no legacy port conflicts and syncing Rauthy clients..."
+docker update --restart=no legmon monmon 2>/dev/null || true
+docker stop legmon monmon 2>/dev/null || true
+
+docker run --rm -v "$APP_DIR/modules/rauthy/data:/data" alpine sh -c "
+    if [ -f /data/state_machine/db/hiqlite.db ]; then
+        apk add --no-cache sqlite >/dev/null 2>&1
+        HAS_THREAD=\$(sqlite3 /data/state_machine/db/hiqlite.db \"SELECT count(*) FROM clients WHERE id='thread-web';\" 2>/dev/null || echo 0)
+        if [ \"\$HAS_THREAD\" = \"0\" ]; then
+            sqlite3 /data/state_machine/db/hiqlite.db \"
+                INSERT OR IGNORE INTO clients (
+                    id, name, enabled, confidential, secret, secret_kid,
+                    redirect_uris, post_logout_redirect_uris, allowed_origins,
+                    flows_enabled, access_token_alg, id_token_alg,
+                    auth_code_lifetime, access_token_lifetime, scopes, default_scopes,
+                    challenge, force_mfa, client_uri, contacts,
+                    backchannel_logout_uri, restrict_group_prefix, claims, claims_at_root,
+                    allowed_resources, default_aud
+                ) VALUES (
+                    'thread-web',
+                    'Thread',
+                    1,
+                    1,
+                    (SELECT secret FROM clients WHERE id='monmon-web'),
+                    (SELECT secret_kid FROM clients WHERE id='monmon-web'),
+                    'https://thread.dryark.uk/callback,http://localhost:3001/callback,http://127.0.0.1:3001/callback',
+                    'https://thread.dryark.uk/,http://localhost:3001/',
+                    'https://thread.dryark.uk,http://localhost:3001,http://127.0.0.1:3001',
+                    'authorization_code,refresh_token',
+                    'RS256',
+                    'RS256',
+                    60,
+                    3600,
+                    'openid,profile,email',
+                    'openid,profile,email',
+                    NULL,
+                    0,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    0,
+                    NULL,
+                    NULL
+                );
+            \"
+        fi
+        sqlite3 /data/state_machine/db/hiqlite.db \"
+            UPDATE clients SET
+                redirect_uris = 'http://localhost:9000/callback,http://localhost:9001/callback,https://monmon.dryark.uk/callback,https://thread.dryark.uk/callback,http://localhost:3001/callback,http://127.0.0.1:3001/callback',
+                post_logout_redirect_uris = 'http://localhost:9000/?defaulturlafterlogout,http://localhost:9001/?defaulturlafterlogout,https://monmon.dryark.uk/?defaulturlafterlogout,https://thread.dryark.uk/,http://localhost:3001/',
+                allowed_origins = 'http://localhost:9000,http://localhost:9001,http://localhost:8085,https://monmon.dryark.uk,https://thread.dryark.uk,http://localhost:3001,http://127.0.0.1:3001'
+            WHERE id='monmon-web' AND redirect_uris NOT LIKE '%thread.dryark.uk%';
+        \"
+    fi
+" 2>/dev/null || true
+
+# 6. Start unified Rust stack (monmon-rs, legmon-rs, rauthy) via docker compose
 echo "Starting MonMon Rust stack via docker compose..."
 docker compose -f docker-compose.rust.yaml up -d --force-recreate
 
-# 6. Wait for services to become healthy via HTTP health checks
+# 7. Wait for services to become healthy via HTTP health checks
 echo "Waiting for monmon-rs service (probing http://127.0.0.1:9000/health)..."
 MAX_ATTEMPTS=25
 ATTEMPT=1
@@ -135,10 +194,25 @@ else
     exit 1
 fi
 
-# 7. Verify Rauthy status
+# 8. Verify LegMon status
+LEGMON_CODE="000"
+for _ in $(seq 1 15); do
+    LEGMON_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9005/status 2>/dev/null || true)
+    if [ "$LEGMON_CODE" = "200" ]; then
+        break
+    fi
+    sleep 1
+done
+if [ "$LEGMON_CODE" = "200" ]; then
+    echo "✅ legmon-rs OCR service is healthy (HTTP 200)!"
+else
+    echo "⚠️ Warning: legmon-rs probe returned $LEGMON_CODE - check docker compose logs if statement OCR fails."
+fi
+
+# 9. Verify Rauthy status
 RAUTHY_CODE="000"
 for _ in $(seq 1 15); do
-    RAUTHY_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8085/auth/v1/ping 2>/dev/null || true)
+    RAUTHY_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: identity.dryark.uk" --max-time 3 http://127.0.0.1:8085/.well-known/openid-configuration 2>/dev/null || true)
     if [ "$RAUTHY_CODE" = "200" ]; then
         break
     fi
