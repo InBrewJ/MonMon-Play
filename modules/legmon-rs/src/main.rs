@@ -1,3 +1,4 @@
+mod llm;
 mod log_buffer;
 mod models;
 mod ocr;
@@ -49,18 +50,19 @@ pub struct LogsParams {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
+    dotenvy::dotenv().ok();
 
     let port: u16 = env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(9005);
     let monmon_url = env::var("MONMON_URL").unwrap_or_else(|_| "http://127.0.0.1:9000".to_string());
-    let mistral_key_configured = env::var("MISTRAL_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+    let mistral_key_configured = llm::get_api_key().is_some();
 
     let log_buffer = LogBuffer::new(200);
     log_buffer.info(&format!(
-        "LegMon-rs service started on port {} (MonMon URL: {})",
-        port, monmon_url
+        "LegMon-rs service started on port {} (MonMon URL: {}, Mistral configured: {})",
+        port, monmon_url, mistral_key_configured
     ));
 
     let state = Arc::new(AppState {
@@ -109,18 +111,16 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> Json<StatusRespon
         mistral_key_configured: state.mistral_key_configured,
         mistral_ocr_enabled: state.mistral_key_configured,
         mistral_ocr_model: "mistral-ocr-latest".to_string(),
-        primary_model: "mistral-small-latest".to_string(),
-        fallback_model: "mistral-medium-latest".to_string(),
-        primary_pipeline: "mistral-ocr-latest + mistral-small-latest".to_string(),
-        fallback_pipeline: "pdftotext -layout + mistral-medium-latest".to_string(),
+        primary_model: llm::get_primary_model(),
+        fallback_model: llm::get_fallback_model(),
+        primary_pipeline: "pdftotext/xberg + mistral-small-latest".to_string(),
+        fallback_pipeline: "document_url / mistral-ocr-latest + mistral-medium-latest".to_string(),
         deterministic_fallback: "pdftotext -layout + DeterministicStatementParser".to_string(),
         deterministic_only: !state.mistral_key_configured,
         ocr_tools: vec![
-            "mistral-ocr".to_string(),
             "pdftotext".to_string(),
             "xberg".to_string(),
-            "pdfbox".to_string(),
-            "tesseract".to_string(),
+            "mistral-ocr".to_string(),
         ],
     })
 }
@@ -170,8 +170,8 @@ async fn process_handler(
 
     let job_id = format!("stmt_{}_{}", chrono::Utc::now().timestamp_millis(), &Uuid::new_v4().to_string()[..8]);
     state.log_buffer.info(&format!(
-        "Received statement upload job {} for user {} (ContentType: {})",
-        job_id, user_id, content_type
+        "Received statement upload job {} for user {} (ContentType: {}, size: {} bytes)",
+        job_id, user_id, content_type, body.len()
     ));
 
     if body.len() < 100 {
@@ -201,25 +201,78 @@ async fn process_handler(
     tokio::spawn(async move {
         state_clone
             .log_buffer
-            .info(&format!("[{}] Commencing OCR & extraction pipeline", job_id_clone));
+            .info(&format!("[{}] Commencing extraction pipeline", job_id_clone));
 
-        // 1. Run deterministic pdftotext extraction
-        let text_res = ocr::extract_text_pdftotext(&temp_file_path);
-        let statement = match text_res {
-            Ok(ref text) => parser::parse(text),
-            Err(e) => {
-                state_clone.log_buffer.error(&format!("[{}] OCR extraction failed: {}", job_id_clone, e));
-                let _ = fs::remove_file(&temp_file_path).await;
-                return;
+        // 1. Run deterministic pdftotext/xberg extraction
+        let (text_res, strategy) = ocr::extract_text(&temp_file_path);
+        let mut statement = match text_res {
+            Ok(ref text) => {
+                state_clone.log_buffer.info(&format!(
+                    "[{}] Extracted text via {} ({} bytes)",
+                    job_id_clone, strategy, text.len()
+                ));
+                parser::parse(text)
+            }
+            Err(ref e) => {
+                state_clone.log_buffer.warn(&format!(
+                    "[{}] Local text extraction failed ({}), will attempt Mistral fallback: {}",
+                    job_id_clone, strategy, e
+                ));
+                models::Statement::empty()
             }
         };
 
-        state_clone.log_buffer.info(&format!(
-            "[{}] Extracted Bank='{}', {} transactions",
-            job_id_clone,
-            statement.bank,
-            statement.transactions.len()
-        ));
+        // Check if deterministic parser extracted meaningful financial data
+        if !statement.has_data() {
+            state_clone.log_buffer.warn(&format!(
+                "[{}] Zero balances or data found via deterministic parsing ({} transactions, closing £{:.2}). Degrading gracefully to Mistral LLM extraction...",
+                job_id_clone,
+                statement.transactions.len(),
+                statement.closing_balance
+            ));
+
+            match llm::extract_with_fallback(
+                &state_clone.http_client,
+                &state_clone.log_buffer,
+                &job_id_clone,
+                &temp_file_path,
+                text_res.as_deref().unwrap_or(""),
+            )
+            .await
+            {
+                Ok(llm_stmt) => {
+                    if llm_stmt.has_data() {
+                        state_clone.log_buffer.info(&format!(
+                            "[{}] Mistral LLM fallback succeeded: Bank='{}', {} transactions, Closing Balance=£{:.2}",
+                            job_id_clone,
+                            llm_stmt.bank,
+                            llm_stmt.transactions.len(),
+                            llm_stmt.closing_balance
+                        ));
+                        statement = llm_stmt;
+                    } else {
+                        state_clone.log_buffer.warn(&format!(
+                            "[{}] Mistral LLM fallback executed but also found zero data",
+                            job_id_clone
+                        ));
+                    }
+                }
+                Err(err) => {
+                    state_clone.log_buffer.error(&format!(
+                        "[{}] Mistral LLM fallback failed: {}",
+                        job_id_clone, err
+                    ));
+                }
+            }
+        } else {
+            state_clone.log_buffer.info(&format!(
+                "[{}] Deterministic extraction succeeded: Bank='{}', {} transactions, Closing Balance=£{:.2}",
+                job_id_clone,
+                statement.bank,
+                statement.transactions.len(),
+                statement.closing_balance
+            ));
+        }
 
         // 2. Dispatch to MonMon webhook
         let dispatch_res = webhook::dispatch_webhook(
