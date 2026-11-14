@@ -286,7 +286,17 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     .flatten();
 
     let mut yearly_bills_monthly_saving = 0.0f32;
-    if yearly_bills_acc_id.is_some() {
+    if let Some(target_acc_id) = yearly_bills_acc_id {
+        let target_balance: f32 = sqlx::query_scalar(
+            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
+        )
+        .bind(target_acc_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None)
+        .flatten()
+        .unwrap_or(0.0);
+
         let yearly_rows = sqlx::query_as::<_, Outgoing>(
             r#"
             SELECT id, name, cost, outgoingday, bill, rent, hiddenfromtotal, paused,
@@ -305,15 +315,16 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         .await
         .unwrap_or_default();
 
-        let (saving, _) = crate::models::calculate_yearly_bills_monthly_saving(
+        let calc = crate::models::calculate_yearly_bills_monthly_saving(
             today,
             nominal_payday,
             &yearly_rows,
+            target_balance,
         );
-        yearly_bills_monthly_saving = saving;
+        yearly_bills_monthly_saving = calc.monthly_saving;
 
-        if saving > 0.0 {
-            let saving_pence = Pence::from_pounds_f32(saving);
+        if calc.monthly_saving > 0.0 {
+            let saving_pence = Pence::from_pounds_f32(calc.monthly_saving);
             outgoing_total += saving_pence;
             bills_cost += saving_pence;
             let effective_payday =

@@ -68,6 +68,9 @@ pub struct OutgoingsTemplate {
     pub yearly_bills_account_id: Option<i64>,
     pub yearly_bills_monthly_saving: f32,
     pub yearly_bills_count: usize,
+    pub yearly_bills_target_balance: f32,
+    pub yearly_bills_total_cost: f32,
+    pub yearly_bills_remaining_deficit: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -467,12 +470,29 @@ pub async fn get_outgoings_page(
     .flatten()
     .unwrap_or(25);
 
-    let (yearly_bills_monthly_saving, yearly_bills_count) =
-        crate::models::calculate_yearly_bills_monthly_saving(today, nominal_payday, &outgoings);
+    let target_balance: f32 = match yearly_bills_account_id {
+        Some(acc_id) => sqlx::query_scalar(
+            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
+        )
+        .bind(acc_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None)
+        .flatten()
+        .unwrap_or(0.0),
+        None => 0.0,
+    };
+
+    let calc = crate::models::calculate_yearly_bills_monthly_saving(
+        today,
+        nominal_payday,
+        &outgoings,
+        target_balance,
+    );
 
     let mut outgoing_dtos = outgoing_dtos;
     if let Some(target_acc_id) = yearly_bills_account_id {
-        if yearly_bills_monthly_saving > 0.0 {
+        if calc.monthly_saving > 0.0 {
             let target_acc = accounts.iter().find(|a| a.id == target_acc_id);
             let (acc_name, acc_type) = match target_acc {
                 Some(a) => (Some(a.name.clone()), Some(a.account_type.clone())),
@@ -481,7 +501,7 @@ pub async fn get_outgoings_page(
             let calculated_dto = OutgoingViewDto {
                 id: -999,
                 name: "Yearly Bills Reserve".to_string(),
-                cost: yearly_bills_monthly_saving,
+                cost: calc.monthly_saving,
                 outgoing_day: nominal_payday,
                 effective_day: nominal_payday as u32,
                 is_adjusted: false,
@@ -521,8 +541,11 @@ pub async fn get_outgoings_page(
         editing: false,
         editing_outgoing: None,
         yearly_bills_account_id,
-        yearly_bills_monthly_saving,
-        yearly_bills_count,
+        yearly_bills_monthly_saving: calc.monthly_saving,
+        yearly_bills_count: calc.upcoming_count,
+        yearly_bills_target_balance: calc.target_account_balance,
+        yearly_bills_total_cost: calc.total_upcoming_cost,
+        yearly_bills_remaining_deficit: calc.remaining_deficit,
     };
     tmpl.render()
         .map(|html| Html(html).into_response())
@@ -613,12 +636,29 @@ pub async fn get_edit_outgoing_page(
     .flatten()
     .unwrap_or(25);
 
-    let (yearly_bills_monthly_saving, yearly_bills_count) =
-        crate::models::calculate_yearly_bills_monthly_saving(today, nominal_payday, &outgoings);
+    let target_balance: f32 = match yearly_bills_account_id {
+        Some(acc_id) => sqlx::query_scalar(
+            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
+        )
+        .bind(acc_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None)
+        .flatten()
+        .unwrap_or(0.0),
+        None => 0.0,
+    };
+
+    let calc = crate::models::calculate_yearly_bills_monthly_saving(
+        today,
+        nominal_payday,
+        &outgoings,
+        target_balance,
+    );
 
     let mut outgoing_dtos = outgoing_dtos;
     if let Some(target_acc_id) = yearly_bills_account_id {
-        if yearly_bills_monthly_saving > 0.0 {
+        if calc.monthly_saving > 0.0 {
             let target_acc = accounts.iter().find(|a| a.id == target_acc_id);
             let (acc_name, acc_type) = match target_acc {
                 Some(a) => (Some(a.name.clone()), Some(a.account_type.clone())),
@@ -627,7 +667,7 @@ pub async fn get_edit_outgoing_page(
             let calculated_dto = OutgoingViewDto {
                 id: -999,
                 name: "Yearly Bills Reserve".to_string(),
-                cost: yearly_bills_monthly_saving,
+                cost: calc.monthly_saving,
                 outgoing_day: nominal_payday,
                 effective_day: nominal_payday as u32,
                 is_adjusted: false,
@@ -667,8 +707,11 @@ pub async fn get_edit_outgoing_page(
         editing,
         editing_outgoing,
         yearly_bills_account_id,
-        yearly_bills_monthly_saving,
-        yearly_bills_count,
+        yearly_bills_monthly_saving: calc.monthly_saving,
+        yearly_bills_count: calc.upcoming_count,
+        yearly_bills_target_balance: calc.target_account_balance,
+        yearly_bills_total_cost: calc.total_upcoming_cost,
+        yearly_bills_remaining_deficit: calc.remaining_deficit,
     };
     tmpl.render()
         .map(|html| Html(html).into_response())

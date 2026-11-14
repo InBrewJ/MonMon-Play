@@ -66,9 +66,19 @@
                 </form>
                 {% if let Some(target_id) = yearly_bills_account_id %}
                     {% if yearly_bills_monthly_saving > 0.0 %}
+                        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color); font-size: 0.85rem; color: #047857; display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Active Sinking Fund:</strong> Adding <strong>£{{ yearly_bills_monthly_saving }}</strong>/month to your regular outgoings.</span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-left: 20px;">
+                                Target Balance: <strong>£{{ yearly_bills_target_balance }}</strong> &bull; Total Upcoming Bills ({{ yearly_bills_count }}): <strong>£{{ yearly_bills_total_cost }}</strong> &bull; Remaining to Save: <strong>£{{ yearly_bills_remaining_deficit }}</strong>
+                            </div>
+                        </div>
+                    {% else if yearly_bills_count > 0 %}
                         <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color); font-size: 0.85rem; color: #047857; display: flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-check-circle"></i>
-                            <span><strong>Active Sinking Fund:</strong> Adding <strong>£{{ yearly_bills_monthly_saving }}</strong>/month to your regular outgoings across {{ yearly_bills_count }} upcoming yearly bill{% if yearly_bills_count > 1 %}s{% endif %}.</span>
+                            <i class="fas fa-shield-alt"></i>
+                            <span><strong>Fully Funded:</strong> Target account has <strong>£{{ yearly_bills_target_balance }}</strong>, fully covering all {{ yearly_bills_count }} upcoming yearly bills (£{{ yearly_bills_total_cost }}). Monthly reserve top-up is £0.00.</span>
                         </div>
                     {% else %}
                         <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color); font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">

@@ -243,18 +243,28 @@ pub fn count_paydays_between(today: NaiveDate, due_date: NaiveDate, nominal_payd
     count
 }
 
-/// Calculates the monthly sinking fund amount needed across all active upcoming yearly outgoings.
-/// For each yearly bill:
-/// - If it is due in the current month, the bill itself is due now as an active outgoing, so no sinking fund top-up this month.
-/// - Otherwise, divides the bill cost by the number of remaining paydays before the bill is due.
-/// Returns (total_monthly_saving, count_of_upcoming_bills).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YearlyBillsReserveCalculation {
+    pub monthly_saving: f32,
+    pub upcoming_count: usize,
+    pub total_upcoming_cost: f32,
+    pub remaining_deficit: f32,
+    pub target_account_balance: f32,
+}
+
+/// Calculates the monthly sinking fund amount needed across all active upcoming yearly outgoings,
+/// adjusting for any balance already saved in the target account via a chronological waterfall.
+/// - Sorts upcoming bills by due date so existing cash covers the earliest due bills first.
+/// - Any remaining deficit per bill is divided across its remaining paydays.
+/// - If a bill is due in the current month, it is an active outgoing this month and excluded from sinking fund top-up.
 pub fn calculate_yearly_bills_monthly_saving(
     as_of: NaiveDate,
     nominal_payday: i32,
     outgoings: &[Outgoing],
-) -> (f32, usize) {
-    let mut total_monthly_saving: f32 = 0.0;
-    let mut count_upcoming_bills = 0;
+    target_account_balance: f32,
+) -> YearlyBillsReserveCalculation {
+    let mut upcoming_items: Vec<(NaiveDate, u32, f32)> = Vec::new();
 
     for o in outgoings {
         if !o.is_yearly() {
@@ -291,14 +301,44 @@ pub fn calculate_yearly_bills_monthly_saving(
 
         let paydays_remaining = count_paydays_between(as_of, due_date, nominal_payday);
         if paydays_remaining > 0 {
-            let per_payday = o.cost / (paydays_remaining as f32);
-            total_monthly_saving += per_payday;
-            count_upcoming_bills += 1;
+            upcoming_items.push((due_date, paydays_remaining, o.cost));
         }
     }
 
-    let rounded = ((total_monthly_saving * 100.0).round()) / 100.0;
-    (rounded, count_upcoming_bills)
+    // Sort chronologically by due date so existing target account cash offsets the earliest due bills first
+    upcoming_items.sort_by_key(|item| item.0);
+
+    let mut available_cash = target_account_balance.max(0.0);
+    let mut total_upcoming_cost = 0.0f32;
+    let mut total_remaining_deficit = 0.0f32;
+    let mut total_monthly_saving = 0.0f32;
+    let upcoming_count = upcoming_items.len();
+
+    for (_due_date, paydays_remaining, cost) in upcoming_items {
+        total_upcoming_cost += cost;
+        let covered = available_cash.min(cost);
+        available_cash -= covered;
+        let deficit = cost - covered;
+        total_remaining_deficit += deficit;
+
+        if deficit > 0.0 && paydays_remaining > 0 {
+            let per_payday = deficit / (paydays_remaining as f32);
+            total_monthly_saving += per_payday;
+        }
+    }
+
+    let monthly_saving = ((total_monthly_saving * 100.0).round()) / 100.0;
+    let total_upcoming_cost = ((total_upcoming_cost * 100.0).round()) / 100.0;
+    let remaining_deficit = ((total_remaining_deficit * 100.0).round()) / 100.0;
+    let target_account_balance = ((target_account_balance * 100.0).round()) / 100.0;
+
+    YearlyBillsReserveCalculation {
+        monthly_saving,
+        upcoming_count,
+        total_upcoming_cost,
+        remaining_deficit,
+        target_account_balance,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -519,32 +559,57 @@ mod tests {
         car_insurance.outgoing_day = 10;
         let outgoings = vec![car_insurance];
 
-        // 1. In June before payday (June 10) -> 2 paydays remaining -> £500.00/mo
-        let (saving_june, count_june) = calculate_yearly_bills_monthly_saving(
+        // 1. In June before payday (June 10) with 0 balance -> 2 paydays remaining -> £500.00/mo
+        let res_june = calculate_yearly_bills_monthly_saving(
             NaiveDate::from_ymd_opt(2026, 6, 10).unwrap(),
             25,
             &outgoings,
+            0.0,
         );
-        assert_eq!(count_june, 1);
-        assert_eq!(saving_june, 500.00);
+        assert_eq!(res_june.upcoming_count, 1);
+        assert_eq!(res_june.monthly_saving, 500.00);
+        assert_eq!(res_june.total_upcoming_cost, 1000.00);
+        assert_eq!(res_june.remaining_deficit, 1000.00);
 
-        // 2. In June after payday (June 28) -> 1 payday remaining -> £1000.00/mo
-        let (saving_late_june, count_late_june) = calculate_yearly_bills_monthly_saving(
+        // 2. In June with £400 already saved in target account -> deficit £600 / 2 = £300.00/mo
+        let res_with_balance = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 6, 10).unwrap(),
+            25,
+            &outgoings,
+            400.0,
+        );
+        assert_eq!(res_with_balance.monthly_saving, 300.00);
+        assert_eq!(res_with_balance.remaining_deficit, 600.00);
+
+        // 3. In June with £1000 already saved (fully funded) -> £0.00/mo
+        let res_fully_funded = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 6, 10).unwrap(),
+            25,
+            &outgoings,
+            1000.0,
+        );
+        assert_eq!(res_fully_funded.monthly_saving, 0.00);
+        assert_eq!(res_fully_funded.remaining_deficit, 0.00);
+
+        // 4. In June after payday (June 28) with 0 balance -> 1 payday remaining -> £1000.00/mo
+        let res_late_june = calculate_yearly_bills_monthly_saving(
             NaiveDate::from_ymd_opt(2026, 6, 28).unwrap(),
             25,
             &outgoings,
+            0.0,
         );
-        assert_eq!(count_late_june, 1);
-        assert_eq!(saving_late_june, 1000.00);
+        assert_eq!(res_late_june.upcoming_count, 1);
+        assert_eq!(res_late_june.monthly_saving, 1000.00);
 
-        // 3. In August (due month) -> 0 saving because bill itself is due as an active outgoing this month
-        let (saving_aug, count_aug) = calculate_yearly_bills_monthly_saving(
+        // 5. In August (due month) -> 0 saving because bill itself is due as an active outgoing this month
+        let res_aug = calculate_yearly_bills_monthly_saving(
             NaiveDate::from_ymd_opt(2026, 8, 5).unwrap(),
             25,
             &outgoings,
+            0.0,
         );
-        assert_eq!(count_aug, 0);
-        assert_eq!(saving_aug, 0.0);
+        assert_eq!(res_aug.upcoming_count, 0);
+        assert_eq!(res_aug.monthly_saving, 0.0);
     }
 
     #[test]
@@ -563,17 +628,33 @@ mod tests {
 
         let outgoings = vec![bill_aug, bill_nov, paused_bill];
 
-        // On June 10:
+        // On June 10 with 0 balance:
         // bill_aug: 2 paydays -> 1000 / 2 = 500
         // bill_nov: June, July, Aug, Sept, Oct paydays = 5 paydays -> 120 / 5 = 24
         // paused_bill is ignored
         // Total = 524.00
-        let (saving, count) = calculate_yearly_bills_monthly_saving(
+        let res = calculate_yearly_bills_monthly_saving(
             NaiveDate::from_ymd_opt(2026, 6, 10).unwrap(),
             25,
             &outgoings,
+            0.0,
         );
-        assert_eq!(count, 2);
-        assert_eq!(saving, 524.00);
+        assert_eq!(res.upcoming_count, 2);
+        assert_eq!(res.monthly_saving, 524.00);
+        assert_eq!(res.total_upcoming_cost, 1120.00);
+        assert_eq!(res.remaining_deficit, 1120.00);
+
+        // On June 10 with £400 balance in target account:
+        // £400 offsets bill_aug (£1000 - £400 = £600 remaining / 2 paydays = £300)
+        // bill_nov still needs £120 / 5 = £24
+        // Total saving = £324.00, remaining deficit = £720.00
+        let res_waterfall = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 6, 10).unwrap(),
+            25,
+            &outgoings,
+            400.0,
+        );
+        assert_eq!(res_waterfall.monthly_saving, 324.00);
+        assert_eq!(res_waterfall.remaining_deficit, 720.00);
     }
 }
