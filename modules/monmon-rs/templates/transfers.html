@@ -111,16 +111,40 @@
             border-radius: 12px;
             padding: 1.2rem;
             margin-bottom: 12px;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+            cursor: pointer;
         }
         .transfer-card:hover {
             border-color: rgba(99, 102, 241, 0.4);
             box-shadow: 0 4px 15px -3px rgba(0, 0, 0, 0.2);
         }
         .transfer-card.is-done {
-            border-color: rgba(16, 185, 129, 0.35);
-            background: rgba(16, 185, 129, 0.04);
-            opacity: 0.85;
+            border-color: rgba(16, 185, 129, 0.4);
+            background: rgba(16, 185, 129, 0.05);
+            opacity: 0.65;
+        }
+        .transfer-card.is-done .transfer-title {
+            text-decoration: line-through;
+            color: var(--text-muted, #94a3b8);
+        }
+        .btn-clear-checks {
+            background: var(--card-bg-subtle, #0f172a);
+            border: 1px solid var(--border-color, #334155);
+            color: var(--text-muted, #94a3b8);
+            font-size: 0.76rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .btn-clear-checks:hover {
+            border-color: #ef4444;
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.08);
         }
         .transfer-card-header {
             display: flex;
@@ -355,9 +379,15 @@
                 <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-main, #f8fafc);">
                     Required Payday Transfers ({{ next_window.transfers_count }})
                 </h3>
-                <span style="font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
-                    Tick items as you transfer them in your banking app
-                </span>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <span id="next-checked-summary" style="font-size: 0.8rem; color: #10b981; font-weight: 700; display: none;"></span>
+                    <button type="button" id="next-clear-btn" class="btn-clear-checks" onclick="clearAllChecks('next')" style="display: none;" title="Clear all ticks for next payday">
+                        <i class="fas fa-undo-alt"></i> Clear all checks
+                    </button>
+                    <span style="font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
+                        Tick items as you transfer them in your banking app
+                    </span>
+                </div>
             </div>
 
             {% if next_window.items.is_empty() %}
@@ -380,7 +410,7 @@
                         </div>
                         <span class="badge-transfer-type {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}badge-sinking{% else %}badge-savings{% endif %}">
                             {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}
-                            <i class="fas fa-shield-alt"></i> Sinking Fund Autosave
+                            <i class="fas fa-shield-alt"></i> MonMon Calculated Reserve
                             {% else %}
                             <i class="fas fa-bullseye"></i> Savings Target
                             {% endif %}
@@ -502,9 +532,15 @@
                 <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-main, #f8fafc);">
                     Last Payday Transfers ({{ last_window.transfers_count }})
                 </h3>
-                <span style="font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
-                    Historical allocations for last payday cycle
-                </span>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <span id="last-checked-summary" style="font-size: 0.8rem; color: #10b981; font-weight: 700; display: none;"></span>
+                    <button type="button" id="last-clear-btn" class="btn-clear-checks" onclick="clearAllChecks('last')" style="display: none;" title="Clear all ticks for last payday">
+                        <i class="fas fa-undo-alt"></i> Clear all checks
+                    </button>
+                    <span style="font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
+                        Historical allocations for last payday cycle
+                    </span>
+                </div>
             </div>
 
             {% if last_window.items.is_empty() %}
@@ -527,7 +563,7 @@
                         </div>
                         <span class="badge-transfer-type {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}badge-sinking{% else %}badge-savings{% endif %}">
                             {% if item.category == "YEARLY_BILLS_AUTOSAVE" %}
-                            <i class="fas fa-shield-alt"></i> Sinking Fund Autosave
+                            <i class="fas fa-shield-alt"></i> MonMon Calculated Reserve
                             {% else %}
                             <i class="fas fa-bullseye"></i> Savings Target
                             {% endif %}

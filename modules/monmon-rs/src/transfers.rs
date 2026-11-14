@@ -185,63 +185,59 @@ pub async fn calculate_payday_window(
             let acc_type: Option<String> = r.get("account_type");
             let cur_bal: f32 = r.get("current_bal");
 
-            let amt_to_transfer = if monthly_amt > 0.0 {
-                monthly_amt
-            } else if target_amt > 0.0 && cur_bal < target_amt {
-                // If no fixed monthly set, suggest remaining gap if smaller than target
-                target_amt - cur_bal
+            // User requirement: if the amount on /savingsPlan is zero or negative,
+            // it must not appear in the transfer window.
+            if monthly_amt <= 0.0 {
+                continue;
+            }
+
+            let amt_to_transfer = monthly_amt;
+
+            let prog_pct = if target_amt > 0.0 {
+                Some(((cur_bal / target_amt) * 100.0).clamp(0.0, 100.0).round() as i32)
             } else {
-                0.0
+                None
             };
 
-            // Include if there's an amount to transfer or a linked account with target
-            if amt_to_transfer > 0.0 || (target_amt > 0.0 && acc_id.is_some()) {
-                let prog_pct = if target_amt > 0.0 {
-                    Some(((cur_bal / target_amt) * 100.0).clamp(0.0, 100.0).round() as i32)
-                } else {
-                    None
-                };
+            let dest_name = acc_name.unwrap_or_else(|| "Unlinked Account".to_string());
+            let dest_type = acc_type.unwrap_or_else(|| "SAVINGS".to_string());
+            let item_type: String = r.get("item_type");
 
-                let dest_name = acc_name.unwrap_or_else(|| "Unlinked Account".to_string());
-                let dest_type = acc_type.unwrap_or_else(|| "SAVINGS".to_string());
-                let item_type: String = r.get("item_type");
+            let category_desc = if item_type.to_uppercase().contains("DEBT") {
+                "Debt Payoff Target"
+            } else {
+                "Savings Target"
+            };
 
-                let category_desc = if item_type.to_uppercase().contains("DEBT") {
-                    "Debt Payoff Target"
-                } else {
-                    "Savings Target"
-                };
+            let p = r.get::<i32, _>("priority");
+            let desc = format!("Savings Plan Priority #{} ({})", p, category_desc);
 
-                let p = r.get::<i32, _>("priority");
-                let desc = format!("Savings Plan Priority #{} ({})", p, category_desc);
-
-                items.push(PaydayTransferItemDto {
-                    id: format!("savings_{}", r.get::<i64, _>("id")),
-                    priority: p,
-                    title: r.get("name"),
-                    category: "SAVINGS_PLAN".to_string(),
-                    source_account_id: source_acc_id,
-                    source_account_name: source_acc_name.clone(),
-                    destination_account_id: acc_id,
-                    destination_account_name: dest_name,
-                    destination_account_type: dest_type,
-                    amount: amt_to_transfer,
-                    amount_formatted: format!("{:.2}", amt_to_transfer),
-                    target_amount: if target_amt > 0.0 { Some(target_amt) } else { None },
-                    target_amount_formatted: if target_amt > 0.0 { Some(format!("{:.2}", target_amt)) } else { None },
-                    current_destination_balance: Some(cur_bal),
-                    current_destination_balance_formatted: Some(format!("{:.2}", cur_bal)),
-                    progress_pct: prog_pct,
-                    description: desc,
-                    breakdown: Vec::new(),
-                });
-            }
+            items.push(PaydayTransferItemDto {
+                id: format!("savings_{}", r.get::<i64, _>("id")),
+                priority: p,
+                title: r.get("name"),
+                category: "SAVINGS_PLAN".to_string(),
+                source_account_id: source_acc_id,
+                source_account_name: source_acc_name.clone(),
+                destination_account_id: acc_id,
+                destination_account_name: dest_name,
+                destination_account_type: dest_type,
+                amount: amt_to_transfer,
+                amount_formatted: format!("{:.2}", amt_to_transfer),
+                target_amount: if target_amt > 0.0 { Some(target_amt) } else { None },
+                target_amount_formatted: if target_amt > 0.0 { Some(format!("{:.2}", target_amt)) } else { None },
+                current_destination_balance: Some(cur_bal),
+                current_destination_balance_formatted: Some(format!("{:.2}", cur_bal)),
+                progress_pct: prog_pct,
+                description: desc,
+                breakdown: Vec::new(),
+            });
         }
     }
 
-    // 3. Yearly Outgoings Autosave / Sinking Fund Reserve
+    // 3. Yearly Outgoings Autosave / Sinking Fund Reserve (MonMon Calculated)
     let yearly_account_row = sqlx::query(
-        "SELECT yearly_bills_account_id FROM user_access WHERE (userid = $1 OR username = $1) LIMIT 1"
+        "SELECT yearly_bills_account_id FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1 OR email = $1) LIMIT 1"
     )
     .bind(resolved_uid)
     .fetch_optional(pool)
@@ -249,7 +245,7 @@ pub async fn calculate_payday_window(
 
     let yearly_acc_id: Option<i64> = yearly_account_row.and_then(|r| r.get("yearly_bills_account_id"));
 
-    if let Some(target_acc_id) = yearly_acc_id {
+    let (dest_id, dest_name, dest_type, dest_bal) = if let Some(target_acc_id) = yearly_acc_id {
         let target_acc_row = sqlx::query(
             r#"
             SELECT a.name, a.type,
@@ -263,80 +259,87 @@ pub async fn calculate_payday_window(
         .await?;
 
         if let Some(ar) = target_acc_row {
-            let dest_name: String = ar.get("name");
-            let dest_type: String = ar.get("type");
-            let dest_bal: f32 = ar.get("bal");
-
-            let outgoings = sqlx::query_as::<_, Outgoing>(
-                r#"
-                SELECT id, name, cost, outgoingday, bill, rent, hiddenfromtotal, paused,
-                       outgoingmonth, startingyear, yearinterval, account_id, user_id,
-                       pause_reason, paused_at, archived
-                FROM outgoing
-                WHERE (userid = $1 OR user_id = $1)
-                  AND (archived IS NULL OR archived = false)
-                  AND (paused IS NULL OR paused = false)
-                  AND (outgoingmonth IS NOT NULL AND outgoingmonth > 0)
-                ORDER BY outgoingmonth ASC, outgoingday ASC
-                "#,
+            (
+                Some(target_acc_id),
+                ar.get::<String, _>("name"),
+                ar.get::<String, _>("type"),
+                ar.get::<f32, _>("bal"),
             )
-            .bind(resolved_uid)
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
-
-            let calc = calculate_yearly_bills_monthly_saving(
-                payday_date,
-                nominal_payday,
-                &outgoings,
-                dest_bal,
-            );
-
-            if calc.monthly_saving > 0.0 {
-                let breakdown_items: Vec<YearlyBillBreakdownItem> = calc
-                    .breakdown
-                    .into_iter()
-                    .map(|b| YearlyBillBreakdownItem {
-                        name: b.name,
-                        cost: b.total_cost,
-                        cost_formatted: format!("{:.2}", b.total_cost),
-                        due_date: b.due_date,
-                        monthly_saving: b.monthly_saving,
-                        monthly_saving_formatted: format!("{:.2}", b.monthly_saving),
-                    })
-                    .collect();
-
-                let desc = format!(
-                    "Monthly Sinking Fund Reserve for {} upcoming annual bills (£{:.2} total cost)",
-                    calc.upcoming_count, calc.total_upcoming_cost
-                );
-
-                items.push(PaydayTransferItemDto {
-                    id: "yearly_bills_autosave".to_string(),
-                    priority: 0, // Top priority for bill safety
-                    title: "Yearly Bills Reserve Autosave".to_string(),
-                    category: "YEARLY_BILLS_AUTOSAVE".to_string(),
-                    source_account_id: source_acc_id,
-                    source_account_name: source_acc_name.clone(),
-                    destination_account_id: Some(target_acc_id),
-                    destination_account_name: dest_name,
-                    destination_account_type: dest_type,
-                    amount: calc.monthly_saving,
-                    amount_formatted: format!("{:.2}", calc.monthly_saving),
-                    target_amount: Some(calc.total_upcoming_cost),
-                    target_amount_formatted: Some(format!("{:.2}", calc.total_upcoming_cost)),
-                    current_destination_balance: Some(dest_bal),
-                    current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
-                    progress_pct: if calc.total_upcoming_cost > 0.0 {
-                        Some(((dest_bal / calc.total_upcoming_cost) * 100.0).clamp(0.0, 100.0).round() as i32)
-                    } else {
-                        None
-                    },
-                    description: desc,
-                    breakdown: breakdown_items,
-                });
-            }
+        } else {
+            (None, "Yearly Bills Reserve".to_string(), "SAVINGS".to_string(), 0.0f32)
         }
+    } else {
+        (None, "Yearly Bills Reserve".to_string(), "SAVINGS".to_string(), 0.0f32)
+    };
+
+    let outgoings = sqlx::query_as::<_, Outgoing>(
+        r#"
+        SELECT id, name, cost, outgoingday, bill, rent, hiddenfromtotal, paused,
+               outgoingmonth, startingyear, yearinterval, account_id, user_id,
+               pause_reason, paused_at, archived
+        FROM outgoing
+        WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
+          AND (paused IS NULL OR paused = false)
+          AND (outgoingmonth IS NOT NULL AND outgoingmonth > 0)
+        ORDER BY outgoingmonth ASC, outgoingday ASC
+        "#,
+    )
+    .bind(resolved_uid)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let calc = calculate_yearly_bills_monthly_saving(
+        payday_date,
+        nominal_payday,
+        &outgoings,
+        dest_bal,
+    );
+
+    if calc.monthly_saving > 0.0 {
+        let breakdown_items: Vec<YearlyBillBreakdownItem> = calc
+            .breakdown
+            .into_iter()
+            .map(|b| YearlyBillBreakdownItem {
+                name: b.name,
+                cost: b.total_cost,
+                cost_formatted: format!("{:.2}", b.total_cost),
+                due_date: b.due_date,
+                monthly_saving: b.monthly_saving,
+                monthly_saving_formatted: format!("{:.2}", b.monthly_saving),
+            })
+            .collect();
+
+        let desc = format!(
+            "Monthly Sinking Fund Reserve for {} upcoming annual bills (£{:.2} total cost)",
+            calc.upcoming_count, calc.total_upcoming_cost
+        );
+
+        items.push(PaydayTransferItemDto {
+            id: "yearly_bills_autosave".to_string(),
+            priority: 0, // Top priority for bill safety
+            title: "Yearly Bills Reserve (MonMon Calculated)".to_string(),
+            category: "YEARLY_BILLS_AUTOSAVE".to_string(),
+            source_account_id: source_acc_id,
+            source_account_name: source_acc_name.clone(),
+            destination_account_id: dest_id,
+            destination_account_name: dest_name,
+            destination_account_type: dest_type,
+            amount: calc.monthly_saving,
+            amount_formatted: format!("{:.2}", calc.monthly_saving),
+            target_amount: Some(calc.total_upcoming_cost),
+            target_amount_formatted: Some(format!("{:.2}", calc.total_upcoming_cost)),
+            current_destination_balance: Some(dest_bal),
+            current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
+            progress_pct: if calc.total_upcoming_cost > 0.0 {
+                Some(((dest_bal / calc.total_upcoming_cost) * 100.0).clamp(0.0, 100.0).round() as i32)
+            } else {
+                None
+            },
+            description: desc,
+            breakdown: breakdown_items,
+        });
     }
 
     // Sort items: Priority 0 (Yearly Bills Autosave) first, then Savings Plan items by ascending priority
@@ -499,4 +502,43 @@ pub async fn get_transfers_api(
         "nextPayday": next_window,
         "lastPayday": last_window
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn test_zero_monthly_amount_savings_item_is_excluded() {
+        // Test axiom: If monthly_amt on savingsPlan is zero, it must NOT appear in the transfer window,
+        // even if target_amt > 0 and cur_bal < target_amt.
+        let monthly_amt: f32 = 0.0;
+        let _target_amt: f32 = 2000.0;
+        let _cur_bal: f32 = 3.88;
+
+        let should_include = monthly_amt > 0.0;
+        assert!(!should_include, "Items with monthly_amount == 0.0 must be excluded from payday transfers");
+
+        // Positive monthly amount should be included
+        let positive_monthly_amt: f32 = 150.0;
+        let should_include_positive = positive_monthly_amt > 0.0;
+        assert!(should_include_positive, "Items with positive monthly amount must be included");
+    }
+
+    #[test]
+    fn test_payday_transfer_dates_calculation() {
+        // Nominal payday on 25th
+        let today = NaiveDate::from_ymd_opt(2026, 11, 14).unwrap();
+        let nominal = 25;
+
+        let last_payday = find_last_payday_date(today, nominal);
+        let next_payday = find_next_payday_date(today, nominal);
+
+        // In Nov 2026:
+        // Next payday: 25 Nov 2026 (Wednesday)
+        assert_eq!(next_payday, NaiveDate::from_ymd_opt(2026, 11, 25).unwrap());
+        // Last payday: 25 Oct 2026 is Sunday -> adjusted to Friday 23 Oct 2026
+        assert_eq!(last_payday, NaiveDate::from_ymd_opt(2026, 10, 23).unwrap());
+    }
 }

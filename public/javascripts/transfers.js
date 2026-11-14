@@ -95,7 +95,96 @@
             localStorage.removeItem(key);
             if (card) card.classList.remove('is-done');
         }
+        updateCheckedSummary(windowType);
     };
+
+    window.clearAllChecks = function (windowType) {
+        var prefix = STORAGE_PREFIX + windowType + '_';
+        var toRemove = [];
+        for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf(prefix) === 0) {
+                toRemove.push(k);
+            }
+        }
+        toRemove.forEach(function (k) {
+            localStorage.removeItem(k);
+        });
+
+        var containerId = windowType === 'next' ? 'transfer-cards-container-next' : 'transfer-cards-container-last';
+        var container = document.getElementById(containerId);
+        if (container) {
+            var checkboxes = container.querySelectorAll('input[type="checkbox"][id^="chk-"]');
+            checkboxes.forEach(function (chk) {
+                chk.checked = false;
+            });
+            var cards = container.querySelectorAll('.transfer-card');
+            cards.forEach(function (card) {
+                card.classList.remove('is-done');
+            });
+        }
+        updateCheckedSummary(windowType);
+    };
+
+    function updateCheckedSummary(windowType) {
+        var containerId = windowType === 'next' ? 'transfer-cards-container-next' : 'transfer-cards-container-last';
+        var container = document.getElementById(containerId);
+        var summaryEl = document.getElementById(windowType + '-checked-summary');
+        var clearBtn = document.getElementById(windowType + '-clear-btn');
+        if (!container) return;
+
+        var checkboxes = container.querySelectorAll('input[type="checkbox"][id^="chk-"]');
+        var total = checkboxes.length;
+        var checkedCount = 0;
+        checkboxes.forEach(function (chk) {
+            if (chk.checked) checkedCount++;
+        });
+
+        if (summaryEl) {
+            if (total === 0) {
+                summaryEl.textContent = '';
+                summaryEl.style.display = 'none';
+            } else if (checkedCount === total) {
+                summaryEl.innerHTML = '<i class="fas fa-check-double"></i> All ' + total + ' completed';
+                summaryEl.style.display = 'inline-block';
+            } else if (checkedCount > 0) {
+                summaryEl.innerHTML = '<i class="fas fa-check"></i> ' + checkedCount + ' of ' + total + ' completed';
+                summaryEl.style.display = 'inline-block';
+            } else {
+                summaryEl.textContent = '';
+                summaryEl.style.display = 'none';
+            }
+        }
+
+        if (clearBtn) {
+            clearBtn.style.display = checkedCount > 0 ? 'inline-flex' : 'none';
+        }
+    }
+
+    function initCardClickHandlers() {
+        var cards = document.querySelectorAll('.transfer-card');
+        cards.forEach(function (card) {
+            // Prevent duplicate bindings
+            if (card.dataset.hasClickListener) return;
+            card.dataset.hasClickListener = 'true';
+
+            card.addEventListener('click', function (e) {
+                // If clicked inside interactive controls (buttons, links, form inputs, tables), don't intercept
+                if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input') || e.target.closest('table') || e.target.closest('.breakdown-toggle-btn')) {
+                    return;
+                }
+                var windowType = card.getAttribute('data-window');
+                var itemId = card.getAttribute('data-item-id');
+                if (windowType && itemId) {
+                    var chk = document.getElementById('chk-' + windowType + '-' + itemId);
+                    if (chk) {
+                        chk.checked = !chk.checked;
+                        window.toggleTransferDone(windowType, itemId);
+                    }
+                }
+            });
+        });
+    }
 
     function restoreCheckboxStates() {
         var checkboxes = document.querySelectorAll('input[type="checkbox"][id^="chk-"]');
@@ -119,5 +208,8 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         restoreCheckboxStates();
+        initCardClickHandlers();
+        updateCheckedSummary('next');
+        updateCheckedSummary('last');
     });
 })();
