@@ -4,21 +4,24 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::Html,
 };
-use chrono::{Datelike, Local, NaiveDate, Utc};
+use chrono::{Local, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
 use crate::AppState;
 
+#[allow(dead_code)]
 pub fn is_weekend(d: NaiveDate) -> bool {
     crate::anchoring::is_weekend(d)
 }
 
+#[allow(dead_code)]
 pub fn get_last_working_day_on_or_before(d: NaiveDate) -> NaiveDate {
     crate::anchoring::get_last_working_day_on_or_before(d)
 }
 
+#[allow(dead_code)]
 pub fn get_actual_payday_date(nominal_payday: i32, year: i32, month: u32) -> NaiveDate {
     crate::anchoring::get_actual_payday_date(nominal_payday, year, month)
 }
@@ -311,6 +314,7 @@ pub struct HistoricSpentTemplate {
 
 #[derive(Debug, Clone)]
 struct PotRecord {
+    #[allow(dead_code)]
     id: i64,
     name: String,
     created_at: Option<i64>,

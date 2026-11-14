@@ -371,11 +371,13 @@ pub fn parse_allocation_amounts(
 }
 
 /// Mirrors the Java "Allocate max" button: the whole positive unallocated amount.
+#[allow(dead_code)]
 pub fn allocate_max_amount(unallocated: f32) -> f32 {
     unallocated.max(0.0)
 }
 
 /// Mirrors the Java "Take off deficit" button: reduce the slice by the over-allocation, never below zero.
+#[allow(dead_code)]
 pub fn deduct_deficit_from_slice(current_slice: f32, unallocated: f32) -> f32 {
     if unallocated >= 0.0 {
         return current_slice;

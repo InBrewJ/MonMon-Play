@@ -59,8 +59,10 @@ pub struct MonthlyPotTemplate {
     pub active_pot: Option<PotDto>,
     pub archived_pots: Vec<PotDto>,
     pub surplus: f32,
+    #[allow(dead_code)]
     pub spent_this_month: f32,
     pub saved_custom_plans: Vec<CustomPlanDto>,
+    #[allow(dead_code)]
     pub monthly_pot_total_balance: f32,
 }
 

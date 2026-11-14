@@ -6,7 +6,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, Json},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use sqlx::Row;
 use std::sync::Arc;

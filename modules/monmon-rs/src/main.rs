@@ -39,7 +39,6 @@ use models::{
     Outgoing, UpdateAccount, UpdateIncoming, UpdateOutgoing,
 };
 use serde::Deserialize;
-use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use std::env;
@@ -130,6 +129,7 @@ fn extract_claims_from_id_token(id_token: &str) -> Option<IdTokenClaims> {
     })
 }
 
+#[allow(dead_code)]
 fn extract_username_from_id_token(id_token: &str) -> Option<String> {
     let claims = extract_claims_from_id_token(id_token)?;
     claims.preferred_username.or(claims.email).or(claims.sub)
@@ -580,10 +580,6 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn health_handler() -> Json<serde_json::Value> {
-    Json(json!({ "status": "ok", "service": "monmon-rs" }))
-}
-
 // Accounts Handlers
 async fn list_accounts_handler(
     State(state): State<Arc<AppState>>,
@@ -976,6 +972,7 @@ async fn logout_handler(headers: HeaderMap) -> Response {
 #[derive(Template)]
 #[template(path = "spog.html")]
 struct SpogTemplate {
+    #[allow(dead_code)]
     username: String,
     metrics: spog::SpogMetrics,
     pace: spog::SpendingPaceMetrics,

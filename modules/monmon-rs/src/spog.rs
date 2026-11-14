@@ -1181,6 +1181,7 @@ pub struct SpendingPaceTemplate {
     pub is_behind_baseline: bool,
     pub chunks: Vec<SpendingPaceChunkDto>,
     pub chart_json: String,
+    #[allow(dead_code)]
     pub cycle_offset: i32,
     pub available_cycles_count: usize,
     pub is_current_cycle: bool,

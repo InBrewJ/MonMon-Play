@@ -25,6 +25,7 @@ pub struct StatementQuery {
 }
 
 impl StatementQuery {
+    #[allow(dead_code)]
     pub fn get_user_id(&self) -> String {
         self.user_id.clone().unwrap_or_else(|| "demo".to_string())
     }
@@ -87,7 +88,9 @@ pub struct ParsedStatementTx {
     pub timestamp: i64,
     pub amount: f32, // MonMon convention: positive is spend, negative is income
     pub description: String,
+    #[allow(dead_code)]
     pub merchant: String,
+    #[allow(dead_code)]
     pub category: String,
 }
 

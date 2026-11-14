@@ -62,6 +62,7 @@ pub struct OutgoingsTemplate {
     pub accounts: Vec<Account>,
     pub outgoing_total: f32,
     pub current_year: i32,
+    #[allow(dead_code)]
     pub current_month_name: String,
     pub editing: bool,
     pub editing_outgoing: Option<Outgoing>,

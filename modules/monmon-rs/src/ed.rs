@@ -58,6 +58,7 @@ pub const SPOG_CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1 day
 pub const OUTGOINGS_CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60); // 1 week
 pub const NETWORTH_CACHE_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 1 month (30 days)
 
+#[allow(dead_code)]
 pub fn compute_fingerprint(data: &str) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -78,6 +79,7 @@ pub fn compute_prompt_fingerprint(system_prompt: &str, user_prompt: &str) -> u64
     hasher.finish()
 }
 
+#[allow(dead_code)]
 pub fn clear_ed_cache(user_id: &str) {
     if let Ok(mut cache) = SPOG_CACHE.write() {
         cache.remove(user_id);

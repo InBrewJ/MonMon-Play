@@ -18,6 +18,7 @@ pub struct DigQuery {
 }
 
 impl DigQuery {
+    #[allow(dead_code)]
     pub fn get_user_id(&self) -> String {
         self.user_id.clone().unwrap_or_else(|| "demo".to_string())
     }
@@ -84,6 +85,7 @@ pub struct DigTemplate {
     pub is_limit_reached: bool,
     pub data_limit: usize,
     pub total_geotagged: usize,
+    #[allow(dead_code)]
     pub total_spent: f64,
     pub total_spent_str: String,
     pub top_category: String,

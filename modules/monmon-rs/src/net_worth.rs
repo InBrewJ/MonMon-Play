@@ -18,6 +18,7 @@ pub struct NetWorthQuery {
 }
 
 impl NetWorthQuery {
+    #[allow(dead_code)]
     pub fn get_user_id(&self) -> String {
         self.user_id.clone().unwrap_or_else(|| "demo".to_string())
     }

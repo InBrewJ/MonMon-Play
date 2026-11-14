@@ -52,7 +52,9 @@ pub struct BankTransactionDto {
 
 #[derive(Debug, Clone, Default)]
 pub struct MonzoConnectionRow {
+    #[allow(dead_code)]
     pub id: i64,
+    #[allow(dead_code)]
     pub userid: String,
     pub accesstoken: Option<String>,
     pub refreshtoken: Option<String>,
@@ -140,10 +142,13 @@ pub struct BankSyncTemplate {
     pub has_active_webhooks: bool,
     pub monzo_user_id: Option<String>,
     pub client_id: Option<String>,
+    #[allow(dead_code)]
     pub client_secret_masked: Option<String>,
     pub redirect_uri: String,
     pub webhook_url: Option<String>,
+    #[allow(dead_code)]
     pub webhook_debit_id: Option<String>,
+    #[allow(dead_code)]
     pub webhook_flex_id: Option<String>,
     pub last_received_text: String,
     pub accounts_count: usize,
@@ -1116,6 +1121,7 @@ pub async fn get_monzo_webhook_status_api(
 }
 
 /// Converts Monzo's integer pence `account_balance` into the pounds value stored in `balance`.
+#[allow(dead_code)]
 pub fn balance_pounds_from_pence(pence: i64) -> f32 {
     (pence as f64 / 100.0) as f32
 }

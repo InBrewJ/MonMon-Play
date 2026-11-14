@@ -41,6 +41,7 @@ pub struct WaitingListTemplate {
 
 #[derive(Deserialize)]
 pub struct SettingsForm {
+    #[allow(dead_code)]
     pub region: Option<String>,
 }
 

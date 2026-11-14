@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json, Response},
 };
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
@@ -77,6 +77,7 @@ pub struct PaydayWindowDto {
 #[derive(Template)]
 #[template(path = "transfers.html")]
 pub struct TransfersTemplate {
+    #[allow(dead_code)]
     pub username: String,
     pub is_payday_today: bool,
     pub nominal_payday: i32,
