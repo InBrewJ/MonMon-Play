@@ -1010,11 +1010,12 @@ hr {
   transform: translateY(0) scale(0.98);
 }
 
-/* Floating Action Button for Ed (Desktop & Mobile) */
+/* Floating Action Button for Ed (Desktop & Mobile - Bottom Left) */
 .fab-ed {
   position: fixed;
   bottom: 24px;
-  right: 24px;
+  left: 24px;
+  right: auto;
   z-index: 1050;
   display: flex;
   align-items: center;
@@ -1030,11 +1031,12 @@ hr {
   padding: 0;
 }
 
-/* When Can I Afford This and Ed both exist on the page (e.g. SPOG), stack Ed above Afford */
+/* Ed floats on the bottom-left independently of Afford (which floats bottom-right) */
 .fab-afford ~ .fab-ed,
 #btn-afford-fab ~ #btn-ed-fab {
-  bottom: 84px;
-  right: 24px;
+  bottom: 24px;
+  left: 24px;
+  right: auto;
 }
 
 .fab-ed img {
@@ -1058,13 +1060,15 @@ hr {
   .fab-ed {
     display: flex;
     bottom: 20px;
-    right: 20px;
+    left: 20px;
+    right: auto;
   }
 
   .fab-afford ~ .fab-ed,
   #btn-afford-fab ~ #btn-ed-fab {
-    bottom: 78px;
-    right: 20px;
+    bottom: 20px;
+    left: 20px;
+    right: auto;
   }
 
   #ed-says-desktop-panel {
@@ -1082,15 +1086,17 @@ hr {
 
   .fab-ed {
     bottom: 18px;
-    right: 18px;
+    left: 18px;
+    right: auto;
     width: 48px;
     height: 48px;
   }
 
   .fab-afford ~ .fab-ed,
   #btn-afford-fab ~ #btn-ed-fab {
-    bottom: 74px;
-    right: 18px;
+    bottom: 18px;
+    left: 18px;
+    right: auto;
   }
 
   .fab-ed img {
