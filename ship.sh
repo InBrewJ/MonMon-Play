@@ -18,8 +18,10 @@ REMOTE_DIR="/home/${REMOTE_USER}/app"
 
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
 GIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "dev")
+BUILD_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
 echo "build.commit=${GIT_COMMIT}" > modules/monmon-rs/build.properties
 echo "build.number=${GIT_COUNT}" >> modules/monmon-rs/build.properties
+echo "build.timestamp=${BUILD_TIME}" >> modules/monmon-rs/build.properties
 
 echo -e "${BLUE}${BOLD}==> [1/4] Preparing remote directories on ${GREENSTREET_HOST} (commit: ${GIT_COMMIT}, build: ${GIT_COUNT})...${NC}"
 ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/monmon-rs ${REMOTE_DIR}/modules/legmon-rs ${REMOTE_DIR}/modules/rauthy/bootstrap ${REMOTE_DIR}/modules/rauthy/data ${REMOTE_DIR}/public ${REMOTE_DIR}/logs"

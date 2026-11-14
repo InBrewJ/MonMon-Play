@@ -29,6 +29,7 @@ pub struct SettingsTemplate {
     pub region: String,
     pub build_commit: String,
     pub build_number: String,
+    pub build_timestamp: String,
 }
 
 #[derive(Template)]
@@ -74,6 +75,7 @@ pub async fn get_settings(
         region: "UK".to_string(),
         build_commit: crate::BUILD_COMMIT.to_string(),
         build_number: crate::BUILD_NUMBER.to_string(),
+        build_timestamp: crate::BUILD_TIMESTAMP.to_string(),
     };
 
     tmpl.render()

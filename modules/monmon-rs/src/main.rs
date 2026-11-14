@@ -25,6 +25,7 @@ mod transfers;
 pub const BUILD_HASH: &str = env!("BUILD_HASH");
 pub const BUILD_COMMIT: &str = env!("BUILD_COMMIT");
 pub const BUILD_NUMBER: &str = env!("BUILD_NUMBER");
+pub const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
 
 use askama::Template;
 use axum::{

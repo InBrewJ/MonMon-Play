@@ -2,8 +2,10 @@ FROM rust:bookworm AS builder
 WORKDIR /build
 ARG BUILD_COMMIT
 ARG BUILD_NUMBER
+ARG BUILD_TIMESTAMP
 ENV BUILD_COMMIT=$BUILD_COMMIT
 ENV BUILD_NUMBER=$BUILD_NUMBER
+ENV BUILD_TIMESTAMP=$BUILD_TIMESTAMP
 COPY Cargo.toml Cargo.lock build.rs build.properties* bank-holidays-uk.json* ./
 COPY templates ./templates
 COPY src ./src
