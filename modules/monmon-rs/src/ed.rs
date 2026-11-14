@@ -28,8 +28,10 @@ impl EdQuery {
 }
 
 /// Extracts the signed in user ID or username from request cookies.
-/// Ensures that authenticated users are always resolved to their own identity
-/// rather than falling back to demo data.
+/// Ensures that authenticated users are always resolved strictly to their own identity.
+/// To eliminate BOLA/IDOR vulnerabilities:
+/// - Authenticated sessions strictly use the session user's credentials (query params cannot spoof other users).
+/// - Unauthenticated requests are strictly locked to "demo" only (arbitrary userId query params are rejected).
 pub fn extract_signed_in_user_or_default(headers: &HeaderMap, query_uid: Option<&str>) -> String {
     // 1. If signed in via cookie, ALWAYS prioritize the signed-in user's credentials
     if let Some(cookie_hdr) = headers.get(axum::http::header::COOKIE) {
@@ -52,11 +54,12 @@ pub fn extract_signed_in_user_or_default(headers: &HeaderMap, query_uid: Option<
         }
     }
 
-    // 2. Fall back to query param if explicitly specified
+    // 2. Unauthenticated requests are strictly restricted to "demo".
+    // Even if an unauthenticated caller passes ?userId=<victim_id>, it will NEVER be honored.
     if let Some(uid) = query_uid {
         let trimmed = uid.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
+        if trimmed.eq_ignore_ascii_case("demo") {
+            return "demo".to_string();
         }
     }
 
@@ -1070,11 +1073,15 @@ mod tests {
             "jason@urawizard.com"
         );
 
-        // 4. No cookie, explicit query param
+        // 4. No cookie, attempt to query another user without auth (BOLA protection) -> safely defaults to demo
         let h4 = HeaderMap::new();
         assert_eq!(
-            extract_signed_in_user_or_default(&h4, Some("alice")),
-            "alice"
+            extract_signed_in_user_or_default(&h4, Some("victim_user_123")),
+            "demo"
+        );
+        assert_eq!(
+            extract_signed_in_user_or_default(&h4, Some("demo")),
+            "demo"
         );
 
         // 5. No cookie, no query param -> defaults to demo

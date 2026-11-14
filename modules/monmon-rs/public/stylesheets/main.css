@@ -1999,6 +1999,14 @@ body.modal-scroll-locked {
     overflow: hidden !important;
   }
 
+  /* Bank Statement and pending review cards must never be clipped or constrained */
+  #card-bank-statement,
+  .pending-statement-card {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
   /* Physical card swipe sequence matches tabs: 1. Daily Pot -> 2. Spent -> 3. Savings -> 4. Accounts */
   #spog-card-pot { order: 1; }
   #spog-card-spent { order: 2; }

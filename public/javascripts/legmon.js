@@ -181,10 +181,10 @@
                             '</button>' +
                         '</div>' +
                     '</form>' +
-                    '<div style="margin-top: 10px; text-align: right;">' +
-                        '<form action="/bank/statement/' + stmt.id + '/discard" method="POST" style="display: inline;" onsubmit="return confirm(\'Discard this extracted statement?\');">' +
-                            '<button type="submit" class="w3-button w3-small" style="background: none; border: none; padding: 4px 8px; color: var(--text-muted); cursor: pointer; text-decoration: underline;">' +
-                                '<i class="fas fa-trash-alt"></i> Discard Statement' +
+                    '<div style="margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--border-color); display: flex; justify-content: flex-end; align-items: center; clear: both; width: 100%;">' +
+                        '<form action="/bank/statement/' + stmt.id + '/discard" method="POST" style="margin: 0; display: inline;" onsubmit="return confirm(\'Discard this extracted statement?\');">' +
+                            '<button type="submit" class="w3-button w3-small w3-round" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); padding: 6px 14px; color: var(--danger, #ef4444); cursor: pointer; font-weight: 600;">' +
+                                '<i class="fas fa-trash-alt" style="margin-right: 4px;"></i> Discard Statement' +
                             '</button>' +
                         '</form>' +
                     '</div>' +
@@ -192,6 +192,15 @@
             '</div>';
 
         container.insertAdjacentHTML('afterbegin', cardHtml);
+
+        var statementCard = document.getElementById('card-bank-statement');
+        if (statementCard) {
+            statementCard.style.height = 'auto';
+            statementCard.style.maxHeight = 'none';
+            statementCard.style.overflow = 'visible';
+            statementCard.classList.remove('deck-card-inactive');
+            statementCard.classList.add('deck-card-active');
+        }
     }
 
     function initUploadForm() {
@@ -537,6 +546,15 @@
         var modal = document.getElementById('statement-preview-modal');
         if (modal) modal.style.display = 'none';
         currentPreviewData = null;
+
+        var statementCard = document.getElementById('card-bank-statement');
+        if (statementCard) {
+            statementCard.style.height = 'auto';
+            statementCard.style.maxHeight = 'none';
+            statementCard.style.overflow = 'visible';
+            statementCard.classList.remove('deck-card-inactive');
+            statementCard.classList.add('deck-card-active');
+        }
     };
 
     window.confirmStatementOverwrite = function(stmtId) {
