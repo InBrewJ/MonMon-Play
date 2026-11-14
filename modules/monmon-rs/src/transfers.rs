@@ -57,6 +57,90 @@ pub struct PaydayTransferItemDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OutgoingsFundingStepDto {
+    pub from_savings_account_id: i64,
+    pub from_savings_account_name: String,
+    pub from_savings_account_balance: f32,
+    pub from_savings_account_balance_formatted: String,
+    pub to_debit_account_id: i64,
+    pub to_debit_account_name: String,
+    pub to_debit_account_type: String,
+    pub amount: f32,
+    pub amount_formatted: String,
+    pub for_outgoings_summary: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SavingsPoolItem {
+    pub id: i64,
+    pub name: String,
+    pub initial_bal: f32,
+    pub remaining_bal: f32,
+}
+
+pub fn calculate_outgoings_funding_plan(
+    outgoings_items: &[PaydayTransferItemDto],
+    mut savings_pool: Vec<SavingsPoolItem>,
+) -> Vec<OutgoingsFundingStepDto> {
+    let mut plan = Vec::new();
+
+    for out_item in outgoings_items {
+        let dest_id = out_item.destination_account_id.unwrap_or(0);
+        let mut needed = out_item.amount;
+
+        while needed > 0.005 {
+            // Pick savings account with the highest remaining balance (excluding destination account)
+            let best_idx = savings_pool
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.id != dest_id && s.remaining_bal > 0.005)
+                .max_by(|(_, a), (_, b)| {
+                    a.remaining_bal
+                        .partial_cmp(&b.remaining_bal)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(idx, _)| idx);
+
+            match best_idx {
+                Some(idx) => {
+                    let savings = &mut savings_pool[idx];
+                    let take = ((needed.min(savings.remaining_bal) * 100.0).round()) / 100.0;
+                    if take <= 0.0 {
+                        break;
+                    }
+                    savings.remaining_bal = ((savings.remaining_bal - take) * 100.0).round() / 100.0;
+                    needed = ((needed - take) * 100.0).round() / 100.0;
+
+                    let summary = format!(
+                        "Covers outgoings in {}",
+                        out_item.destination_account_name
+                    );
+
+                    plan.push(OutgoingsFundingStepDto {
+                        from_savings_account_id: savings.id,
+                        from_savings_account_name: savings.name.clone(),
+                        from_savings_account_balance: (savings.initial_bal * 100.0).round() / 100.0,
+                        from_savings_account_balance_formatted: format!("{:.2}", savings.initial_bal),
+                        to_debit_account_id: dest_id,
+                        to_debit_account_name: out_item.destination_account_name.clone(),
+                        to_debit_account_type: out_item.destination_account_type.clone(),
+                        amount: take,
+                        amount_formatted: format!("{:.2}", take),
+                        for_outgoings_summary: summary,
+                    });
+                }
+                None => {
+                    break;
+                }
+            }
+        }
+    }
+
+    plan
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PaydayWindowDto {
     pub cycle_type: String, // "next" or "last"
     pub payday_date: String, // "2026-11-25"
@@ -83,6 +167,7 @@ pub struct PaydayWindowDto {
     pub funding_cushion: f32,
     pub funding_cushion_formatted: String,
     pub is_fully_covered: bool,
+    pub outgoings_funding_plan: Vec<OutgoingsFundingStepDto>,
     pub outgoings_items: Vec<PaydayTransferItemDto>,
     pub savings_items: Vec<PaydayTransferItemDto>,
     pub items: Vec<PaydayTransferItemDto>,
@@ -543,6 +628,43 @@ pub async fn calculate_payday_window(
     let is_fully_covered = funding_cushion_val >= 0.0;
     let funding_cushion = (funding_cushion_val.abs() * 100.0).round() / 100.0;
 
+    // Build Savings-to-Debit Outgoings Funding Plan:
+    // Take from the savings account with the highest current balance first, then the next, then the next.
+    let savings_account_rows = sqlx::query(
+        r#"
+        SELECT a.id, a.name, a.type,
+               COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
+        FROM account a
+        WHERE (a.userid = $1 OR a.user_id = $1)
+          AND (a.archived IS NULL OR a.archived = false)
+          AND UPPER(a.type) IN ('SAVINGS', 'SHORT_TERM_SAVINGS', 'LONG_TERM_SAVINGS')
+        ORDER BY bal DESC, a.id ASC
+        "#,
+    )
+    .bind(resolved_uid)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let savings_pool: Vec<SavingsPoolItem> = savings_account_rows
+        .into_iter()
+        .filter_map(|r| {
+            let bal: f32 = r.get("bal");
+            if bal > 0.001 {
+                Some(SavingsPoolItem {
+                    id: r.get("id"),
+                    name: r.get("name"),
+                    initial_bal: bal,
+                    remaining_bal: bal,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let outgoings_funding_plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool);
+
     let payday_display = payday_date.format("%A, %e %b %Y").to_string();
 
     Ok(PaydayWindowDto {
@@ -571,6 +693,7 @@ pub async fn calculate_payday_window(
         funding_cushion,
         funding_cushion_formatted: format!("{:.2}", funding_cushion),
         is_fully_covered,
+        outgoings_funding_plan,
         outgoings_items,
         savings_items,
         items,
@@ -784,5 +907,76 @@ mod tests {
         assert_eq!(groups.get(&acc_a_id).copied(), Some(200.0), "Account A needs £200 outgoings cover");
         assert_eq!(groups.get(&acc_b_id).copied(), Some(10.0), "Account B needs £10 outgoings cover");
         assert_eq!(groups.get(&salary_acc_id), None, "Salary account itself needs no inter-account transfer");
+    }
+
+    #[test]
+    fn test_outgoings_funding_plan_from_highest_balance_savings_first() {
+        // User requirement:
+        // Say which savings accounts we need to transfer into which debit account to cover outgoings.
+        // There may be multiple savings accounts that can cover the costs; take from the account
+        // with the highest current balance first, then the next, then the next, and so on.
+        let outgoings_items = vec![
+            PaydayTransferItemDto {
+                id: "outgoings_acc_3620".to_string(),
+                priority: -10,
+                title: "First Direct Current ⬛ Outgoings Cover".to_string(),
+                category: "OUTGOINGS_COVER".to_string(),
+                source_account_id: Some(2),
+                source_account_name: "Natwest Reward Debit".to_string(),
+                destination_account_id: Some(3620),
+                destination_account_name: "First Direct Current ⬛".to_string(),
+                destination_account_type: "DEBIT".to_string(),
+                amount: 550.0,
+                amount_formatted: "550.00".to_string(),
+                target_amount: Some(550.0),
+                target_amount_formatted: Some("550.00".to_string()),
+                current_destination_balance: Some(180.0),
+                current_destination_balance_formatted: Some("180.00".to_string()),
+                progress_pct: None,
+                description: "Test".to_string(),
+                breakdown: Vec::new(),
+            },
+        ];
+
+        // Scenario: Multiple savings accounts with varying balances
+        // Savings A: £300 (second highest)
+        // Savings B: £400 (highest)
+        // Savings C: £50  (lowest)
+        let savings_pool = vec![
+            SavingsPoolItem {
+                id: 1,
+                name: "Savings A (Emergency)".to_string(),
+                initial_bal: 300.0,
+                remaining_bal: 300.0,
+            },
+            SavingsPoolItem {
+                id: 2,
+                name: "Savings B (Premium Bonds)".to_string(),
+                initial_bal: 400.0,
+                remaining_bal: 400.0,
+            },
+            SavingsPoolItem {
+                id: 3,
+                name: "Savings C (Coin Jar)".to_string(),
+                initial_bal: 50.0,
+                remaining_bal: 50.0,
+            },
+        ];
+
+        let plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool);
+
+        assert_eq!(plan.len(), 2, "Should take from highest balance first (B: £400), then next (A: £150)");
+        // Step 1: Takes all £400 from Savings B (highest initial bal)
+        assert_eq!(plan[0].from_savings_account_id, 2);
+        assert_eq!(plan[0].from_savings_account_name, "Savings B (Premium Bonds)");
+        assert_eq!(plan[0].to_debit_account_id, 3620);
+        assert_eq!(plan[0].to_debit_account_name, "First Direct Current ⬛");
+        assert_eq!(plan[0].amount, 400.0);
+
+        // Step 2: Takes remaining £150 from Savings A (next highest bal)
+        assert_eq!(plan[1].from_savings_account_id, 1);
+        assert_eq!(plan[1].from_savings_account_name, "Savings A (Emergency)");
+        assert_eq!(plan[1].to_debit_account_id, 3620);
+        assert_eq!(plan[1].amount, 150.0);
     }
 }
