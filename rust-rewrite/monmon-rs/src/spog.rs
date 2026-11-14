@@ -51,6 +51,7 @@ pub struct SpogMetrics {
     pub outgoing_total: Pence,
     pub surplus: Pence,
     pub baseline: Pence,
+    pub bills_only_baseline: Pence,
     pub savings_plan_total: Pence,
     pub savings_plan_items: Vec<SpogSavingsPlanItemDto>,
     pub next_pay_day: i32,
@@ -300,6 +301,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     let max_per_month = surplus;
 
     let baseline = surplus + outgoing_total;
+    let bills_only_baseline = surplus + bills_cost;
 
     // Fetch active Savings Plan priority items for Payday transfers overview
     let mut savings_plan_items = Vec::new();
@@ -905,6 +907,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         outgoing_total,
         surplus,
         baseline,
+        bills_only_baseline,
         savings_plan_total: savings_plan_cost,
         savings_plan_items,
         next_pay_day,
@@ -1322,5 +1325,14 @@ mod tests {
 
         assert_eq!(baseline_from_allowance, baseline_from_income);
         assert_eq!(baseline_from_allowance, Pence::from_pounds_f64(2950.00));
+    }
+
+    #[test]
+    fn test_bills_only_baseline_formula() {
+        // bills_only_baseline = (current spending plan allowance) + (sum of all bills)
+        let surplus = Pence::from_pounds_f64(1750.00);
+        let bills_cost = Pence::from_pounds_f64(450.00);
+        let bills_only_baseline = surplus + bills_cost; // 2200.00
+        assert_eq!(bills_only_baseline, Pence::from_pounds_f64(2200.00));
     }
 }

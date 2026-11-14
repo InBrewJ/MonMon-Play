@@ -481,6 +481,7 @@ pub async fn get_monthly_pot_page(
         outgoing_total: crate::money::Pence::ZERO,
         surplus: crate::money::Pence::ZERO,
         baseline: crate::money::Pence::ZERO,
+        bills_only_baseline: crate::money::Pence::ZERO,
         savings_plan_total: crate::money::Pence::ZERO,
         savings_plan_items: vec![],
         next_pay_day: 1,

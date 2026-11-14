@@ -32,6 +32,7 @@ db/.pgpass
 backups/
 __pycache__/
 *.pyc
+rust-rewrite/legmon-rs/scripts/output/
 
 
 

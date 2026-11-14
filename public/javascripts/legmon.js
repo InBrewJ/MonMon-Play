@@ -539,6 +539,12 @@
             drawPreviewChart(data);
             initCanvasTooltip();
         }, 50);
+        requestAnimationFrame(function() {
+            drawPreviewChart(data);
+        });
+        setTimeout(function() {
+            drawPreviewChart(data);
+        }, 200);
     }
 
     function drawPreviewChart(data) {
@@ -547,8 +553,10 @@
         var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
         var rect = canvas.getBoundingClientRect();
-        var width = rect.width || 600;
-        var height = rect.height || 260;
+        var width = rect.width || canvas.clientWidth || (canvas.parentElement ? canvas.parentElement.clientWidth : 0) || 600;
+        var height = rect.height || canvas.clientHeight || 260;
+        if (width <= 0) width = 600;
+        if (height <= 0) height = 260;
 
         canvas.width = width * dpr;
         canvas.height = height * dpr;
@@ -557,8 +565,8 @@
         ctx.clearRect(0, 0, width, height);
         currentRenderedPoints = [];
 
-        var points = data.points || [];
-        if (!points.length) {
+        var rawPoints = data.points || [];
+        if (!rawPoints.length) {
             ctx.fillStyle = '#94a3b8';
             ctx.font = '14px system-ui, -apple-system, sans-serif';
             ctx.textAlign = 'center';
@@ -567,18 +575,30 @@
             return;
         }
 
+        // Ensure points are sorted chronologically
+        var points = rawPoints.slice().sort(function(a, b) {
+            return (a.timestamp || 0) - (b.timestamp || 0);
+        });
+
         var padding = { top: 30, right: 35, bottom: 40, left: 65 };
         var vals = points.map(function(p) { return p.balance; });
         var minVal = Math.min.apply(null, vals);
         var maxVal = Math.max.apply(null, vals);
-        if (minVal === maxVal) { minVal = 0; maxVal = (maxVal * 1.2) || 100; }
+        if (minVal === maxVal) {
+            minVal = Math.max(0, minVal - 50);
+            maxVal = maxVal + 50;
+        }
         var span = maxVal - minVal;
         minVal = Math.min(0, minVal - span * 0.1);
         maxVal = maxVal + span * 0.15;
+        if (maxVal <= minVal) maxVal = minVal + 10;
 
-        var tMin = points[0].timestamp;
-        var tMax = points[points.length - 1].timestamp;
-        if (tMin === tMax) { tMin -= 86400; tMax += 86400; }
+        var tMin = points[0].timestamp || 0;
+        var tMax = points[points.length - 1].timestamp || 0;
+        if (tMin === tMax || tMax <= tMin) {
+            tMin -= 86400;
+            tMax = tMin + 86400 * 2;
+        }
 
         function getX(t) { return padding.left + ((t - tMin) / (tMax - tMin)) * (width - padding.left - padding.right); }
         function getY(v) { return height - padding.bottom - ((v - minVal) / (maxVal - minVal)) * (height - padding.top - padding.bottom); }
@@ -741,6 +761,13 @@
         canvas.onmouseleave = function() {
             tooltip.style.display = 'none';
         };
+
+        window.addEventListener('resize', function() {
+            var modal = document.getElementById('statement-preview-modal');
+            if (currentPreviewData && modal && modal.style.display === 'block') {
+                drawPreviewChart(currentPreviewData);
+            }
+        });
     }
 
     if (document.readyState === 'loading') {

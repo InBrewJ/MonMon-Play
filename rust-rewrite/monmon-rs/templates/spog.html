@@ -126,12 +126,26 @@
                                 <b>£{{ metrics.outgoing_total }}</b>
                             </div>
                             <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--border-color); padding-top: 4px; font-weight: 700;">
-                                <span>Baseline:</span>
+                                <span>Baseline (All outgoings):</span>
                                 <span style="color: var(--primary); font-size: 0.95rem;">£{{ metrics.baseline }}</span>
                             </div>
-                            <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px; border-top: 1px dotted var(--border-color); padding-top: 4px; display: flex; justify-content: space-between;">
+                            <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; border-top: 1px dotted var(--border-color); padding-top: 3px; display: flex; justify-content: space-between;">
                                 <span>Equivalent calculation:</span>
                                 <span>Income (£{{ metrics.incoming_total }}) − Savings (£{{ metrics.savings_plan_total }})</span>
+                            </div>
+
+                            <!-- Bills Only Baseline -->
+                            <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px;">
+                                <div style="display: flex; justify-content: space-between; font-size: 0.82rem;">
+                                    <span style="color: var(--text-muted);">+ Recurring bills only <span title="Bills cannot be cancelled" style="cursor: help;">(cannot cancel <i class="fas fa-info-circle" style="font-size: 0.75rem;"></i>)</span>:</span>
+                                    <b>£{{ metrics.bills_cost }}</b>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--border-color); padding-top: 4px; font-weight: 700;">
+                                    <span title="Current spending plan allowance plus bills only (cannot cancel)">
+                                        <i class="fas fa-file-invoice-dollar" style="color: #06b6d4; margin-right: 5px;"></i>Bills only baseline:
+                                    </span>
+                                    <span style="color: #06b6d4; font-size: 0.95rem;">£{{ metrics.bills_only_baseline }}</span>
+                                </div>
                             </div>
                         </div>
                     </div>

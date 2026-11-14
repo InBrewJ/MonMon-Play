@@ -21,7 +21,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::fs;
-use tracing::{error, info, warn};
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(Clone)]
