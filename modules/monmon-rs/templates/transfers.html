@@ -157,6 +157,10 @@
             background: rgba(16, 185, 129, 0.08);
             border: 1px solid rgba(16, 185, 129, 0.35);
         }
+        .coverage-partial {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+        }
         .coverage-shortfall {
             background: rgba(239, 68, 68, 0.08);
             border: 1px solid rgba(239, 68, 68, 0.35);
@@ -175,6 +179,11 @@
             background: rgba(16, 185, 129, 0.18);
             color: #10b981;
             border: 1px solid rgba(16, 185, 129, 0.35);
+        }
+        .pill-amber {
+            background: rgba(245, 158, 11, 0.18);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.35);
         }
         .pill-red {
             background: rgba(239, 68, 68, 0.18);
@@ -467,37 +476,37 @@
             </div>
 
             <!-- Funding & Savings Coverage Indicator -->
-            <div class="coverage-indicator-card {% if next_window.is_fully_covered %}coverage-covered{% else %}coverage-shortfall{% endif %}">
+            {% if next_window.show_coverage_indicator %}
+            <div class="coverage-indicator-card {% if !next_window.is_fully_covered %}coverage-shortfall{% else if next_window.savings_needed_to_topup > 0.005 %}coverage-partial{% else %}coverage-covered{% endif %}">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <div>
-                            {% if next_window.is_fully_covered %}
-                            <i class="fas fa-check-circle" style="color: #10b981; font-size: 1.5rem;"></i>
-                            {% else %}
+                            {% if !next_window.is_fully_covered %}
                             <i class="fas fa-exclamation-triangle" style="color: #ef4444; font-size: 1.5rem;"></i>
+                            {% else if next_window.savings_needed_to_topup > 0.005 %}
+                            <i class="fas fa-coins" style="color: #f59e0b; font-size: 1.5rem;"></i>
+                            {% else %}
+                            <i class="fas fa-check-circle" style="color: #10b981; font-size: 1.5rem;"></i>
                             {% endif %}
                         </div>
                         <div>
                             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                 <span style="font-size: 0.96rem; font-weight: 800; color: var(--text-main, #f8fafc);">
-                                    {% if next_window.is_fully_covered %}
-                                    Fully Covered by Savings & Monthly Allocation
-                                    {% else %}
-                                    Transfer Shortfall Exceeds Monthly Savings Budget
-                                    {% endif %}
+                                    {{ next_window.coverage_title }}
                                 </span>
-                                <span class="coverage-pill {% if next_window.is_fully_covered %}pill-green{% else %}pill-red{% endif %}">
-                                    {% if next_window.is_fully_covered %}
-                                    <i class="fas fa-shield-alt"></i> +£{{ next_window.funding_cushion_formatted }} Reserve Cushion
+                                <span class="coverage-pill {{ next_window.coverage_badge_css }}">
+                                    {% if !next_window.is_fully_covered %}
+                                    <i class="fas fa-arrow-down"></i>
+                                    {% else if next_window.savings_needed_to_topup > 0.005 %}
+                                    <i class="fas fa-piggy-bank"></i>
                                     {% else %}
-                                    <i class="fas fa-arrow-down"></i> -£{{ next_window.funding_cushion_formatted }} Deficit
+                                    <i class="fas fa-shield-alt"></i>
                                     {% endif %}
+                                    {{ next_window.coverage_badge_text }}
                                 </span>
                             </div>
                             <div style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin-top: 4px;">
-                                Monthly Savings Budget ({{ next_window.savings_percentage }}% slider): <strong>£{{ next_window.monthly_savings_budget_formatted }}</strong>
-                                • Available Funds in Debit, Shared Bills & Savings: <strong>£{{ next_window.available_liquid_funds_formatted }}</strong>
-                                • Total Funding Capacity: <strong>£{{ next_window.total_funding_capacity_formatted }}</strong>
+                                {{ next_window.coverage_description }}
                             </div>
                         </div>
                     </div>
@@ -509,31 +518,31 @@
                 </div>
 
                 {% if !next_window.outgoings_funding_plan.is_empty() %}
-                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(16, 185, 129, 0.25);">
+                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(245, 158, 11, 0.25);">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
-                        <span style="font-size: 0.85rem; font-weight: 700; color: #10b981; display: inline-flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-layer-group"></i> Outgoings Funding Plan: Savings &rarr; Debit Transfers
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #f59e0b; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-layer-group"></i> Savings Top-Up Plan: Savings &rarr; Debit Transfers
                         </span>
                         <span style="font-size: 0.76rem; color: var(--text-muted, #94a3b8);">
-                            Drawn from highest balance savings first to cover account outgoings
+                            Drawn from highest balance savings first to cover debit outgoings top-up
                         </span>
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 8px;">
                         {% for step in next_window.outgoings_funding_plan %}
-                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 8px 12px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 8px 12px;">
                             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.86rem;">
-                                <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                                <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(245, 158, 11, 0.3);">
                                     Step {{ loop.index }}
                                 </span>
                                 <span style="color: var(--text-muted, #94a3b8);">Transfer</span>
                                 <strong style="color: #38bdf8; font-size: 0.95rem;">£{{ step.amount_formatted }}</strong>
                                 <span style="color: var(--text-muted, #94a3b8);">from</span>
-                                <span class="account-pill" style="border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08); font-size: 0.8rem;">
-                                    <i class="fas fa-piggy-bank" style="color: #10b981;"></i> {{ step.from_savings_account_name }}
-                                    <span style="font-size: 0.72rem; color: #10b981; margin-left: 3px;">(bal: £{{ step.from_savings_account_balance_formatted }})</span>
+                                <span class="account-pill" style="border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08); font-size: 0.8rem;">
+                                    <i class="fas fa-piggy-bank" style="color: #f59e0b;"></i> {{ step.from_savings_account_name }}
+                                    <span style="font-size: 0.72rem; color: #f59e0b; margin-left: 3px;">(bal: £{{ step.from_savings_account_balance_formatted }})</span>
                                 </span>
-                                <i class="fas fa-arrow-right" style="color: #10b981; font-size: 0.78rem;"></i>
+                                <i class="fas fa-arrow-right" style="color: #f59e0b; font-size: 0.78rem;"></i>
                                 <span style="color: var(--text-muted, #94a3b8);">into</span>
                                 <span class="account-pill" style="border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.08); font-size: 0.8rem;">
                                     <i class="fas fa-wallet" style="color: #38bdf8;"></i> {{ step.to_debit_account_name }}
@@ -553,6 +562,7 @@
                 </div>
                 {% endif %}
             </div>
+            {% endif %}
 
             <!-- Itemized Transfer Cards -->
             <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -827,37 +837,37 @@
             </div>
 
             <!-- Funding & Savings Coverage Indicator -->
-            <div class="coverage-indicator-card {% if last_window.is_fully_covered %}coverage-covered{% else %}coverage-shortfall{% endif %}">
+            {% if last_window.show_coverage_indicator %}
+            <div class="coverage-indicator-card {% if !last_window.is_fully_covered %}coverage-shortfall{% else if last_window.savings_needed_to_topup > 0.005 %}coverage-partial{% else %}coverage-covered{% endif %}">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <div>
-                            {% if last_window.is_fully_covered %}
-                            <i class="fas fa-check-circle" style="color: #10b981; font-size: 1.5rem;"></i>
-                            {% else %}
+                            {% if !last_window.is_fully_covered %}
                             <i class="fas fa-exclamation-triangle" style="color: #ef4444; font-size: 1.5rem;"></i>
+                            {% else if last_window.savings_needed_to_topup > 0.005 %}
+                            <i class="fas fa-coins" style="color: #f59e0b; font-size: 1.5rem;"></i>
+                            {% else %}
+                            <i class="fas fa-check-circle" style="color: #10b981; font-size: 1.5rem;"></i>
                             {% endif %}
                         </div>
                         <div>
                             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                 <span style="font-size: 0.96rem; font-weight: 800; color: var(--text-main, #f8fafc);">
-                                    {% if last_window.is_fully_covered %}
-                                    Fully Covered by Savings & Monthly Allocation
-                                    {% else %}
-                                    Transfer Shortfall Exceeds Monthly Savings Budget
-                                    {% endif %}
+                                    {{ last_window.coverage_title }}
                                 </span>
-                                <span class="coverage-pill {% if last_window.is_fully_covered %}pill-green{% else %}pill-red{% endif %}">
-                                    {% if last_window.is_fully_covered %}
-                                    <i class="fas fa-shield-alt"></i> +£{{ last_window.funding_cushion_formatted }} Reserve Cushion
+                                <span class="coverage-pill {{ last_window.coverage_badge_css }}">
+                                    {% if !last_window.is_fully_covered %}
+                                    <i class="fas fa-arrow-down"></i>
+                                    {% else if last_window.savings_needed_to_topup > 0.005 %}
+                                    <i class="fas fa-piggy-bank"></i>
                                     {% else %}
-                                    <i class="fas fa-arrow-down"></i> -£{{ last_window.funding_cushion_formatted }} Deficit
+                                    <i class="fas fa-shield-alt"></i>
                                     {% endif %}
+                                    {{ last_window.coverage_badge_text }}
                                 </span>
                             </div>
                             <div style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin-top: 4px;">
-                                Monthly Savings Budget ({{ last_window.savings_percentage }}% slider): <strong>£{{ last_window.monthly_savings_budget_formatted }}</strong>
-                                • Available Funds in Debit, Shared Bills & Savings: <strong>£{{ last_window.available_liquid_funds_formatted }}</strong>
-                                • Total Funding Capacity: <strong>£{{ last_window.total_funding_capacity_formatted }}</strong>
+                                {{ last_window.coverage_description }}
                             </div>
                         </div>
                     </div>
@@ -869,31 +879,31 @@
                 </div>
 
                 {% if !last_window.outgoings_funding_plan.is_empty() %}
-                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(16, 185, 129, 0.25);">
+                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(245, 158, 11, 0.25);">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
-                        <span style="font-size: 0.85rem; font-weight: 700; color: #10b981; display: inline-flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-layer-group"></i> Outgoings Funding Plan: Savings &rarr; Debit Transfers
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #f59e0b; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-layer-group"></i> Savings Top-Up Plan: Savings &rarr; Debit Transfers
                         </span>
                         <span style="font-size: 0.76rem; color: var(--text-muted, #94a3b8);">
-                            Drawn from highest balance savings first to cover account outgoings
+                            Drawn from highest balance savings first to cover debit outgoings top-up
                         </span>
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 8px;">
                         {% for step in last_window.outgoings_funding_plan %}
-                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 8px 12px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 8px 12px;">
                             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.86rem;">
-                                <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                                <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(245, 158, 11, 0.3);">
                                     Step {{ loop.index }}
                                 </span>
                                 <span style="color: var(--text-muted, #94a3b8);">Transfer</span>
                                 <strong style="color: #38bdf8; font-size: 0.95rem;">£{{ step.amount_formatted }}</strong>
                                 <span style="color: var(--text-muted, #94a3b8);">from</span>
-                                <span class="account-pill" style="border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08); font-size: 0.8rem;">
-                                    <i class="fas fa-piggy-bank" style="color: #10b981;"></i> {{ step.from_savings_account_name }}
-                                    <span style="font-size: 0.72rem; color: #10b981; margin-left: 3px;">(bal: £{{ step.from_savings_account_balance_formatted }})</span>
+                                <span class="account-pill" style="border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08); font-size: 0.8rem;">
+                                    <i class="fas fa-piggy-bank" style="color: #f59e0b;"></i> {{ step.from_savings_account_name }}
+                                    <span style="font-size: 0.72rem; color: #f59e0b; margin-left: 3px;">(bal: £{{ step.from_savings_account_balance_formatted }})</span>
                                 </span>
-                                <i class="fas fa-arrow-right" style="color: #10b981; font-size: 0.78rem;"></i>
+                                <i class="fas fa-arrow-right" style="color: #f59e0b; font-size: 0.78rem;"></i>
                                 <span style="color: var(--text-muted, #94a3b8);">into</span>
                                 <span class="account-pill" style="border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.08); font-size: 0.8rem;">
                                     <i class="fas fa-wallet" style="color: #38bdf8;"></i> {{ step.to_debit_account_name }}
@@ -913,6 +923,7 @@
                 </div>
                 {% endif %}
             </div>
+            {% endif %}
 
             <!-- Itemized Transfer Cards -->
             <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">

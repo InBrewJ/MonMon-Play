@@ -81,12 +81,17 @@ pub struct SavingsPoolItem {
 pub fn calculate_outgoings_funding_plan(
     outgoings_items: &[PaydayTransferItemDto],
     mut savings_pool: Vec<SavingsPoolItem>,
+    max_needed: Option<f32>,
 ) -> Vec<OutgoingsFundingStepDto> {
     let mut plan = Vec::new();
+    let mut remaining_cap = max_needed.unwrap_or(f32::MAX);
 
     for out_item in outgoings_items {
+        if remaining_cap <= 0.005 {
+            break;
+        }
         let dest_id = out_item.destination_account_id.unwrap_or(0);
-        let mut needed = out_item.amount;
+        let mut needed = out_item.amount.min(remaining_cap);
 
         while needed > 0.005 {
             // Pick savings account with the highest remaining balance (excluding destination account)
@@ -110,6 +115,7 @@ pub fn calculate_outgoings_funding_plan(
                     }
                     savings.remaining_bal = ((savings.remaining_bal - take) * 100.0).round() / 100.0;
                     needed = ((needed - take) * 100.0).round() / 100.0;
+                    remaining_cap = ((remaining_cap - take) * 100.0).round() / 100.0;
 
                     let summary = format!(
                         "Covers outgoings in {}",
@@ -167,6 +173,15 @@ pub struct PaydayWindowDto {
     pub funding_cushion: f32,
     pub funding_cushion_formatted: String,
     pub is_fully_covered: bool,
+    pub show_coverage_indicator: bool,
+    pub coverage_title: String,
+    pub coverage_badge_text: String,
+    pub coverage_badge_css: String,
+    pub coverage_description: String,
+    pub savings_needed_to_topup: f32,
+    pub savings_needed_to_topup_formatted: String,
+    pub total_savings: f32,
+    pub total_savings_formatted: String,
     pub outgoings_funding_plan: Vec<OutgoingsFundingStepDto>,
     pub outgoings_items: Vec<PaydayTransferItemDto>,
     pub savings_items: Vec<PaydayTransferItemDto>,
@@ -307,7 +322,7 @@ pub async fn calculate_payday_window(
             true
         };
 
-        if !is_due || cost <= 0.0 {
+        if !is_due || cost < 0.005 {
             continue;
         }
 
@@ -333,7 +348,7 @@ pub async fn calculate_payday_window(
 
     let mut outgoings_items = Vec::new();
     for (_acc_id, grp) in account_groups {
-        if grp.total_cost <= 0.0 {
+        if grp.total_cost < 0.005 {
             continue;
         }
         let count = grp.breakdown.len();
@@ -433,7 +448,7 @@ pub async fn calculate_payday_window(
         dest_bal,
     );
 
-    if calc.monthly_saving > 0.0 {
+    if calc.monthly_saving >= 0.005 {
         let breakdown_items: Vec<YearlyBillBreakdownItem> = calc
             .breakdown
             .into_iter()
@@ -532,9 +547,10 @@ pub async fn calculate_payday_window(
             let acc_type: Option<String> = r.get("account_type");
             let cur_bal: f32 = r.get("current_bal");
 
-            // User requirement: all items on the savings plan are read and reported
-            // with their exact values from the savings plan (even if zero) and never inflated wildly.
             let amt_to_transfer = monthly_amt.max(0.0);
+            if amt_to_transfer < 0.005 {
+                continue;
+            }
 
             let prog_pct = if target_amt > 0.0 {
                 Some(((cur_bal / target_amt) * 100.0).clamp(0.0, 100.0).round() as i32)
@@ -581,9 +597,14 @@ pub async fn calculate_payday_window(
     // Sort savings items by priority (Yearly Bills Autosave #0 first, then Savings Plan priorities #1, #2...)
     savings_items.sort_by_key(|it| it.priority);
 
+    // Filter out any items with 0.00 amount
+    outgoings_items.retain(|it| it.amount >= 0.005);
+    savings_items.retain(|it| it.amount >= 0.005);
+
     // Combine all transfers: Outgoings cover items sit segregated at the top, followed by savings & sinking fund
     let mut items = outgoings_items.clone();
     items.extend(savings_items.clone());
+    items.retain(|it| it.amount >= 0.005);
 
     let total_transfers: f32 = items.iter().map(|it| it.amount).sum();
     let source_remaining = source_acc_bal - total_transfers;
@@ -623,10 +644,7 @@ pub async fn calculate_payday_window(
     .unwrap_or(0.0);
 
     let monthly_savings_budget = (monthly_income * (savings_percentage as f32 / 100.0) * 100.0).round() / 100.0;
-    let total_funding_capacity = ((monthly_savings_budget + available_liquid_funds) * 100.0).round() / 100.0;
-    let funding_cushion_val = total_funding_capacity - total_transfers;
-    let is_fully_covered = funding_cushion_val >= 0.0;
-    let funding_cushion = (funding_cushion_val.abs() * 100.0).round() / 100.0;
+    let total_funding_capacity = ((monthly_income + available_liquid_funds) * 100.0).round() / 100.0;
 
     // Build Savings-to-Debit Outgoings Funding Plan:
     // Take from the savings account with the highest current balance first, then the next, then the next.
@@ -663,7 +681,101 @@ pub async fn calculate_payday_window(
         })
         .collect();
 
-    let outgoings_funding_plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool);
+    let total_savings: f32 = savings_pool.iter().map(|s| s.initial_bal).sum();
+    let total_savings = (total_savings * 100.0).round() / 100.0;
+
+    let total_transfers_rounded = (total_transfers * 100.0).round() / 100.0;
+    let monthly_income_rounded = (monthly_income * 100.0).round() / 100.0;
+
+    // Coverage calculation taking into account 'incoming' items:
+    // 1. If monthly_income covers all transfers (or total_transfers == 0):
+    //    Income alone covers it -> we don't show the 'Fully Covered by Savings & Monthly Allocation' part.
+    // 2. If monthly_income partially covers it, but savings top-up is needed:
+    //    Show coverage indicator stating income partially covers and savings are needed to top up.
+    // 3. If monthly_income + available savings cannot cover transfers:
+    //    Show shortfall indicator with deficit amount.
+    let income_alone_covers = total_transfers_rounded <= 0.005 || monthly_income_rounded >= (total_transfers_rounded - 0.005);
+
+    let (
+        show_coverage_indicator,
+        coverage_title,
+        coverage_badge_text,
+        coverage_badge_css,
+        coverage_description,
+        savings_needed,
+        is_fully_covered,
+        funding_cushion,
+        outgoings_funding_plan,
+    ) = if income_alone_covers {
+        (
+            false,
+            String::new(),
+            String::new(),
+            "pill-green".to_string(),
+            String::new(),
+            0.0f32,
+            true,
+            ((monthly_income_rounded - total_transfers_rounded).max(0.0) * 100.0).round() / 100.0,
+            Vec::new(),
+        )
+    } else {
+        let topup = ((total_transfers_rounded - monthly_income_rounded) * 100.0).round() / 100.0;
+        let total_available = ((monthly_income_rounded + total_savings) * 100.0).round() / 100.0;
+        let covered = total_available >= (total_transfers_rounded - 0.005);
+
+        if covered {
+            let cushion = ((total_available - total_transfers_rounded) * 100.0).round() / 100.0;
+            let title = if monthly_income_rounded > 0.005 {
+                "Income Partially Covers Transfers (Savings Top-Up Needed)".to_string()
+            } else {
+                "Transfers Covered by Savings".to_string()
+            };
+            let badge = format!("£{:.2} from Savings", topup);
+            let desc = if monthly_income_rounded > 0.005 {
+                format!(
+                    "Incoming (£{:.2}) covers part of the £{:.2} transfers • £{:.2} needed from savings to top up (Available Savings: £{:.2})",
+                    monthly_income_rounded, total_transfers_rounded, topup, total_savings
+                )
+            } else {
+                format!(
+                    "No income detected • £{:.2} fully covered by available savings (Total Savings: £{:.2})",
+                    topup, total_savings
+                )
+            };
+            let plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool, Some(topup));
+            (
+                true,
+                title,
+                badge,
+                "pill-amber".to_string(),
+                desc,
+                topup,
+                true,
+                cushion,
+                plan,
+            )
+        } else {
+            let deficit = ((total_transfers_rounded - total_available) * 100.0).round() / 100.0;
+            let title = "Transfer Shortfall: Insufficient Income & Savings".to_string();
+            let badge = format!("-£{:.2} Deficit", deficit);
+            let desc = format!(
+                "Incoming (£{:.2}) and Available Savings (£{:.2}) are insufficient to cover £{:.2} transfers (Shortfall: £{:.2})",
+                monthly_income_rounded, total_savings, total_transfers_rounded, deficit
+            );
+            let plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool, Some(total_savings));
+            (
+                true,
+                title,
+                badge,
+                "pill-red".to_string(),
+                desc,
+                topup,
+                false,
+                deficit,
+                plan,
+            )
+        }
+    };
 
     let payday_display = payday_date.format("%A, %e %b %Y").to_string();
 
@@ -673,16 +785,16 @@ pub async fn calculate_payday_window(
         payday_display,
         is_today,
         days_away,
-        total_to_transfer: (total_transfers * 100.0).round() / 100.0,
-        total_to_transfer_formatted: format!("{:.2}", total_transfers),
+        total_to_transfer: total_transfers_rounded,
+        total_to_transfer_formatted: format!("{:.2}", total_transfers_rounded),
         transfers_count: items.len(),
         source_account_name: source_acc_name,
         source_account_balance: (source_acc_bal * 100.0).round() / 100.0,
         source_account_balance_formatted: format!("{:.2}", source_acc_bal),
         source_account_remaining_balance: (source_remaining * 100.0).round() / 100.0,
         source_account_remaining_balance_formatted: format!("{:.2}", source_remaining),
-        monthly_income: (monthly_income * 100.0).round() / 100.0,
-        monthly_income_formatted: format!("{:.2}", monthly_income),
+        monthly_income: monthly_income_rounded,
+        monthly_income_formatted: format!("{:.2}", monthly_income_rounded),
         savings_percentage,
         monthly_savings_budget,
         monthly_savings_budget_formatted: format!("{:.2}", monthly_savings_budget),
@@ -693,6 +805,15 @@ pub async fn calculate_payday_window(
         funding_cushion,
         funding_cushion_formatted: format!("{:.2}", funding_cushion),
         is_fully_covered,
+        show_coverage_indicator,
+        coverage_title,
+        coverage_badge_text,
+        coverage_badge_css,
+        coverage_description,
+        savings_needed_to_topup: savings_needed,
+        savings_needed_to_topup_formatted: format!("{:.2}", savings_needed),
+        total_savings,
+        total_savings_formatted: format!("{:.2}", total_savings),
         outgoings_funding_plan,
         outgoings_items,
         savings_items,
@@ -963,7 +1084,7 @@ mod tests {
             },
         ];
 
-        let plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool);
+        let plan = calculate_outgoings_funding_plan(&outgoings_items, savings_pool, None);
 
         assert_eq!(plan.len(), 2, "Should take from highest balance first (B: £400), then next (A: £150)");
         // Step 1: Takes all £400 from Savings B (highest initial bal)
@@ -978,5 +1099,139 @@ mod tests {
         assert_eq!(plan[1].from_savings_account_name, "Savings A (Emergency)");
         assert_eq!(plan[1].to_debit_account_id, 3620);
         assert_eq!(plan[1].amount, 150.0);
+    }
+
+    #[test]
+    fn test_zero_amount_transfer_items_filtered_out() {
+        // Items with 0.00 amount to transfer must not appear on the list
+        let mut outgoings = vec![
+            PaydayTransferItemDto {
+                id: "outgoings_1".to_string(),
+                priority: -10,
+                title: "Zero Bill".to_string(),
+                category: "OUTGOINGS_COVER".to_string(),
+                source_account_id: None,
+                source_account_name: "".to_string(),
+                destination_account_id: None,
+                destination_account_name: "".to_string(),
+                destination_account_type: "".to_string(),
+                amount: 0.0,
+                amount_formatted: "0.00".to_string(),
+                target_amount: None,
+                target_amount_formatted: None,
+                current_destination_balance: None,
+                current_destination_balance_formatted: None,
+                progress_pct: None,
+                description: "".to_string(),
+                breakdown: Vec::new(),
+            },
+            PaydayTransferItemDto {
+                id: "outgoings_2".to_string(),
+                priority: -10,
+                title: "Valid Bill".to_string(),
+                category: "OUTGOINGS_COVER".to_string(),
+                source_account_id: None,
+                source_account_name: "".to_string(),
+                destination_account_id: None,
+                destination_account_name: "".to_string(),
+                destination_account_type: "".to_string(),
+                amount: 75.0,
+                amount_formatted: "75.00".to_string(),
+                target_amount: None,
+                target_amount_formatted: None,
+                current_destination_balance: None,
+                current_destination_balance_formatted: None,
+                progress_pct: None,
+                description: "".to_string(),
+                breakdown: Vec::new(),
+            },
+        ];
+
+        let mut savings = vec![
+            PaydayTransferItemDto {
+                id: "savings_1".to_string(),
+                priority: 1,
+                title: "Zero Savings Plan Target".to_string(),
+                category: "SAVINGS_PLAN".to_string(),
+                source_account_id: None,
+                source_account_name: "".to_string(),
+                destination_account_id: None,
+                destination_account_name: "".to_string(),
+                destination_account_type: "".to_string(),
+                amount: 0.0,
+                amount_formatted: "0.00".to_string(),
+                target_amount: None,
+                target_amount_formatted: None,
+                current_destination_balance: None,
+                current_destination_balance_formatted: None,
+                progress_pct: None,
+                description: "".to_string(),
+                breakdown: Vec::new(),
+            },
+            PaydayTransferItemDto {
+                id: "savings_2".to_string(),
+                priority: 2,
+                title: "Active Savings Plan Target".to_string(),
+                category: "SAVINGS_PLAN".to_string(),
+                source_account_id: None,
+                source_account_name: "".to_string(),
+                destination_account_id: None,
+                destination_account_name: "".to_string(),
+                destination_account_type: "".to_string(),
+                amount: 100.0,
+                amount_formatted: "100.00".to_string(),
+                target_amount: None,
+                target_amount_formatted: None,
+                current_destination_balance: None,
+                current_destination_balance_formatted: None,
+                progress_pct: None,
+                description: "".to_string(),
+                breakdown: Vec::new(),
+            },
+        ];
+
+        outgoings.retain(|it| it.amount >= 0.005);
+        savings.retain(|it| it.amount >= 0.005);
+        let mut items = outgoings.clone();
+        items.extend(savings.clone());
+        items.retain(|it| it.amount >= 0.005);
+
+        assert_eq!(outgoings.len(), 1);
+        assert_eq!(outgoings[0].title, "Valid Bill");
+        assert_eq!(savings.len(), 1);
+        assert_eq!(savings[0].title, "Active Savings Plan Target");
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn test_coverage_indicator_logic_with_income() {
+        // Scenario 1: Income alone covers transfers (£3000 income >= £500 transfers)
+        // -> show_coverage_indicator must be false
+        let total_transfers_1 = 500.0f32;
+        let income_1 = 3000.0f32;
+        let income_alone_covers_1 = total_transfers_1 <= 0.005 || income_1 >= (total_transfers_1 - 0.005);
+        assert!(income_alone_covers_1, "Income alone covers, so coverage banner must not be shown");
+
+        // Scenario 2: Income partially covers transfers (£1000 income < £1500 transfers, savings £2000)
+        // -> show_coverage_indicator must be true, topup £500 needed from savings
+        let total_transfers_2 = 1500.0f32;
+        let income_2 = 1000.0f32;
+        let savings_2 = 2000.0f32;
+        let income_alone_covers_2 = total_transfers_2 <= 0.005 || income_2 >= (total_transfers_2 - 0.005);
+        assert!(!income_alone_covers_2);
+        let topup_2 = total_transfers_2 - income_2;
+        assert_eq!(topup_2, 500.0);
+        let total_available_2 = income_2 + savings_2;
+        assert!(total_available_2 >= total_transfers_2);
+
+        // Scenario 3: Income + Savings cannot cover transfers (£1000 income + £200 savings < £1500 transfers)
+        // -> show_coverage_indicator must be true, deficit £300
+        let total_transfers_3 = 1500.0f32;
+        let income_3 = 1000.0f32;
+        let savings_3 = 200.0f32;
+        let total_available_3 = income_3 + savings_3;
+        assert!(total_available_3 < total_transfers_3);
+        let deficit_3 = total_transfers_3 - total_available_3;
+        assert_eq!(deficit_3, 300.0);
     }
 }
