@@ -196,6 +196,14 @@ pub async fn resolve_user_id(pool: &PgPool, user_id_or_name: &str) -> String {
 }
 
 pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetrics, sqlx::Error> {
+    calculate_spog_as_of(pool, raw_user_id, None).await
+}
+
+pub async fn calculate_spog_as_of(
+    pool: &PgPool,
+    raw_user_id: &str,
+    as_of: Option<chrono::NaiveDate>,
+) -> Result<SpogMetrics, sqlx::Error> {
     let user_id = resolve_user_id(pool, raw_user_id).await;
 
     // 1. Incomings
@@ -224,7 +232,8 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     let next_pay_day: i32 = incoming_row.get::<i32, _>("payday");
 
     // 2. Calendar logic
-    let today = Local::now().date_naive();
+    let today = as_of.unwrap_or_else(|| Local::now().date_naive());
+    let as_of_epoch_end = as_of.map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp());
     let today_day = today.day() as i32;
     let current_month = today.month() as i32;
     let current_year = today.year();
@@ -409,14 +418,25 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         let limit_val = Pence::from_pounds_f32(row.get::<f32, _>("limit_val"));
         let interest_rate: Option<f32> = row.get("interest_rate");
 
-        // Fetch latest balance for this account
-        let bal_row = sqlx::query(
-            "SELECT COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp FROM balance WHERE account_id = $1 ORDER BY timestamp DESC, id DESC LIMIT 1",
-        )
-        .bind(acc_id)
-        .fetch_optional(pool)
-        .await
-        .unwrap_or(None);
+        // Fetch latest balance for this account as of cutoff (if time traveling)
+        let bal_row = if let Some(cutoff) = as_of_epoch_end {
+            sqlx::query(
+                "SELECT COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp FROM balance WHERE account_id = $1 AND (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) <= $2 ORDER BY timestamp DESC, id DESC LIMIT 1",
+            )
+            .bind(acc_id)
+            .bind(cutoff)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None)
+        } else {
+            sqlx::query(
+                "SELECT COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp FROM balance WHERE account_id = $1 ORDER BY timestamp DESC, id DESC LIMIT 1",
+            )
+            .bind(acc_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None)
+        };
 
         let (latest_balance, latest_balance_timestamp) = match bal_row {
             Some(r) => {
@@ -717,7 +737,7 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         .and_local_timezone(chrono::Utc)
         .unwrap()
         .timestamp();
-    let now_sec = chrono::Utc::now().timestamp();
+    let now_sec = as_of_epoch_end.unwrap_or_else(|| chrono::Utc::now().timestamp());
 
     let mut balance_acc_ids = pot_account_ids.clone();
     if let Some(ref pr) = active_pot_row {
@@ -927,13 +947,24 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     let mut payday_transfers_total: Pence = savings_plan_items.iter().map(|i| i.monthly_amount).sum();
 
     if let Some(Some(yearly_acc_id)) = yearly_account_row.map(|r| r.get::<Option<i64>, _>("yearly_bills_account_id")) {
-        let dest_bal: f32 = sqlx::query_scalar(
-            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
-        )
-        .bind(yearly_acc_id)
-        .fetch_optional(pool)
-        .await?
-        .unwrap_or(0.0);
+        let dest_bal: f32 = if let Some(cutoff) = as_of_epoch_end {
+            sqlx::query_scalar(
+                "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 AND (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) <= $2 ORDER BY timestamp DESC LIMIT 1"
+            )
+            .bind(yearly_acc_id)
+            .bind(cutoff)
+            .fetch_optional(pool)
+            .await?
+            .unwrap_or(0.0)
+        } else {
+            sqlx::query_scalar(
+                "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
+            )
+            .bind(yearly_acc_id)
+            .fetch_optional(pool)
+            .await?
+            .unwrap_or(0.0)
+        };
 
         let outgoings = sqlx::query_as::<_, Outgoing>(
             r#"
@@ -1046,9 +1077,17 @@ pub async fn calculate_spending_pace(
     pool: &PgPool,
     raw_user_id: &str,
 ) -> Result<SpendingPaceMetrics, sqlx::Error> {
+    calculate_spending_pace_as_of(pool, raw_user_id, None).await
+}
+
+pub async fn calculate_spending_pace_as_of(
+    pool: &PgPool,
+    raw_user_id: &str,
+    as_of: Option<chrono::NaiveDate>,
+) -> Result<SpendingPaceMetrics, sqlx::Error> {
     let user_id = resolve_user_id(pool, raw_user_id).await;
-    let spog = calculate_spog(pool, &user_id).await?;
-    let today = Local::now().date_naive();
+    let spog = calculate_spog_as_of(pool, &user_id, as_of).await?;
+    let today = as_of.unwrap_or_else(|| Local::now().date_naive());
     let nominal_payday = spog.next_pay_day.max(1);
     let cycle_start = crate::historic_spent::find_last_payday_date(today, nominal_payday);
     let cycle_end = crate::historic_spent::find_next_payday_date(today, nominal_payday);

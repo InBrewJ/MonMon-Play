@@ -20,6 +20,7 @@ mod savings_plan;
 mod search;
 mod spog;
 mod statement;
+pub mod time_travel;
 mod transfers;
 
 pub const BUILD_HASH: &str = env!("BUILD_HASH");
@@ -657,6 +658,13 @@ async fn main() {
         .route("/apple-touch-icon.png", get(serve_apple_touch_icon_handler))
         .route("/apple-touch-icon-precomposed.png", get(serve_apple_touch_icon_handler))
         .route("/site.webmanifest", get(serve_manifest_handler))
+        // Time Travel
+        .route("/timeTravel/start", post(time_travel::post_start_time_travel))
+        .route(
+            "/timeTravel/stop",
+            get(time_travel::get_stop_time_travel).post(time_travel::get_stop_time_travel),
+        )
+        .layer(axum::middleware::from_fn(time_travel::enforce_time_travel_read_only))
         .layer(axum::middleware::map_response(apply_cache_control_headers))
         .with_state(state);
 
@@ -1081,8 +1089,10 @@ async fn get_spog_metrics(
         &headers,
         query.get("userId").or_else(|| query.get("user_id")).map(|s| s.as_str()),
     );
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of_opt = if is_time_travel { Some(effective_date) } else { None };
 
-    spog::calculate_spog(&state.pool, &user_id)
+    spog::calculate_spog_as_of(&state.pool, &user_id, as_of_opt)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -1097,8 +1107,10 @@ async fn get_spending_pace(
         &headers,
         query.get("userId").or_else(|| query.get("user_id")).map(|s| s.as_str()),
     );
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of_opt = if is_time_travel { Some(effective_date) } else { None };
 
-    spog::calculate_spending_pace(&state.pool, &user_id)
+    spog::calculate_spending_pace_as_of(&state.pool, &user_id, as_of_opt)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -1120,12 +1132,14 @@ async fn get_spog_page(
         &headers,
         query.get("userId").or_else(|| query.get("user_id")).map(|s| s.as_str()),
     );
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of_opt = if is_time_travel { Some(effective_date) } else { None };
 
-    let metrics = spog::calculate_spog(&state.pool, &user_id)
+    let metrics = spog::calculate_spog_as_of(&state.pool, &user_id, as_of_opt)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let pace = spog::calculate_spending_pace(&state.pool, &user_id)
+    let pace = spog::calculate_spending_pace_as_of(&state.pool, &user_id, as_of_opt)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

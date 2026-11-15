@@ -465,7 +465,7 @@ pub async fn get_outgoings_page(
         .await
         .unwrap_or_default();
 
-    let today = chrono::Local::now().date_naive();
+    let (today, _is_time_travel) = crate::time_travel::get_effective_date(&headers);
     let current_year = today.year();
     let current_month_name = match today.month() {
         1 => "January", 2 => "February", 3 => "March", 4 => "April",
@@ -645,7 +645,7 @@ pub async fn get_edit_outgoing_page(
     let editing_outgoing = outgoings.iter().find(|o| o.id == id).cloned();
     let editing = editing_outgoing.is_some();
 
-    let today = chrono::Local::now().date_naive();
+    let (today, _is_time_travel) = crate::time_travel::get_effective_date(&headers);
     let current_year = today.year();
     let current_month_name = match today.month() {
         1 => "January", 2 => "February", 3 => "March", 4 => "April",
@@ -1210,33 +1210,68 @@ pub async fn get_balances_page(
     let selected_account_name = selected_account_id
         .and_then(|id| accounts.iter().find(|a| a.id == id).map(|a| a.name.clone()));
 
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let cutoff_sec = if is_time_travel {
+        Some(effective_date.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp())
+    } else {
+        None
+    };
+
     // 2. Fetch balances with account details
-    let balance_rows = sqlx::query(
-        r#"
-        SELECT 
-            b.id,
-            COALESCE(b.value, 0.0)::real as value,
-            COALESCE(b.timestamp, 0)::bigint as timestamp,
-            COALESCE(b.account_id, 0)::bigint as account_id,
-            COALESCE(a.name, 'Unknown Account') as account_name,
-            COALESCE(a.type, 'CURRENT') as account_type
-        FROM balance b
-        LEFT JOIN account a ON b.account_id = a.id
-        WHERE (b.user_id = $1 OR b.userid = $1 OR b."userId" = $1)
-        ORDER BY b.timestamp DESC NULLS LAST, b.id DESC
-        "#,
-    )
-    .bind(&user_id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+    let balance_rows = if let Some(cutoff) = cutoff_sec {
+        sqlx::query(
+            r#"
+            SELECT 
+                b.id,
+                COALESCE(b.value, 0.0)::real as value,
+                COALESCE(b.timestamp, 0)::bigint as timestamp,
+                COALESCE(b.account_id, 0)::bigint as account_id,
+                COALESCE(a.name, 'Unknown Account') as account_name,
+                COALESCE(a.type, 'CURRENT') as account_type
+            FROM balance b
+            LEFT JOIN account a ON b.account_id = a.id
+            WHERE (b.user_id = $1 OR b.userid = $1 OR b."userId" = $1)
+              AND (CASE WHEN b.timestamp > 100000000000 THEN b.timestamp / 1000 ELSE b.timestamp END) <= $2
+            ORDER BY b.timestamp DESC NULLS LAST, b.id DESC
+            "#,
+        )
+        .bind(&user_id)
+        .bind(cutoff)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default()
+    } else {
+        sqlx::query(
+            r#"
+            SELECT 
+                b.id,
+                COALESCE(b.value, 0.0)::real as value,
+                COALESCE(b.timestamp, 0)::bigint as timestamp,
+                COALESCE(b.account_id, 0)::bigint as account_id,
+                COALESCE(a.name, 'Unknown Account') as account_name,
+                COALESCE(a.type, 'CURRENT') as account_type
+            FROM balance b
+            LEFT JOIN account a ON b.account_id = a.id
+            WHERE (b.user_id = $1 OR b.userid = $1 OR b."userId" = $1)
+            ORDER BY b.timestamp DESC NULLS LAST, b.id DESC
+            "#,
+        )
+        .bind(&user_id)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default()
+    };
 
     let mut chart_points = Vec::new();
-    let now_ts = chrono::Utc::now().timestamp();
+    let now_ts = cutoff_sec.unwrap_or_else(|| chrono::Utc::now().timestamp());
     let sixty_days_ago_sec = now_ts - (60 * 86400);
     let mut daily_sampled: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
 
-    let ten_days_ago_date = (chrono::Utc::now() - chrono::Duration::days(10)).date_naive();
+    let ten_days_ago_date = if is_time_travel {
+        effective_date - chrono::Duration::days(10)
+    } else {
+        (chrono::Utc::now() - chrono::Duration::days(10)).date_naive()
+    };
     let mut by_account: std::collections::HashMap<i64, Vec<BalanceViewDto>> = std::collections::HashMap::new();
 
     for r in &balance_rows {

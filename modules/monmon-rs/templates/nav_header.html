@@ -351,6 +351,35 @@
         function renderLiveTicker() {
             var ticker = document.getElementById('ticker');
             if (!ticker) return;
+
+            var ttDate = null;
+            try {
+                var cookies = document.cookie.split(';');
+                for (var i = 0; i < cookies.length; i++) {
+                    var c = cookies[i].trim();
+                    if (c.indexOf('monmon_time_travel=') === 0) {
+                        var v = c.substring(19);
+                        if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                            ttDate = v;
+                            break;
+                        }
+                    }
+                }
+            } catch(e) {}
+
+            if (ttDate) {
+                var parts = ttDate.split('-');
+                var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                var day = d.getDate();
+                var suffix = "th";
+                if (day === 1 || day === 21 || day === 31) suffix = "st";
+                else if (day === 2 || day === 22) suffix = "nd";
+                else if (day === 3 || day === 23) suffix = "rd";
+                var dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                ticker.innerHTML = "<span style='color: #f59e0b; font-weight: 700; margin-right: 8px;'><i class='fas fa-history'></i> Time Travel: Day " + day + " (" + day + suffix + ")</span> · <span style='color: #fef08a; font-weight: 600;'>" + dateStr + " (Historical)</span>";
+                return;
+            }
+
             var now = new Date();
             var day = now.getDate();
             var suffix = "th";
@@ -371,6 +400,116 @@
         }
     })();
 </script>
+
+<!-- Constant Time Travel Banner (Active when in Time Travel mode) -->
+<div id="monmon-time-travel-banner" class="monmon-time-travel-banner" style="display: none;">
+    <div class="time-travel-banner-content">
+        <div class="time-travel-left">
+            <span class="time-travel-badge"><i class="fas fa-history"></i> TIME TRAVEL</span>
+            <span class="time-travel-text">
+                Viewing MonMon as of <strong id="time-travel-date-display"></strong>
+                <span class="time-travel-readonly-tag">(Read-Only)</span>
+            </span>
+        </div>
+        <a href="/timeTravel/stop" class="btn-stop-time-travel" id="btn-stop-time-travel" title="Exit Time Travel and return to today">
+            <i class="fas fa-stop-circle"></i> Stop Time Travel
+        </a>
+    </div>
+</div>
+
+<style>
+.monmon-time-travel-banner {
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 99998;
+    background: linear-gradient(90deg, #92400e 0%, #b45309 50%, #d97706 100%);
+    color: #ffffff;
+    padding: 10px 16px;
+    box-shadow: 0 4px 14px rgba(180, 83, 9, 0.4);
+    border-bottom: 2px solid #fef3c7;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.time-travel-banner-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.time-travel-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.time-travel-badge {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #fef3c7;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 800;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.time-travel-text {
+    font-size: 0.92rem;
+    color: #ffffff;
+}
+.time-travel-readonly-tag {
+    opacity: 0.95;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-left: 4px;
+    color: #fef08a;
+}
+.btn-stop-time-travel {
+    background: #ffffff;
+    color: #92400e !important;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 6px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+    transition: transform 0.1s ease, background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+}
+.btn-stop-time-travel:hover {
+    background: #fef3c7;
+    color: #78350f !important;
+    transform: translateY(-1px);
+}
+@media (max-width: 600px) {
+    .monmon-time-travel-banner {
+        padding: 8px 12px;
+    }
+    .time-travel-banner-content {
+        justify-content: center;
+        text-align: center;
+    }
+    .btn-stop-time-travel {
+        width: 100%;
+        justify-content: center;
+        padding: 7px 12px;
+    }
+}
+</style>
 
 <!-- Header with Brand, Disco Ball, Search and Theme Toggle -->
 <header class="app-header">
@@ -510,6 +649,7 @@
             <li class="drawer-crumb"><a href="/myPlans"><i class="fas fa-sliders-h"></i> Plans</a></li>
             <li class="drawer-crumb"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
             <li class="drawer-crumb"><a href="/transfers"><i class="fas fa-exchange-alt"></i> Transfer Window</a></li>
+            <li class="drawer-crumb"><a href="javascript:void(0)" onclick="openTimeTravelModal()" id="nav-drawer-time-travel-link"><i class="fas fa-history" style="color: #f59e0b;"></i> Time Travel</a></li>
 
             <!-- Basics Group -->
             <li class="drawer-group" id="nav-group-basics">
@@ -639,5 +779,139 @@
         e.preventDefault();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
+})();
+</script>
+
+<!-- Time Travel Modal Dialog -->
+<div id="time-travel-modal" class="w3-modal" style="display:none; z-index: 100000; background-color: rgba(15, 23, 42, 0.75); backdrop-filter: blur(4px);">
+    <div class="w3-modal-content w3-card-4 w3-animate-opacity" style="max-width: 460px; border-radius: 14px; overflow: hidden; background: var(--card-bg, #ffffff); color: var(--text-color, #1e293b); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45); border: 1px solid var(--border-color, #cbd5e1);">
+        <header class="w3-container" style="background: linear-gradient(135deg, #1e293b, #0f172a); color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 9px;">
+                <i class="fas fa-history" style="color: #f59e0b; font-size: 1.15rem;"></i>
+                <span>MonMon Time Travel</span>
+            </div>
+            <button type="button" onclick="closeTimeTravelModal()" aria-label="Close" style="background: none; border: none; color: #94a3b8; font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0;">&times;</button>
+        </header>
+        <form method="POST" action="/timeTravel/start" style="padding: 22px;">
+            <div style="display: flex; gap: 12px; margin-bottom: 14px;">
+                <div style="font-size: 1.5rem; color: #d97706; flex-shrink: 0; line-height: 1.2;">
+                    <i class="fas fa-hourglass-half"></i>
+                </div>
+                <p style="margin: 0; font-size: 0.88rem; line-height: 1.45; color: var(--text-muted, #64748b);">
+                    Jump back to any historical date (since <strong>January 2022</strong>) to browse MonMon in <strong>read-only mode</strong> as it existed on that day.
+                </p>
+            </div>
+            <div style="background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; padding: 8px 12px; border-radius: 4px; margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted, #64748b);">
+                <strong>Backwards only:</strong> Time travel looks into the past. While active, data is locked against modifications. Click <em>Stop Time Travel</em> anytime to return to today.
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label for="time-travel-date-picker" style="display: block; font-weight: 700; font-size: 0.88rem; margin-bottom: 6px; color: var(--text-main, #0f172a);">
+                    Historical Date (YYYY-MM-DD)
+                </label>
+                <input type="date"
+                       id="time-travel-date-picker"
+                       name="date"
+                       class="w3-input w3-border w3-round"
+                       min="2022-01-01"
+                       required
+                       style="padding: 10px 12px; font-size: 1rem; border-radius: 8px; width: 100%; box-sizing: border-box;" />
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" onclick="closeTimeTravelModal()" class="w3-button w3-light-grey w3-round" style="font-weight: 600; font-size: 0.9rem; padding: 8px 16px; border-radius: 6px;">
+                    Cancel
+                </button>
+                <button type="submit" class="w3-button w3-round" style="background: #f59e0b; color: #1e293b; font-weight: 700; font-size: 0.9rem; padding: 8px 18px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);">
+                    <i class="fas fa-play"></i> Start Time Travel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+window.openTimeTravelModal = function() {
+    var modal = document.getElementById('time-travel-modal');
+    if (!modal) return;
+    var input = document.getElementById('time-travel-date-picker');
+    if (input) {
+        var todayStr = new Date().toISOString().split('T')[0];
+        input.max = todayStr;
+        if (!input.value) {
+            // Default to 1 month ago if unset
+            var d = new Date();
+            d.setMonth(d.getMonth() - 1);
+            input.value = d.toISOString().split('T')[0];
+        }
+    }
+    // Close nav drawer if open
+    var drawer = document.getElementById('nav-drawer');
+    var backdrop = document.getElementById('nav-backdrop');
+    if (drawer) drawer.classList.remove('is-open');
+    if (backdrop) backdrop.classList.remove('is-open');
+    modal.style.display = 'block';
+};
+
+window.closeTimeTravelModal = function() {
+    var modal = document.getElementById('time-travel-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        window.closeTimeTravelModal();
+    }
+});
+
+var ttModalEl = document.getElementById('time-travel-modal');
+if (ttModalEl) {
+    ttModalEl.addEventListener('click', function(e) {
+        if (e.target === ttModalEl) {
+            window.closeTimeTravelModal();
+        }
+    });
+}
+
+(function() {
+    function initTimeTravelUI() {
+        var cookies = document.cookie.split(';');
+        var ttDate = null;
+        for (var i = 0; i < cookies.length; i++) {
+            var c = cookies[i].trim();
+            if (c.indexOf('monmon_time_travel=') === 0) {
+                var val = c.substring(19);
+                if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                    ttDate = val;
+                    break;
+                }
+            }
+        }
+        var banner = document.getElementById('monmon-time-travel-banner');
+        var dateDisplay = document.getElementById('time-travel-date-display');
+        var drawerLink = document.getElementById('nav-drawer-time-travel-link');
+        if (ttDate) {
+            document.body.classList.add('in-time-travel');
+            if (banner) banner.style.display = 'block';
+            if (dateDisplay) {
+                try {
+                    var parts = ttDate.split('-');
+                    var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                    dateDisplay.textContent = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                } catch(e) {
+                    dateDisplay.textContent = ttDate;
+                }
+            }
+            if (drawerLink) {
+                drawerLink.innerHTML = '<i class="fas fa-history" style="color: #f59e0b;"></i> Time Travel <span style="font-size:0.72rem; background:#f59e0b; color:#000; padding:1px 5px; border-radius:3px; margin-left:4px; font-weight:700;">ACTIVE</span>';
+            }
+        } else {
+            document.body.classList.remove('in-time-travel');
+            if (banner) banner.style.display = 'none';
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTimeTravelUI);
+    } else {
+        initTimeTravelUI();
+    }
 })();
 </script>
