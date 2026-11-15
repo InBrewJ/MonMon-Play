@@ -83,6 +83,14 @@ impl SavingsPlanDto {
             100
         }
     }
+    pub fn snap_percent_for_budget(&self, budget: f32) -> i32 {
+        if self.incoming_total <= 0.0 {
+            return 0;
+        }
+        let target_pot = (self.max_surplus - budget).max(0.0);
+        let pct = ((target_pot / self.incoming_total) * 100.0).round() as i32;
+        0.max(self.max_percent().min(pct))
+    }
 }
 
 impl SavingsPlanItemDto {
@@ -134,6 +142,29 @@ pub struct CreateItemPayload {
     pub plan_id: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonthlyPotInfoDto {
+    pub id: i64,
+    pub name: Option<String>,
+    pub budget: f32,
+    pub pot_total_balance: f32,
+    pub accounts_count: usize,
+}
+
+impl MonthlyPotInfoDto {
+    pub fn has_budget(&self) -> bool {
+        self.budget > 0.005
+    }
+    pub fn target_budget(&self) -> f32 {
+        if self.has_budget() {
+            self.budget
+        } else {
+            self.pot_total_balance
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "savings_plan.html")]
 pub struct SavingsPlanTemplate {
@@ -141,6 +172,7 @@ pub struct SavingsPlanTemplate {
     pub accounts: Vec<AccountSimple>,
     pub editing: bool,
     pub editing_item: Option<SavingsPlanItemDto>,
+    pub monthly_pot: Option<MonthlyPotInfoDto>,
 }
 
 impl SavingsPlanTemplate {
@@ -149,6 +181,18 @@ impl SavingsPlanTemplate {
             item.account_id == Some(*acc_id)
         } else {
             false
+        }
+    }
+
+    pub fn pot_target_budget(&self) -> f32 {
+        self.monthly_pot.as_ref().map(|p| p.target_budget()).unwrap_or(0.0)
+    }
+
+    pub fn pot_snap_percent(&self) -> i32 {
+        if let Some(ref pot) = self.monthly_pot {
+            self.plan.snap_percent_for_budget(pot.target_budget())
+        } else {
+            0
         }
     }
 }
@@ -905,6 +949,93 @@ pub struct FormUpdatePercentage {
     pub savings_percentage: i32,
 }
 
+pub async fn get_active_monthly_pot(pool: &PgPool, user_id: &str) -> Option<MonthlyPotInfoDto> {
+    let resolved = resolve_user_id(pool, user_id).await;
+
+    let pot_row = sqlx::query(
+        r#"
+        SELECT p.id, p.spending_plan_name, p.spending_plan_food, p.spending_plan_fuel,
+               p.spending_plan_transport, p.spending_plan_fun, p.spending_plan_sections_json,
+               p.food_account_id, p.fun_account_id, p.fuel_account_id, p.transport_account_id
+        FROM pot p
+        WHERE (p.userid = $1 OR p.user_id = $1)
+          AND (p.archived IS NULL OR p.archived = false)
+          AND p.type = 'MONTHLY'
+        ORDER BY p.createdat DESC NULLS LAST, p.id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&resolved)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()?;
+
+    let pot_id: i64 = pot_row.get("id");
+    let name: Option<String> = pot_row.get("spending_plan_name");
+    let sp_sections_json: Option<String> = pot_row.get("spending_plan_sections_json");
+    let sp_food: Option<f32> = pot_row.get("spending_plan_food");
+    let sp_fuel: Option<f32> = pot_row.get("spending_plan_fuel");
+    let sp_trans: Option<f32> = pot_row.get("spending_plan_transport");
+    let sp_fun: Option<f32> = pot_row.get("spending_plan_fun");
+
+    let mut budget = 0.0f32;
+    let mut parsed_sections = false;
+
+    if let Some(ref j) = sp_sections_json {
+        if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
+            if !parsed.is_empty() {
+                parsed_sections = true;
+                for s in parsed {
+                    let amount = s.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    budget += amount;
+                }
+            }
+        }
+    }
+
+    if !parsed_sections {
+        budget = sp_food.unwrap_or(0.0) + sp_fuel.unwrap_or(0.0) + sp_trans.unwrap_or(0.0) + sp_fun.unwrap_or(0.0);
+    }
+    budget = ((budget * 100.0).round()) / 100.0;
+
+    let acc_row = sqlx::query(
+        r#"
+        WITH latest_b AS (
+            SELECT DISTINCT ON (account_id) account_id, value
+            FROM balance
+            ORDER BY account_id, timestamp DESC
+        )
+        SELECT COALESCE(SUM(b.value), 0.0)::real AS total_balance, count(pa.account_id) AS acc_count
+        FROM pot_accounts pa
+        LEFT JOIN latest_b b ON b.account_id = pa.account_id
+        WHERE pa.pot_id = $1
+        "#,
+    )
+    .bind(pot_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let pot_total_balance = acc_row
+        .as_ref()
+        .map(|r| r.get::<f32, _>("total_balance"))
+        .unwrap_or(0.0);
+    let accounts_count = acc_row
+        .as_ref()
+        .map(|r| r.get::<i64, _>("acc_count") as usize)
+        .unwrap_or(0);
+
+    Some(MonthlyPotInfoDto {
+        id: pot_id,
+        name,
+        budget,
+        pot_total_balance: ((pot_total_balance * 100.0).round()) / 100.0,
+        accounts_count,
+    })
+}
+
 pub async fn get_savings_plan_page(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -914,6 +1045,7 @@ pub async fn get_savings_plan_page(
     let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let monthly_pot = get_active_monthly_pot(&state.pool, &raw_uid).await;
 
     let accounts_rows = sqlx::query(
         r#"
@@ -950,6 +1082,7 @@ pub async fn get_savings_plan_page(
         accounts,
         editing: false,
         editing_item: None,
+        monthly_pot,
     };
     tmpl.render()
         .map(Html)
@@ -965,6 +1098,7 @@ pub async fn get_edit_savings_plan_item_page(
     let plan = get_or_create_active_plan(&state.pool, &raw_uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let monthly_pot = get_active_monthly_pot(&state.pool, &raw_uid).await;
 
     let editing_item = plan.items.iter().find(|i| i.id == item_id).cloned();
     let editing = editing_item.is_some();
@@ -1004,6 +1138,7 @@ pub async fn get_edit_savings_plan_item_page(
         accounts,
         editing,
         editing_item,
+        monthly_pot,
     };
     tmpl.render()
         .map(Html)
@@ -1738,5 +1873,57 @@ mod tests {
         assert_eq!(reorder_priorities(&order, 20, 99), vec![(10, 1), (30, 2), (40, 3), (20, 4)]);
         assert_eq!(reorder_priorities(&order, 20, 0), vec![(20, 1), (10, 2), (30, 3), (40, 4)]);
         assert_eq!(reorder_priorities(&order, 99, 2), vec![(10, 1), (20, 2), (30, 3), (40, 4)]);
+    }
+
+    #[test]
+    fn test_snap_percent_for_budget() {
+        let plan = SavingsPlanDto {
+            id: 1,
+            user_id: "demo".into(),
+            name: "Test Plan".into(),
+            savings_percentage: 10,
+            incoming_total: 3000.0,
+            target_amount: 300.0,
+            total_allocated: 300.0,
+            unallocated_amount: 0.0,
+            max_surplus: 2000.0,
+            items: vec![],
+            previous_plans: vec![],
+        };
+
+        // If monthly pot budget is £1400: target pot = 2000 - 1400 = 600 => (600/3000)*100 = 20%
+        assert_eq!(plan.snap_percent_for_budget(1400.0), 20);
+
+        // If pot budget is £2000 (all surplus for living allowance): target pot = 0 => 0%
+        assert_eq!(plan.snap_percent_for_budget(2000.0), 0);
+
+        // If pot budget exceeds max surplus (e.g. £2500): target pot = 0 => 0%
+        assert_eq!(plan.snap_percent_for_budget(2500.0), 0);
+
+        // If pot budget is £0: target pot = 2000 => (2000/3000)*100 = 66% (max_percent)
+        assert_eq!(plan.snap_percent_for_budget(0.0), 66);
+    }
+
+    #[test]
+    fn test_monthly_pot_info_target_budget() {
+        let pot_with_budget = MonthlyPotInfoDto {
+            id: 10,
+            name: Some("Gruelling".into()),
+            budget: 216.67,
+            pot_total_balance: 500.0,
+            accounts_count: 2,
+        };
+        assert!(pot_with_budget.has_budget());
+        assert_eq!(pot_with_budget.target_budget(), 216.67);
+
+        let pot_no_budget = MonthlyPotInfoDto {
+            id: 11,
+            name: None,
+            budget: 0.0,
+            pot_total_balance: 350.0,
+            accounts_count: 1,
+        };
+        assert!(!pot_no_budget.has_budget());
+        assert_eq!(pot_no_budget.target_budget(), 350.0);
     }
 }

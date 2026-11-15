@@ -458,6 +458,8 @@
             if (breadlineDayEl) breadlineDayEl.textContent = '£' + breadlineDay.toFixed(2);
             if (breadlineEl) breadlineEl.textContent = '£' + breadlineMonth.toFixed(2) + ' (£' + breadlineWeek.toFixed(2) + '/wk, £' + breadlineDay.toFixed(2) + '/day)';
 
+            updatePotMatchIndicator(breadlineMonth);
+
             var unallocated = newTargetPot - newTotalAllocated;
             if (unallocatedEl) {
                 unallocatedEl.textContent = '£' + Math.abs(unallocated).toFixed(2);
@@ -528,14 +530,61 @@
             renderPotBar(newTargetPot);
         }
 
+        function updatePotMatchIndicator(breadlineMonth) {
+            var potBudgetAttr = slider ? slider.getAttribute('data-pot-budget') : null;
+            if (!potBudgetAttr) return;
+            var potBudget = parseFloat(potBudgetAttr);
+            if (isNaN(potBudget) || potBudget < 0.005) return;
+
+            var matchIndicator = document.getElementById('pot-match-indicator');
+            if (!matchIndicator) return;
+
+            var diff = Math.round((breadlineMonth - potBudget) * 100) / 100;
+            if (Math.abs(diff) < 1.0) {
+                matchIndicator.innerHTML = '<span class="badge-pill badge-success" style="font-size: 0.72rem; padding: 2px 6px; font-weight: 700;"><i class="fas fa-check"></i> Matches pot</span>';
+            } else if (diff > 0) {
+                matchIndicator.innerHTML = '<span style="color: var(--text-muted); font-size: 0.72rem; font-weight: 600;">(+£' + diff.toFixed(2) + ' vs pot)</span>';
+            } else {
+                matchIndicator.innerHTML = '<span style="color: var(--danger); font-size: 0.72rem; font-weight: 600;">(-£' + Math.abs(diff).toFixed(2) + ' vs pot)</span>';
+            }
+        }
+
+        function snapToMonthlyPot() {
+            if (!slider) return;
+            var potBudgetAttr = slider.getAttribute('data-pot-budget');
+            if (!potBudgetAttr) return;
+            var potBudget = parseFloat(potBudgetAttr);
+            if (isNaN(potBudget)) return;
+
+            var targetPot = Math.max(0, maxSurplus - potBudget);
+            var targetPercent = 0;
+            if (incomingTotal > 0) {
+                targetPercent = Math.round((targetPot / incomingTotal) * 100);
+            }
+            targetPercent = Math.max(0, Math.min(maxPercent, targetPercent));
+
+            slider.value = targetPercent;
+            updateSliderAndScaleItems(targetPercent);
+        }
+
+        var snapBtns = document.querySelectorAll('#btn-snap-monthly-pot, #btn-snap-monthly-pot-form, #slider-pot-target-marker');
+        for (var sb = 0; sb < snapBtns.length; sb++) {
+            snapBtns[sb].addEventListener('click', function (e) {
+                e.preventDefault();
+                snapToMonthlyPot();
+            });
+        }
+
         if (slider) {
             slider.addEventListener('input', function () {
                 updateSliderAndScaleItems(parseInt(slider.value, 10));
             });
         }
 
-        // Initial pot bar render
+        // Initial pot bar render and match check
         renderPotBar(currentTargetPot);
+        var initialBreadline = Math.max(0, maxSurplus - currentTargetPot);
+        updatePotMatchIndicator(initialBreadline);
 
         // Live calculation in the "Add / Amend Item" form
         var itemTypeSelect = document.getElementById('item-type-select');

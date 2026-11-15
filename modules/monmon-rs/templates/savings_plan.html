@@ -100,10 +100,50 @@
                             </div>
                         </div>
                     </div>
-                    <div style="font-size: 0.73rem; color: var(--text-muted); margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--border-color); line-height: 1.3;">
-                        <i class="fas fa-utensils" style="color: var(--primary); margin-right: 3px;"></i> Food is likely <b>£50/week</b> (or <b>£216.67/month</b>)
+                    <div style="font-size: 0.73rem; color: var(--text-muted); margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--border-color); line-height: 1.3;" id="living-allowance-pot-note">
+                        {% if let Some(pot) = monthly_pot %}
+                            <i class="fas fa-archive" style="color: var(--primary); margin-right: 3px;"></i>
+                            {% if pot.has_budget() %}
+                                Monthly Pot Budget: <b>£{{ pot.budget }}</b>/mo
+                                <span id="pot-match-indicator" style="margin-left: 4px;"></span>
+                            {% else %}
+                                Monthly Pot Total: <b>£{{ pot.pot_total_balance }}</b>
+                                <span id="pot-match-indicator" style="margin-left: 4px;"></span>
+                            {% endif %}
+                        {% else %}
+                            <i class="fas fa-utensils" style="color: var(--primary); margin-right: 3px;"></i> Food is likely <b>£50/week</b> (or <b>£216.67/month</b>)
+                        {% endif %}
                     </div>
                 </div>
+                {% if let Some(pot) = monthly_pot %}
+                <div class="metric-box" style="border-left: 3px solid var(--primary); min-width: 200px;" id="monthly-pot-metric-box">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="font-weight: 700;"><i class="fas fa-archive" style="color: var(--primary); margin-right: 4px;"></i>Monthly Pot</span>
+                        <a href="/myMonthlyPot" style="font-size: 0.72rem; color: var(--primary); text-decoration: none; font-weight: 600;" title="Configure Monthly Pot">
+                            <i class="fas fa-sliders-h"></i> Manage
+                        </a>
+                    </div>
+                    {% if pot.has_budget() %}
+                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary);" id="monthly-pot-budget-val">
+                        £{{ pot.budget }}
+                        <span style="font-size: 0.75rem; font-weight: 500; color: var(--text-muted);">/ mo</span>
+                    </div>
+                    <div style="font-size: 0.73rem; color: var(--text-muted); margin-top: 4px; line-height: 1.3;">
+                        {% if let Some(sp_name) = pot.name %}
+                            Plan: <b>{{ sp_name }}</b><br>
+                        {% endif %}
+                        <span style="font-weight: 600;">Total Pot Balance:</span> <b style="color: var(--text-main);" id="monthly-pot-total-sum">£{{ pot.pot_total_balance }}</b> ({{ pot.accounts_count }} acct{% if pot.accounts_count != 1 %}s{% endif %})
+                    </div>
+                    {% else %}
+                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary);" id="monthly-pot-total-sum">
+                        £{{ pot.pot_total_balance }}
+                    </div>
+                    <div style="font-size: 0.73rem; color: var(--text-muted); margin-top: 4px; line-height: 1.3;">
+                        <span style="font-weight: 600;">Total Monthly Pot Balance</span> ({{ pot.accounts_count }} acct{% if pot.accounts_count != 1 %}s{% endif %})
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
                 <div class="metric-box">
                     <div style="font-size: 0.8rem; color: var(--text-muted);">Sliced / Allocated</div>
                     <div id="total-allocated-val" data-allocated="{{ plan.total_allocated }}" style="font-size: 1.3rem; font-weight: 700; color: var(--success);">
@@ -120,14 +160,26 @@
 
             <!-- Savings Slider -->
             <div style="background: var(--card-bg-subtle, rgba(0,0,0,0.03)); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
-                <label for="savings-plan-slider" style="font-weight: 600; display: block; margin-bottom: 0.5rem;">
-                    Savings & Debt Payoff Target:
-                    <span id="savings-plan-slider-val" style="color: var(--primary); font-size: 1.1rem; font-weight: 700;">{{ plan.savings_percentage }}</span>% of income
-                    (<span id="savings-plan-amount" style="font-weight: 700;">£{{ plan.target_amount }}</span> of £{{ plan.incoming_total }})
-                    <span style="font-weight: 500; font-size: 0.88rem; color: var(--text-muted); margin-left: 8px;">
-                        • Leaves <b>MAX / month: <span id="savings-plan-breadline" style="color: #16a34a; font-weight: 700;">£{{ plan.breadline_month() }} (£{{ plan.breadline_week() }}/wk, £{{ plan.breadline_day() }}/day)</span></b>
-                    </span>
-                </label>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 0.5rem;">
+                    <label for="savings-plan-slider" style="font-weight: 600; margin: 0;">
+                        Savings & Debt Payoff Target:
+                        <span id="savings-plan-slider-val" style="color: var(--primary); font-size: 1.1rem; font-weight: 700;">{{ plan.savings_percentage }}</span>% of income
+                        (<span id="savings-plan-amount" style="font-weight: 700;">£{{ plan.target_amount }}</span> of £{{ plan.incoming_total }})
+                        <span style="font-weight: 500; font-size: 0.88rem; color: var(--text-muted); margin-left: 8px;">
+                            • Leaves <b>MAX / month: <span id="savings-plan-breadline" style="color: #16a34a; font-weight: 700;">£{{ plan.breadline_month() }} (£{{ plan.breadline_week() }}/wk, £{{ plan.breadline_day() }}/day)</span></b>
+                        </span>
+                    </label>
+                    {% if monthly_pot.is_some() %}
+                        <button type="button"
+                                id="btn-snap-monthly-pot"
+                                class="w3-button w3-round w3-small"
+                                style="background: var(--primary-light, rgba(79, 70, 229, 0.12)); border: 1px solid var(--primary); color: var(--primary); font-weight: 700; padding: 5px 12px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;"
+                                data-target-allowance="{{ self.pot_target_budget() }}"
+                                title="Snap living allowance to match monthly pot budget of £{{ self.pot_target_budget() }}">
+                            <i class="fas fa-magnet"></i> Snap to Monthly Pot (£{{ self.pot_target_budget() }})
+                        </button>
+                    {% endif %}
+                </div>
                 <div class="slidecontainer" style="padding: 0.25rem 0;">
                     <input type="range"
                            min="0"
@@ -138,10 +190,18 @@
                            data-max-surplus="{{ plan.max_surplus }}"
                            data-max-percent="{{ plan.max_percent() }}"
                            data-days="30"
+                           {% if monthly_pot.is_some() %}
+                           data-pot-budget="{{ self.pot_target_budget() }}"
+                           {% endif %}
                            style="width: 100%;">
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; flex-wrap: wrap; gap: 6px;">
                     <span>0% (£0.00)</span>
+                    {% if monthly_pot.is_some() %}
+                    <span id="slider-pot-target-marker" class="badge-pill" style="background: var(--primary-light, rgba(79, 70, 229, 0.1)); color: var(--primary); font-weight: 600; cursor: pointer;" title="Click to snap to allowance set by monthly pot">
+                        <i class="fas fa-archive"></i> Monthly Pot Target: <b>£{{ self.pot_target_budget() }}/mo</b> ({{ self.pot_snap_percent() }}%)
+                    </span>
+                    {% endif %}
                     <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">
                         <i class="fas fa-lock" style="font-size: 0.75rem; margin-right: 4px; color: var(--primary);"></i>Max from SPOG: <b>£{{ plan.max_surplus }}/mo</b> ({{ plan.max_percent() }}%)
                     </span>
@@ -153,6 +213,11 @@
                     <button type="submit" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff;">
                         <i class="fas fa-check"></i> Save Target Percentage
                     </button>
+                    {% if monthly_pot.is_some() %}
+                    <button type="button" id="btn-snap-monthly-pot-form" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600;" title="Snap living allowance to monthly pot">
+                        <i class="fas fa-magnet" style="color: var(--primary);"></i> Snap to Pot (£{{ self.pot_target_budget() }})
+                    </button>
+                    {% endif %}
                     <span style="font-size: 0.8rem; color: var(--text-muted);">Adjust the slider to scale all sliced items proportionally</span>
                 </form>
             </div>
