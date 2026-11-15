@@ -39,7 +39,7 @@ if [[ -f .env ]]; then
 fi
 
 echo -e "${BLUE}${BOLD}==> [3/4] Building and updating legmon container on ${GREENSTREET_HOST}...${NC}"
-ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml build legmon && docker compose -f docker-compose.rust.yaml up -d --no-deps legmon"
+ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml build legmon && docker compose -f docker-compose.rust.yaml up -d --no-deps --force-recreate legmon"
 
 echo -e "${BLUE}${BOLD}==> [4/4] Verifying LegMon health on port 9005...${NC}"
 sleep 2
