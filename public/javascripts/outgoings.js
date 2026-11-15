@@ -10,6 +10,44 @@
         var desktopRows = document.querySelectorAll('tr.outgoing-row');
         var mobileCards = document.querySelectorAll('.outgoing-card');
         var emptyMsg = document.getElementById('outgoings-empty-tab-msg');
+        var tableBody = document.querySelector('#outgoings-table tbody');
+        var mobileCardsContainer = document.querySelector('.mobile-cards-view');
+
+        function sortContainerElements(container, isYearlyTab) {
+            if (!container) return;
+            var items = Array.prototype.slice.call(container.children);
+            items.sort(function (a, b) {
+                var aIsCalc = a.getAttribute('data-is-calculated') === 'true';
+                var bIsCalc = b.getAttribute('data-is-calculated') === 'true';
+                if (aIsCalc !== bIsCalc) {
+                    return aIsCalc ? -1 : 1;
+                }
+                if (isYearlyTab) {
+                    var aMonth = parseInt(a.getAttribute('data-outgoing-month'), 10) || 0;
+                    var bMonth = parseInt(b.getAttribute('data-outgoing-month'), 10) || 0;
+                    if (aMonth !== bMonth) {
+                        return aMonth - bMonth;
+                    }
+                    var aDay = parseInt(a.getAttribute('data-outgoing-day'), 10) || 0;
+                    var bDay = parseInt(b.getAttribute('data-outgoing-day'), 10) || 0;
+                    if (aDay !== bDay) {
+                        return aDay - bDay;
+                    }
+                } else {
+                    var aDay = parseInt(a.getAttribute('data-outgoing-day'), 10) || 0;
+                    var bDay = parseInt(b.getAttribute('data-outgoing-day'), 10) || 0;
+                    if (aDay !== bDay) {
+                        return aDay - bDay;
+                    }
+                }
+                var aId = parseInt(a.getAttribute('data-outgoing-id'), 10) || 0;
+                var bId = parseInt(b.getAttribute('data-outgoing-id'), 10) || 0;
+                return aId - bId;
+            });
+            for (var k = 0; k < items.length; k++) {
+                container.appendChild(items[k]);
+            }
+        }
 
         function applyTabFilter(tabName) {
             var visibleCount = 0;
@@ -17,6 +55,14 @@
             if (configPanel) {
                 configPanel.style.display = (tabName === 'yearly') ? 'block' : 'none';
             }
+
+            var isYearlyTab = (tabName === 'yearly');
+            sortContainerElements(tableBody, isYearlyTab);
+            sortContainerElements(mobileCardsContainer, isYearlyTab);
+
+            // Re-query in sorted order
+            var currentDesktopRows = document.querySelectorAll('tr.outgoing-row');
+            var currentMobileCards = document.querySelectorAll('.outgoing-card');
 
             function filterElement(el) {
                 var isYearly = el.getAttribute('data-is-yearly') === 'true';
@@ -44,11 +90,11 @@
                 }
             }
 
-            for (var i = 0; i < desktopRows.length; i++) {
-                filterElement(desktopRows[i]);
+            for (var i = 0; i < currentDesktopRows.length; i++) {
+                filterElement(currentDesktopRows[i]);
             }
-            for (var j = 0; j < mobileCards.length; j++) {
-                filterElement(mobileCards[j]);
+            for (var j = 0; j < currentMobileCards.length; j++) {
+                filterElement(currentMobileCards[j]);
             }
 
             if (emptyMsg) {

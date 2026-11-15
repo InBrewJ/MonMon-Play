@@ -102,6 +102,61 @@ pub struct OutgoingViewDto {
     pub calculated_breakdown: Option<Vec<crate::models::YearlyBillItemBreakdown>>,
 }
 
+impl OutgoingViewDto {
+    pub fn get_month_name(&self) -> String {
+        match self.outgoing_month.unwrap_or(0) {
+            1 => "January",
+            2 => "February",
+            3 => "March",
+            4 => "April",
+            5 => "May",
+            6 => "June",
+            7 => "July",
+            8 => "August",
+            9 => "September",
+            10 => "October",
+            11 => "November",
+            12 => "December",
+            _ => "",
+        }.to_string()
+    }
+
+    pub fn get_short_month_name(&self) -> String {
+        match self.outgoing_month.unwrap_or(0) {
+            1 => "Jan",
+            2 => "Feb",
+            3 => "Mar",
+            4 => "Apr",
+            5 => "May",
+            6 => "Jun",
+            7 => "Jul",
+            8 => "Aug",
+            9 => "Sep",
+            10 => "Oct",
+            11 => "Nov",
+            12 => "Dec",
+            _ => "",
+        }.to_string()
+    }
+}
+
+pub fn sort_outgoings_view_dtos(dtos: &mut [OutgoingViewDto]) {
+    dtos.sort_by(|a, b| {
+        match (a.is_yearly, b.is_yearly) {
+            (false, false) => a.outgoing_day.cmp(&b.outgoing_day).then(a.id.cmp(&b.id)),
+            (true, true) => {
+                let a_month = a.outgoing_month.unwrap_or(0);
+                let b_month = b.outgoing_month.unwrap_or(0);
+                a_month.cmp(&b_month)
+                    .then(a.outgoing_day.cmp(&b.outgoing_day))
+                    .then(a.id.cmp(&b.id))
+            }
+            (false, true) => std::cmp::Ordering::Less,
+            (true, false) => std::cmp::Ordering::Greater,
+        }
+    });
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IncomingViewDto {
     pub id: i64,
@@ -539,6 +594,8 @@ pub async fn get_outgoings_page(
         }
     }
 
+    sort_outgoings_view_dtos(&mut outgoing_dtos);
+
     let outgoing_total: f32 = outgoing_dtos.iter()
         .filter(|o| !o.paused && !o.hidden_from_total && o.is_due_now)
         .map(|o| o.cost)
@@ -713,6 +770,8 @@ pub async fn get_edit_outgoing_page(
             outgoing_dtos.push(calculated_dto);
         }
     }
+
+    sort_outgoings_view_dtos(&mut outgoing_dtos);
 
     let outgoing_total: f32 = outgoing_dtos.iter()
         .filter(|o| !o.paused && !o.hidden_from_total && o.is_due_now)
@@ -1477,4 +1536,81 @@ pub async fn compute_paydays_json(pool: &sqlx::PgPool, user_id: &str) -> String 
         }
     }
     serde_json::to_string(&paydays).unwrap_or_else(|_| "[]".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_dto(id: i64, name: &str, is_yearly: bool, month: Option<i32>, day: i32) -> OutgoingViewDto {
+        OutgoingViewDto {
+            id,
+            name: name.to_string(),
+            cost: 50.0,
+            outgoing_day: day,
+            effective_day: day as u32,
+            is_adjusted: false,
+            outgoing_month: month,
+            year_interval: if is_yearly { Some(1) } else { None },
+            starting_year: None,
+            bill: true,
+            rent: false,
+            hidden_from_total: false,
+            paused: false,
+            pause_reason: None,
+            account_id: None,
+            account_name: None,
+            account_type: None,
+            is_yearly,
+            is_due_now: false,
+            frequency_label: if is_yearly { "Yearly".to_string() } else { "Monthly".to_string() },
+            next_due_label: "2026".to_string(),
+            is_calculated: false,
+            calculated_tooltip: None,
+            calculated_breakdown: None,
+        }
+    }
+
+    #[test]
+    fn test_sort_outgoings_view_dtos_yearly_by_month_and_day() {
+        let mut dtos = vec![
+            make_dto(1, "Ciaran Car Insurance", true, Some(12), 29),
+            make_dto(2, "Negroni Club", true, Some(1), 28),
+            make_dto(3, "Coversure Insurance", true, Some(4), 21),
+            make_dto(4, "Ciaran Car Service", true, Some(12), 3),
+            make_dto(5, "Boiler Service", true, Some(10), 13),
+        ];
+
+        sort_outgoings_view_dtos(&mut dtos);
+
+        assert_eq!(dtos[0].name, "Negroni Club");          // Month 1, Day 28
+        assert_eq!(dtos[1].name, "Coversure Insurance");     // Month 4, Day 21
+        assert_eq!(dtos[2].name, "Boiler Service");          // Month 10, Day 13
+        assert_eq!(dtos[3].name, "Ciaran Car Service");      // Month 12, Day 3
+        assert_eq!(dtos[4].name, "Ciaran Car Insurance");    // Month 12, Day 29
+    }
+
+    #[test]
+    fn test_sort_outgoings_view_dtos_monthly_bills_come_first_by_day() {
+        let mut dtos = vec![
+            make_dto(1, "Yearly Bill Dec", true, Some(12), 2),
+            make_dto(2, "Monthly Phone", false, None, 19),
+            make_dto(3, "Monthly Loan", false, None, 2),
+            make_dto(4, "Yearly Bill Jan", true, Some(1), 15),
+        ];
+
+        sort_outgoings_view_dtos(&mut dtos);
+
+        assert_eq!(dtos[0].name, "Monthly Loan");        // Monthly, Day 2
+        assert_eq!(dtos[1].name, "Monthly Phone");       // Monthly, Day 19
+        assert_eq!(dtos[2].name, "Yearly Bill Jan");     // Yearly, Month 1, Day 15
+        assert_eq!(dtos[3].name, "Yearly Bill Dec");     // Yearly, Month 12, Day 2
+    }
+
+    #[test]
+    fn test_outgoing_view_dto_month_helpers() {
+        let dto = make_dto(1, "Test", true, Some(11), 15);
+        assert_eq!(dto.get_month_name(), "November");
+        assert_eq!(dto.get_short_month_name(), "Nov");
+    }
 }

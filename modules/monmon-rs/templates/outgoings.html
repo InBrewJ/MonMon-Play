@@ -212,7 +212,7 @@
                         <tr style="text-align: left; color: #64748b; font-size: 0.85rem;">
                             <th>Name</th>
                             <th>Cost</th>
-                            <th>Day of Month</th>
+                            <th>Schedule / Day</th>
                             <th>Account</th>
                             <th>Type / Frequency</th>
                             <th>Status</th>
@@ -225,11 +225,15 @@
                         {% else %}
                             {% for o in outgoings %}
                                 <tr id="outgoing-{{ o.id }}"
+                                    class="outgoing-row{% if o.is_yearly && o.is_due_now %} yearly-due-this-month{% endif %}"
                                     data-is-yearly="{% if o.is_yearly %}true{% else %}false{% endif %}"
                                     data-is-paused="{% if o.paused %}true{% else %}false{% endif %}"
                                     data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
                                     data-is-calculated="{% if o.is_calculated %}true{% else %}false{% endif %}"
-                                    style="{% if o.paused %}opacity: 0.75; background: rgba(245, 158, 11, 0.05);{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04);{% endif %}">
+                                    data-outgoing-month="{% if let Some(m) = o.outgoing_month %}{{ m }}{% else %}0{% endif %}"
+                                    data-outgoing-day="{{ o.outgoing_day }}"
+                                    data-outgoing-id="{{ o.id }}"
+                                    style="{% if o.paused %}opacity: 0.75; background: rgba(245, 158, 11, 0.05);{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04);{% endif %}{% if o.is_yearly && o.is_due_now %}border-left: 3px solid #6366f1; background: rgba(99, 102, 241, 0.04);{% endif %}">
                                     <td class="col-name">
                                         <b>{{ o.name }}</b>
                                         {% if o.is_calculated %}
@@ -279,9 +283,15 @@
                                                 <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 4px;">Sinking fund for upcoming yearly bills</span>
                                             </div>
                                         {% else if o.is_yearly %}
-                                            <div style="margin-top: 3px;">
+                                            <div style="margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                                                 <span class="badge-pill" style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;">{{ o.frequency_label }}</span>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 4px;">Next due: {{ o.next_due_label }}</span>
+                                                {% if o.is_due_now %}
+                                                    <span class="badge-pill" style="background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;">
+                                                        <i class="fas fa-calendar-check" style="color: #4f46e5;"></i> Due This Month
+                                                    </span>
+                                                {% else %}
+                                                    <span style="font-size: 0.75rem; color: var(--text-muted);">Next due: {{ o.next_due_label }}</span>
+                                                {% endif %}
                                             </div>
                                         {% endif %}
                                     </td>
@@ -294,6 +304,19 @@
                                                 </span>
                                             {% else %}
                                                 <span title="Topped up on Payday">Payday (Day {{ o.outgoing_day }})</span>
+                                            {% endif %}
+                                        {% else if o.is_yearly %}
+                                            {% if o.is_due_now %}
+                                                <span class="badge-pill due-now-badge" style="background: #e0e7ff; color: #3730a3; border: 1.5px solid #6366f1; font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(99, 102, 241, 0.15);" title="Due in current month ({{ o.get_month_name() }})">
+                                                    <i class="fas fa-calendar-check" style="color: #4f46e5;"></i>
+                                                    <span>{{ o.get_short_month_name() }} {{ o.outgoing_day }}</span>
+                                                    <span style="font-size: 0.68rem; background: #4f46e5; color: #fff; padding: 1px 5px; border-radius: 4px; font-weight: 700;">DUE NOW</span>
+                                                </span>
+                                            {% else %}
+                                                <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+                                                    <i class="far fa-calendar-alt" style="color: var(--primary); font-size: 0.8rem;"></i>
+                                                    <span>{{ o.get_short_month_name() }} {{ o.outgoing_day }}</span>
+                                                </span>
                                             {% endif %}
                                         {% else if o.is_adjusted %}
                                             <span title="Adjusted from {{ o.outgoing_day }} to {{ o.effective_day }} for this month">
@@ -368,12 +391,15 @@
             <!-- Mobile Stacked Action Cards View -->
             <div class="mobile-cards-view" style="display: none;">
                 {% for o in outgoings %}
-                    <div class="item-card" id="card-outgoing-{{ o.id }}"
+                    <div class="item-card outgoing-card{% if o.is_yearly && o.is_due_now %} yearly-due-this-month{% endif %}" id="card-outgoing-{{ o.id }}"
                          data-is-yearly="{% if o.is_yearly %}true{% else %}false{% endif %}"
                          data-is-paused="{% if o.paused %}true{% else %}false{% endif %}"
                          data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
                          data-is-calculated="{% if o.is_calculated %}true{% else %}false{% endif %}"
-                         style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04); border-left: 3px solid #6366f1;{% endif %}">
+                         data-outgoing-month="{% if let Some(m) = o.outgoing_month %}{{ m }}{% else %}0{% endif %}"
+                         data-outgoing-day="{{ o.outgoing_day }}"
+                         data-outgoing-id="{{ o.id }}"
+                         style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04); border-left: 3px solid #6366f1;{% endif %}{% if o.is_yearly && o.is_due_now %}border-left: 4px solid #6366f1; background: rgba(99, 102, 241, 0.04);{% endif %}">
                         <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                             <div class="item-card-title col-name" style="font-weight: 700; color: var(--text-main);">
                                 <div style="display: inline-flex; align-items: center; gap: 4px;">
@@ -427,31 +453,55 @@
                                         </span>
                                     </div>
                                 {% else if o.is_yearly %}
-                                    <div style="margin-top: 2px;">
+                                    <div style="margin-top: 2px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                                         <span class="badge-pill" style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight: 600;">{{ o.frequency_label }}</span>
+                                        {% if o.is_due_now %}
+                                            <span class="badge-pill" style="background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;">
+                                                <i class="fas fa-calendar-check" style="color: #4f46e5;"></i> Due This Month
+                                            </span>
+                                        {% endif %}
                                     </div>
                                 {% endif %}
                             </div>
                             <div style="text-align: right;">
-                                <span class="badge-pill" style="{% if o.is_adjusted %}background: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);{% else %}background:#e0e7ff; color:#3730a3;{% endif %} padding:2px 8px; border-radius:4px; font-size:0.75rem;">
-                                    {% if o.is_calculated %}
+                                {% if o.is_calculated %}
+                                    <span class="badge-pill" style="{% if o.is_adjusted %}background: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);{% else %}background:#e0e7ff; color:#3730a3;{% endif %} padding:2px 8px; border-radius:4px; font-size:0.75rem;">
                                         {% if o.is_adjusted %}
                                             Payday (Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>)
                                         {% else %}
                                             Payday (Day {{ o.outgoing_day }})
                                         {% endif %}
-                                    {% else if o.is_adjusted %}
-                                        Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                    </span>
+                                {% else if o.is_yearly %}
+                                    {% if o.is_due_now %}
+                                        <span class="badge-pill due-now-badge" style="background: #e0e7ff; color: #3730a3; border: 1.5px solid #6366f1; font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(99, 102, 241, 0.15);" title="Due in current month ({{ o.get_month_name() }})">
+                                            <i class="fas fa-calendar-check" style="color: #4f46e5;"></i>
+                                            {{ o.get_short_month_name() }} {{ o.outgoing_day }}
+                                        </span>
+                                        <div style="margin-top: 3px;">
+                                            <span class="badge-pill" style="background: #4f46e5; color: #fff; font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; font-weight: 700;">
+                                                DUE NOW
+                                            </span>
+                                        </div>
                                     {% else %}
-                                        Day {{ o.outgoing_day }}
+                                        <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 4px; font-size: 0.78rem; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;">
+                                            <i class="far fa-calendar-alt" style="color: var(--primary);"></i>
+                                            {{ o.get_short_month_name() }} {{ o.outgoing_day }}
+                                        </span>
                                     {% endif %}
-                                </span>
-                                {% if o.is_adjusted %}
+                                {% else if o.is_adjusted %}
+                                    <span class="badge-pill" style="background: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                                        Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
+                                    </span>
                                     <div style="margin-top: 3px;">
                                         <span class="badge-pill" style="background: #fee2e2; color: #b91c1c; font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;" title="Shifted from Day {{ o.outgoing_day }} for short month or weekend/bank holiday">
                                             <i class="fas fa-calendar-alt"></i> Clamped from {{ o.outgoing_day }}
                                         </span>
                                     </div>
+                                {% else %}
+                                    <span class="badge-pill" style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.75rem;">
+                                        Day {{ o.outgoing_day }}
+                                    </span>
                                 {% endif %}
                             </div>
                         </div>
