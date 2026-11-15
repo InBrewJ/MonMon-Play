@@ -70,6 +70,19 @@ pub struct DirectOutgoingItemDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DirectOverdraftItemDto {
+    pub id: String,
+    pub name: String,
+    pub amount: f32,
+    pub amount_formatted: String,
+    pub current_balance: f32,
+    pub current_balance_formatted: String,
+    pub priority: i32,
+    pub source: String, // "SAVINGS_PLAN" or "BALANCE"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OutgoingsFundingStepDto {
     pub from_savings_account_id: i64,
     pub from_savings_account_name: String,
@@ -179,6 +192,10 @@ pub struct PaydayWindowDto {
     pub direct_outgoings_total_formatted: String,
     pub direct_outgoings_count: usize,
     pub direct_outgoings_items: Vec<DirectOutgoingItemDto>,
+    pub direct_overdraft_item: Option<DirectOverdraftItemDto>,
+    pub direct_commitments_total: f32,
+    pub direct_commitments_total_formatted: String,
+    pub direct_commitments_count: usize,
     pub total_commitments: f32,
     pub total_commitments_formatted: String,
     pub source_account_name: String,
@@ -756,6 +773,8 @@ pub async fn calculate_payday_window(
     }
 
     // 4. Savings Plan Priority Items
+    let mut source_overdraft_item: Option<DirectOverdraftItemDto> = None;
+
     let active_plan_row = sqlx::query(
         r#"
         SELECT id, savingspercentage
@@ -817,11 +836,26 @@ pub async fn calculate_payday_window(
             // Exclude self-transfers where source account is identical to destination account:
             // if target account is the salary/incoming source account, incoming salary directly lands
             // there and covers the balance/overdraft; no outbound bank transfer is needed.
+            // Instead, capture it as a direct commitment retained on the salary account.
             let is_self_transfer = match (source_acc_id, acc_id) {
                 (Some(s), Some(d)) if s == d => true,
                 _ => acc_name.as_ref() == Some(&source_acc_name),
             };
             if is_self_transfer {
+                if source_overdraft_item.is_none() && amt_to_transfer >= 0.005 {
+                    let p = r.get::<i32, _>("priority");
+                    let item_name: String = r.get("name");
+                    source_overdraft_item = Some(DirectOverdraftItemDto {
+                        id: format!("direct_overdraft_{}", r.get::<i64, _>("id")),
+                        name: item_name,
+                        amount: amt_to_transfer,
+                        amount_formatted: format!("{:.2}", amt_to_transfer),
+                        current_balance: cur_bal,
+                        current_balance_formatted: format!("{:.2}", cur_bal),
+                        priority: p,
+                        source: "SAVINGS_PLAN".to_string(),
+                    });
+                }
                 continue;
             }
 
@@ -867,6 +901,26 @@ pub async fn calculate_payday_window(
         }
     }
 
+    // Fall back to account negative balance if no savings plan overdraft item exists and account is overdrawn
+    if source_overdraft_item.is_none() && source_acc_bal < -0.005 {
+        let overdraft_deficit = (source_acc_bal.abs() * 100.0).round() / 100.0;
+        source_overdraft_item = Some(DirectOverdraftItemDto {
+            id: format!("direct_overdraft_bal_{}", source_acc_id.unwrap_or(0)),
+            name: format!("{} Overdraft Clearance", source_acc_name),
+            amount: overdraft_deficit,
+            amount_formatted: format!("{:.2}", overdraft_deficit),
+            current_balance: source_acc_bal,
+            current_balance_formatted: format!("{:.2}", source_acc_bal),
+            priority: 0,
+            source: "BALANCE".to_string(),
+        });
+    }
+
+    let direct_overdraft_amount = source_overdraft_item.as_ref().map(|it| it.amount).unwrap_or(0.0);
+    let direct_commitments_total = ((direct_outgoings_total + direct_overdraft_amount) * 100.0).round() / 100.0;
+    let direct_commitments_total_formatted = format!("{:.2}", direct_commitments_total);
+    let direct_commitments_count = direct_outgoings_count + if source_overdraft_item.is_some() { 1 } else { 0 };
+
     // Sort savings items by priority (Yearly Bills Autosave #0 first, then Savings Plan priorities #1, #2...)
     savings_items.sort_by_key(|it| it.priority);
 
@@ -882,7 +936,7 @@ pub async fn calculate_payday_window(
     items.retain(|it| it.amount >= 0.005);
 
     let total_transfers: f32 = items.iter().map(|it| it.amount).sum();
-    let total_commitments = ((total_transfers + direct_outgoings_total) * 100.0).round() / 100.0;
+    let total_commitments = ((total_transfers + direct_commitments_total) * 100.0).round() / 100.0;
     let total_commitments_formatted = format!("{:.2}", total_commitments);
     let source_remaining = ((source_acc_bal - total_commitments) * 100.0).round() / 100.0;
 
@@ -1048,7 +1102,7 @@ pub async fn calculate_payday_window(
         if capacity_savings >= (total_commitments_rounded - 0.005) {
             let cushion = ((capacity_savings - total_commitments_rounded) * 100.0).round() / 100.0;
             let title = if monthly_income_rounded > 0.005 {
-                if direct_outgoings_total > 0.005 {
+                if direct_commitments_total > 0.005 {
                     "Income Partially Covers Outgoings & Transfers (Savings Top-Up Needed)".to_string()
                 } else {
                     "Income Partially Covers Transfers (Savings Top-Up Needed)".to_string()
@@ -1058,10 +1112,17 @@ pub async fn calculate_payday_window(
             };
             let badge = format!("£{:.2} from Savings", topup);
             let desc = if monthly_income_rounded > 0.005 {
-                if direct_outgoings_total > 0.005 {
+                if direct_commitments_total > 0.005 {
+                    let direct_label = if source_overdraft_item.is_some() && direct_outgoings_total > 0.005 {
+                        "direct bills & overdraft"
+                    } else if source_overdraft_item.is_some() {
+                        "overdraft payoff"
+                    } else {
+                        "direct bills"
+                    };
                     format!(
-                        "Incoming (£{:.2}) covers part of the £{:.2} commitments (£{:.2} transfers + £{:.2} direct bills) • £{:.2} needed from savings to top up (Available Savings: £{:.2})",
-                        monthly_income_rounded, total_commitments_rounded, total_transfers_rounded, direct_outgoings_total, topup, total_savings
+                        "Incoming (£{:.2}) covers part of the £{:.2} commitments (£{:.2} transfers + £{:.2} {}) • £{:.2} needed from savings to top up (Available Savings: £{:.2})",
+                        monthly_income_rounded, total_commitments_rounded, total_transfers_rounded, direct_commitments_total, direct_label, topup, total_savings
                     )
                 } else {
                     format!(
@@ -1191,6 +1252,10 @@ pub async fn calculate_payday_window(
         direct_outgoings_total_formatted,
         direct_outgoings_count,
         direct_outgoings_items,
+        direct_overdraft_item: source_overdraft_item,
+        direct_commitments_total,
+        direct_commitments_total_formatted,
+        direct_commitments_count,
         total_commitments: total_commitments_rounded,
         total_commitments_formatted,
         source_account_name: source_acc_name,
@@ -1897,6 +1962,31 @@ mod tests {
         assert_eq!(plan[0].from_savings_account_id, 6594);
         assert_eq!(plan[0].amount, 1306.61);
         assert_eq!(plan[0].amount_formatted, "1306.61");
+    }
+
+    #[test]
+    fn test_direct_overdraft_on_salary_account_increases_commitments_and_topup() {
+        // User jason@urawizard.com realistic scenario:
+        // Income = £2642.83
+        // Inter-account transfers = £3753.38
+        // Direct outgoings on Natwest Reward Debit = £196.06
+        // Overdraft payoff on Natwest Reward Debit (Savings Plan priority #4): £21.93
+        // Direct commitments total = direct bills (£196.06) + overdraft payoff (£21.93) = £217.99
+        // Total commitments = transfers (£3753.38) + direct commitments (£217.99) = £3971.37
+        // Top-up needed from savings = £3971.37 - £2642.83 = £1328.54
+        let income = 2642.83f32;
+        let transfers = 3753.38f32;
+        let direct_bills_total = 196.06f32;
+        let overdraft_payoff = 21.93f32;
+
+        let direct_commitments_total = ((direct_bills_total + overdraft_payoff) * 100.0).round() / 100.0;
+        assert_eq!(direct_commitments_total, 217.99);
+
+        let total_commitments = ((transfers + direct_commitments_total) * 100.0).round() / 100.0;
+        assert_eq!(total_commitments, 3971.37);
+
+        let topup = ((total_commitments - income) * 100.0).round() / 100.0;
+        assert_eq!(topup, 1328.54);
     }
 
     #[test]
