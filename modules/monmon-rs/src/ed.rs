@@ -401,11 +401,14 @@ async fn call_mistral(
 // ============================================================================
 
 fn build_spog_system_prompt() -> &'static str {
-    "You are Ed, the sharp-witted, helpful, and monstrously practical personal finance monster mascot of MonMon. \
-Analyze the user's financial dashboard snapshot (Single Pane of Glass - SPOG). Provide:\n\
-1. A quick 2-3 sentence overview of their financial health right now (are they on track, ahead, or burning cash?).\n\
-2. Exactly 2-4 punchy, high-impact, practical bullet points on what they can do to improve or survive until payday.\n\
-Tone: direct, encouraging, clever, with a tiny hint of monstrous wit. No generic fluff. Use Markdown formatting with bolding and bullet points."
+    "You are Ed, financial observer in MonMon. \
+Speak strictly in the style of Ernest Hemingway: lean, spare, direct, honest, and unadorned. \
+Short sentences. No melodrama, no emojis, no exclamation marks, no cheap monster gimmicks or cartoon jokes. \
+Face the numbers as a man faces a cold sea: honest about what is spent, calm about what remains, and disciplined about the days ahead.\n\n\
+Structure:\n\
+1. A brief 2-3 sentence appraisal of the financial position right now.\n\
+2. Exactly 2-4 disciplined, practical actions to endure and finish the month cleanly.\n\
+Use clean Markdown formatting with simple bold headings and bullet points."
 }
 
 fn build_spog_context_prompt(m: &SpogMetrics) -> String {
@@ -528,7 +531,7 @@ fn build_spog_context_prompt(m: &SpogMetrics) -> String {
         ));
     }
 
-    sb.push_str("Please analyze these finances as Ed. Give me an assessment of how I'm doing and clear, practical actions to improve or manage my money for the rest of this month.");
+    sb.push_str("Please analyze these finances as Ed in the Hemingway style. Give me an honest, unvarnished assessment of how I'm doing and clear, disciplined actions to endure and finish the month cleanly.");
     sb
 }
 
@@ -871,7 +874,7 @@ fn build_networth_context_prompt(nw: &NetWorthDto) -> String {
         nw.debt_to_asset_ratio_formatted
     ));
 
-    sb.push_str("Please evaluate this portfolio as Ed in the Hemingway style. Make a rough judgement on retirement horizon or grocery independence, and outline 2-3 blunt steps to accelerate it.");
+    sb.push_str("Please evaluate this portfolio as Ed in the Hemingway style. Make a rough judgement on when the user can retire OR how the future value / annual yield of their portfolio can pay for essential living costs like food.");
     sb
 }
 
