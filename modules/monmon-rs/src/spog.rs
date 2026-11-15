@@ -161,7 +161,14 @@ pub async fn resolve_user_id(pool: &PgPool, user_id_or_name: &str) -> String {
         WHERE userid = $1 
            OR (LOWER(username) = LOWER($1) AND userid != username) 
            OR (LOWER(email) = LOWER($1) AND userid != email)
-        ORDER BY CASE WHEN userid = $1 THEN 1 WHEN length(userid) > 20 THEN 2 ELSE 3 END, id ASC 
+        ORDER BY 
+            CASE 
+                WHEN length(userid) >= 32 AND userid = $1 THEN 1
+                WHEN length(userid) >= 32 AND (LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)) THEN 2
+                WHEN userid = $1 THEN 3
+                ELSE 4
+            END, 
+            id ASC 
         LIMIT 1
         "#,
     )
