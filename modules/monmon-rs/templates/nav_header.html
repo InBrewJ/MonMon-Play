@@ -506,23 +506,58 @@
     <div class="nav-drawer-content">
         <ol class="nav-drawer-list" id="nav-crumbs-list">
             <li class="drawer-crumb"><a href="/spog"><i class="fas fa-chart-pie"></i> SPOG</a></li>
-            <li class="drawer-crumb"><a href="/myOutgoings"><i class="fas fa-credit-card"></i> Outgoings</a></li>
-            <li class="drawer-crumb"><a href="/myAccounts"><i class="fas fa-university"></i> Accounts</a></li>
-            <li class="drawer-crumb"><a href="/myIncomings"><i class="fas fa-money-bill-wave"></i> Incomings</a></li>
-            <li class="drawer-crumb"><a href="/myBalances"><i class="fas fa-coins"></i> Balances</a></li>
-            <li class="drawer-crumb"><a href="/myPlans"><i class="fas fa-sliders-h"></i> Plans</a></li>
-            <li class="drawer-crumb"><a href="/myMonthlyPot"><i class="fas fa-archive"></i> Monthly Pot</a></li>
-            <li class="drawer-crumb"><a href="/savingsPlan"><i class="fas fa-piggy-bank"></i> Savings Plan</a></li>
-            <li class="drawer-crumb"><a href="/transfers"><i class="fas fa-exchange-alt"></i> Transfer Window</a></li>
-            <li class="drawer-crumb"><a href="/spendingPace"><i class="fas fa-chart-line"></i> Spending Pace</a></li>
-            <li class="drawer-crumb"><a href="/historicSpent"><i class="fas fa-history"></i> Historic Spent</a></li>
-            <li class="drawer-crumb"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
             <li class="drawer-crumb"><a href="/nommon"><i class="fas fa-utensils"></i> NomMon</a></li>
-            <li class="drawer-crumb"><a href="/bank"><i class="fas fa-exchange-alt"></i> Bank Sync</a></li>
-            <li class="drawer-crumb"><a href="/dig"><i class="fas fa-map-marked-alt"></i> Monzo Dig</a></li>
-            <li class="drawer-crumb"><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
+            <li class="drawer-crumb"><a href="/myPlans"><i class="fas fa-sliders-h"></i> Plans</a></li>
+            <li class="drawer-crumb"><a href="/netWorth"><i class="fas fa-landmark"></i> Net Worth</a></li>
+            <li class="drawer-crumb"><a href="/transfers"><i class="fas fa-exchange-alt"></i> Transfer Window</a></li>
+
+            <!-- Basics Group -->
+            <li class="drawer-group" id="nav-group-basics">
+                <button type="button" class="drawer-group-toggle" aria-expanded="false" aria-controls="sub-group-basics">
+                    <span class="drawer-group-title">
+                        <i class="fas fa-wallet"></i> Basics
+                    </span>
+                    <i class="fas fa-chevron-down drawer-group-chevron"></i>
+                </button>
+                <ul class="drawer-sub-list" id="sub-group-basics">
+                    <li class="drawer-crumb"><a href="/myOutgoings"><i class="fas fa-credit-card"></i> Outgoings</a></li>
+                    <li class="drawer-crumb"><a href="/myAccounts"><i class="fas fa-university"></i> Accounts</a></li>
+                    <li class="drawer-crumb"><a href="/myIncomings"><i class="fas fa-money-bill-wave"></i> Incomings</a></li>
+                    <li class="drawer-crumb"><a href="/myBalances"><i class="fas fa-coins"></i> Balances</a></li>
+                </ul>
+            </li>
+
+            <!-- Spending Group -->
+            <li class="drawer-group" id="nav-group-spending">
+                <button type="button" class="drawer-group-toggle" aria-expanded="false" aria-controls="sub-group-spending">
+                    <span class="drawer-group-title">
+                        <i class="fas fa-chart-line"></i> Spending
+                    </span>
+                    <i class="fas fa-chevron-down drawer-group-chevron"></i>
+                </button>
+                <ul class="drawer-sub-list" id="sub-group-spending">
+                    <li class="drawer-crumb"><a href="/spendingPace"><i class="fas fa-tachometer-alt"></i> Spending Pace</a></li>
+                    <li class="drawer-crumb"><a href="/historicSpent"><i class="fas fa-history"></i> Historic Spent</a></li>
+                </ul>
+            </li>
+
+            <!-- Banks Group -->
+            <li class="drawer-group" id="nav-group-banks">
+                <button type="button" class="drawer-group-toggle" aria-expanded="false" aria-controls="sub-group-banks">
+                    <span class="drawer-group-title">
+                        <i class="fas fa-university"></i> Banks
+                    </span>
+                    <i class="fas fa-chevron-down drawer-group-chevron"></i>
+                </button>
+                <ul class="drawer-sub-list" id="sub-group-banks">
+                    <li class="drawer-crumb"><a href="/bank"><i class="fas fa-sync-alt"></i> Bank Sync</a></li>
+                    <li class="drawer-crumb"><a href="/dig"><i class="fas fa-map-marked-alt"></i> Monzo Dig</a></li>
+                </ul>
+            </li>
+
             <li class="drawer-divider"></li>
-            <li class="drawer-crumb drawer-logout"><a href="/centralLogout"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            <li class="drawer-crumb"><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
+            <li class="drawer-crumb drawer-logout"><a href="/centralLogout"><i class="fas fa-sign-out-alt"></i> Log out</a></li>
         </ol>
     </div>
 </aside>

@@ -446,6 +446,105 @@ body.nav-drawer-locked {
   color: #ffffff !important;
 }
 
+/* Drawer Nested Accordion Groups */
+.drawer-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-main);
+  background: transparent;
+  border: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(99, 102, 241, 0.2);
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.drawer-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.drawer-group-title i {
+  width: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  transition: color 0.15s ease;
+}
+
+.drawer-group-chevron {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s ease;
+}
+
+.drawer-group-toggle:hover {
+  background-color: var(--card-bg-subtle, rgba(255, 255, 255, 0.05));
+  color: var(--primary);
+}
+
+.drawer-group-toggle:hover .drawer-group-title i,
+.drawer-group-toggle:hover .drawer-group-chevron {
+  color: var(--primary);
+}
+
+.drawer-group.open .drawer-group-chevron {
+  transform: rotate(-180deg);
+  color: var(--primary);
+}
+
+.drawer-group.has-active .drawer-group-toggle {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.drawer-group.has-active .drawer-group-title i {
+  color: var(--primary);
+}
+
+.drawer-sub-list {
+  list-style: none;
+  margin: 0.15rem 0 0.35rem 1.6rem;
+  padding: 0.2rem 0 0.2rem 0.65rem;
+  border-left: 2px solid var(--border-color);
+  display: none;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.drawer-group.open .drawer-sub-list {
+  display: flex;
+}
+
+.drawer-sub-list .drawer-crumb a {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.drawer-sub-list .drawer-crumb a:hover {
+  color: var(--primary);
+  background-color: var(--primary-light);
+}
+
+.drawer-sub-list .drawer-crumb.active a {
+  background-color: var(--primary);
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
 .drawer-divider {
   height: 1px;
   background: var(--border-color);
