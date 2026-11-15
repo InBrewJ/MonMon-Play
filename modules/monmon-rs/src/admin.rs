@@ -23,6 +23,93 @@ pub struct UserAccessRow {
     pub approvedby: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemmonCategoryStats {
+    pub name: String,
+    pub display_name: String,
+    pub count: usize,
+    pub ttl_seconds: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemmonItemStats {
+    pub category: String,
+    pub user_masked: String,
+    pub age_seconds: u64,
+    pub ttl_remaining_seconds: u64,
+    pub char_count: usize,
+    pub timestamp_millis: i64,
+}
+
+impl MemmonItemStats {
+    pub fn age_formatted(&self) -> String {
+        format_duration_short(self.age_seconds)
+    }
+
+    pub fn ttl_remaining_formatted(&self) -> String {
+        format_duration_short(self.ttl_remaining_seconds)
+    }
+
+    pub fn category_label(&self) -> &'static str {
+        match self.category.as_str() {
+            "spog" => "SPOG Overview",
+            "outgoings" => "Outgoings Audit",
+            "networth" => "Net Worth Radar",
+            _ => "AI Advice",
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemmonStats {
+    pub service: String,
+    pub version: String,
+    pub uptime_seconds: u64,
+    pub total_entries: usize,
+    pub categories: Vec<MemmonCategoryStats>,
+    pub items: Vec<MemmonItemStats>,
+}
+
+impl MemmonStats {
+    pub fn uptime_formatted(&self) -> String {
+        format_duration_short(self.uptime_seconds)
+    }
+}
+
+pub fn format_duration_short(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        let mins = secs / 60;
+        let rem_s = secs % 60;
+        format!("{mins}m {rem_s}s")
+    } else if secs < 86400 {
+        let hours = secs / 3600;
+        let mins = (secs % 3600) / 60;
+        format!("{hours}h {mins}m")
+    } else {
+        let days = secs / 86400;
+        let hours = (secs % 86400) / 3600;
+        format!("{days}d {hours}h")
+    }
+}
+
+pub async fn fetch_memmon_stats() -> Option<MemmonStats> {
+    let memmon_base = crate::ed::get_memmon_url();
+    let url = format!("{}/api/cache/stats", memmon_base.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(800))
+        .build()
+        .ok()?;
+
+    let resp = client.get(&url).send().await.ok()?;
+    if resp.status().is_success() {
+        resp.json::<MemmonStats>().await.ok()
+    } else {
+        None
+    }
+}
+
 #[derive(Template)]
 #[template(path = "settings.html")]
 pub struct SettingsTemplate {
@@ -36,6 +123,7 @@ pub struct SettingsTemplate {
     pub build_commit: String,
     pub build_number: String,
     pub build_timestamp: String,
+    pub memmon_stats: Option<MemmonStats>,
 }
 
 #[derive(Template)]
@@ -92,6 +180,7 @@ pub async fn get_settings(
     let bank_holidays = crate::anchoring::get_bank_holidays_for_region(&region);
     let max_year = bank_holidays.last().and_then(|e| e.date.split('-').next()).unwrap_or("2030").to_string();
     let all_bank_holidays_json = serde_json::to_string(crate::anchoring::get_all_bank_holidays()).unwrap_or_default();
+    let memmon_stats = fetch_memmon_stats().await;
 
     let tmpl = SettingsTemplate {
         pending_users,
@@ -103,6 +192,7 @@ pub async fn get_settings(
         build_commit: crate::BUILD_COMMIT.to_string(),
         build_number: crate::BUILD_NUMBER.to_string(),
         build_timestamp: crate::BUILD_TIMESTAMP.to_string(),
+        memmon_stats,
     };
 
     tmpl.render()

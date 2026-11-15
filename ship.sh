@@ -58,7 +58,7 @@ if [[ -f .env ]]; then
 fi
 
 echo -e "${BLUE}${BOLD}==> [3/4] Building Rust container images natively on ${GREENSTREET_HOST}...${NC}"
-ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && BUILD_COMMIT=${GIT_COMMIT} BUILD_NUMBER=${GIT_COUNT} docker compose -f docker-compose.rust.yaml build"
+ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && BUILD_COMMIT=${GIT_COMMIT} BUILD_NUMBER=${GIT_COUNT} docker compose -f docker-compose.rust.yaml build monmon"
 
 echo -e "${BLUE}${BOLD}==> [4/4] Starting Rust stack on ${GREENSTREET_HOST} via run_prod.sh...${NC}"
 ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && ./run_prod.sh"

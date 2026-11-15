@@ -173,6 +173,88 @@
             </div>
         </div>
 
+        <!-- MemMon In-Memory AI Cache Card -->
+        <div class="w3-card w3-padding w3-margin-bottom w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main);">
+                    <i class="fas fa-brain" style="color: var(--primary); margin-right: 8px;"></i> MemMon In-Memory AI Cache
+                </div>
+                {% if let Some(stats) = memmon_stats %}
+                    <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.82rem; font-weight: 700;">
+                        <i class="fas fa-circle" style="font-size: 0.6rem; vertical-align: middle; margin-right: 4px;"></i> Online (127.0.0.1:9006)
+                    </span>
+                {% else %}
+                    <span class="badge-pill" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.82rem; font-weight: 700;">
+                        <i class="fas fa-exclamation-triangle" style="margin-right: 4px;"></i> Offline (Local In-Memory Active)
+                    </span>
+                {% endif %}
+            </div>
+
+            {% if let Some(stats) = memmon_stats %}
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.15rem;">
+                    Isolated in-memory cache buffer preserving Mistral AI advice across MonMon redeployments. Network-isolated to local stack.
+                </div>
+
+                <!-- Metric summary chips -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 1.25rem;">
+                    <div style="background: var(--card-bg-subtle); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                        <div style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">Total Cached Replies</div>
+                        <div style="font-weight: 800; font-size: 1.25rem; color: var(--primary);">{{ stats.total_entries }}</div>
+                    </div>
+                    <div style="background: var(--card-bg-subtle); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                        <div style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">Buffer Uptime</div>
+                        <div style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">{{ stats.uptime_formatted() }}</div>
+                    </div>
+                    {% for cat in stats.categories %}
+                        <div style="background: var(--card-bg-subtle); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                            <div style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">{{ cat.display_name }}</div>
+                            <div style="font-weight: 700; color: var(--text-main);">{{ cat.count }} cached <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">({{ cat.ttl_seconds / 86400 }}d TTL)</span></div>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Cached Items Table / List -->
+                {% if stats.items.is_empty() %}
+                    <div style="text-align: center; color: var(--text-muted); padding: 1rem 0; font-size: 0.88rem; font-style: italic;">
+                        Cache buffer is currently empty. Generated Mistral advice will appear here automatically.
+                    </div>
+                {% else %}
+                    <div style="overflow-x: auto; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg-subtle);">
+                        <table class="w3-table w3-striped" style="font-size: 0.85rem;">
+                            <thead>
+                                <tr style="text-align: left; color: var(--text-muted); background: var(--card-bg); border-bottom: 1px solid var(--border-color);">
+                                    <th style="padding: 8px 12px;">Category</th>
+                                    <th style="padding: 8px 12px;">Subject / User</th>
+                                    <th style="padding: 8px 12px;">Age</th>
+                                    <th style="padding: 8px 12px;">TTL Remaining</th>
+                                    <th style="padding: 8px 12px; text-align: right;">Size</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in stats.items %}
+                                    <tr>
+                                        <td style="padding: 6px 12px; font-weight: 600;">
+                                            <span class="badge-pill" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 4px; font-size: 0.78rem;">
+                                                {{ item.category_label() }}
+                                            </span>
+                                        </td>
+                                        <td style="padding: 6px 12px; font-family: monospace;">{{ item.user_masked }}</td>
+                                        <td style="padding: 6px 12px; color: var(--text-muted);">{{ item.age_formatted() }} ago</td>
+                                        <td style="padding: 6px 12px; color: var(--text-muted);">{{ item.ttl_remaining_formatted() }}</td>
+                                        <td style="padding: 6px 12px; text-align: right; color: var(--text-muted);">{{ item.char_count }} chars</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            {% else %}
+                <div style="color: var(--text-muted); font-size: 0.88rem; padding: 0.5rem 0;">
+                    MemMon service is not responding at <code>http://127.0.0.1:9006</code>. MonMon is operating with fallback in-memory cache.
+                </div>
+            {% endif %}
+        </div>
+
         <!-- System & Build Metadata -->
         <div class="w3-card w3-padding w3-margin-bottom w3-round" style="background: var(--card-bg); border: 1px solid var(--border-color);">
             <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 1rem;">

@@ -21,13 +21,16 @@ GIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "dev")
 echo "build.commit=${GIT_COMMIT}" > modules/monmon-rs/build.properties
 echo "build.number=${GIT_COUNT}" >> modules/monmon-rs/build.properties
 
-echo -e "${BLUE}${BOLD}==> [1/3] Building monmon-rs native release binary (commit: ${GIT_COMMIT}, build: ${GIT_COUNT})...${NC}"
+echo -e "${BLUE}${BOLD}==> [1/4] Building monmon-rs native release binary (commit: ${GIT_COMMIT}, build: ${GIT_COUNT})...${NC}"
 (cd modules/monmon-rs && cargo build --release)
 
-echo -e "${BLUE}${BOLD}==> [2/3] Building legmon-rs native release binary...${NC}"
+echo -e "${BLUE}${BOLD}==> [2/4] Building legmon-rs native release binary...${NC}"
 (cd modules/legmon-rs && cargo build --release)
 
-echo -e "${BLUE}${BOLD}==> [3/3] Syncing public assets...${NC}"
-cp -a public/* modules/monmon-rs/public/
+echo -e "${BLUE}${BOLD}==> [3/4] Building memmon-rs native release binary...${NC}"
+(cd modules/memmon-rs && cargo build --release)
+
+echo -e "${BLUE}${BOLD}==> [4/4] Syncing public assets...${NC}"
+cp -ru public/* modules/monmon-rs/public/ 2>/dev/null || true
 
 echo -e "${GREEN}${BOLD}🎉 Build completed successfully! Rust deployment artifacts ready.${NC}"

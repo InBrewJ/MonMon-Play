@@ -151,6 +151,169 @@ pub fn clear_ed_cache(user_id: &str) {
     if let Ok(mut cache) = NETWORTH_CACHE.write() {
         cache.remove(user_id);
     }
+
+    let uid = user_id.to_string();
+    tokio::spawn(async move {
+        let memmon_base = get_memmon_url();
+        let url = format!(
+            "{}/api/cache/{}",
+            memmon_base.trim_end_matches('/'),
+            urlencoding::encode(&uid)
+        );
+        if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_millis(500)).build() {
+            let _ = client.delete(&url).send().await;
+        }
+    });
+}
+
+pub fn get_memmon_url() -> String {
+    std::env::var("MEMMON_URL").unwrap_or_else(|_| "http://127.0.0.1:9006".to_string())
+}
+
+#[derive(Deserialize)]
+struct MemmonCacheLookup {
+    hit: bool,
+    text: Option<String>,
+    timestamp_millis: Option<i64>,
+}
+
+/// Query MemMon in-memory cache buffer over local network.
+/// Shifts cache and TTL evaluation to MemMon. Falls back gracefully to local in-memory cache if MemMon is offline.
+pub async fn fetch_cached_ed_advice(
+    category: &str,
+    user_id: &str,
+    fingerprint: u64,
+) -> Option<(String, i64)> {
+    let memmon_base = get_memmon_url();
+    let url = format!(
+        "{}/api/cache/{}/{}?fingerprint={}",
+        memmon_base.trim_end_matches('/'),
+        category,
+        urlencoding::encode(user_id),
+        fingerprint
+    );
+
+    if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_millis(500)).build() {
+        if let Ok(resp) = client.get(&url).send().await {
+            if resp.status().is_success() {
+                if let Ok(lookup) = resp.json::<MemmonCacheLookup>().await {
+                    if lookup.hit {
+                        if let (Some(text), Some(ts)) = (lookup.text, lookup.timestamp_millis) {
+                            return Some((text, ts));
+                        }
+                    } else {
+                        // MemMon responded with a definitive cache miss or TTL expired
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+
+    // Local in-memory fallback if MemMon is unreachable (e.g. offline during tests/isolated run)
+    match category {
+        "spog" => {
+            if let Ok(cache) = SPOG_CACHE.read() {
+                if let Some(entry) = cache.get(user_id) {
+                    if entry.created_at.elapsed() < SPOG_CACHE_TTL && entry.fingerprint == fingerprint {
+                        return Some((entry.text.clone(), entry.timestamp_millis));
+                    }
+                }
+            }
+        }
+        "outgoings" => {
+            if let Ok(cache) = OUTGOINGS_CACHE.read() {
+                if let Some(entry) = cache.get(user_id) {
+                    if entry.created_at.elapsed() < OUTGOINGS_CACHE_TTL && entry.fingerprint == fingerprint {
+                        return Some((entry.text.clone(), entry.timestamp_millis));
+                    }
+                }
+            }
+        }
+        "networth" => {
+            if let Ok(cache) = NETWORTH_CACHE.read() {
+                if let Some(entry) = cache.get(user_id) {
+                    if entry.created_at.elapsed() < NETWORTH_CACHE_TTL && entry.fingerprint == fingerprint {
+                        return Some((entry.text.clone(), entry.timestamp_millis));
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    None
+}
+
+/// Store fresh AI advice in MemMon cache service (and replicate to local cache fallback).
+pub async fn save_cached_ed_advice(
+    category: &str,
+    user_id: &str,
+    fingerprint: u64,
+    text: &str,
+    timestamp_millis: i64,
+) {
+    // 1. Replicate to local fallback cache
+    match category {
+        "spog" => {
+            if let Ok(mut cache) = SPOG_CACHE.write() {
+                cache.insert(
+                    user_id.to_string(),
+                    CacheEntry {
+                        text: text.to_string(),
+                        fingerprint,
+                        timestamp_millis,
+                        created_at: Instant::now(),
+                    },
+                );
+            }
+        }
+        "outgoings" => {
+            if let Ok(mut cache) = OUTGOINGS_CACHE.write() {
+                cache.insert(
+                    user_id.to_string(),
+                    CacheEntry {
+                        text: text.to_string(),
+                        fingerprint,
+                        timestamp_millis,
+                        created_at: Instant::now(),
+                    },
+                );
+            }
+        }
+        "networth" => {
+            if let Ok(mut cache) = NETWORTH_CACHE.write() {
+                cache.insert(
+                    user_id.to_string(),
+                    CacheEntry {
+                        text: text.to_string(),
+                        fingerprint,
+                        timestamp_millis,
+                        created_at: Instant::now(),
+                    },
+                );
+            }
+        }
+        _ => {}
+    }
+
+    // 2. Persist in MemMon service
+    let memmon_base = get_memmon_url();
+    let url = format!(
+        "{}/api/cache/{}/{}",
+        memmon_base.trim_end_matches('/'),
+        category,
+        urlencoding::encode(user_id)
+    );
+    let payload = serde_json::json!({
+        "text": text,
+        "fingerprint": fingerprint,
+        "timestamp_millis": timestamp_millis,
+    });
+
+    if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_millis(500)).build() {
+        let _ = client.post(&url).json(&payload).send().await;
+    }
 }
 
 fn is_mistral_configured() -> bool {
@@ -389,16 +552,12 @@ pub async fn ed_says_spog_api(
 
     // 1. Check cache if not forcing refresh: valid if within TTL AND underlying data unchanged
     if !force {
-        if let Ok(cache) = SPOG_CACHE.read() {
-            if let Some(entry) = cache.get(&resolved) {
-                if entry.created_at.elapsed() < SPOG_CACHE_TTL && entry.fingerprint == current_fp {
-                    return Ok(Json(EdSaysResponse {
-                        ed_says: entry.text.clone(),
-                        configured,
-                        last_spoke: Some(entry.timestamp_millis),
-                    }));
-                }
-            }
+        if let Some((advice, ts)) = fetch_cached_ed_advice("spog", &resolved, current_fp).await {
+            return Ok(Json(EdSaysResponse {
+                ed_says: advice,
+                configured,
+                last_spoke: Some(ts),
+            }));
         }
     }
 
@@ -407,17 +566,7 @@ pub async fn ed_says_spog_api(
         match call_mistral(system_prompt, &user_prompt, 750).await {
             Ok(advice) => {
                 let now_ms = chrono::Utc::now().timestamp_millis();
-                if let Ok(mut cache) = SPOG_CACHE.write() {
-                    cache.insert(
-                        resolved.clone(),
-                        CacheEntry {
-                            text: advice.clone(),
-                            fingerprint: current_fp,
-                            timestamp_millis: now_ms,
-                            created_at: Instant::now(),
-                        },
-                    );
-                }
+                save_cached_ed_advice("spog", &resolved, current_fp, &advice, now_ms).await;
                 return Ok(Json(EdSaysResponse {
                     ed_says: advice,
                     configured: true,
@@ -609,16 +758,12 @@ pub async fn ed_says_outgoings_api(
 
     // 1. Check cache: valid if within 1 week TTL AND outgoings/accounts unchanged
     if !force {
-        if let Ok(cache) = OUTGOINGS_CACHE.read() {
-            if let Some(entry) = cache.get(&resolved) {
-                if entry.created_at.elapsed() < OUTGOINGS_CACHE_TTL && entry.fingerprint == current_fp {
-                    return Ok(Json(EdSaysResponse {
-                        ed_says: entry.text.clone(),
-                        configured,
-                        last_spoke: Some(entry.timestamp_millis),
-                    }));
-                }
-            }
+        if let Some((advice, ts)) = fetch_cached_ed_advice("outgoings", &resolved, current_fp).await {
+            return Ok(Json(EdSaysResponse {
+                ed_says: advice,
+                configured,
+                last_spoke: Some(ts),
+            }));
         }
     }
 
@@ -627,17 +772,7 @@ pub async fn ed_says_outgoings_api(
         match call_mistral(system_prompt, &user_prompt, 750).await {
             Ok(advice) => {
                 let now_ms = chrono::Utc::now().timestamp_millis();
-                if let Ok(mut cache) = OUTGOINGS_CACHE.write() {
-                    cache.insert(
-                        resolved.clone(),
-                        CacheEntry {
-                            text: advice.clone(),
-                            fingerprint: current_fp,
-                            timestamp_millis: now_ms,
-                            created_at: Instant::now(),
-                        },
-                    );
-                }
+                save_cached_ed_advice("outgoings", &resolved, current_fp, &advice, now_ms).await;
                 return Ok(Json(EdSaysResponse {
                     ed_says: advice,
                     configured: true,
@@ -760,16 +895,12 @@ pub async fn ed_says_networth_api(
 
     // 1. Check cache: valid if within 1 month TTL AND net worth/assets unchanged
     if !force {
-        if let Ok(cache) = NETWORTH_CACHE.read() {
-            if let Some(entry) = cache.get(&resolved) {
-                if entry.created_at.elapsed() < NETWORTH_CACHE_TTL && entry.fingerprint == current_fp {
-                    return Ok(Json(EdSaysResponse {
-                        ed_says: entry.text.clone(),
-                        configured,
-                        last_spoke: Some(entry.timestamp_millis),
-                    }));
-                }
-            }
+        if let Some((advice, ts)) = fetch_cached_ed_advice("networth", &resolved, current_fp).await {
+            return Ok(Json(EdSaysResponse {
+                ed_says: advice,
+                configured,
+                last_spoke: Some(ts),
+            }));
         }
     }
 
@@ -778,17 +909,7 @@ pub async fn ed_says_networth_api(
         match call_mistral(system_prompt, &user_prompt, 750).await {
             Ok(advice) => {
                 let now_ms = chrono::Utc::now().timestamp_millis();
-                if let Ok(mut cache) = NETWORTH_CACHE.write() {
-                    cache.insert(
-                        resolved.clone(),
-                        CacheEntry {
-                            text: advice.clone(),
-                            fingerprint: current_fp,
-                            timestamp_millis: now_ms,
-                            created_at: Instant::now(),
-                        },
-                    );
-                }
+                save_cached_ed_advice("networth", &resolved, current_fp, &advice, now_ms).await;
                 return Ok(Json(EdSaysResponse {
                     ed_says: advice,
                     configured: true,
@@ -1030,6 +1151,37 @@ mod tests {
         assert_eq!(fp_base, fp_same);
         assert_ne!(fp_base, fp_diff_sys, "Changing system prompt must invalidate cache");
         assert_ne!(fp_base, fp_diff_user, "Changing user data/prompt must invalidate cache");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_and_save_cached_ed_advice_fallback() {
+        let user = "test_user_cache_fallback";
+        let fp = 424242;
+        let advice = "Smart advice for testing";
+        let ts = 1731670000000_i64;
+
+        // Clear any existing
+        clear_ed_cache(user);
+
+        // Fetch non-existent
+        let missing = fetch_cached_ed_advice("spog", user, fp).await;
+        assert!(missing.is_none());
+
+        // Save
+        save_cached_ed_advice("spog", user, fp, advice, ts).await;
+
+        // Fetch matching fp
+        let hit = fetch_cached_ed_advice("spog", user, fp).await;
+        assert_eq!(hit, Some((advice.to_string(), ts)));
+
+        // Fetch mismatching fp
+        let miss_fp = fetch_cached_ed_advice("spog", user, 999999).await;
+        assert!(miss_fp.is_none());
+
+        // Clear
+        clear_ed_cache(user);
+        let cleared = fetch_cached_ed_advice("spog", user, fp).await;
+        assert!(cleared.is_none());
     }
 
     #[test]

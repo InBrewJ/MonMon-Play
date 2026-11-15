@@ -114,9 +114,11 @@ echo "Ensuring no legacy port conflicts..."
 docker update --restart=no legmon monmon 2>/dev/null || true
 docker stop legmon monmon 2>/dev/null || true
 
-# 6. Start unified Rust stack (monmon-rs, legmon-rs, rauthy) via docker compose
+# 6. Start unified Rust stack (monmon-rs, legmon-rs, memmon-rs, rauthy) via docker compose
 echo "Starting MonMon Rust stack via docker compose..."
-docker compose -f docker-compose.rust.yaml up -d --force-recreate
+# Ensure memmon, legmon, rauthy are up without recreating existing state (preserves memmon in-memory cache)
+docker compose -f docker-compose.rust.yaml up -d --no-recreate memmon legmon rauthy 2>/dev/null || true
+docker compose -f docker-compose.rust.yaml up -d --force-recreate monmon
 
 # 7. Wait for services to become healthy via HTTP health checks
 echo "Waiting for monmon-rs service (probing http://127.0.0.1:9000/health)..."
@@ -143,7 +145,22 @@ else
     exit 1
 fi
 
-# 8. Verify LegMon status
+# 8. Verify MemMon cache status
+MEMMON_CODE="000"
+for _ in $(seq 1 10); do
+    MEMMON_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:9006/health 2>/dev/null || true)
+    if [ "$MEMMON_CODE" = "200" ]; then
+        break
+    fi
+    sleep 1
+done
+if [ "$MEMMON_CODE" = "200" ]; then
+    echo "✅ memmon-rs in-memory cache service is healthy (HTTP 200)!"
+else
+    echo "ℹ️ Note: memmon-rs probe returned $MEMMON_CODE (monmon-rs fallback in-memory cache will be used until memmon starts)."
+fi
+
+# 9. Verify LegMon status
 LEGMON_CODE="000"
 for _ in $(seq 1 15); do
     LEGMON_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:9005/status 2>/dev/null || true)
@@ -158,7 +175,7 @@ else
     echo "⚠️ Warning: legmon-rs probe returned $LEGMON_CODE - check docker compose logs if statement OCR fails."
 fi
 
-# 9. Verify Rauthy status
+# 10. Verify Rauthy status
 RAUTHY_CODE="000"
 for _ in $(seq 1 15); do
     RAUTHY_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: identity.dryark.uk" --max-time 3 http://127.0.0.1:8085/.well-known/openid-configuration 2>/dev/null || true)

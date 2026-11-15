@@ -29,6 +29,20 @@ services:
     network_mode: host
     restart: always
 
+  memmon:
+    container_name: memmon-rs
+    image: memmon-rs:latest
+    build:
+      context: ./modules/memmon-rs
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - PORT=9006
+      - MEMMON_HOST=127.0.0.1
+    network_mode: host
+    restart: always
+
   monmon:
     container_name: monmon-rs
     image: monmon-rs:latest
@@ -40,6 +54,7 @@ services:
     environment:
       - PORT=9000
       - LEGMON_URL=http://127.0.0.1:9005
+      - MEMMON_URL=http://127.0.0.1:9006
     volumes:
       - ./public:/app/public:ro
       - ./.env:/app/.env:ro
