@@ -466,7 +466,13 @@
                 <div class="kpi-box">
                     <span class="kpi-label"><i class="fas fa-coins" style="color: var(--primary, #6366f1); margin-right: 4px;"></i> Total to Transfer</span>
                     <span class="kpi-value" style="color: #38bdf8;">£{{ next_window.total_to_transfer_formatted }}</span>
-                    <span class="kpi-subtext">{{ next_window.transfers_count }} transfer destination{% if next_window.transfers_count != 1 %}s{% endif %}</span>
+                    <span class="kpi-subtext">
+                        {% if next_window.direct_outgoings_total > 0.005 %}
+                        + £{{ next_window.direct_outgoings_total_formatted }} direct bills (£{{ next_window.total_commitments_formatted }} total)
+                        {% else %}
+                        {{ next_window.transfers_count }} transfer destination{% if next_window.transfers_count != 1 %}s{% endif %}
+                        {% endif %}
+                    </span>
                 </div>
                 <div class="kpi-box">
                     <span class="kpi-label"><i class="fas fa-wallet" style="color: #10b981; margin-right: 4px;"></i> From: {{ next_window.source_account_name }}</span>
@@ -474,11 +480,17 @@
                     <span class="kpi-subtext">Current available balance</span>
                 </div>
                 <div class="kpi-box">
-                    <span class="kpi-label"><i class="fas fa-hourglass-half" style="color: #f59e0b; margin-right: 4px;"></i> Balance After Transfers</span>
+                    <span class="kpi-label"><i class="fas fa-hourglass-half" style="color: #f59e0b; margin-right: 4px;"></i> Balance After {% if next_window.direct_outgoings_total > 0.005 %}Obligations{% else %}Transfers{% endif %}</span>
                     <span class="kpi-value" style="color: {% if next_window.source_account_remaining_balance >= 0.0 %}#10b981{% else %}#ef4444{% endif %};">
                         £{{ next_window.source_account_remaining_balance_formatted }}
                     </span>
-                    <span class="kpi-subtext">Remaining in source account</span>
+                    <span class="kpi-subtext">
+                        {% if next_window.direct_outgoings_total > 0.005 %}
+                        After transfers & direct bills
+                        {% else %}
+                        Remaining in source account
+                        {% endif %}
+                    </span>
                 </div>
                 <div class="kpi-box">
                     <span class="kpi-label"><i class="far fa-calendar-check" style="color: #a855f7; margin-right: 4px;"></i> Payday Date</span>
@@ -538,8 +550,14 @@
                     </div>
 
                     <div style="text-align: right;">
+                        {% if next_window.direct_outgoings_total > 0.005 %}
+                        <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Total Commitments</span>
+                        <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ next_window.total_commitments_formatted }}</span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); display: block;">£{{ next_window.total_to_transfer_formatted }} transfers + £{{ next_window.direct_outgoings_total_formatted }} direct bills</span>
+                        {% else %}
                         <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Required Transfers</span>
                         <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ next_window.total_to_transfer_formatted }}</span>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -616,6 +634,83 @@
                     </div>
                 </div>
                 {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Direct Bills Debited Directly from Incoming Account -->
+            {% if !next_window.direct_outgoings_items.is_empty() %}
+            <div style="margin-bottom: 2rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.9rem;">
+                            <i class="fas fa-receipt"></i>
+                        </span>
+                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-main, #f8fafc);">
+                            Direct Bills on {{ next_window.source_account_name }} ({{ next_window.direct_outgoings_count }})
+                        </h3>
+                    </div>
+                    <span style="font-size: 0.85rem; font-weight: 800; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.25);">
+                        Total Direct Bills: £{{ next_window.direct_outgoings_total_formatted }}
+                    </span>
+                </div>
+
+                <div style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin-bottom: 12px; background: rgba(15, 23, 42, 0.5); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, #334155); display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-info-circle" style="color: #38bdf8;"></i>
+                    <span>
+                        Debited straight from <strong>{{ next_window.source_account_name }}</strong> (standing orders & direct debits). No inter-account transfer is needed, but £{{ next_window.direct_outgoings_total_formatted }} must stay in this account to prevent overdraft.
+                    </span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    {% for item in next_window.direct_outgoings_items %}
+                    <div class="transfer-card" id="card-{{ item.id }}" data-item-id="{{ item.id }}" data-window="next">
+                        <div class="transfer-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="transfer-chk-box" title="Mark bill as tracked/paid" onclick="event.stopPropagation();">
+                                    <input type="checkbox" id="chk-next-{{ item.id }}" onchange="toggleTransferDone('next', '{{ item.id }}')">
+                                    <span class="transfer-chk-mark"><i class="fas fa-check"></i></span>
+                                </label>
+                                <h4 class="transfer-title">
+                                    {{ item.name }}
+                                </h4>
+                            </div>
+                            <span class="badge-transfer-type" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);">
+                                <i class="fas fa-receipt"></i> Direct Debit / Bill
+                            </span>
+                        </div>
+
+                        <div class="transfer-flow-row">
+                            <span>Account:</span>
+                            <span class="account-pill"><i class="fas fa-wallet" style="color: #10b981;"></i> {{ item.account_name }}</span>
+                            <span style="margin-left: 10px; color: var(--text-muted, #94a3b8);">Due:</span>
+                            <span class="account-pill" style="border-color: rgba(56, 189, 248, 0.4);"><i class="far fa-calendar-alt" style="color: #38bdf8;"></i> {{ item.due_date }}</span>
+                        </div>
+
+                        <div class="transfer-stats-grid">
+                            <div>
+                                <span class="stat-item-label">Bill Amount</span>
+                                <div class="stat-item-val" style="color: #10b981; font-size: 1.15rem;">£{{ item.cost_formatted }}</div>
+                            </div>
+                            <div>
+                                <span class="stat-item-label">Payment Method</span>
+                                <div class="stat-item-val" style="font-size: 0.9rem; color: var(--text-muted, #94a3b8);">Direct Debit / Standing Order</div>
+                            </div>
+                        </div>
+
+                        <!-- Stacked Action Bar -->
+                        <div class="transfer-actions-bar">
+                            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                                Debited straight from {{ item.account_name }} on {{ item.due_date }}
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.cost_formatted }}', this)">
+                                    <i class="fas fa-copy"></i> Copy £{{ item.cost_formatted }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
             {% endif %}
 
@@ -940,7 +1035,13 @@
                 <div class="kpi-box">
                     <span class="kpi-label"><i class="fas fa-coins" style="color: var(--primary, #6366f1); margin-right: 4px;"></i> Total Transferred</span>
                     <span class="kpi-value" style="color: #38bdf8;">£{{ last_window.total_to_transfer_formatted }}</span>
-                    <span class="kpi-subtext">{{ last_window.transfers_count }} transfer destination{% if last_window.transfers_count != 1 %}s{% endif %}</span>
+                    <span class="kpi-subtext">
+                        {% if last_window.direct_outgoings_total > 0.005 %}
+                        + £{{ last_window.direct_outgoings_total_formatted }} direct bills (£{{ last_window.total_commitments_formatted }} total)
+                        {% else %}
+                        {{ last_window.transfers_count }} transfer destination{% if last_window.transfers_count != 1 %}s{% endif %}
+                        {% endif %}
+                    </span>
                 </div>
                 <div class="kpi-box">
                     <span class="kpi-label"><i class="fas fa-wallet" style="color: #10b981; margin-right: 4px;"></i> From: {{ last_window.source_account_name }}</span>
@@ -948,11 +1049,17 @@
                     <span class="kpi-subtext">Current available balance</span>
                 </div>
                 <div class="kpi-box">
-                    <span class="kpi-label"><i class="fas fa-hourglass-half" style="color: #f59e0b; margin-right: 4px;"></i> Balance After Transfers</span>
+                    <span class="kpi-label"><i class="fas fa-hourglass-half" style="color: #f59e0b; margin-right: 4px;"></i> Balance After {% if last_window.direct_outgoings_total > 0.005 %}Obligations{% else %}Transfers{% endif %}</span>
                     <span class="kpi-value" style="color: {% if last_window.source_account_remaining_balance >= 0.0 %}#10b981{% else %}#ef4444{% endif %};">
                         £{{ last_window.source_account_remaining_balance_formatted }}
                     </span>
-                    <span class="kpi-subtext">Remaining in source account</span>
+                    <span class="kpi-subtext">
+                        {% if last_window.direct_outgoings_total > 0.005 %}
+                        After transfers & direct bills
+                        {% else %}
+                        Remaining in source account
+                        {% endif %}
+                    </span>
                 </div>
                 <div class="kpi-box">
                     <span class="kpi-label"><i class="far fa-calendar-check" style="color: #a855f7; margin-right: 4px;"></i> Last Payday Date</span>
@@ -1008,8 +1115,14 @@
                     </div>
 
                     <div style="text-align: right;">
+                        {% if last_window.direct_outgoings_total > 0.005 %}
+                        <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Total Commitments</span>
+                        <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ last_window.total_commitments_formatted }}</span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); display: block;">£{{ last_window.total_to_transfer_formatted }} transfers + £{{ last_window.direct_outgoings_total_formatted }} direct bills</span>
+                        {% else %}
                         <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Required Transfers</span>
                         <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ last_window.total_to_transfer_formatted }}</span>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -1086,6 +1199,83 @@
                     </div>
                 </div>
                 {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Direct Bills Debited Directly from Incoming Account -->
+            {% if !last_window.direct_outgoings_items.is_empty() %}
+            <div style="margin-bottom: 2rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.9rem;">
+                            <i class="fas fa-receipt"></i>
+                        </span>
+                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-main, #f8fafc);">
+                            Direct Bills on {{ last_window.source_account_name }} ({{ last_window.direct_outgoings_count }})
+                        </h3>
+                    </div>
+                    <span style="font-size: 0.85rem; font-weight: 800; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.25);">
+                        Total Direct Bills: £{{ last_window.direct_outgoings_total_formatted }}
+                    </span>
+                </div>
+
+                <div style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin-bottom: 12px; background: rgba(15, 23, 42, 0.5); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, #334155); display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-info-circle" style="color: #38bdf8;"></i>
+                    <span>
+                        Debited straight from <strong>{{ last_window.source_account_name }}</strong> (standing orders & direct debits). No inter-account transfer is needed, but £{{ last_window.direct_outgoings_total_formatted }} must stay in this account to prevent overdraft.
+                    </span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    {% for item in last_window.direct_outgoings_items %}
+                    <div class="transfer-card" id="card-last-{{ item.id }}" data-item-id="{{ item.id }}" data-window="last">
+                        <div class="transfer-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="transfer-chk-box" title="Mark bill as tracked/paid" onclick="event.stopPropagation();">
+                                    <input type="checkbox" id="chk-last-{{ item.id }}" onchange="toggleTransferDone('last', '{{ item.id }}')">
+                                    <span class="transfer-chk-mark"><i class="fas fa-check"></i></span>
+                                </label>
+                                <h4 class="transfer-title">
+                                    {{ item.name }}
+                                </h4>
+                            </div>
+                            <span class="badge-transfer-type" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);">
+                                <i class="fas fa-receipt"></i> Direct Debit / Bill
+                            </span>
+                        </div>
+
+                        <div class="transfer-flow-row">
+                            <span>Account:</span>
+                            <span class="account-pill"><i class="fas fa-wallet" style="color: #10b981;"></i> {{ item.account_name }}</span>
+                            <span style="margin-left: 10px; color: var(--text-muted, #94a3b8);">Due:</span>
+                            <span class="account-pill" style="border-color: rgba(56, 189, 248, 0.4);"><i class="far fa-calendar-alt" style="color: #38bdf8;"></i> {{ item.due_date }}</span>
+                        </div>
+
+                        <div class="transfer-stats-grid">
+                            <div>
+                                <span class="stat-item-label">Bill Amount</span>
+                                <div class="stat-item-val" style="color: #10b981; font-size: 1.15rem;">£{{ item.cost_formatted }}</div>
+                            </div>
+                            <div>
+                                <span class="stat-item-label">Payment Method</span>
+                                <div class="stat-item-val" style="font-size: 0.9rem; color: var(--text-muted, #94a3b8);">Direct Debit / Standing Order</div>
+                            </div>
+                        </div>
+
+                        <!-- Stacked Action Bar -->
+                        <div class="transfer-actions-bar">
+                            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                                Debited straight from {{ item.account_name }} on {{ item.due_date }}
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.cost_formatted }}', this)">
+                                    <i class="fas fa-copy"></i> Copy £{{ item.cost_formatted }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
             {% endif %}
 

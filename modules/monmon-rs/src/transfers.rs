@@ -57,6 +57,19 @@ pub struct PaydayTransferItemDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DirectOutgoingItemDto {
+    pub id: String,
+    pub name: String,
+    pub cost: f32,
+    pub cost_formatted: String,
+    pub due_day: i32,
+    pub due_date: String,
+    pub account_id: i64,
+    pub account_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OutgoingsFundingStepDto {
     pub from_savings_account_id: i64,
     pub from_savings_account_name: String,
@@ -123,8 +136,8 @@ pub fn calculate_outgoings_funding_plan(
                 remaining_cap = ((remaining_cap - take) * 100.0).round() / 100.0;
 
                 let summary = match item.tier {
-                    1 => format!("Tops up {} to cover planned transfers", source_acc_name),
-                    2 => format!("Sweeps spare cash into {} to cover planned transfers", source_acc_name),
+                    1 => format!("Tops up {} to cover planned transfers & direct bills", source_acc_name),
+                    2 => format!("Sweeps spare cash into {} to cover planned transfers & direct bills", source_acc_name),
                     _ => format!("Absorbs shortfall using available credit headroom on {}", item.name),
                 };
 
@@ -162,6 +175,12 @@ pub struct PaydayWindowDto {
     pub total_to_transfer: f32,
     pub total_to_transfer_formatted: String,
     pub transfers_count: usize,
+    pub direct_outgoings_total: f32,
+    pub direct_outgoings_total_formatted: String,
+    pub direct_outgoings_count: usize,
+    pub direct_outgoings_items: Vec<DirectOutgoingItemDto>,
+    pub total_commitments: f32,
+    pub total_commitments_formatted: String,
     pub source_account_name: String,
     pub source_account_balance: f32,
     pub source_account_balance_formatted: String,
@@ -301,19 +320,20 @@ pub async fn calculate_payday_window(
     }
 
     let mut account_groups: BTreeMap<i64, AccountOutgoingGroup> = BTreeMap::new();
+    let mut direct_outgoings_items: Vec<DirectOutgoingItemDto> = Vec::new();
 
     for r in outgoing_acc_rows {
         let acc_id: i64 = r.get("account_id");
-        if let Some(src_id) = source_acc_id {
-            if acc_id == src_id {
-                continue;
-            }
-        }
+        let is_source_acc = match source_acc_id {
+            Some(src_id) => acc_id == src_id,
+            None => false,
+        };
 
         let outgoing_month: Option<i32> = r.get("outgoing_month");
         let outgoing_day: i32 = r.get("outgoing_day");
         let cost: f32 = r.get("outgoing_cost");
         let outgoing_name: String = r.get("outgoing_name");
+        let outgoing_id: i64 = r.get("outgoing_id");
 
         let is_due = if let Some(m) = outgoing_month {
             if m > 0 {
@@ -338,6 +358,20 @@ pub async fn calculate_payday_window(
             continue;
         }
 
+        if is_source_acc {
+            direct_outgoings_items.push(DirectOutgoingItemDto {
+                id: format!("direct_out_{}", outgoing_id),
+                name: outgoing_name,
+                cost: (cost * 100.0).round() / 100.0,
+                cost_formatted: format!("{:.2}", cost),
+                due_day: outgoing_day,
+                due_date: format!("Day {}", outgoing_day),
+                account_id: acc_id,
+                account_name: source_acc_name.clone(),
+            });
+            continue;
+        }
+
         let entry = account_groups.entry(acc_id).or_insert_with(|| AccountOutgoingGroup {
             acc_id,
             acc_name: r.get("account_name"),
@@ -357,6 +391,11 @@ pub async fn calculate_payday_window(
             monthly_saving_formatted: format!("{:.2}", cost),
         });
     }
+
+    direct_outgoings_items.sort_by_key(|it| it.due_day);
+    let direct_outgoings_total: f32 = ((direct_outgoings_items.iter().map(|it| it.cost).sum::<f32>() * 100.0).round()) / 100.0;
+    let direct_outgoings_total_formatted = format!("{:.2}", direct_outgoings_total);
+    let direct_outgoings_count = direct_outgoings_items.len();
 
     let mut outgoings_items = Vec::new();
     for (_acc_id, grp) in account_groups {
@@ -831,7 +870,9 @@ pub async fn calculate_payday_window(
     items.retain(|it| it.amount >= 0.005);
 
     let total_transfers: f32 = items.iter().map(|it| it.amount).sum();
-    let source_remaining = source_acc_bal - total_transfers;
+    let total_commitments = ((total_transfers + direct_outgoings_total) * 100.0).round() / 100.0;
+    let total_commitments_formatted = format!("{:.2}", total_commitments);
+    let source_remaining = ((source_acc_bal - total_commitments) * 100.0).round() / 100.0;
 
     // Monthly income total (e.g. from salary and incoming records)
     let monthly_income: f32 = sqlx::query_scalar(
@@ -947,11 +988,12 @@ pub async fn calculate_payday_window(
     total_credit = (total_credit * 100.0).round() / 100.0;
 
     let total_funding_capacity = ((monthly_income + total_savings + total_debit + total_credit) * 100.0).round() / 100.0;
+    let total_commitments_rounded = (total_commitments * 100.0).round() / 100.0;
     let total_transfers_rounded = (total_transfers * 100.0).round() / 100.0;
     let monthly_income_rounded = (monthly_income * 100.0).round() / 100.0;
 
     // Coverage calculation taking into account complete 4-tier waterfall:
-    // 1. If monthly_income covers all transfers:
+    // 1. If monthly_income covers all commitments (transfers + direct outgoings):
     //    Income alone covers it -> coverage banner not needed.
     // 2. If monthly_income + savings covers:
     //    Show savings top-up needed.
@@ -961,7 +1003,7 @@ pub async fn calculate_payday_window(
     //    Show shortfall covered by credit buffer!
     // 5. If everything exhausted:
     //    Show unavoidable deficit shortfall.
-    let income_alone_covers = total_transfers_rounded <= 0.005 || monthly_income_rounded >= (total_transfers_rounded - 0.005);
+    let income_alone_covers = total_commitments_rounded <= 0.005 || monthly_income_rounded >= (total_commitments_rounded - 0.005);
 
     let (
         show_coverage_indicator,
@@ -982,28 +1024,39 @@ pub async fn calculate_payday_window(
             String::new(),
             0.0f32,
             true,
-            ((monthly_income_rounded - total_transfers_rounded).max(0.0) * 100.0).round() / 100.0,
+            ((monthly_income_rounded - total_commitments_rounded).max(0.0) * 100.0).round() / 100.0,
             Vec::new(),
         )
     } else {
-        let topup = ((total_transfers_rounded - monthly_income_rounded) * 100.0).round() / 100.0;
+        let topup = ((total_commitments_rounded - monthly_income_rounded) * 100.0).round() / 100.0;
         let capacity_savings = ((monthly_income_rounded + total_savings) * 100.0).round() / 100.0;
         let capacity_debit = ((capacity_savings + total_debit) * 100.0).round() / 100.0;
         let capacity_credit = ((capacity_debit + total_credit) * 100.0).round() / 100.0;
 
-        if capacity_savings >= (total_transfers_rounded - 0.005) {
-            let cushion = ((capacity_savings - total_transfers_rounded) * 100.0).round() / 100.0;
+        if capacity_savings >= (total_commitments_rounded - 0.005) {
+            let cushion = ((capacity_savings - total_commitments_rounded) * 100.0).round() / 100.0;
             let title = if monthly_income_rounded > 0.005 {
-                "Income Partially Covers Transfers (Savings Top-Up Needed)".to_string()
+                if direct_outgoings_total > 0.005 {
+                    "Income Partially Covers Outgoings & Transfers (Savings Top-Up Needed)".to_string()
+                } else {
+                    "Income Partially Covers Transfers (Savings Top-Up Needed)".to_string()
+                }
             } else {
-                "Transfers Covered by Savings".to_string()
+                "Outgoings & Transfers Covered by Savings".to_string()
             };
             let badge = format!("£{:.2} from Savings", topup);
             let desc = if monthly_income_rounded > 0.005 {
-                format!(
-                    "Incoming (£{:.2}) covers part of the £{:.2} transfers • £{:.2} needed from savings to top up (Available Savings: £{:.2})",
-                    monthly_income_rounded, total_transfers_rounded, topup, total_savings
-                )
+                if direct_outgoings_total > 0.005 {
+                    format!(
+                        "Incoming (£{:.2}) covers part of the £{:.2} commitments (£{:.2} transfers + £{:.2} direct bills) • £{:.2} needed from savings to top up (Available Savings: £{:.2})",
+                        monthly_income_rounded, total_commitments_rounded, total_transfers_rounded, direct_outgoings_total, topup, total_savings
+                    )
+                } else {
+                    format!(
+                        "Incoming (£{:.2}) covers part of the £{:.2} transfers • £{:.2} needed from savings to top up (Available Savings: £{:.2})",
+                        monthly_income_rounded, total_transfers_rounded, topup, total_savings
+                    )
+                }
             } else {
                 format!(
                     "No income detected • £{:.2} fully covered by available savings (Total Savings: £{:.2})",
@@ -1028,13 +1081,13 @@ pub async fn calculate_payday_window(
                 cushion,
                 plan,
             )
-        } else if capacity_debit >= (total_transfers_rounded - 0.005) {
-            let cushion = ((capacity_debit - total_transfers_rounded) * 100.0).round() / 100.0;
-            let debit_needed = ((total_transfers_rounded - capacity_savings) * 100.0).round() / 100.0;
+        } else if capacity_debit >= (total_commitments_rounded - 0.005) {
+            let cushion = ((capacity_debit - total_commitments_rounded) * 100.0).round() / 100.0;
+            let debit_needed = ((total_commitments_rounded - capacity_savings) * 100.0).round() / 100.0;
             let title = "Savings Exhausted: Shortfall Filled by Debit Cash".to_string();
             let badge = format!("£{:.2} from Savings & Cash", topup);
             let desc = format!(
-                "Income (£{:.2}) and Savings (£{:.2}) exhausted • £{:.2} drawn from secondary debit/escrow accounts to cover transfers (Available Cash: £{:.2})",
+                "Income (£{:.2}) and Savings (£{:.2}) exhausted • £{:.2} drawn from secondary debit/escrow accounts to cover commitments (Available Cash: £{:.2})",
                 monthly_income_rounded, total_savings, debit_needed, total_debit
             );
             let plan = calculate_outgoings_funding_plan(
@@ -1048,16 +1101,16 @@ pub async fn calculate_payday_window(
                 true,
                 title,
                 badge,
-                "pill-amber".to_string(),
+                "pill-cyan".to_string(),
                 desc,
                 topup,
                 true,
                 cushion,
                 plan,
             )
-        } else if capacity_credit >= (total_transfers_rounded - 0.005) {
-            let cushion = ((capacity_credit - total_transfers_rounded) * 100.0).round() / 100.0;
-            let credit_needed = ((total_transfers_rounded - capacity_debit) * 100.0).round() / 100.0;
+        } else if capacity_credit >= (total_commitments_rounded - 0.005) {
+            let cushion = ((capacity_credit - total_commitments_rounded) * 100.0).round() / 100.0;
+            let credit_needed = ((total_commitments_rounded - capacity_debit) * 100.0).round() / 100.0;
             let title = "Income & Savings Exhausted: Shortfall Covered by Credit".to_string();
             let badge = format!("£{:.2} on Credit Buffer", credit_needed);
             let desc = format!(
@@ -1083,12 +1136,12 @@ pub async fn calculate_payday_window(
                 plan,
             )
         } else {
-            let deficit = ((total_transfers_rounded - capacity_credit) * 100.0).round() / 100.0;
-            let title = "Transfer Shortfall: Insufficient Income, Savings & Credit".to_string();
+            let deficit = ((total_commitments_rounded - capacity_credit) * 100.0).round() / 100.0;
+            let title = "Transfer & Outgoings Shortfall: Insufficient Income, Savings & Credit".to_string();
             let badge = format!("-£{:.2} Deficit", deficit);
             let desc = format!(
-                "All income (£{:.2}), savings (£{:.2}), cash (£{:.2}), and available credit (£{:.2}) are exhausted • £{:.2} unavoidable shortfall remaining to cover £{:.2} transfers",
-                monthly_income_rounded, total_savings, total_debit, total_credit, deficit, total_transfers_rounded
+                "All income (£{:.2}), savings (£{:.2}), cash (£{:.2}), and available credit (£{:.2}) are exhausted • £{:.2} unavoidable shortfall remaining to cover £{:.2} commitments",
+                monthly_income_rounded, total_savings, total_debit, total_credit, deficit, total_commitments_rounded
             );
             let plan = calculate_outgoings_funding_plan(
                 source_acc_id,
@@ -1122,6 +1175,12 @@ pub async fn calculate_payday_window(
         total_to_transfer: total_transfers_rounded,
         total_to_transfer_formatted: format!("{:.2}", total_transfers_rounded),
         transfers_count: items.len(),
+        direct_outgoings_total,
+        direct_outgoings_total_formatted,
+        direct_outgoings_count,
+        direct_outgoings_items,
+        total_commitments: total_commitments_rounded,
+        total_commitments_formatted,
         source_account_name: source_acc_name,
         source_account_balance: (source_acc_bal * 100.0).round() / 100.0,
         source_account_balance_formatted: format!("{:.2}", source_acc_bal),
@@ -1744,5 +1803,87 @@ mod tests {
         assert_eq!(plan[4].from_savings_account_name, "Halifax");
         assert_eq!(plan[4].from_savings_account_type, "CREDIT");
         assert_eq!(plan[4].amount, 32.10);
+    }
+
+    #[test]
+    fn test_direct_outgoings_on_salary_account_increases_topup() {
+        // User jason@urawizard.com realistic scenario:
+        // Income = £2642.83
+        // Inter-account transfers = £3753.38 (outgoings cover on secondary accounts + monthly pot £367.16 + savings targets)
+        // Direct outgoings on Natwest Reward Debit (the salary account):
+        //   - Ciaran vehicle tax: £24.06
+        //   - Council tax: £149.00
+        //   - Natwest Platinum fee: £23.00
+        //   Direct outgoings total = £196.06
+        // Total commitments = transfers (£3753.38) + direct outgoings (£196.06) = £3949.44
+        // Top-up needed from savings = £3949.44 - £2642.83 = £1306.61 (instead of £1110.55!)
+        let income = 2642.83f32;
+        let transfers = 3753.38f32;
+        let direct_bills = vec![
+            DirectOutgoingItemDto {
+                id: "direct_out_8534".to_string(),
+                name: "Ciaran (NA15 CKP) vehicle tax".to_string(),
+                cost: 24.06,
+                cost_formatted: "24.06".to_string(),
+                due_day: 3,
+                due_date: "Day 3".to_string(),
+                account_id: 2,
+                account_name: "Natwest Reward Debit 💵💵💵".to_string(),
+            },
+            DirectOutgoingItemDto {
+                id: "direct_out_8488".to_string(),
+                name: "79 Main Street Council tax (+water, love you Scotland)".to_string(),
+                cost: 149.00,
+                cost_formatted: "149.00".to_string(),
+                due_day: 8,
+                due_date: "Day 8".to_string(),
+                account_id: 2,
+                account_name: "Natwest Reward Debit 💵💵💵".to_string(),
+            },
+            DirectOutgoingItemDto {
+                id: "direct_out_4751".to_string(),
+                name: "Natwest Platinum Reward fee".to_string(),
+                cost: 23.00,
+                cost_formatted: "23.00".to_string(),
+                due_day: 19,
+                due_date: "Day 19".to_string(),
+                account_id: 2,
+                account_name: "Natwest Reward Debit 💵💵💵".to_string(),
+            },
+        ];
+
+        let direct_bills_total: f32 = ((direct_bills.iter().map(|b| b.cost).sum::<f32>() * 100.0).round()) / 100.0;
+        assert_eq!(direct_bills_total, 196.06);
+
+        let total_commitments = ((transfers + direct_bills_total) * 100.0).round() / 100.0;
+        assert_eq!(total_commitments, 3949.44);
+
+        let topup = ((total_commitments - income) * 100.0).round() / 100.0;
+        assert_eq!(topup, 1306.61);
+
+        // Verify funding plan tops up £1306.61 from NS&I Premium Bonds
+        let pool = vec![
+            LiquidityPoolItem {
+                id: 6594,
+                name: "[Real Emergency 🚨] NS&I Premium Bonds".to_string(),
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
+                initial_bal: 2175.0,
+                remaining_bal: 2175.0,
+            },
+        ];
+
+        let plan = calculate_outgoings_funding_plan(
+            Some(2),
+            "Natwest Reward Debit 💵💵💵",
+            "DEBIT",
+            pool,
+            Some(topup),
+        );
+
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].from_savings_account_id, 6594);
+        assert_eq!(plan[0].amount, 1306.61);
+        assert_eq!(plan[0].amount_formatted, "1306.61");
     }
 }
