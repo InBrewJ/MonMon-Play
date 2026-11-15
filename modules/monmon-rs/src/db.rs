@@ -2,7 +2,7 @@ use crate::models::{
     Account, Balance, ErraticBalance, Incoming, NewAccount, NewBalance, NewIncoming, NewOutgoing,
     Outgoing, UpdateAccount, UpdateIncoming, UpdateOutgoing,
 };
-use chrono::Utc;
+use chrono::{Datelike, Utc};
 use sqlx::{PgPool, Row};
 
 // ==========================================
@@ -10,21 +10,53 @@ use sqlx::{PgPool, Row};
 // ==========================================
 
 pub async fn list_accounts(pool: &PgPool, user_id: &str) -> Result<Vec<Account>, sqlx::Error> {
-    sqlx::query_as::<_, Account>(
-        r#"
-        SELECT 
-            id, name, nickname, type as account_type, 
-            COALESCE(user_id, userid, "userId") as user_id,
-            account_limit, interest_rate, ledger_mode, archived
-        FROM account
-        WHERE COALESCE(user_id, userid, "userId") = $1
-          AND (archived IS FALSE OR archived IS NULL)
-        ORDER BY id ASC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
+    list_accounts_as_of(pool, user_id, None).await
+}
+
+pub async fn list_accounts_as_of(
+    pool: &PgPool,
+    user_id: &str,
+    as_of: Option<chrono::NaiveDate>,
+) -> Result<Vec<Account>, sqlx::Error> {
+    match as_of {
+        Some(date) => {
+            let cutoff_sec = date.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp();
+            sqlx::query_as::<_, Account>(
+                r#"
+                SELECT 
+                    id, name, nickname, type as account_type, 
+                    COALESCE(user_id, userid, "userId") as user_id,
+                    account_limit, interest_rate, ledger_mode, archived
+                FROM account
+                WHERE COALESCE(user_id, userid, "userId") = $1
+                  AND (created_at IS NULL OR (CASE WHEN created_at > 100000000000 THEN created_at/1000 ELSE created_at END) <= $2)
+                  AND (archived IS FALSE OR archived_at IS NULL OR (CASE WHEN archived_at > 100000000000 THEN archived_at/1000 ELSE archived_at END) > $2)
+                ORDER BY id ASC
+                "#,
+            )
+            .bind(user_id)
+            .bind(cutoff_sec)
+            .fetch_all(pool)
+            .await
+        }
+        None => {
+            sqlx::query_as::<_, Account>(
+                r#"
+                SELECT 
+                    id, name, nickname, type as account_type, 
+                    COALESCE(user_id, userid, "userId") as user_id,
+                    account_limit, interest_rate, ledger_mode, archived
+                FROM account
+                WHERE COALESCE(user_id, userid, "userId") = $1
+                  AND (archived IS FALSE OR archived IS NULL)
+                ORDER BY id ASC
+                "#,
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await
+        }
+    }
 }
 
 pub async fn get_account(pool: &PgPool, id: i64, user_id: &str) -> Result<Account, sqlx::Error> {
@@ -129,23 +161,116 @@ pub async fn toggle_ledger_mode(pool: &PgPool, id: i64, user_id: &str) -> Result
 // ==========================================
 
 pub async fn list_incomings(pool: &PgPool, user_id: &str) -> Result<Vec<Incoming>, sqlx::Error> {
-    sqlx::query_as::<_, Incoming>(
-        r#"
-        SELECT 
-            i.id, i.name, i.netvalue as net_value, i.grossvalue as gross_value,
-            i.incomingmonthday as incoming_month_day, i.payday, i.type as incoming_type,
-            COALESCE(i.user_id, i.userid, i."userId") as user_id,
-            i.account_id, a.name as account_name, i.archived
-        FROM incoming i
-        LEFT JOIN account a ON i.account_id = a.id
-        WHERE COALESCE(i.user_id, i.userid, i."userId") = $1
-          AND (i.archived IS FALSE OR i.archived IS NULL)
-        ORDER BY i.incomingmonthday ASC, i.id ASC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
+    list_incomings_as_of(pool, user_id, None).await
+}
+
+pub async fn list_incomings_as_of(
+    pool: &PgPool,
+    user_id: &str,
+    as_of: Option<chrono::NaiveDate>,
+) -> Result<Vec<Incoming>, sqlx::Error> {
+    match as_of {
+        Some(date) => {
+            let cutoff_sec = date.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp();
+            let raw_rows = sqlx::query(
+                r#"
+                SELECT 
+                    i.id, i.name, i.netvalue as net_value, i.grossvalue as gross_value,
+                    i.incomingmonthday as incoming_month_day, i.payday, i.type as incoming_type,
+                    COALESCE(i.user_id, i.userid, i."userId") as user_id,
+                    i.account_id, a.name as account_name, i.archived,
+                    i.history_json
+                FROM incoming i
+                LEFT JOIN account a ON i.account_id = a.id
+                WHERE COALESCE(i.user_id, i.userid, i."userId") = $1
+                  AND (i.created_at IS NULL OR i.created_at = 0 OR (CASE WHEN i.created_at > 100000000000 THEN i.created_at/1000 ELSE i.created_at END) <= $2)
+                  AND (i.archived IS FALSE OR i.archived_at IS NULL OR (CASE WHEN i.archived_at > 100000000000 THEN i.archived_at/1000 ELSE i.archived_at END) > $2)
+                ORDER BY i.incomingmonthday ASC, i.id ASC
+                "#,
+            )
+            .bind(user_id)
+            .bind(cutoff_sec)
+            .fetch_all(pool)
+            .await?;
+
+            let mut result = Vec::new();
+            for r in raw_rows {
+                let id: i64 = r.get("id");
+                let mut name: String = r.get("name");
+                let mut net_value: f32 = r.get::<Option<f32>, _>("net_value").unwrap_or(0.0);
+                let mut gross_value: Option<f32> = r.get("gross_value");
+                let mut incoming_month_day: i32 = r.get("incoming_month_day");
+                let mut payday: Option<bool> = r.get("payday");
+                let incoming_type: Option<String> = r.get("incoming_type");
+                let user_id: String = r.get("user_id");
+                let account_id: Option<i64> = r.get("account_id");
+                let account_name: Option<String> = r.get("account_name");
+                let archived: Option<bool> = r.get("archived");
+                let history_json: Option<String> = r.get("history_json");
+
+                if let Some(ref json_str) = history_json {
+                    if let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(json_str) {
+                        for entry in entries {
+                            if let Some(ts_val) = entry.get("timestamp").and_then(|v| v.as_i64()) {
+                                let ts_sec = if ts_val > 100_000_000_000 { ts_val / 1000 } else { ts_val };
+                                if ts_sec <= cutoff_sec {
+                                    if let Some(nv) = entry.get("netValue").and_then(|v| v.as_f64()) {
+                                        net_value = nv as f32;
+                                    }
+                                    if let Some(gv) = entry.get("grossValue").and_then(|v| v.as_f64()) {
+                                        gross_value = Some(gv as f32);
+                                    }
+                                    if let Some(n) = entry.get("name").and_then(|v| v.as_str()) {
+                                        name = n.to_string();
+                                    }
+                                    if let Some(imd) = entry.get("incomingMonthDay").and_then(|v| v.as_i64()) {
+                                        incoming_month_day = imd as i32;
+                                    }
+                                    if let Some(pd) = entry.get("payDay").and_then(|v| v.as_bool()) {
+                                        payday = Some(pd);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                result.push(Incoming {
+                    id,
+                    name,
+                    net_value,
+                    gross_value,
+                    incoming_month_day,
+                    payday,
+                    incoming_type,
+                    user_id,
+                    account_id,
+                    account_name,
+                    archived,
+                });
+            }
+            Ok(result)
+        }
+        None => {
+            sqlx::query_as::<_, Incoming>(
+                r#"
+                SELECT 
+                    i.id, i.name, i.netvalue as net_value, i.grossvalue as gross_value,
+                    i.incomingmonthday as incoming_month_day, i.payday, i.type as incoming_type,
+                    COALESCE(i.user_id, i.userid, i."userId") as user_id,
+                    i.account_id, a.name as account_name, i.archived
+                FROM incoming i
+                LEFT JOIN account a ON i.account_id = a.id
+                WHERE COALESCE(i.user_id, i.userid, i."userId") = $1
+                  AND (i.archived IS FALSE OR i.archived IS NULL)
+                ORDER BY i.incomingmonthday ASC, i.id ASC
+                "#,
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await
+        }
+    }
 }
 
 pub async fn get_incoming(pool: &PgPool, id: i64, user_id: &str) -> Result<Incoming, sqlx::Error> {
@@ -244,29 +369,85 @@ pub async fn archive_incoming(pool: &PgPool, id: i64, user_id: &str) -> Result<I
 // ==========================================
 
 pub async fn list_outgoings(pool: &PgPool, user_id: &str) -> Result<Vec<Outgoing>, sqlx::Error> {
-    sqlx::query_as::<_, Outgoing>(
-        r#"
-        SELECT 
-            o.id, o.name, o.cost, o.outgoingday as outgoing_day, 
-            o.outgoingmonth as outgoing_month, o.yearinterval as year_interval, 
-            o.startingyear as starting_year, o.bill, o.rent, o.hiddenfromtotal as hidden_from_total,
-            o.paused, COALESCE(o.pause_reason, o.pausereason) as pause_reason,
-            COALESCE(o.paused_at, o.pausedat) as paused_at,
-            COALESCE(o.user_id, o.userid, o."userId") as user_id,
-            o.account_id,
-            a.name as account_name,
-            a.type as account_type,
-            o.archived
-        FROM outgoing o
-        LEFT JOIN account a ON o.account_id = a.id
-        WHERE COALESCE(o.user_id, o.userid, o."userId") = $1
-          AND (o.archived IS FALSE OR o.archived IS NULL)
-        ORDER BY o.outgoingday ASC, o.id ASC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
+    list_outgoings_as_of(pool, user_id, None).await
+}
+
+pub async fn list_outgoings_as_of(
+    pool: &PgPool,
+    user_id: &str,
+    as_of: Option<chrono::NaiveDate>,
+) -> Result<Vec<Outgoing>, sqlx::Error> {
+    match as_of {
+        Some(date) => {
+            let cutoff_sec = date.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp();
+            let year = date.year();
+            let mut rows = sqlx::query_as::<_, Outgoing>(
+                r#"
+                SELECT 
+                    o.id, o.name, o.cost, o.outgoingday as outgoing_day, 
+                    o.outgoingmonth as outgoing_month, o.yearinterval as year_interval, 
+                    o.startingyear as starting_year, o.bill, o.rent, o.hiddenfromtotal as hidden_from_total,
+                    o.paused, COALESCE(o.pause_reason, o.pausereason) as pause_reason,
+                    COALESCE(o.paused_at, o.pausedat) as paused_at,
+                    COALESCE(o.user_id, o.userid, o."userId") as user_id,
+                    o.account_id,
+                    a.name as account_name,
+                    a.type as account_type,
+                    o.archived
+                FROM outgoing o
+                LEFT JOIN account a ON o.account_id = a.id
+                WHERE COALESCE(o.user_id, o.userid, o."userId") = $1
+                  AND (o.created_at IS NULL OR (CASE WHEN o.created_at > 100000000000 THEN o.created_at/1000 ELSE o.created_at END) <= $2)
+                  AND (o.archived_at IS NULL OR (CASE WHEN o.archived_at > 100000000000 THEN o.archived_at/1000 ELSE o.archived_at END) > $2)
+                  AND (o.startingyear IS NULL OR o.startingyear <= $3)
+                ORDER BY o.outgoingday ASC, o.id ASC
+                "#,
+            )
+            .bind(user_id)
+            .bind(cutoff_sec)
+            .bind(year)
+            .fetch_all(pool)
+            .await?;
+
+            for o in &mut rows {
+                if o.paused == Some(true) {
+                    let p_at = o.paused_at.map(|p| if p > 100_000_000_000 { p / 1000 } else { p });
+                    if let Some(pa) = p_at {
+                        if pa > cutoff_sec {
+                            o.paused = Some(false);
+                            o.pause_reason = None;
+                        }
+                    }
+                }
+            }
+            Ok(rows)
+        }
+        None => {
+            sqlx::query_as::<_, Outgoing>(
+                r#"
+                SELECT 
+                    o.id, o.name, o.cost, o.outgoingday as outgoing_day, 
+                    o.outgoingmonth as outgoing_month, o.yearinterval as year_interval, 
+                    o.startingyear as starting_year, o.bill, o.rent, o.hiddenfromtotal as hidden_from_total,
+                    o.paused, COALESCE(o.pause_reason, o.pausereason) as pause_reason,
+                    COALESCE(o.paused_at, o.pausedat) as paused_at,
+                    COALESCE(o.user_id, o.userid, o."userId") as user_id,
+                    o.account_id,
+                    a.name as account_name,
+                    a.type as account_type,
+                    o.archived
+                FROM outgoing o
+                LEFT JOIN account a ON o.account_id = a.id
+                WHERE COALESCE(o.user_id, o.userid, o."userId") = $1
+                  AND (o.archived IS FALSE OR o.archived IS NULL)
+                ORDER BY o.outgoingday ASC, o.id ASC
+                "#,
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await
+        }
+    }
 }
 
 pub async fn list_rents(pool: &PgPool, user_id: &str) -> Result<Vec<Outgoing>, sqlx::Error> {

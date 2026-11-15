@@ -337,7 +337,9 @@ pub async fn get_accounts_page(
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let accounts = db::list_accounts(&state.pool, &user_id)
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(effective_date) } else { None };
+    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
 
@@ -361,7 +363,9 @@ pub async fn get_edit_account_page(
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let accounts = db::list_accounts(&state.pool, &user_id)
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(effective_date) } else { None };
+    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
     let editing_account = accounts.iter().find(|a| a.id == id).cloned();
@@ -458,14 +462,15 @@ pub async fn get_outgoings_page(
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let outgoings = db::list_outgoings(&state.pool, &user_id)
+    let (today, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(today) } else { None };
+    let outgoings = db::list_outgoings_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
-    let accounts = db::list_accounts(&state.pool, &user_id)
+    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
 
-    let (today, _is_time_travel) = crate::time_travel::get_effective_date(&headers);
     let current_year = today.year();
     let current_month_name = match today.month() {
         1 => "January", 2 => "February", 3 => "March", 4 => "April",
@@ -636,16 +641,17 @@ pub async fn get_edit_outgoing_page(
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let outgoings = db::list_outgoings(&state.pool, &user_id)
+    let (today, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(today) } else { None };
+    let outgoings = db::list_outgoings_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
-    let accounts = db::list_accounts(&state.pool, &user_id)
+    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
     let editing_outgoing = outgoings.iter().find(|o| o.id == id).cloned();
     let editing = editing_outgoing.is_some();
 
-    let (today, _is_time_travel) = crate::time_travel::get_effective_date(&headers);
     let current_year = today.year();
     let current_month_name = match today.month() {
         1 => "January", 2 => "February", 3 => "March", 4 => "April",
@@ -958,14 +964,15 @@ pub async fn get_incomings_page(
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let incomings = db::list_incomings(&state.pool, &user_id)
+    let (today, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(today) } else { None };
+    let incomings = db::list_incomings_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
-    let accounts = db::list_accounts(&state.pool, &user_id)
+    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
 
-    let today = chrono::Local::now().date_naive();
     let incoming_dtos: Vec<IncomingViewDto> = incomings.iter().map(|i| {
         let is_payday = i.payday.unwrap_or(false);
         let effective_day = crate::anchoring::get_effective_incoming_day(i.incoming_month_day, is_payday, today);
@@ -1007,16 +1014,17 @@ pub async fn get_edit_incoming_page(
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let incomings = db::list_incomings(&state.pool, &user_id)
+    let (today, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(today) } else { None };
+    let incomings = db::list_incomings_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
-    let accounts = db::list_accounts(&state.pool, &user_id)
+    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
     let editing_incoming = incomings.iter().find(|i| i.id == id).cloned();
     let editing = editing_incoming.is_some();
 
-    let today = chrono::Local::now().date_naive();
     let incoming_dtos: Vec<IncomingViewDto> = incomings.iter().map(|i| {
         let is_payday = i.payday.unwrap_or(false);
         let effective_day = crate::anchoring::get_effective_incoming_day(i.incoming_month_day, is_payday, today);
@@ -1202,7 +1210,9 @@ pub async fn get_balances_page(
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
 
     // 1. Fetch active accounts
-    let accounts = db::list_accounts(&state.pool, &user_id)
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(effective_date) } else { None };
+    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
 

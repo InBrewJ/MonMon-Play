@@ -885,7 +885,9 @@ pub async fn ed_says_networth_api(
 ) -> Result<Json<EdSaysResponse>, (StatusCode, String)> {
     let raw_uid = extract_signed_in_user_or_default(&headers, q.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
-    let nw = crate::net_worth::calculate_net_worth(&state.pool, &resolved)
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(effective_date) } else { None };
+    let nw = crate::net_worth::calculate_net_worth_as_of(&state.pool, &resolved, as_of)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

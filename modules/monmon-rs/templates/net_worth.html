@@ -434,6 +434,9 @@
     {% include "nav_scripts.html" %}
     <script>
         window.netWorthHistory = {{ chart_history_json|safe }};
+        {% if let Some(as_of) = time_travel_date %}
+        window.timeTravelDate = "{{ as_of }}";
+        {% endif %}
     </script>
     <script src="/assets/javascripts/networth-chart.{{ crate::BUILD_HASH }}.js" type="text/javascript"></script>
     <script src="/assets/javascripts/edNetWorth.{{ crate::BUILD_HASH }}.js" type="text/javascript"></script>

@@ -206,37 +206,21 @@ pub async fn calculate_spog_as_of(
 ) -> Result<SpogMetrics, sqlx::Error> {
     let user_id = resolve_user_id(pool, raw_user_id).await;
 
-    // 1. Incomings
-    let incoming_row = sqlx::query(
-        r#"
-        SELECT 
-            COALESCE(SUM(netvalue), 0.0)::real AS total,
-            COALESCE(
-                (SELECT incomingmonthday FROM incoming 
-                 WHERE (userid = $1 OR user_id = $1) 
-                   AND (archived IS NULL OR archived = false) 
-                   AND (payday = true OR type = 'SALARY') 
-                 ORDER BY id ASC LIMIT 1),
-                25
-            ) AS payday
-        FROM incoming
-        WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
-        "#,
-    )
-    .bind(&user_id)
-    .fetch_one(pool)
-    .await?;
-
-    let incoming_total = Pence::from_pounds_f32(incoming_row.get::<f32, _>("total"));
-    let next_pay_day: i32 = incoming_row.get::<i32, _>("payday");
-
-    // 2. Calendar logic
+    // 1. Calendar logic
     let today = as_of.unwrap_or_else(|| Local::now().date_naive());
     let as_of_epoch_end = as_of.map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp());
     let today_day = today.day() as i32;
     let current_month = today.month() as i32;
     let current_year = today.year();
+
+    // 2. Incomings
+    let incomings = crate::db::list_incomings_as_of(pool, &user_id, as_of).await.unwrap_or_default();
+    let incoming_total = Pence::from_pounds_f32(incomings.iter().map(|i| i.net_value).sum());
+    let next_pay_day: i32 = incomings
+        .iter()
+        .find(|i| i.payday.unwrap_or(false))
+        .map(|i| i.incoming_month_day)
+        .unwrap_or(25);
 
     let nominal_payday = next_pay_day.max(1);
     let cycle_start = crate::historic_spent::find_last_payday_date(today, nominal_payday);
@@ -249,23 +233,7 @@ pub async fn calculate_spog_as_of(
     let days_left = days_until_next_payday;
 
     // 3. Outgoings with Rent & Bill Breakdown (anchoring logic for actual outgoings due)
-    let outgoings_rows = sqlx::query(
-        r#"
-        SELECT 
-            cost, outgoingday, bill, rent
-        FROM outgoing
-        WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
-          AND (hiddenfromtotal IS NULL OR hiddenfromtotal = false)
-          AND (paused IS NULL OR paused = false)
-          AND (outgoingmonth IS NULL OR outgoingmonth = 0 OR (outgoingmonth = $2 AND (COALESCE(yearinterval, 1) <= 1 OR ($3 >= COALESCE(startingyear, $3) AND ($3 - COALESCE(startingyear, $3)) % COALESCE(yearinterval, 1) = 0))))
-        "#,
-    )
-    .bind(&user_id)
-    .bind(current_month)
-    .bind(current_year)
-    .fetch_all(pool)
-    .await?;
+    let user_outgoings = crate::db::list_outgoings_as_of(pool, &user_id, as_of).await.unwrap_or_default();
 
     let mut outgoing_total = Pence::ZERO;
     let mut bills_cost = Pence::ZERO;
@@ -273,11 +241,27 @@ pub async fn calculate_spog_as_of(
     let mut completed_outgoings = Pence::ZERO;
     let mut pending_outgoings = Pence::ZERO;
 
-    for row in outgoings_rows {
-        let cost = Pence::from_pounds_f32(row.get::<f32, _>("cost"));
-        let out_day: i32 = row.get("outgoingday");
-        let bill: bool = row.get::<Option<bool>, _>("bill").unwrap_or(false);
-        let rent: bool = row.get::<Option<bool>, _>("rent").unwrap_or(false);
+    for o in &user_outgoings {
+        if o.hidden_from_total.unwrap_or(false) || o.paused.unwrap_or(false) {
+            continue;
+        }
+        if let Some(m) = o.outgoing_month {
+            if m > 0 && m != current_month {
+                continue;
+            }
+            if m > 0 {
+                let interval = o.year_interval.unwrap_or(1).max(1);
+                let start_yr = o.starting_year.unwrap_or(current_year);
+                if current_year < start_yr || (current_year - start_yr) % interval != 0 {
+                    continue;
+                }
+            }
+        }
+
+        let cost = Pence::from_pounds_f32(o.cost);
+        let out_day = o.outgoing_day;
+        let bill = o.bill.unwrap_or(false);
+        let rent = o.rent.unwrap_or(false);
 
         outgoing_total += cost;
         if bill {
@@ -385,21 +369,44 @@ pub async fn calculate_spog_as_of(
     }
 
     // 4. Accounts & Balances and Freshness Calculation
-    let accounts_rows = sqlx::query(
-        r#"
-        SELECT 
-            id, name, nickname, type,
-            COALESCE(account_limit, 0.0)::real AS limit_val,
-            interest_rate
-        FROM account
-        WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
-        ORDER BY name ASC
-        "#,
-    )
-    .bind(&user_id)
-    .fetch_all(pool)
-    .await?;
+    let accounts_rows = match as_of_epoch_end {
+        Some(cutoff) => {
+            sqlx::query(
+                r#"
+                SELECT 
+                    id, name, nickname, type,
+                    COALESCE(account_limit, 0.0)::real AS limit_val,
+                    interest_rate
+                FROM account
+                WHERE (userid = $1 OR user_id = $1)
+                  AND (created_at IS NULL OR (CASE WHEN created_at > 100000000000 THEN created_at/1000 ELSE created_at END) <= $2)
+                  AND (archived IS FALSE OR archived_at IS NULL OR (CASE WHEN archived_at > 100000000000 THEN archived_at/1000 ELSE archived_at END) > $2)
+                ORDER BY name ASC
+                "#,
+            )
+            .bind(&user_id)
+            .bind(cutoff)
+            .fetch_all(pool)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                r#"
+                SELECT 
+                    id, name, nickname, type,
+                    COALESCE(account_limit, 0.0)::real AS limit_val,
+                    interest_rate
+                FROM account
+                WHERE (userid = $1 OR user_id = $1)
+                  AND (archived IS NULL OR archived = false)
+                ORDER BY name ASC
+                "#,
+            )
+            .bind(&user_id)
+            .fetch_all(pool)
+            .await?
+        }
+    };
 
     let mut total_available_debit = Pence::ZERO;
     let mut total_available_credit = Pence::ZERO;
@@ -437,6 +444,11 @@ pub async fn calculate_spog_as_of(
             .await
             .unwrap_or(None)
         };
+
+        // If time traveling and the account had no balance recorded yet on or before cutoff, skip it
+        if as_of_epoch_end.is_some() && bal_row.is_none() {
+            continue;
+        }
 
         let (latest_balance, latest_balance_timestamp) = match bal_row {
             Some(r) => {

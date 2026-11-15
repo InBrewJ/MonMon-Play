@@ -404,6 +404,30 @@ async fn main() {
     .execute(&pool)
     .await;
 
+    let _ = sqlx::query(
+        "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS created_at BIGINT"
+    )
+    .execute(&pool)
+    .await;
+
+    let _ = sqlx::query(
+        "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS archived_at BIGINT"
+    )
+    .execute(&pool)
+    .await;
+
+    let _ = sqlx::query(
+        "ALTER TABLE account ADD COLUMN IF NOT EXISTS created_at BIGINT"
+    )
+    .execute(&pool)
+    .await;
+
+    let _ = sqlx::query(
+        "ALTER TABLE account ADD COLUMN IF NOT EXISTS archived_at BIGINT"
+    )
+    .execute(&pool)
+    .await;
+
     let state = Arc::new(AppState { pool });
 
     let app = Router::new()

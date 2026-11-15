@@ -6,7 +6,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, Json, Redirect},
 };
-use chrono::{Datelike, TimeZone, Utc};
+use chrono::{Datelike, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::sync::Arc;
@@ -96,6 +96,7 @@ pub struct NetWorthDto {
 pub struct NetWorthTemplate {
     pub vm: NetWorthDto,
     pub chart_history_json: String,
+    pub time_travel_date: Option<String>,
 }
 
 fn round2(val: f64) -> f64 {
@@ -112,37 +113,89 @@ fn category_info(cat: &str) -> (&'static str, &'static str) {
     }
 }
 
+#[allow(dead_code)]
 pub async fn calculate_net_worth(
     pool: &sqlx::PgPool,
     user_id: &str,
 ) -> Result<NetWorthDto, sqlx::Error> {
+    calculate_net_worth_as_of(pool, user_id, None).await
+}
+
+pub async fn calculate_net_worth_as_of(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+    as_of: Option<NaiveDate>,
+) -> Result<NetWorthDto, sqlx::Error> {
+    let cutoff_sec = as_of.map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp());
+    let cutoff_ms = as_of.map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp_millis());
+
     // 1. Fetch physical/custom assets
-    let asset_rows = sqlx::query(
-        r#"
-        SELECT
-            id, name, category, asset_value, notes, archived,
-            COALESCE(acquired_at, acquiredat, created_at, createdat) as acq_at
-        FROM net_worth_asset
-        WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
-        ORDER BY asset_value DESC, id ASC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await?;
+    let asset_rows = match cutoff_ms {
+        Some(_) => {
+            sqlx::query(
+                r#"
+                SELECT
+                    id, name, category, asset_value, notes, archived,
+                    COALESCE(acquired_at, acquiredat, created_at, createdat) as acq_at,
+                    updated_at, deleted_at
+                FROM net_worth_asset
+                WHERE (userid = $1 OR user_id = $1)
+                ORDER BY asset_value DESC, id ASC
+                "#,
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                r#"
+                SELECT
+                    id, name, category, asset_value, notes, archived,
+                    COALESCE(acquired_at, acquiredat, created_at, createdat) as acq_at,
+                    updated_at, deleted_at
+                FROM net_worth_asset
+                WHERE (userid = $1 OR user_id = $1)
+                  AND (archived IS NULL OR archived = false)
+                ORDER BY asset_value DESC, id ASC
+                "#,
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?
+        }
+    };
 
     let mut custom_assets = Vec::new();
     let mut custom_assets_total = 0.0;
 
     for r in asset_rows {
+        let acq_at: Option<i64> = r.get("acq_at");
+        let archived: bool = r.get::<Option<bool>, _>("archived").unwrap_or(false);
+        let del_ms: Option<i64> = r.get("deleted_at");
+        let upd_ms: Option<i64> = r.get("updated_at");
+
+        if let Some(c_ms) = cutoff_ms {
+            if let Some(acq) = acq_at {
+                if acq > c_ms {
+                    continue;
+                }
+            }
+            if archived {
+                let delete_ts = del_ms.or(upd_ms);
+                if let Some(del) = delete_ts {
+                    if del <= c_ms {
+                        continue;
+                    }
+                }
+            }
+        }
+
         let id: i64 = r.get("id");
         let name: String = r.get("name");
         let category: String = r.get("category");
         let val: f64 = r.get("asset_value");
         let notes: Option<String> = r.get("notes");
-        let archived: bool = r.get("archived");
-        let acq_at: Option<i64> = r.get("acq_at");
 
         let (cat_label, cat_icon) = category_info(&category);
 
@@ -175,32 +228,71 @@ pub async fn calculate_net_worth(
     }
 
     // 2. Fetch accounts with their latest balance directly in PostgreSQL
-    let acc_rows = sqlx::query(
-        r#"
-        WITH latest_balances AS (
-            SELECT DISTINCT ON (account_id)
-                account_id AS acc_id,
-                value AS val
-            FROM balance
-            ORDER BY account_id, timestamp DESC NULLS LAST, id DESC
-        )
-        SELECT
-            a.id,
-            a.name,
-            a.nickname,
-            a.type,
-            COALESCE(a.account_limit, 0)::float8 as available_limit,
-            COALESCE(lb.val, 0)::float8 as balance
-        FROM account a
-        LEFT JOIN latest_balances lb ON lb.acc_id = a.id
-        WHERE (a.userid = $1 OR a.user_id = $1)
-          AND (a.archived IS NULL OR a.archived = false)
-        ORDER BY a.name ASC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await?;
+    let acc_rows = match cutoff_sec {
+        Some(c_sec) => {
+            sqlx::query(
+                r#"
+                WITH latest_balances AS (
+                    SELECT DISTINCT ON (account_id)
+                        account_id AS acc_id,
+                        value AS val
+                    FROM balance
+                    WHERE (timestamp IS NULL OR (CASE WHEN timestamp > 100000000000 THEN timestamp/1000 ELSE timestamp END) <= $2)
+                    ORDER BY account_id, timestamp DESC NULLS LAST, id DESC
+                )
+                SELECT
+                    a.id,
+                    a.name,
+                    a.nickname,
+                    a.type,
+                    COALESCE(a.account_limit, 0)::float8 as available_limit,
+                    lb.val::float8 as balance,
+                    a.created_at,
+                    a.archived,
+                    a.archived_at
+                FROM account a
+                LEFT JOIN latest_balances lb ON lb.acc_id = a.id
+                WHERE (a.userid = $1 OR a.user_id = $1)
+                ORDER BY a.name ASC
+                "#,
+            )
+            .bind(user_id)
+            .bind(c_sec)
+            .fetch_all(pool)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                r#"
+                WITH latest_balances AS (
+                    SELECT DISTINCT ON (account_id)
+                        account_id AS acc_id,
+                        value AS val
+                    FROM balance
+                    ORDER BY account_id, timestamp DESC NULLS LAST, id DESC
+                )
+                SELECT
+                    a.id,
+                    a.name,
+                    a.nickname,
+                    a.type,
+                    COALESCE(a.account_limit, 0)::float8 as available_limit,
+                    COALESCE(lb.val, 0)::float8 as balance,
+                    a.created_at,
+                    a.archived,
+                    a.archived_at
+                FROM account a
+                LEFT JOIN latest_balances lb ON lb.acc_id = a.id
+                WHERE (a.userid = $1 OR a.user_id = $1)
+                  AND (a.archived IS NULL OR a.archived = false)
+                ORDER BY a.name ASC
+                "#,
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?
+        }
+    };
 
     let mut pension_accounts = Vec::new();
     let mut cash_accounts = Vec::new();
@@ -213,12 +305,34 @@ pub async fn calculate_net_worth(
     let mut loan_debt_total = 0.0;
 
     for r in acc_rows {
+        if let Some(c_sec) = cutoff_sec {
+            let created_at: Option<i64> = r.get("created_at");
+            if let Some(cr) = created_at {
+                if cr > c_sec {
+                    continue;
+                }
+            }
+            let is_archived: bool = r.get::<Option<bool>, _>("archived").unwrap_or(false);
+            let archived_at: Option<i64> = r.get("archived_at");
+            if is_archived {
+                if let Some(arch_ts) = archived_at {
+                    if arch_ts <= c_sec {
+                        continue;
+                    }
+                }
+            }
+            let bal_opt: Option<f64> = r.get("balance");
+            if bal_opt.is_none() {
+                continue;
+            }
+        }
+
         let id: i64 = r.get("id");
         let name: String = r.get("name");
         let nickname: Option<String> = r.get("nickname");
         let acc_type: String = r.get("type");
         let available_limit: f64 = r.get("available_limit");
-        let balance: f64 = r.get("balance");
+        let balance: f64 = r.get::<Option<f64>, _>("balance").unwrap_or(0.0);
 
         let acc_dto = AccountItemDto {
             id,
@@ -343,25 +457,34 @@ pub async fn calculate_net_worth(
     })
 }
 
+#[allow(dead_code)]
 pub async fn calculate_history_points(
     pool: &sqlx::PgPool,
     user_id: &str,
 ) -> Result<Vec<NetWorthHistoryPoint>, sqlx::Error> {
+    calculate_history_points_as_of(pool, user_id, None).await
+}
+
+pub async fn calculate_history_points_as_of(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+    as_of: Option<NaiveDate>,
+) -> Result<Vec<NetWorthHistoryPoint>, sqlx::Error> {
     let now = Utc::now();
     let today = now.date_naive();
-    let now_sec = today.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp();
+    let effective_date = as_of.unwrap_or(today);
+    let now_sec = effective_date.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp();
 
-    let ten_years_ago = chrono::NaiveDate::from_ymd_opt(today.year() - 10, today.month(), 1)
-        .unwrap_or_else(|| today - chrono::Duration::days(3650));
+    let ten_years_ago = chrono::NaiveDate::from_ymd_opt(effective_date.year() - 10, effective_date.month(), 1)
+        .unwrap_or_else(|| effective_date - chrono::Duration::days(3650));
     let ten_years_ago_sec = ten_years_ago.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
 
-    // 1. Fetch user accounts
+    // 1. Fetch user accounts (all accounts, to accurately reconstruct historical balances)
     let accounts_rows = sqlx::query(
         r#"
-        SELECT id, type
+        SELECT id, type, created_at, archived, archived_at
         FROM account
         WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
         "#,
     )
     .bind(user_id)
@@ -374,6 +497,12 @@ pub async fn calculate_history_points(
     for r in accounts_rows {
         let acc_id: i64 = r.get("id");
         let acc_type: String = r.get("type");
+        let created_at: Option<i64> = r.get("created_at");
+        if let Some(cr) = created_at {
+            if cr > now_sec {
+                continue;
+            }
+        }
         match acc_type.as_str() {
             "PENSION" => pension_acc_ids.push(acc_id),
             "DEBIT" | "SHORT_TERM_SAVINGS" | "LONG_TERM_SAVINGS" | "DEBIT_SHARED_BILLS" | "SAVINGS" => {
@@ -383,16 +512,19 @@ pub async fn calculate_history_points(
         }
     }
 
-    // 2. Fetch all historical balances for these accounts
+    // 2. Fetch all historical balances for these accounts up to now_sec
     let balance_rows = sqlx::query(
         r#"
-        SELECT account_id, value::float8 as val, timestamp
+        SELECT account_id, value::float8 as val,
+               (CASE WHEN timestamp > 100000000000 THEN timestamp/1000 ELSE timestamp END) as ts_sec
         FROM balance
         WHERE (userid = $1 OR user_id = $1)
+          AND (timestamp IS NULL OR (CASE WHEN timestamp > 100000000000 THEN timestamp/1000 ELSE timestamp END) <= $2)
         ORDER BY timestamp ASC, id ASC
         "#,
     )
     .bind(user_id)
+    .bind(now_sec)
     .fetch_all(pool)
     .await?;
 
@@ -400,7 +532,7 @@ pub async fn calculate_history_points(
     for r in balance_rows {
         let acc_id: Option<i64> = r.get("account_id");
         let val: Option<f64> = r.get("val");
-        let ts: Option<i64> = r.get("timestamp");
+        let ts: Option<i64> = r.get("ts_sec");
         if let (Some(aid), Some(v), Some(t)) = (acc_id, val, ts) {
             account_balances_map.entry(aid).or_default().push((t, v));
         }
@@ -431,12 +563,18 @@ pub async fn calculate_history_points(
     let mut assets = Vec::new();
     for r in asset_rows {
         let val: f64 = r.get("asset_value");
-        let archived: bool = r.get("archived");
+        let archived: bool = r.get::<Option<bool>, _>("archived").unwrap_or(false);
         let acq_ms: Option<i64> = r.get("acq_ms");
         let start_sec = acq_ms.map(|ms| ms / 1000);
         let del_ms: Option<i64> = r.get("deleted_at");
         let upd_ms: Option<i64> = r.get("updated_at");
         let delete_sec = del_ms.or(upd_ms).map(|ms| ms / 1000);
+
+        if let Some(s) = start_sec {
+            if s > now_sec {
+                continue;
+            }
+        }
 
         assets.push(AssetItem {
             value: val,
@@ -446,21 +584,24 @@ pub async fn calculate_history_points(
         });
     }
 
-    // 4. Sample timestamps across last 10 years
+    // 4. Sample timestamps across last 10 years strictly up to now_sec
     let mut timestamp_set = std::collections::BTreeSet::new();
 
     // Monthly anchors
     let mut cur_month = ten_years_ago;
-    while cur_month <= today {
+    while cur_month <= effective_date {
         if let Some(dt) = cur_month.and_hms_opt(0, 0, 0) {
-            timestamp_set.insert(dt.and_utc().timestamp());
+            let t = dt.and_utc().timestamp();
+            if t <= now_sec {
+                timestamp_set.insert(t);
+            }
         }
         let (y, m) = if cur_month.month() == 12 {
             (cur_month.year() + 1, 1)
         } else {
             (cur_month.year(), cur_month.month() + 1)
         };
-        cur_month = chrono::NaiveDate::from_ymd_opt(y, m, 1).unwrap_or(today + chrono::Duration::days(1));
+        cur_month = chrono::NaiveDate::from_ymd_opt(y, m, 1).unwrap_or(effective_date + chrono::Duration::days(1));
     }
 
     // Balance timestamps
@@ -499,9 +640,13 @@ pub async fn calculate_history_points(
     // 5. Coalesce by day
     let mut date_to_latest_ts = std::collections::BTreeMap::new();
     for &ts in &timestamp_set {
-        if let Some(dt) = Utc.timestamp_opt(ts, 0).single() {
-            let d = dt.date_naive();
-            date_to_latest_ts.insert(d, ts);
+        if ts <= now_sec {
+            if let Some(dt) = Utc.timestamp_opt(ts, 0).single() {
+                let d = dt.date_naive();
+                if d <= effective_date {
+                    date_to_latest_ts.insert(d, ts);
+                }
+            }
         }
     }
 
@@ -571,11 +716,14 @@ pub async fn get_net_worth_page(
 ) -> Result<Html<String>, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
-    let vm = calculate_net_worth(&state.pool, &resolved)
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(effective_date) } else { None };
+
+    let vm = calculate_net_worth_as_of(&state.pool, &resolved, as_of)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let history_points = calculate_history_points(&state.pool, &resolved)
+    let history_points = calculate_history_points_as_of(&state.pool, &resolved, as_of)
         .await
         .unwrap_or_default();
     let chart_history_json = serde_json::to_string(&history_points).unwrap_or_else(|_| "[]".to_string());
@@ -583,6 +731,7 @@ pub async fn get_net_worth_page(
     let tmpl = NetWorthTemplate {
         vm,
         chart_history_json,
+        time_travel_date: as_of.map(|d| d.format("%Y-%m-%d").to_string()),
     };
     tmpl.render()
         .map(Html)
@@ -596,7 +745,10 @@ pub async fn get_net_worth_api(
 ) -> Result<Json<NetWorthDto>, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
-    calculate_net_worth(&state.pool, &resolved)
+    let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
+    let as_of = if is_time_travel { Some(effective_date) } else { None };
+
+    calculate_net_worth_as_of(&state.pool, &resolved, as_of)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -757,4 +909,108 @@ pub async fn bin_asset_endpoint(
     crate::authz::Authz::verify_affected(res.rows_affected(), "Net Worth Asset", id)?;
 
     Ok(Redirect::to("/netWorth"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_net_worth_template_includes_time_travel_date() {
+        let vm = NetWorthDto {
+            net_worth: 10000.0,
+            total_assets: 15000.0,
+            total_liabilities: 5000.0,
+            cash_total: 5000.0,
+            pension_total: 5000.0,
+            custom_assets_total: 5000.0,
+            credit_debt_total: 5000.0,
+            loan_debt_total: 0.0,
+            investable_portfolio: 10000.0,
+            annual_safe_withdrawal: 400.0,
+            monthly_safe_withdrawal: 33.33,
+            monthly_food_cost: 216.67,
+            food_covered_percent: 15,
+            asset_to_debt_ratio: Some(3.0),
+            debt_to_asset_ratio: Some(0.33),
+            debt_to_asset_ratio_formatted: "0.33 (33.3%)".to_string(),
+            is_healthy_ratio: true,
+            is_debt_free: false,
+            custom_assets: vec![],
+            pension_accounts: vec![],
+            cash_accounts: vec![],
+            credit_accounts: vec![],
+            loan_accounts: vec![],
+        };
+
+        let tmpl = NetWorthTemplate {
+            vm,
+            chart_history_json: "[]".to_string(),
+            time_travel_date: Some("2022-01-15".to_string()),
+        };
+
+        let rendered = tmpl.render().expect("Failed to render template");
+        assert!(rendered.contains("window.timeTravelDate = \"2022-01-15\";"));
+    }
+
+    #[test]
+    fn test_net_worth_template_omits_time_travel_date_when_live() {
+        let vm = NetWorthDto {
+            net_worth: 10000.0,
+            total_assets: 15000.0,
+            total_liabilities: 5000.0,
+            cash_total: 5000.0,
+            pension_total: 5000.0,
+            custom_assets_total: 5000.0,
+            credit_debt_total: 5000.0,
+            loan_debt_total: 0.0,
+            investable_portfolio: 10000.0,
+            annual_safe_withdrawal: 400.0,
+            monthly_safe_withdrawal: 33.33,
+            monthly_food_cost: 216.67,
+            food_covered_percent: 15,
+            asset_to_debt_ratio: Some(3.0),
+            debt_to_asset_ratio: Some(0.33),
+            debt_to_asset_ratio_formatted: "0.33 (33.3%)".to_string(),
+            is_healthy_ratio: true,
+            is_debt_free: false,
+            custom_assets: vec![],
+            pension_accounts: vec![],
+            cash_accounts: vec![],
+            credit_accounts: vec![],
+            loan_accounts: vec![],
+        };
+
+        let tmpl = NetWorthTemplate {
+            vm,
+            chart_history_json: "[]".to_string(),
+            time_travel_date: None,
+        };
+
+        let rendered = tmpl.render().expect("Failed to render template");
+        assert!(!rendered.contains("window.timeTravelDate"));
+    }
+
+    #[test]
+    fn test_custom_asset_time_travel_filtering_rules() {
+        let cutoff_date = NaiveDate::from_ymd_opt(2022, 6, 1).unwrap();
+        let cutoff_dt = cutoff_date.and_hms_opt(23, 59, 59).unwrap();
+        let cutoff_ms = cutoff_dt.and_utc().timestamp_millis();
+
+        // 1. Asset acquired after cutoff must be excluded
+        let acquired_2023_ms = NaiveDate::from_ymd_opt(2023, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp_millis();
+        assert!(acquired_2023_ms > cutoff_ms);
+
+        // 2. Asset acquired before cutoff must be included
+        let acquired_2021_ms = NaiveDate::from_ymd_opt(2021, 5, 1).unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp_millis();
+        assert!(acquired_2021_ms <= cutoff_ms);
+
+        // 3. Asset archived in 2024 was still active at cutoff in 2022
+        let deleted_2024_ms = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp_millis();
+        assert!(deleted_2024_ms > cutoff_ms); // Not excluded!
+
+        // 4. Asset deleted in 2021 was already deleted before cutoff in 2022
+        let deleted_2021_ms = NaiveDate::from_ymd_opt(2021, 12, 1).unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp_millis();
+        assert!(deleted_2021_ms <= cutoff_ms); // Excluded!
+    }
 }

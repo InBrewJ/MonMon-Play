@@ -28,6 +28,33 @@
         return '£' + Math.round(val);
     }
 
+    function getTimeTravelDateStr() {
+        if (window.timeTravelDate) return window.timeTravelDate;
+        try {
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i++) {
+                var c = cookies[i].trim();
+                if (c.indexOf('monmon_time_travel=') === 0) {
+                    var val = c.substring(19);
+                    if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                        return val;
+                    }
+                }
+            }
+        } catch(e) {}
+        return null;
+    }
+
+    function getEffectiveNowSec() {
+        var tt = getTimeTravelDateStr();
+        if (tt) {
+            var parts = tt.split('-');
+            var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59);
+            return Math.floor(d.getTime() / 1000);
+        }
+        return Math.floor(Date.now() / 1000);
+    }
+
     function getRangeSeconds(range) {
         switch (range) {
             case '2y': return 730 * 86400;
@@ -40,13 +67,16 @@
     }
 
     function getRangeLabel(range) {
+        var tt = getTimeTravelDateStr();
+        var prefix = tt ? ('Up to ' + tt + ' (') : 'Showing ';
+        var suffix = tt ? ')' : '';
         switch (range) {
-            case '2y': return 'Showing Last 2 Years';
-            case '5y': return 'Showing Last 5 Years';
-            case '10y': return 'Showing Last 10 Years';
+            case '2y': return prefix + 'Last 2 Years' + suffix;
+            case '5y': return prefix + 'Last 5 Years' + suffix;
+            case '10y': return prefix + 'Last 10 Years' + suffix;
             case '1y':
             default:
-                return 'Showing Last 1 Year';
+                return prefix + 'Last 1 Year' + suffix;
         }
     }
 
@@ -69,7 +99,8 @@
 
         var padding = { top: 30, right: 30, bottom: 40, left: 70 };
 
-        var nowSec = Math.floor(Date.now() / 1000);
+        var nowSec = getEffectiveNowSec();
+        var ttDateStr = getTimeTravelDateStr();
         var rangeDuration = getRangeSeconds(currentRange);
         var minSec = nowSec - rangeDuration;
 
@@ -125,9 +156,10 @@
         if (visible.length > 0) {
             var last = visible[visible.length - 1];
             if (last.timestamp < nowSec) {
+                var lastDateLabel = ttDateStr ? ('As of ' + ttDateStr) : 'Today';
                 visible.push({
                     timestamp: nowSec,
-                    dateStr: 'Today',
+                    dateStr: lastDateLabel,
                     pensions: last.pensions,
                     cashSavings: last.cashSavings,
                     fixedAssets: last.fixedAssets,
@@ -416,6 +448,11 @@
     document.addEventListener('DOMContentLoaded', function () {
         if (window.netWorthHistory && Array.isArray(window.netWorthHistory)) {
             rawData = window.netWorthHistory;
+        }
+
+        var labelEl = document.getElementById('nw-chart-range-label');
+        if (labelEl) {
+            labelEl.textContent = getRangeLabel(currentRange);
         }
 
         setupRangeButtons();
