@@ -179,6 +179,7 @@ pub struct PaydayWindowDto {
     pub total_savings_formatted: String,
     pub outgoings_funding_plan: Vec<OutgoingsFundingStepDto>,
     pub outgoings_items: Vec<PaydayTransferItemDto>,
+    pub pot_items: Vec<PaydayTransferItemDto>,
     pub savings_items: Vec<PaydayTransferItemDto>,
     pub items: Vec<PaydayTransferItemDto>,
 }
@@ -380,9 +381,201 @@ pub async fn calculate_payday_window(
     // Sort outgoings transfers by descending amount (largest bill commitment first)
     outgoings_items.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap_or(std::cmp::Ordering::Equal));
 
+    // 3. Monthly Pot Transfers (Living Allowance / MAX per month)
+    let mut pot_items = Vec::new();
+
+    let active_savings_plan_dto = crate::savings_plan::get_or_create_active_plan(pool, resolved_uid).await.ok();
+    let max_pot_allowance = active_savings_plan_dto
+        .as_ref()
+        .map(|p| p.breadline_month())
+        .unwrap_or(0.0);
+
+    if max_pot_allowance >= 0.005 {
+        let active_pot_row = sqlx::query(
+            r#"
+            SELECT p.id, p.spending_plan_name, p.spending_plan_food, p.spending_plan_fuel,
+                   p.spending_plan_transport, p.spending_plan_fun, p.spending_plan_sections_json,
+                   p.food_account_id, p.fun_account_id, p.fuel_account_id, p.transport_account_id
+            FROM pot p
+            WHERE (p.userid = $1 OR p.user_id = $1)
+              AND (p.archived IS NULL OR p.archived = false)
+              AND p.type = 'MONTHLY'
+            ORDER BY p.createdat DESC NULLS LAST, p.id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(resolved_uid)
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some(pr) = active_pot_row {
+            let pot_id: i64 = pr.get("id");
+            let sp_sections_json: Option<String> = pr.get("spending_plan_sections_json");
+            let food_acc_id: Option<i64> = pr.get("food_account_id");
+            let fuel_acc_id: Option<i64> = pr.get("fuel_account_id");
+            let trans_acc_id: Option<i64> = pr.get("transport_account_id");
+            let fun_acc_id: Option<i64> = pr.get("fun_account_id");
+
+            let linked_pot_acc_ids: Vec<i64> = sqlx::query_scalar(
+                "SELECT account_id FROM pot_accounts WHERE pot_id = $1 ORDER BY account_id ASC"
+            )
+            .bind(pot_id)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            // Load account details (name, type, latest balance) for lookup
+            let all_user_acc_rows = sqlx::query(
+                r#"
+                SELECT a.id, a.name, a.type,
+                       COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
+                FROM account a
+                WHERE (a.userid = $1 OR a.user_id = $1)
+                  AND (a.archived IS NULL OR a.archived = false)
+                "#,
+            )
+            .bind(resolved_uid)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            let mut acc_map: std::collections::HashMap<i64, (String, String, f32)> = std::collections::HashMap::new();
+            for ar in all_user_acc_rows {
+                let aid: i64 = ar.get("id");
+                let aname: String = ar.get("name");
+                let atype: String = ar.get("type");
+                let abal: f32 = ar.get("bal");
+                acc_map.insert(aid, (aname, atype, abal));
+            }
+
+            struct RawSection {
+                heading: String,
+                amount: f32,
+                account_id: Option<i64>,
+            }
+            let mut raw_sections: Vec<RawSection> = Vec::new();
+
+            if let Some(ref j) = sp_sections_json {
+                if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
+                    for s in parsed {
+                        let heading = s.get("heading").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+                        let amount = s.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        let acc_id = s.get("accountId").and_then(|v| v.as_i64());
+                        if !heading.is_empty() && amount >= 0.005 {
+                            raw_sections.push(RawSection { heading, amount, account_id: acc_id });
+                        }
+                    }
+                }
+            }
+
+            if raw_sections.is_empty() {
+                if let Some(f) = pr.get::<Option<f32>, _>("spending_plan_food") {
+                    if f >= 0.005 {
+                        raw_sections.push(RawSection { heading: "Food".to_string(), amount: f, account_id: food_acc_id });
+                    }
+                }
+                if let Some(f) = pr.get::<Option<f32>, _>("spending_plan_fuel") {
+                    if f >= 0.005 {
+                        raw_sections.push(RawSection { heading: "Fuel".to_string(), amount: f, account_id: fuel_acc_id });
+                    }
+                }
+                if let Some(t) = pr.get::<Option<f32>, _>("spending_plan_transport") {
+                    if t >= 0.005 {
+                        raw_sections.push(RawSection { heading: "Transport".to_string(), amount: t, account_id: trans_acc_id });
+                    }
+                }
+                if let Some(f) = pr.get::<Option<f32>, _>("spending_plan_fun") {
+                    if f >= 0.005 {
+                        raw_sections.push(RawSection { heading: "Fun".to_string(), amount: f, account_id: fun_acc_id });
+                    }
+                }
+            }
+
+            // Identify primary pot account
+            let primary_pot_acc_id = food_acc_id
+                .filter(|aid| Some(*aid) != source_acc_id)
+                .or_else(|| {
+                    raw_sections.iter().find_map(|s| {
+                        s.account_id.filter(|aid| Some(*aid) != source_acc_id)
+                    })
+                })
+                .or_else(|| {
+                    linked_pot_acc_ids.iter().find(|aid| Some(**aid) != source_acc_id).copied()
+                });
+
+            let mut allocated_pot_total = 0.0f32;
+            for (idx, sec) in raw_sections.into_iter().enumerate() {
+                let target_acc_id = sec.account_id.or(primary_pot_acc_id);
+                if let Some(dest_id) = target_acc_id {
+                    if Some(dest_id) == source_acc_id {
+                        continue;
+                    }
+                    if let Some((dest_name, dest_type, dest_bal)) = acc_map.get(&dest_id) {
+                        let amt = (sec.amount * 100.0).round() / 100.0;
+                        allocated_pot_total += amt;
+                        let desc = format!("Monthly pot living allowance for {}", sec.heading);
+
+                        pot_items.push(PaydayTransferItemDto {
+                            id: format!("monthly_pot_{}_{}", pot_id, idx + 1),
+                            priority: -5,
+                            title: format!("{} (Monthly Pot)", sec.heading),
+                            category: "MONTHLY_POT".to_string(),
+                            source_account_id: source_acc_id,
+                            source_account_name: source_acc_name.clone(),
+                            destination_account_id: Some(dest_id),
+                            destination_account_name: dest_name.clone(),
+                            destination_account_type: dest_type.clone(),
+                            amount: amt,
+                            amount_formatted: format!("{:.2}", amt),
+                            target_amount: Some(amt),
+                            target_amount_formatted: Some(format!("{:.2}", amt)),
+                            current_destination_balance: Some(*dest_bal),
+                            current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
+                            progress_pct: None,
+                            description: desc,
+                            breakdown: Vec::new(),
+                        });
+                    }
+                }
+            }
+
+            // If configured sections sum to less than MAX / mo living allowance, allocate remainder to primary pot account
+            if max_pot_allowance > allocated_pot_total + 0.005 {
+                let remainder = ((max_pot_allowance - allocated_pot_total) * 100.0).round() / 100.0;
+                if let Some(dest_id) = primary_pot_acc_id {
+                    if Some(dest_id) != source_acc_id {
+                        if let Some((dest_name, dest_type, dest_bal)) = acc_map.get(&dest_id) {
+                            let desc = format!("Remaining living allowance to reach MAX / mo (£{:.2})", max_pot_allowance);
+                            pot_items.push(PaydayTransferItemDto {
+                                id: format!("monthly_pot_{}_remainder", pot_id),
+                                priority: -4,
+                                title: "Remaining Living Allowance (Monthly Pot)".to_string(),
+                                category: "MONTHLY_POT".to_string(),
+                                source_account_id: source_acc_id,
+                                source_account_name: source_acc_name.clone(),
+                                destination_account_id: Some(dest_id),
+                                destination_account_name: dest_name.clone(),
+                                destination_account_type: dest_type.clone(),
+                                amount: remainder,
+                                amount_formatted: format!("{:.2}", remainder),
+                                target_amount: Some(remainder),
+                                target_amount_formatted: Some(format!("{:.2}", remainder)),
+                                current_destination_balance: Some(*dest_bal),
+                                current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
+                                progress_pct: None,
+                                description: desc,
+                                breakdown: Vec::new(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let mut savings_items = Vec::new();
 
-    // 3. Yearly Outgoings Autosave / Sinking Fund Reserve (MonMon Calculated)
+    // 4. Yearly Outgoings Autosave / Sinking Fund Reserve (MonMon Calculated)
     let yearly_account_row = sqlx::query(
         "SELECT yearly_bills_account_id FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1 OR email = $1) LIMIT 1"
     )
@@ -613,10 +806,12 @@ pub async fn calculate_payday_window(
 
     // Filter out any items with 0.00 amount
     outgoings_items.retain(|it| it.amount >= 0.005);
+    pot_items.retain(|it| it.amount >= 0.005);
     savings_items.retain(|it| it.amount >= 0.005);
 
-    // Combine all transfers: Outgoings cover items sit segregated at the top, followed by savings & sinking fund
+    // Combine all transfers: Outgoings cover items sit segregated at the top, followed by monthly pot, then savings & sinking fund
     let mut items = outgoings_items.clone();
+    items.extend(pot_items.clone());
     items.extend(savings_items.clone());
     items.retain(|it| it.amount >= 0.005);
 
@@ -842,6 +1037,7 @@ pub async fn calculate_payday_window(
         total_savings_formatted: format!("{:.2}", total_savings),
         outgoings_funding_plan,
         outgoings_items,
+        pot_items,
         savings_items,
         items,
     })
@@ -1269,5 +1465,69 @@ mod tests {
         assert!(total_available_3 < total_transfers_3);
         let deficit_3 = total_transfers_3 - total_available_3;
         assert_eq!(deficit_3, 300.0);
+    }
+
+    #[test]
+    fn test_monthly_pot_transfers_and_full_allowance_topup() {
+        // Scenario matching user jason@urawizard.com:
+        // Income = £2642.83
+        // Outgoings transfers = £2024.09
+        // Savings transfers = £1362.13
+        // Monthly pot MAX / mo allowance = £367.16
+        // Configured sections: Food £216.67, Vape £28.00 (sum = £244.67)
+        // Remainder = £367.16 - £244.67 = £122.49 allocated to primary pot account (Monzo)
+        // Total pot transfers = 216.67 + 28.00 + 122.49 = £367.16
+        // Total transfers = 2024.09 + 1362.13 + 367.16 = £3753.38
+        // Top-up needed = £3753.38 - £2642.83 = exactly £1110.55!
+        let income = 2642.83f32;
+        let outgoings = 2024.09f32;
+        let savings = 1362.13f32;
+        let max_pot_allowance = 367.16f32;
+
+        let food_amount = 216.67f32;
+        let vape_amount = 28.00f32;
+        let allocated_sections = ((food_amount + vape_amount) * 100.0).round() / 100.0;
+        let remainder = ((max_pot_allowance - allocated_sections) * 100.0).round() / 100.0;
+        assert_eq!(remainder, 122.49);
+
+        let total_pot_transfers = ((allocated_sections + remainder) * 100.0).round() / 100.0;
+        assert_eq!(total_pot_transfers, 367.16);
+
+        let total_transfers = ((outgoings + savings + total_pot_transfers) * 100.0).round() / 100.0;
+        assert_eq!(total_transfers, 3753.38);
+
+        let topup = ((total_transfers - income) * 100.0).round() / 100.0;
+        assert_eq!(topup, 1110.55);
+
+        // Verify savings pool takes from highest balance savings account (NS&I bal £2175)
+        let savings_pool = vec![
+            SavingsPoolItem {
+                id: 6594,
+                name: "[Real Emergency 🚨] NS&I Premium Bonds".to_string(),
+                initial_bal: 2175.0,
+                remaining_bal: 2175.0,
+            },
+            SavingsPoolItem {
+                id: 54,
+                name: "Overdraft yearly bills".to_string(),
+                initial_bal: 100.45,
+                remaining_bal: 100.45,
+            },
+        ];
+
+        let plan = calculate_outgoings_funding_plan(
+            Some(2),
+            "Natwest Reward Debit 💵💵💵",
+            "DEBIT",
+            savings_pool,
+            Some(topup),
+        );
+
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].from_savings_account_id, 6594);
+        assert_eq!(plan[0].from_savings_account_name, "[Real Emergency 🚨] NS&I Premium Bonds");
+        assert_eq!(plan[0].to_debit_account_id, 2);
+        assert_eq!(plan[0].amount, 1110.55);
+        assert_eq!(plan[0].amount_formatted, "1110.55");
     }
 }
