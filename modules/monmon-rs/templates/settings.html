@@ -67,21 +67,31 @@
                 </div>
             {% endif %}
 
-            <!-- Approved Users Section -->
-            <div style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
-                <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main); margin-bottom: 0.75rem;">
-                    <i class="fas fa-users-check" style="color: var(--success); margin-right: 6px;"></i> Active / Approved Users ({{ approved_users.len() }})
+            <!-- Approved Users Section (Collapsed by default) -->
+            <details class="approved-users-details" style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                <summary style="font-weight: 700; font-size: 0.92rem; color: var(--text-main); margin-bottom: 0.75rem; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; list-style: none;">
+                    <span>
+                        <i class="fas fa-users-check" style="color: var(--success); margin-right: 6px;"></i> Active / Approved Users ({{ approved_users.len() }})
+                    </span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 4px;">
+                        <span class="users-toggle-label">Show</span>
+                        <i class="fas fa-chevron-down details-chevron" style="transition: transform 0.2s;"></i>
+                    </span>
+                </summary>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 0.75rem;">
+                    {% if approved_users.is_empty() %}
+                        <div style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">No approved users found.</div>
+                    {% else %}
+                        {% for a in approved_users %}
+                            <span style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; color: var(--text-main);">
+                                <i class="fas fa-user-check" style="color: var(--success);"></i>
+                                <b>{{ a.username.as_deref().unwrap_or("User") }}</b>
+                                <span style="color: var(--text-muted); font-size: 0.78rem;">({{ a.userid }})</span>
+                            </span>
+                        {% endfor %}
+                    {% endif %}
                 </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    {% for a in approved_users %}
-                        <span style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; color: var(--text-main);">
-                            <i class="fas fa-user-check" style="color: var(--success);"></i>
-                            <b>{{ a.username.as_deref().unwrap_or("User") }}</b>
-                            <span style="color: var(--text-muted); font-size: 0.78rem;">({{ a.userid }})</span>
-                        </span>
-                    {% endfor %}
-                </div>
-            </div>
+            </details>
         </div>
 
         <!-- Authentication & Passkeys Card -->
@@ -104,17 +114,63 @@
             <div style="font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-main); margin-bottom: 1rem;">
                 <i class="fas fa-globe" style="color: var(--primary); margin-right: 8px;"></i> Regional Preferences
             </div>
-            <form method="POST" action="/settings" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <form method="POST" action="/settings" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem;">
                 <label for="region" style="font-size: 0.9rem; font-weight: 600; color: var(--text-main);">Bank Holiday Region:</label>
-                <select name="region" id="region" class="w3-select w3-border w3-round" style="width: auto; padding: 6px 12px; font-size: 0.9rem; background: var(--card-bg-subtle); color: var(--text-main); border-color: var(--border-color);">
+                <select name="region" id="region" class="w3-select w3-border w3-round" style="width: auto; min-width: 260px; max-width: 100%; padding: 6px 12px; font-size: 0.9rem; background: var(--card-bg-subtle); color: var(--text-main); border-color: var(--border-color); box-sizing: border-box;">
                     <option value="UK" {% if region == "UK" %}selected{% endif %}>United Kingdom (England & Wales)</option>
                     <option value="SCOTLAND" {% if region == "SCOTLAND" %}selected{% endif %}>Scotland</option>
                     <option value="NI" {% if region == "NI" %}selected{% endif %}>Northern Ireland</option>
                 </select>
                 <button type="submit" class="btn-action" style="background: var(--primary); color: #fff; padding: 7px 16px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
-                    Save
+                    <i class="fas fa-save" style="margin-right: 4px;"></i> Save Preference
                 </button>
             </form>
+
+            <!-- Bank Holidays on File Section -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 0.75rem;">
+                    <div>
+                        <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">
+                            <i class="fas fa-calendar-alt" style="color: var(--primary); margin-right: 6px;"></i> Bank Holidays on File
+                        </span>
+                        <span class="badge-pill" style="margin-left: 6px; background: rgba(99, 102, 241, 0.1); color: var(--primary); border: 1px solid rgba(99, 102, 241, 0.25); font-size: 0.78rem; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">
+                            Data valid through December {{ max_year }}
+                        </span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                        Used for automatic payday anchoring & bill due-date shifting
+                    </div>
+                </div>
+
+                <!-- Region Filter Tabs for Viewing Bank Holidays -->
+                <div style="display: flex; gap: 6px; margin-bottom: 0.75rem; flex-wrap: wrap;">
+                    <button type="button" class="holiday-region-tab active" data-region="UK" onclick="switchHolidayRegion('UK')" style="padding: 5px 12px; font-size: 0.82rem; font-weight: 600; border-radius: 6px; border: 1px solid var(--primary); background: var(--primary); color: #fff; cursor: pointer;">
+                        England & Wales
+                    </button>
+                    <button type="button" class="holiday-region-tab" data-region="SCOTLAND" onclick="switchHolidayRegion('SCOTLAND')" style="padding: 5px 12px; font-size: 0.82rem; font-weight: 500; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main); cursor: pointer;">
+                        Scotland
+                    </button>
+                    <button type="button" class="holiday-region-tab" data-region="NI" onclick="switchHolidayRegion('NI')" style="padding: 5px 12px; font-size: 0.82rem; font-weight: 500; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg-subtle); color: var(--text-main); cursor: pointer;">
+                        Northern Ireland
+                    </button>
+                </div>
+
+                <!-- Bank Holidays List Table (Scrollable) -->
+                <div style="max-height: 340px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-bg-subtle);">
+                    <table class="w3-table w3-striped" style="font-size: 0.85rem;" id="bank-holidays-table">
+                        <thead>
+                            <tr style="text-align: left; color: var(--text-muted); background: var(--card-bg); position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border-color);">
+                                <th style="padding: 8px 12px; width: 150px;">Date</th>
+                                <th style="padding: 8px 12px;">Holiday Name</th>
+                                <th style="padding: 8px 12px;">Notes</th>
+                                <th style="padding: 8px 12px; text-align: right; width: 100px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bank-holidays-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- System & Build Metadata -->
@@ -142,6 +198,72 @@
             </div>
         </div>
     </main>
+
+    <script>
+        var allBankHolidays = {{ all_bank_holidays_json|safe }};
+        var currentDisplayRegion = '{{ region }}';
+
+        function renderBankHolidays(reg) {
+            var tbody = document.getElementById('bank-holidays-tbody');
+            if (!tbody || !allBankHolidays) return;
+
+            var divisionKey = 'england-and-wales';
+            if (reg === 'SCOTLAND') divisionKey = 'scotland';
+            else if (reg === 'NI') divisionKey = 'northern-ireland';
+
+            var divData = allBankHolidays[divisionKey];
+            if (!divData || !divData.events) return;
+
+            var todayStr = new Date().toISOString().slice(0, 10);
+            var html = '';
+
+            divData.events.forEach(function(ev) {
+                var isUpcoming = ev.date >= todayStr;
+                var d = new Date(ev.date + 'T00:00:00');
+                var dayOfWeek = d.toLocaleDateString('en-GB', { weekday: 'short' });
+                var formattedDate = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                html += '<tr style="' + (isUpcoming ? 'font-weight: 600;' : 'opacity: 0.7;') + '">';
+                html += '<td style="padding: 6px 12px; white-space: nowrap;">' + dayOfWeek + ', ' + formattedDate + '</td>';
+                html += '<td style="padding: 6px 12px;">' + ev.title + '</td>';
+                html += '<td style="padding: 6px 12px; color: var(--text-muted);">' + (ev.notes ? ev.notes : '—') + '</td>';
+                html += '<td style="padding: 6px 12px; text-align: right;">';
+                if (isUpcoming) {
+                    html += '<span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;">Upcoming</span>';
+                } else {
+                    html += '<span class="badge-pill" style="background: var(--card-bg); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;">Past</span>';
+                }
+                html += '</td>';
+                html += '</tr>';
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        function switchHolidayRegion(reg) {
+            currentDisplayRegion = reg;
+            document.querySelectorAll('.holiday-region-tab').forEach(function(btn) {
+                if (btn.getAttribute('data-region') === reg) {
+                    btn.classList.add('active');
+                    btn.style.background = 'var(--primary)';
+                    btn.style.color = '#fff';
+                    btn.style.borderColor = 'var(--primary)';
+                    btn.style.fontWeight = '600';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.background = 'var(--card-bg-subtle)';
+                    btn.style.color = 'var(--text-main)';
+                    btn.style.borderColor = 'var(--border-color)';
+                    btn.style.fontWeight = '500';
+                }
+            });
+            renderBankHolidays(reg);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            switchHolidayRegion('{{ region }}');
+        });
+    </script>
 
     {% include "nav_scripts.html" %}
 </body>

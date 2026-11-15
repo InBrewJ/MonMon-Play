@@ -16,8 +16,8 @@
         var mainNavHeight = (mainNav && mainNav.offsetHeight > 0) ? mainNav.offsetHeight : 0;
         var totalNavHeight = tickerHeight + headerHeight + mainNavHeight;
 
-        // Sticky offset: #ticker is position: sticky; top: 0
-        var stickyTopOffset = tickerHeight;
+        // Sticky offset: mainNav (nav.crumbs) is position: sticky; top: 0
+        var stickyTopOffset = mainNavHeight;
 
         return {
             tickerHeight: tickerHeight,

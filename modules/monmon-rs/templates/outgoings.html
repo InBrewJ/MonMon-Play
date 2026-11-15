@@ -155,9 +155,9 @@
             </div>
 
             <!-- Yearly Bills Sinking Fund Target Account Panel (Visible on Yearly Bills Tab) -->
-            <div id="yearly-bills-config-panel" style="display: none; margin-bottom: 1.25rem; padding: 14px 18px; background: var(--card-bg-subtle, #f8fafc); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px;">
-                <form method="POST" action="/myOutgoings/yearlyTargetAccount" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
-                    <div style="flex: 1; min-width: 260px;">
+            <div id="yearly-bills-config-panel" style="display: none; margin-bottom: 1.25rem; padding: 14px 18px; background: var(--card-bg-subtle, #f8fafc); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; max-width: 100%; box-sizing: border-box;">
+                <form method="POST" action="/myOutgoings/yearlyTargetAccount" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; max-width: 100%; box-sizing: border-box;">
+                    <div style="flex: 1 1 260px; min-width: 0; max-width: 100%; box-sizing: border-box;">
                         <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
                             <i class="fas fa-piggy-bank" style="color: #4f46e5;"></i>
                             <span>Yearly Bills Sinking Fund Target Account</span>
@@ -166,8 +166,8 @@
                             Select an account to receive monthly top-ups saved up for upcoming yearly bills based on remaining paydays.
                         </p>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <select name="accountId" class="w3-select w3-border w3-round" style="width: auto; min-width: 200px; padding: 6px 10px; font-size: 0.88rem;">
+                    <div class="yearly-target-controls" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1 1 auto; max-width: 100%; min-width: 0; box-sizing: border-box;">
+                        <select name="accountId" class="w3-select w3-border w3-round" style="flex: 1 1 200px; max-width: 100%; min-width: 0; width: auto; padding: 6px 10px; font-size: 0.88rem; box-sizing: border-box; text-overflow: ellipsis; overflow: hidden;">
                             <option value="">-- No Target Account (Disabled) --</option>
                             {% for acc in accounts %}
                                 <option value="{{ acc.id }}" {% if acc.is_selected(yearly_bills_account_id) %}selected{% endif %}>
@@ -175,7 +175,7 @@
                                 </option>
                             {% endfor %}
                         </select>
-                        <button type="submit" class="btn-action" style="padding: 7px 16px; background: #4f46e5; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
+                        <button type="submit" class="btn-action" style="padding: 7px 16px; background: #4f46e5; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem; white-space: nowrap;">
                             <i class="fas fa-save"></i> Save Target Account
                         </button>
                     </div>
@@ -229,7 +229,7 @@
                                     data-is-paused="{% if o.paused %}true{% else %}false{% endif %}"
                                     data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
                                     data-is-calculated="{% if o.is_calculated %}true{% else %}false{% endif %}"
-                                    style="{% if o.paused %}opacity: 0.75; background: rgba(245, 158, 11, 0.05);{% endif %}{% if o.is_yearly && !o.is_due_now %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04);{% endif %}">
+                                    style="{% if o.paused %}opacity: 0.75; background: rgba(245, 158, 11, 0.05);{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04);{% endif %}">
                                     <td class="col-name">
                                         <b>{{ o.name }}</b>
                                         {% if o.is_calculated %}
@@ -373,7 +373,7 @@
                          data-is-paused="{% if o.paused %}true{% else %}false{% endif %}"
                          data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
                          data-is-calculated="{% if o.is_calculated %}true{% else %}false{% endif %}"
-                         style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.is_yearly && !o.is_due_now %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04); border-left: 3px solid #6366f1;{% endif %}">
+                         style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04); border-left: 3px solid #6366f1;{% endif %}">
                         <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                             <div class="item-card-title col-name" style="font-weight: 700; color: var(--text-main);">
                                 <div style="display: inline-flex; align-items: center; gap: 4px;">
@@ -689,8 +689,11 @@
         }
         document.addEventListener('DOMContentLoaded', function() {
             var urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('tab') === 'yearly') {
-                filterTab('yearly');
+            var tabParam = urlParams.get('tab');
+            if (tabParam === 'yearly' || tabParam === 'paused' || tabParam === 'all') {
+                filterTab(tabParam);
+            } else {
+                filterTab('active');
             }
 
             document.addEventListener('click', function(e) {

@@ -104,9 +104,8 @@ a:hover {
 
 /* Header & Ticker */
 #ticker {
-  position: sticky;
-  top: 0;
-  z-index: 1000;
+  position: relative;
+  z-index: 100;
   min-height: 38px;
   line-height: 1.4;
   padding: 0.55rem 1.5rem;
@@ -218,12 +217,24 @@ header.app-header h1 a:hover .monmon-logo-icon {
 
 /* Navigation */
 nav.crumbs {
+  position: sticky;
+  top: 0;
+  z-index: 999;
   background: var(--nav-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--nav-border);
   padding: 0.5rem 2rem;
   box-shadow: var(--shadow-sm);
   margin-bottom: 1.5rem;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  nav.crumbs {
+    padding: 0.4rem 1rem;
+    margin-bottom: 1rem;
+  }
 }
 
 .nav-bar-inner {
@@ -2695,6 +2706,78 @@ input[type="text"].header-search-input:focus,
     transform: scale(1);
   }
 }
+
+/* Floating Scroll to Top Button (Center Bottom) */
+.floating-scroll-top {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--card-bg, #1e293b);
+  color: var(--primary, #6366f1);
+  border: 1px solid var(--border-color, #334155);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  z-index: 998;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.floating-scroll-top.visible {
+  opacity: 0.9;
+  pointer-events: auto;
+}
+
+.floating-scroll-top:hover {
+  opacity: 1;
+  background: var(--primary, #6366f1);
+  color: #ffffff;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* Settings Approved Users Accordion */
+.approved-users-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.approved-users-details[open] .details-chevron {
+  transform: rotate(180deg);
+}
+
+.approved-users-details[open] .users-toggle-label {
+  display: none;
+}
+
+/* Outgoings Yearly Bills Form Field Bounds */
+#yearly-bills-config-panel select[name="accountId"] {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 600px) {
+  #yearly-bills-config-panel form > div {
+    width: 100% !important;
+  }
+  #yearly-bills-config-panel .yearly-target-controls {
+    width: 100% !important;
+  }
+  #yearly-bills-config-panel select[name="accountId"] {
+    width: 100% !important;
+  }
+  #yearly-bills-config-panel button[type="submit"] {
+    width: 100% !important;
+    justify-content: center;
+  }
+}
+
 
 
 

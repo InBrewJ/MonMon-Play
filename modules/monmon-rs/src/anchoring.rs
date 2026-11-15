@@ -1,26 +1,44 @@
 use chrono::{Datelike, NaiveDate};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
-#[derive(Deserialize)]
-struct BankHolidayFile {
-    events: Vec<BankHolidayEvent>,
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct BankHolidayDivision {
+    pub division: String,
+    pub events: Vec<BankHolidayEvent>,
 }
 
-#[derive(Deserialize)]
-struct BankHolidayEvent {
-    date: String,
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct BankHolidayEvent {
+    pub title: String,
+    pub date: String,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
+    pub bunting: bool,
 }
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct UkBankHolidaysData {
+    #[serde(rename = "england-and-wales")]
+    pub england_and_wales: BankHolidayDivision,
+    pub scotland: BankHolidayDivision,
+    #[serde(rename = "northern-ireland")]
+    pub northern_ireland: BankHolidayDivision,
+}
+
+pub static UK_BANK_HOLIDAYS_RAW: LazyLock<UkBankHolidaysData> = LazyLock::new(|| {
+    let json_str = include_str!("bank-holidays-uk.json");
+    serde_json::from_str::<UkBankHolidaysData>(json_str)
+        .expect("bank-holidays-uk.json should be valid UkBankHolidaysData")
+});
 
 pub static UK_BANK_HOLIDAYS: LazyLock<HashSet<NaiveDate>> = LazyLock::new(|| {
     let mut set = HashSet::new();
-    let json_str = include_str!("bank-holidays-uk.json");
-    if let Ok(parsed) = serde_json::from_str::<BankHolidayFile>(json_str) {
-        for ev in parsed.events {
-            if let Ok(d) = NaiveDate::parse_from_str(&ev.date, "%Y-%m-%d") {
-                set.insert(d);
-            }
+    for ev in &UK_BANK_HOLIDAYS_RAW.england_and_wales.events {
+        if let Ok(d) = NaiveDate::parse_from_str(&ev.date, "%Y-%m-%d") {
+            set.insert(d);
         }
     }
     // Hardcoded safety net matching Java BankHolidayHelper
@@ -30,8 +48,48 @@ pub static UK_BANK_HOLIDAYS: LazyLock<HashSet<NaiveDate>> = LazyLock::new(|| {
     set
 });
 
+pub static SCOTLAND_BANK_HOLIDAYS: LazyLock<HashSet<NaiveDate>> = LazyLock::new(|| {
+    let mut set = HashSet::new();
+    for ev in &UK_BANK_HOLIDAYS_RAW.scotland.events {
+        if let Ok(d) = NaiveDate::parse_from_str(&ev.date, "%Y-%m-%d") {
+            set.insert(d);
+        }
+    }
+    set
+});
+
+pub static NI_BANK_HOLIDAYS: LazyLock<HashSet<NaiveDate>> = LazyLock::new(|| {
+    let mut set = HashSet::new();
+    for ev in &UK_BANK_HOLIDAYS_RAW.northern_ireland.events {
+        if let Ok(d) = NaiveDate::parse_from_str(&ev.date, "%Y-%m-%d") {
+            set.insert(d);
+        }
+    }
+    set
+});
+
 pub fn is_bank_holiday(date: NaiveDate) -> bool {
-    UK_BANK_HOLIDAYS.contains(&date)
+    is_bank_holiday_in_region(date, "UK")
+}
+
+pub fn is_bank_holiday_in_region(date: NaiveDate, region: &str) -> bool {
+    match region.to_uppercase().as_str() {
+        "SCOTLAND" => SCOTLAND_BANK_HOLIDAYS.contains(&date),
+        "NI" | "NORTHERN IRELAND" => NI_BANK_HOLIDAYS.contains(&date),
+        _ => UK_BANK_HOLIDAYS.contains(&date),
+    }
+}
+
+pub fn get_bank_holidays_for_region(region: &str) -> Vec<BankHolidayEvent> {
+    match region.to_uppercase().as_str() {
+        "SCOTLAND" => UK_BANK_HOLIDAYS_RAW.scotland.events.clone(),
+        "NI" | "NORTHERN IRELAND" => UK_BANK_HOLIDAYS_RAW.northern_ireland.events.clone(),
+        _ => UK_BANK_HOLIDAYS_RAW.england_and_wales.events.clone(),
+    }
+}
+
+pub fn get_all_bank_holidays() -> &'static UkBankHolidaysData {
+    &UK_BANK_HOLIDAYS_RAW
 }
 
 pub fn is_weekend(date: NaiveDate) -> bool {
@@ -184,6 +242,16 @@ mod tests {
         assert!(is_bank_holiday(NaiveDate::from_ymd_opt(2026, 8, 31).unwrap())); // Summer Bank Holiday
         assert!(is_bank_holiday(NaiveDate::from_ymd_opt(2026, 12, 25).unwrap())); // Christmas
         assert!(is_bank_holiday(NaiveDate::from_ymd_opt(2026, 12, 28).unwrap())); // Boxing Day sub
+
+        // Test Scotland distinct holidays
+        let jan2 = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+        assert!(is_bank_holiday_in_region(jan2, "SCOTLAND"));
+        assert!(!is_bank_holiday_in_region(jan2, "UK"));
+
+        // Test Northern Ireland distinct holidays
+        let st_patricks = NaiveDate::from_ymd_opt(2026, 3, 17).unwrap();
+        assert!(is_bank_holiday_in_region(st_patricks, "NI"));
+        assert!(!is_bank_holiday_in_region(st_patricks, "UK"));
     }
 
     #[test]

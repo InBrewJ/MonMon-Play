@@ -576,3 +576,33 @@
     }
 })();
 </script>
+
+<!-- Floating Scroll-to-Top Button (Center Bottom) -->
+<button type="button" id="btn-scroll-to-top" class="floating-scroll-top" title="Scroll to top" aria-label="Scroll to top" style="display: none;">
+    <i class="fas fa-chevron-up"></i>
+</button>
+<script>
+(function() {
+    var btn = document.getElementById('btn-scroll-to-top');
+    if (!btn) return;
+    btn.style.display = 'flex';
+    var ticking = false;
+    window.addEventListener('scroll', function() {
+        if (!ticking) {
+            window.requestAnimationFrame(function() {
+                if (window.scrollY > 250) {
+                    btn.classList.add('visible');
+                } else {
+                    btn.classList.remove('visible');
+                }
+                ticking = false;
+            });
+            ticking = true;
+        }
+    }, { passive: true });
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+})();
+</script>

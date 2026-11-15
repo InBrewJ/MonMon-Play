@@ -318,6 +318,12 @@ async fn main() {
     .await;
 
     let _ = sqlx::query(
+        "ALTER TABLE user_access ADD COLUMN IF NOT EXISTS region VARCHAR(64) DEFAULT 'UK'"
+    )
+    .execute(&pool)
+    .await;
+
+    let _ = sqlx::query(
         "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS overwritten_balances_json TEXT"
     )
     .execute(&pool)
