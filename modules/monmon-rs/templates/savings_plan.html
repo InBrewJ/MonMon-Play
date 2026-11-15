@@ -175,8 +175,8 @@
                                 class="w3-button w3-round w3-small"
                                 style="background: var(--primary-light, rgba(79, 70, 229, 0.12)); border: 1px solid var(--primary); color: var(--primary); font-weight: 700; padding: 5px 12px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;"
                                 data-target-allowance="{{ self.pot_target_budget() }}"
-                                title="Snap living allowance to match monthly pot budget of £{{ self.pot_target_budget() }}">
-                            <i class="fas fa-magnet"></i> Snap to Monthly Pot (£{{ self.pot_target_budget() }})
+                                title="Snap living allowance to match monthly pot budget of £{{ self.pot_target_budget() }} ({{ self.pot_snap_percent() }}%)">
+                            <i class="fas fa-magnet"></i> Snap to Monthly Pot ({{ self.pot_snap_percent() }}%)
                         </button>
                     {% endif %}
                 </div>
