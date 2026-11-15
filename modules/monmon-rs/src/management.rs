@@ -95,6 +95,7 @@ pub struct OutgoingViewDto {
     pub account_type: Option<String>,
     pub is_yearly: bool,
     pub is_due_now: bool,
+    pub is_due_today: bool,
     pub frequency_label: String,
     pub next_due_label: String,
     pub is_calculated: bool,
@@ -484,6 +485,7 @@ pub async fn get_outgoings_page(
         };
         let effective_day = crate::anchoring::get_effective_outgoing_day(o.outgoing_day, today);
         let is_adjusted = crate::anchoring::is_outgoing_adjusted(o.outgoing_day, today);
+        let is_due_today = !is_yearly && !o.paused.unwrap_or(false) && effective_day == today.day();
         OutgoingViewDto {
             id: o.id,
             name: o.name.clone(),
@@ -504,6 +506,7 @@ pub async fn get_outgoings_page(
             account_type: o.account_type.clone(),
             is_yearly,
             is_due_now,
+            is_due_today,
             frequency_label: o.get_frequency_label(),
             next_due_label,
             is_calculated: false,
@@ -584,6 +587,7 @@ pub async fn get_outgoings_page(
                 account_type: acc_type,
                 is_yearly: false,
                 is_due_now: true,
+                is_due_today: false,
                 frequency_label: "Monthly (Calculated)".to_string(),
                 next_due_label: "Every Payday".to_string(),
                 is_calculated: true,
@@ -661,6 +665,7 @@ pub async fn get_edit_outgoing_page(
         };
         let effective_day = crate::anchoring::get_effective_outgoing_day(o.outgoing_day, today);
         let is_adjusted = crate::anchoring::is_outgoing_adjusted(o.outgoing_day, today);
+        let is_due_today = !is_yearly && !o.paused.unwrap_or(false) && effective_day == today.day();
         OutgoingViewDto {
             id: o.id,
             name: o.name.clone(),
@@ -681,6 +686,7 @@ pub async fn get_edit_outgoing_page(
             account_type: o.account_type.clone(),
             is_yearly,
             is_due_now,
+            is_due_today,
             frequency_label: o.get_frequency_label(),
             next_due_label,
             is_calculated: false,
@@ -761,6 +767,7 @@ pub async fn get_edit_outgoing_page(
                 account_type: acc_type,
                 is_yearly: false,
                 is_due_now: true,
+                is_due_today: false,
                 frequency_label: "Monthly (Calculated)".to_string(),
                 next_due_label: "Every Payday".to_string(),
                 is_calculated: true,
@@ -1563,6 +1570,7 @@ mod tests {
             account_type: None,
             is_yearly,
             is_due_now: false,
+            is_due_today: false,
             frequency_label: if is_yearly { "Yearly".to_string() } else { "Monthly".to_string() },
             next_due_label: "2026".to_string(),
             is_calculated: false,
@@ -1612,5 +1620,23 @@ mod tests {
         let dto = make_dto(1, "Test", true, Some(11), 15);
         assert_eq!(dto.get_month_name(), "November");
         assert_eq!(dto.get_short_month_name(), "Nov");
+    }
+
+    #[test]
+    fn test_monthly_bill_due_today_flag() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 15).unwrap();
+        let effective_day = 15;
+        let is_yearly = false;
+        let is_paused = false;
+        let is_due_today = !is_yearly && !is_paused && effective_day == today.day();
+        assert!(is_due_today, "Monthly unpaused bill with effective_day matching today must be marked due today");
+
+        let is_paused_true = true;
+        let paused_due_today = !is_yearly && !is_paused_true && effective_day == today.day();
+        assert!(!paused_due_today, "Paused bill must not be due today");
+
+        let is_yearly_true = true;
+        let yearly_due_today = !is_yearly_true && !is_paused && effective_day == today.day();
+        assert!(!yearly_due_today, "Yearly bill must not be flagged by monthly due today rule");
     }
 }

@@ -118,6 +118,10 @@
             font-size: 0.78rem;
             color: var(--text-muted, #64748b);
         }
+        .monthly-due-today {
+            border-left: 4px solid #f59e0b !important;
+            background: rgba(245, 158, 11, 0.05) !important;
+        }
     </style>
 </head>
 <body>
@@ -225,7 +229,7 @@
                         {% else %}
                             {% for o in outgoings %}
                                 <tr id="outgoing-{{ o.id }}"
-                                    class="outgoing-row{% if o.is_yearly && o.is_due_now %} yearly-due-this-month{% endif %}"
+                                    class="outgoing-row{% if o.is_yearly && o.is_due_now %} yearly-due-this-month{% endif %}{% if o.is_due_today %} monthly-due-today{% endif %}"
                                     data-is-yearly="{% if o.is_yearly %}true{% else %}false{% endif %}"
                                     data-is-paused="{% if o.paused %}true{% else %}false{% endif %}"
                                     data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
@@ -233,7 +237,7 @@
                                     data-outgoing-month="{% if let Some(m) = o.outgoing_month %}{{ m }}{% else %}0{% endif %}"
                                     data-outgoing-day="{{ o.outgoing_day }}"
                                     data-outgoing-id="{{ o.id }}"
-                                    style="{% if o.paused %}opacity: 0.75; background: rgba(245, 158, 11, 0.05);{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04);{% endif %}{% if o.is_yearly && o.is_due_now %}border-left: 3px solid #6366f1; background: rgba(99, 102, 241, 0.04);{% endif %}">
+                                    style="{% if o.paused %}opacity: 0.75; background: rgba(245, 158, 11, 0.05);{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04);{% endif %}{% if o.is_yearly && o.is_due_now %}border-left: 3px solid #6366f1; background: rgba(99, 102, 241, 0.04);{% endif %}{% if o.is_due_today && !o.is_yearly && !o.paused %}border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.05);{% endif %}">
                                     <td class="col-name">
                                         <b>{{ o.name }}</b>
                                         {% if o.is_calculated %}
@@ -293,6 +297,12 @@
                                                     <span style="font-size: 0.75rem; color: var(--text-muted);">Next due: {{ o.next_due_label }}</span>
                                                 {% endif %}
                                             </div>
+                                        {% else if o.is_due_today %}
+                                            <div style="margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                                <span class="badge-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;">
+                                                    <i class="fas fa-bell" style="color: #d97706;"></i> Due Today
+                                                </span>
+                                            </div>
                                         {% endif %}
                                     </td>
                                     <td>£{{ o.cost }}</td>
@@ -318,6 +328,12 @@
                                                     <span>{{ o.get_short_month_name() }} {{ o.outgoing_day }}</span>
                                                 </span>
                                             {% endif %}
+                                        {% else if o.is_due_today %}
+                                            <span class="badge-pill due-today-badge" style="background: #fef3c7; color: #92400e; border: 1.5px solid #f59e0b; font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(245, 158, 11, 0.15);" title="Due today!{% if o.is_adjusted %} (Adjusted from {{ o.outgoing_day }}){% endif %}">
+                                                <i class="fas fa-bell" style="color: #d97706;"></i>
+                                                <span>Day {{ o.effective_day }}</span>
+                                                <span style="font-size: 0.68rem; background: #d97706; color: #fff; padding: 1px 5px; border-radius: 4px; font-weight: 700;">DUE TODAY</span>
+                                            </span>
                                         {% else if o.is_adjusted %}
                                             <span title="Adjusted from {{ o.outgoing_day }} to {{ o.effective_day }} for this month">
                                                 <b>Day {{ o.effective_day }}</b><sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
@@ -391,7 +407,7 @@
             <!-- Mobile Stacked Action Cards View -->
             <div class="mobile-cards-view" style="display: none;">
                 {% for o in outgoings %}
-                    <div class="item-card outgoing-card{% if o.is_yearly && o.is_due_now %} yearly-due-this-month{% endif %}" id="card-outgoing-{{ o.id }}"
+                    <div class="item-card outgoing-card{% if o.is_yearly && o.is_due_now %} yearly-due-this-month{% endif %}{% if o.is_due_today %} monthly-due-today{% endif %}" id="card-outgoing-{{ o.id }}"
                          data-is-yearly="{% if o.is_yearly %}true{% else %}false{% endif %}"
                          data-is-paused="{% if o.paused %}true{% else %}false{% endif %}"
                          data-is-due-now="{% if o.is_due_now %}true{% else %}false{% endif %}"
@@ -399,7 +415,7 @@
                          data-outgoing-month="{% if let Some(m) = o.outgoing_month %}{{ m }}{% else %}0{% endif %}"
                          data-outgoing-day="{{ o.outgoing_day }}"
                          data-outgoing-id="{{ o.id }}"
-                         style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04); border-left: 3px solid #6366f1;{% endif %}{% if o.is_yearly && o.is_due_now %}border-left: 4px solid #6366f1; background: rgba(99, 102, 241, 0.04);{% endif %}">
+                         style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04); border-left: 3px solid #6366f1;{% endif %}{% if o.is_yearly && o.is_due_now %}border-left: 4px solid #6366f1; background: rgba(99, 102, 241, 0.04);{% endif %}{% if o.is_due_today && !o.is_yearly && !o.paused %}border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.05);{% endif %}">
                         <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                             <div class="item-card-title col-name" style="font-weight: 700; color: var(--text-main);">
                                 <div style="display: inline-flex; align-items: center; gap: 4px;">
@@ -461,6 +477,12 @@
                                             </span>
                                         {% endif %}
                                     </div>
+                                {% else if o.is_due_today %}
+                                    <div style="margin-top: 2px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                        <span class="badge-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;">
+                                            <i class="fas fa-bell" style="color: #d97706;"></i> Due Today
+                                        </span>
+                                    </div>
                                 {% endif %}
                             </div>
                             <div style="text-align: right;">
@@ -489,6 +511,16 @@
                                             {{ o.get_short_month_name() }} {{ o.outgoing_day }}
                                         </span>
                                     {% endif %}
+                                {% else if o.is_due_today %}
+                                    <span class="badge-pill due-today-badge" style="background: #fef3c7; color: #92400e; border: 1.5px solid #f59e0b; font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(245, 158, 11, 0.15);" title="Due today!{% if o.is_adjusted %} (Adjusted from {{ o.outgoing_day }}){% endif %}">
+                                        <i class="fas fa-bell" style="color: #d97706;"></i>
+                                        Day {{ o.effective_day }}
+                                    </span>
+                                    <div style="margin-top: 3px;">
+                                        <span class="badge-pill" style="background: #d97706; color: #fff; font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; font-weight: 700;">
+                                            DUE TODAY
+                                        </span>
+                                    </div>
                                 {% else if o.is_adjusted %}
                                     <span class="badge-pill" style="background: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); padding:2px 8px; border-radius:4px; font-size:0.75rem;">
                                         Day {{ o.effective_day }}<sup><i class="fas fa-arrow-down" style="font-size: 0.7em; color: #ef4444;"></i></sup>
