@@ -321,6 +321,7 @@ pub async fn calculate_payday_window(
 
     let mut account_groups: BTreeMap<i64, AccountOutgoingGroup> = BTreeMap::new();
     let mut direct_outgoings_items: Vec<DirectOutgoingItemDto> = Vec::new();
+    let mut covered_outgoing_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
 
     for r in outgoing_acc_rows {
         let acc_id: i64 = r.get("account_id");
@@ -342,11 +343,8 @@ pub async fn calculate_payday_window(
                 } else {
                     payday_date.year()
                 };
-                if let Some(due_date) = NaiveDate::from_ymd_opt(due_year, m as u32, (outgoing_day as u32).min(28)) {
-                    due_date >= payday_date && due_date < next_cycle_payday
-                } else {
-                    false
-                }
+                let due_date = crate::anchoring::get_actual_outgoing_date(outgoing_day, due_year, m as u32);
+                due_date >= payday_date && due_date < next_cycle_payday
             } else {
                 true
             }
@@ -357,6 +355,8 @@ pub async fn calculate_payday_window(
         if !is_due || cost < 0.005 {
             continue;
         }
+
+        covered_outgoing_ids.insert(outgoing_id);
 
         if is_source_acc {
             direct_outgoings_items.push(DirectOutgoingItemDto {
@@ -696,7 +696,10 @@ pub async fn calculate_payday_window(
     let calc = calculate_yearly_bills_monthly_saving(
         payday_date,
         nominal_payday,
-        &outgoings,
+        &outgoings
+            .into_iter()
+            .filter(|o| !covered_outgoing_ids.contains(&o.id))
+            .collect::<Vec<_>>(),
         dest_bal,
     );
 
@@ -1894,5 +1897,85 @@ mod tests {
         assert_eq!(plan[0].from_savings_account_id, 6594);
         assert_eq!(plan[0].amount, 1306.61);
         assert_eq!(plan[0].amount_formatted, "1306.61");
+    }
+
+    #[test]
+    fn test_yearly_bill_covered_in_outgoings_is_excluded_from_sinking_fund_reserve() {
+        use std::collections::HashSet;
+        use crate::models::{calculate_yearly_bills_monthly_saving, Outgoing};
+
+        // Bill A: Ciaran car insurance (£961.61, Dec 29, month 12).
+        // It is due in the upcoming December cycle and covered under First Direct Current Outgoings Cover.
+        let bill_dec = Outgoing {
+            id: 8953,
+            name: "Ciaran car insurance".to_string(),
+            cost: 961.61,
+            outgoing_day: 29,
+            outgoing_month: Some(12),
+            year_interval: Some(1),
+            starting_year: Some(2026),
+            bill: Some(false),
+            rent: Some(false),
+            hidden_from_total: Some(false),
+            paused: Some(false),
+            pause_reason: None,
+            paused_at: None,
+            user_id: "test-user".to_string(),
+            account_id: Some(3620),
+            account_name: Some("First Direct Current ⬛".to_string()),
+            account_type: Some("DEBIT".to_string()),
+            archived: Some(false),
+        };
+
+        // Bill B: Negroni club domain (£65.00, Jan 28, month 1).
+        // Due in January (not in December cycle).
+        let bill_jan = Outgoing {
+            id: 8971,
+            name: "[godaddy] negroni.club".to_string(),
+            cost: 65.0,
+            outgoing_day: 28,
+            outgoing_month: Some(1),
+            year_interval: Some(2),
+            starting_year: Some(2025),
+            bill: Some(false),
+            rent: Some(false),
+            hidden_from_total: Some(false),
+            paused: Some(false),
+            pause_reason: None,
+            paused_at: None,
+            user_id: "test-user".to_string(),
+            account_id: Some(3620),
+            account_name: Some("First Direct Current ⬛".to_string()),
+            account_type: Some("DEBIT".to_string()),
+            archived: Some(false),
+        };
+
+        let all_yearly_outgoings = vec![bill_dec.clone(), bill_jan.clone()];
+
+        // Outgoings covered in account outgoings cover for this payday:
+        let mut covered_outgoing_ids = HashSet::new();
+        covered_outgoing_ids.insert(8953); // Ciaran car insurance covered in First Direct
+
+        // Sinking fund only takes bills NOT in covered_outgoing_ids
+        let reserve_outgoings: Vec<Outgoing> = all_yearly_outgoings
+            .into_iter()
+            .filter(|o| !covered_outgoing_ids.contains(&o.id))
+            .collect();
+
+        assert_eq!(reserve_outgoings.len(), 1);
+        assert_eq!(reserve_outgoings[0].name, "[godaddy] negroni.club");
+
+        let calc = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 11, 30).unwrap(),
+            31,
+            &reserve_outgoings,
+            0.0,
+        );
+
+        // Ciaran car insurance is NOT in calc (never double counted)!
+        assert_eq!(calc.upcoming_count, 1);
+        assert_eq!(calc.breakdown[0].name, "[godaddy] negroni.club");
+        assert_eq!(calc.breakdown[0].monthly_saving, 32.50);
+        assert_eq!(calc.monthly_saving, 32.50);
     }
 }
