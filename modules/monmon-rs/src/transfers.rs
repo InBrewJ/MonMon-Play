@@ -60,6 +60,7 @@ pub struct PaydayTransferItemDto {
 pub struct OutgoingsFundingStepDto {
     pub from_savings_account_id: i64,
     pub from_savings_account_name: String,
+    pub from_savings_account_type: String, // "SAVINGS", "DEBIT", "CREDIT"
     pub from_savings_account_balance: f32,
     pub from_savings_account_balance_formatted: String,
     pub to_debit_account_id: i64,
@@ -71,9 +72,11 @@ pub struct OutgoingsFundingStepDto {
 }
 
 #[derive(Debug, Clone)]
-pub struct SavingsPoolItem {
+pub struct LiquidityPoolItem {
     pub id: i64,
     pub name: String,
+    pub account_type: String, // "SAVINGS", "DEBIT", "CREDIT"
+    pub tier: i32,            // 1 for Savings, 2 for Secondary Debit, 3 for Credit
     pub initial_bal: f32,
     pub remaining_bal: f32,
 }
@@ -82,7 +85,7 @@ pub fn calculate_outgoings_funding_plan(
     source_acc_id: Option<i64>,
     source_acc_name: &str,
     source_acc_type: &str,
-    mut savings_pool: Vec<SavingsPoolItem>,
+    mut liquidity_pool: Vec<LiquidityPoolItem>,
     max_needed: Option<f32>,
 ) -> Vec<OutgoingsFundingStepDto> {
     let mut plan = Vec::new();
@@ -94,35 +97,43 @@ pub fn calculate_outgoings_funding_plan(
     let target_dest_id = source_acc_id.unwrap_or(0);
 
     while remaining_cap > 0.005 {
-        // Pick savings account with the highest remaining balance (excluding destination account)
-        let best_idx = savings_pool
+        // Pick available liquidity item with the lowest tier (Savings=1 before Debit=2 before Credit=3),
+        // and within the same tier, the highest remaining balance/headroom (excluding destination account)
+        let best_idx = liquidity_pool
             .iter()
             .enumerate()
             .filter(|(_, s)| s.id != target_dest_id && s.remaining_bal > 0.005)
-            .max_by(|(_, a), (_, b)| {
-                a.remaining_bal
-                    .partial_cmp(&b.remaining_bal)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+            .min_by(|(_, a), (_, b)| {
+                a.tier.cmp(&b.tier).then_with(|| {
+                    b.remaining_bal
+                        .partial_cmp(&a.remaining_bal)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
             })
             .map(|(idx, _)| idx);
 
         match best_idx {
             Some(idx) => {
-                let savings = &mut savings_pool[idx];
-                let take = ((remaining_cap.min(savings.remaining_bal) * 100.0).round()) / 100.0;
+                let item = &mut liquidity_pool[idx];
+                let take = ((remaining_cap.min(item.remaining_bal) * 100.0).round()) / 100.0;
                 if take <= 0.0 {
                     break;
                 }
-                savings.remaining_bal = ((savings.remaining_bal - take) * 100.0).round() / 100.0;
+                item.remaining_bal = ((item.remaining_bal - take) * 100.0).round() / 100.0;
                 remaining_cap = ((remaining_cap - take) * 100.0).round() / 100.0;
 
-                let summary = format!("Tops up {} to cover planned transfers", source_acc_name);
+                let summary = match item.tier {
+                    1 => format!("Tops up {} to cover planned transfers", source_acc_name),
+                    2 => format!("Sweeps spare cash into {} to cover planned transfers", source_acc_name),
+                    _ => format!("Absorbs shortfall using available credit headroom on {}", item.name),
+                };
 
                 plan.push(OutgoingsFundingStepDto {
-                    from_savings_account_id: savings.id,
-                    from_savings_account_name: savings.name.clone(),
-                    from_savings_account_balance: (savings.initial_bal * 100.0).round() / 100.0,
-                    from_savings_account_balance_formatted: format!("{:.2}", savings.initial_bal),
+                    from_savings_account_id: item.id,
+                    from_savings_account_name: item.name.clone(),
+                    from_savings_account_type: item.account_type.clone(),
+                    from_savings_account_balance: (item.initial_bal * 100.0).round() / 100.0,
+                    from_savings_account_balance_formatted: format!("{:.2}", item.initial_bal),
                     to_debit_account_id: target_dest_id,
                     to_debit_account_name: source_acc_name.to_string(),
                     to_debit_account_type: source_acc_type.to_string(),
@@ -177,6 +188,10 @@ pub struct PaydayWindowDto {
     pub savings_needed_to_topup_formatted: String,
     pub total_savings: f32,
     pub total_savings_formatted: String,
+    pub total_debit: f32,
+    pub total_debit_formatted: String,
+    pub total_credit: f32,
+    pub total_credit_formatted: String,
     pub outgoings_funding_plan: Vec<OutgoingsFundingStepDto>,
     pub outgoings_items: Vec<PaydayTransferItemDto>,
     pub pot_items: Vec<PaydayTransferItemDto>,
@@ -853,18 +868,19 @@ pub async fn calculate_payday_window(
     .unwrap_or(0.0);
 
     let monthly_savings_budget = (monthly_income * (savings_percentage as f32 / 100.0) * 100.0).round() / 100.0;
-    let total_funding_capacity = ((monthly_income + available_liquid_funds) * 100.0).round() / 100.0;
 
-    // Build Savings-to-Debit Outgoings Funding Plan:
-    // Take from the savings account with the highest current balance first, then the next, then the next.
-    let savings_account_rows = sqlx::query(
+    // Build 4-Tier Liquidity Funding Plan (Waterfall):
+    // Tier 1: Income (Salary)
+    // Tier 2: Liquid Savings Accounts (highest balance first)
+    // Tier 3: Secondary Debit & Escrow Accounts (highest balance first)
+    // Tier 4: Credit Accounts / Headroom (highest available headroom first)
+    let funding_account_rows = sqlx::query(
         r#"
         SELECT a.id, a.name, a.type,
                COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
         FROM account a
         WHERE (a.userid = $1 OR a.user_id = $1)
           AND (a.archived IS NULL OR a.archived = false)
-          AND UPPER(a.type) IN ('SAVINGS', 'SHORT_TERM_SAVINGS', 'LONG_TERM_SAVINGS')
         ORDER BY bal DESC, a.id ASC
         "#,
     )
@@ -873,36 +889,78 @@ pub async fn calculate_payday_window(
     .await
     .unwrap_or_default();
 
-    let savings_pool: Vec<SavingsPoolItem> = savings_account_rows
-        .into_iter()
-        .filter_map(|r| {
-            let bal: f32 = r.get("bal");
-            if bal > 0.001 {
-                Some(SavingsPoolItem {
-                    id: r.get("id"),
-                    name: r.get("name"),
-                    initial_bal: bal,
-                    remaining_bal: bal,
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
+    let target_dest_id = source_acc_id.unwrap_or(0);
+    let mut liquidity_pool: Vec<LiquidityPoolItem> = Vec::new();
 
-    let total_savings: f32 = savings_pool.iter().map(|s| s.initial_bal).sum();
-    let total_savings = (total_savings * 100.0).round() / 100.0;
+    let mut total_savings = 0.0f32;
+    let mut total_debit = 0.0f32;
+    let mut total_credit = 0.0f32;
 
+    for r in funding_account_rows {
+        let aid: i64 = r.get("id");
+        if aid == target_dest_id {
+            continue;
+        }
+        let aname: String = r.get("name");
+        let atype: String = r.get("type");
+        let bal: f32 = r.get("bal");
+        if bal <= 0.005 {
+            continue;
+        }
+
+        let atype_upper = atype.to_uppercase();
+        if matches!(atype_upper.as_str(), "SAVINGS" | "SHORT_TERM_SAVINGS" | "LONG_TERM_SAVINGS") {
+            total_savings += bal;
+            liquidity_pool.push(LiquidityPoolItem {
+                id: aid,
+                name: aname,
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
+                initial_bal: bal,
+                remaining_bal: bal,
+            });
+        } else if matches!(atype_upper.as_str(), "DEBIT" | "CURRENT" | "DEBIT_SHARED_BILLS" | "SHARED_DEBIT_BILLS") {
+            total_debit += bal;
+            liquidity_pool.push(LiquidityPoolItem {
+                id: aid,
+                name: aname,
+                account_type: "DEBIT".to_string(),
+                tier: 2,
+                initial_bal: bal,
+                remaining_bal: bal,
+            });
+        } else if atype_upper == "CREDIT" {
+            total_credit += bal;
+            liquidity_pool.push(LiquidityPoolItem {
+                id: aid,
+                name: aname,
+                account_type: "CREDIT".to_string(),
+                tier: 3,
+                initial_bal: bal,
+                remaining_bal: bal,
+            });
+        }
+    }
+
+    total_savings = (total_savings * 100.0).round() / 100.0;
+    total_debit = (total_debit * 100.0).round() / 100.0;
+    total_credit = (total_credit * 100.0).round() / 100.0;
+
+    let total_funding_capacity = ((monthly_income + total_savings + total_debit + total_credit) * 100.0).round() / 100.0;
     let total_transfers_rounded = (total_transfers * 100.0).round() / 100.0;
     let monthly_income_rounded = (monthly_income * 100.0).round() / 100.0;
 
-    // Coverage calculation taking into account 'incoming' items:
-    // 1. If monthly_income covers all transfers (or total_transfers == 0):
-    //    Income alone covers it -> we don't show the 'Fully Covered by Savings & Monthly Allocation' part.
-    // 2. If monthly_income partially covers it, but savings top-up is needed:
-    //    Show coverage indicator stating income partially covers and savings are needed to top up.
-    // 3. If monthly_income + available savings cannot cover transfers:
-    //    Show shortfall indicator with deficit amount.
+    // Coverage calculation taking into account complete 4-tier waterfall:
+    // 1. If monthly_income covers all transfers:
+    //    Income alone covers it -> coverage banner not needed.
+    // 2. If monthly_income + savings covers:
+    //    Show savings top-up needed.
+    // 3. If monthly_income + savings + secondary debit covers:
+    //    Show savings & debit cash sweep needed.
+    // 4. If monthly_income + savings + debit + credit covers:
+    //    Show shortfall covered by credit buffer!
+    // 5. If everything exhausted:
+    //    Show unavoidable deficit shortfall.
     let income_alone_covers = total_transfers_rounded <= 0.005 || monthly_income_rounded >= (total_transfers_rounded - 0.005);
 
     let (
@@ -929,11 +987,12 @@ pub async fn calculate_payday_window(
         )
     } else {
         let topup = ((total_transfers_rounded - monthly_income_rounded) * 100.0).round() / 100.0;
-        let total_available = ((monthly_income_rounded + total_savings) * 100.0).round() / 100.0;
-        let covered = total_available >= (total_transfers_rounded - 0.005);
+        let capacity_savings = ((monthly_income_rounded + total_savings) * 100.0).round() / 100.0;
+        let capacity_debit = ((capacity_savings + total_debit) * 100.0).round() / 100.0;
+        let capacity_credit = ((capacity_debit + total_credit) * 100.0).round() / 100.0;
 
-        if covered {
-            let cushion = ((total_available - total_transfers_rounded) * 100.0).round() / 100.0;
+        if capacity_savings >= (total_transfers_rounded - 0.005) {
+            let cushion = ((capacity_savings - total_transfers_rounded) * 100.0).round() / 100.0;
             let title = if monthly_income_rounded > 0.005 {
                 "Income Partially Covers Transfers (Savings Top-Up Needed)".to_string()
             } else {
@@ -955,7 +1014,7 @@ pub async fn calculate_payday_window(
                 source_acc_id,
                 &source_acc_name,
                 &source_acc_type,
-                savings_pool,
+                liquidity_pool,
                 Some(topup),
             );
             (
@@ -969,20 +1028,74 @@ pub async fn calculate_payday_window(
                 cushion,
                 plan,
             )
-        } else {
-            let deficit = ((total_transfers_rounded - total_available) * 100.0).round() / 100.0;
-            let title = "Transfer Shortfall: Insufficient Income & Savings".to_string();
-            let badge = format!("-£{:.2} Deficit", deficit);
+        } else if capacity_debit >= (total_transfers_rounded - 0.005) {
+            let cushion = ((capacity_debit - total_transfers_rounded) * 100.0).round() / 100.0;
+            let debit_needed = ((total_transfers_rounded - capacity_savings) * 100.0).round() / 100.0;
+            let title = "Savings Exhausted: Shortfall Filled by Debit Cash".to_string();
+            let badge = format!("£{:.2} from Savings & Cash", topup);
             let desc = format!(
-                "Incoming (£{:.2}) and Available Savings (£{:.2}) are insufficient to cover £{:.2} transfers (Shortfall: £{:.2})",
-                monthly_income_rounded, total_savings, total_transfers_rounded, deficit
+                "Income (£{:.2}) and Savings (£{:.2}) exhausted • £{:.2} drawn from secondary debit/escrow accounts to cover transfers (Available Cash: £{:.2})",
+                monthly_income_rounded, total_savings, debit_needed, total_debit
             );
             let plan = calculate_outgoings_funding_plan(
                 source_acc_id,
                 &source_acc_name,
                 &source_acc_type,
-                savings_pool,
-                Some(total_savings),
+                liquidity_pool,
+                Some(topup),
+            );
+            (
+                true,
+                title,
+                badge,
+                "pill-amber".to_string(),
+                desc,
+                topup,
+                true,
+                cushion,
+                plan,
+            )
+        } else if capacity_credit >= (total_transfers_rounded - 0.005) {
+            let cushion = ((capacity_credit - total_transfers_rounded) * 100.0).round() / 100.0;
+            let credit_needed = ((total_transfers_rounded - capacity_debit) * 100.0).round() / 100.0;
+            let title = "Income & Savings Exhausted: Shortfall Covered by Credit".to_string();
+            let badge = format!("£{:.2} on Credit Buffer", credit_needed);
+            let desc = format!(
+                "Income (£{:.2}), Savings (£{:.2}), and Debit cash (£{:.2}) are fully committed • £{:.2} shortfall absorbed by available credit headroom (£{:.2} available across cards)",
+                monthly_income_rounded, total_savings, total_debit, credit_needed, total_credit
+            );
+            let plan = calculate_outgoings_funding_plan(
+                source_acc_id,
+                &source_acc_name,
+                &source_acc_type,
+                liquidity_pool,
+                Some(topup),
+            );
+            (
+                true,
+                title,
+                badge,
+                "pill-purple".to_string(),
+                desc,
+                topup,
+                true,
+                cushion,
+                plan,
+            )
+        } else {
+            let deficit = ((total_transfers_rounded - capacity_credit) * 100.0).round() / 100.0;
+            let title = "Transfer Shortfall: Insufficient Income, Savings & Credit".to_string();
+            let badge = format!("-£{:.2} Deficit", deficit);
+            let desc = format!(
+                "All income (£{:.2}), savings (£{:.2}), cash (£{:.2}), and available credit (£{:.2}) are exhausted • £{:.2} unavoidable shortfall remaining to cover £{:.2} transfers",
+                monthly_income_rounded, total_savings, total_debit, total_credit, deficit, total_transfers_rounded
+            );
+            let plan = calculate_outgoings_funding_plan(
+                source_acc_id,
+                &source_acc_name,
+                &source_acc_type,
+                liquidity_pool,
+                Some(capacity_credit),
             );
             (
                 true,
@@ -1035,6 +1148,10 @@ pub async fn calculate_payday_window(
         savings_needed_to_topup_formatted: format!("{:.2}", savings_needed),
         total_savings,
         total_savings_formatted: format!("{:.2}", total_savings),
+        total_debit,
+        total_debit_formatted: format!("{:.2}", total_debit),
+        total_credit,
+        total_credit_formatted: format!("{:.2}", total_credit),
         outgoings_funding_plan,
         outgoings_items,
         pot_items,
@@ -1264,21 +1381,27 @@ mod tests {
         // Savings B: £400 (highest)
         // Savings C: £50  (lowest)
         let savings_pool = vec![
-            SavingsPoolItem {
+            LiquidityPoolItem {
                 id: 1,
                 name: "Savings A (Emergency)".to_string(),
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
                 initial_bal: 300.0,
                 remaining_bal: 300.0,
             },
-            SavingsPoolItem {
+            LiquidityPoolItem {
                 id: 2,
                 name: "Savings B (Premium Bonds)".to_string(),
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
                 initial_bal: 400.0,
                 remaining_bal: 400.0,
             },
-            SavingsPoolItem {
+            LiquidityPoolItem {
                 id: 3,
                 name: "Savings C (Coin Jar)".to_string(),
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
                 initial_bal: 50.0,
                 remaining_bal: 50.0,
             },
@@ -1501,15 +1624,19 @@ mod tests {
 
         // Verify savings pool takes from highest balance savings account (NS&I bal £2175)
         let savings_pool = vec![
-            SavingsPoolItem {
+            LiquidityPoolItem {
                 id: 6594,
                 name: "[Real Emergency 🚨] NS&I Premium Bonds".to_string(),
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
                 initial_bal: 2175.0,
                 remaining_bal: 2175.0,
             },
-            SavingsPoolItem {
+            LiquidityPoolItem {
                 id: 54,
                 name: "Overdraft yearly bills".to_string(),
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
                 initial_bal: 100.45,
                 remaining_bal: 100.45,
             },
@@ -1529,5 +1656,93 @@ mod tests {
         assert_eq!(plan[0].to_debit_account_id, 2);
         assert_eq!(plan[0].amount, 1110.55);
         assert_eq!(plan[0].amount_formatted, "1110.55");
+    }
+
+    #[test]
+    fn test_waterfall_savings_debit_and_credit_buffer() {
+        // Required topup needed: £1110.55
+        // Savings accounts: NS&I £500, Other Savings £100 (Total Savings = £600)
+        // Debit accounts: First Direct Cash £50 (Total Debit = £50)
+        // Credit accounts: Flex £428.45, Halifax £264.75 (Total Credit = £693.20)
+        // Waterfall priority:
+        // Tier 1: Savings (drained first: £500 from NS&I, then £100 from Other Savings) -> £600
+        // Tier 2: Debit (drained next: £50 from First Direct Cash) -> £50
+        // Remaining needed: £1110.55 - £650.00 = £460.55
+        // Tier 3: Credit (drained in order of highest headroom first):
+        //         Flex has £428.45 -> take £428.45
+        //         Halifax has £264.75 -> take remaining £32.10
+        // Remaining needed: £0.00 -> fully covered by credit buffer!
+        let pool = vec![
+            LiquidityPoolItem {
+                id: 10,
+                name: "Flex".to_string(),
+                account_type: "CREDIT".to_string(),
+                tier: 3,
+                initial_bal: 428.45,
+                remaining_bal: 428.45,
+            },
+            LiquidityPoolItem {
+                id: 11,
+                name: "Halifax".to_string(),
+                account_type: "CREDIT".to_string(),
+                tier: 3,
+                initial_bal: 264.75,
+                remaining_bal: 264.75,
+            },
+            LiquidityPoolItem {
+                id: 20,
+                name: "First Direct Cash".to_string(),
+                account_type: "DEBIT".to_string(),
+                tier: 2,
+                initial_bal: 50.0,
+                remaining_bal: 50.0,
+            },
+            LiquidityPoolItem {
+                id: 30,
+                name: "NS&I Premium Bonds".to_string(),
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
+                initial_bal: 500.0,
+                remaining_bal: 500.0,
+            },
+            LiquidityPoolItem {
+                id: 31,
+                name: "Other Savings".to_string(),
+                account_type: "SAVINGS".to_string(),
+                tier: 1,
+                initial_bal: 100.0,
+                remaining_bal: 100.0,
+            },
+        ];
+
+        let plan = calculate_outgoings_funding_plan(
+            Some(2),
+            "Natwest Reward Debit 💵💵💵",
+            "DEBIT",
+            pool,
+            Some(1110.55),
+        );
+
+        assert_eq!(plan.len(), 5);
+        // Step 1: NS&I (£500)
+        assert_eq!(plan[0].from_savings_account_name, "NS&I Premium Bonds");
+        assert_eq!(plan[0].from_savings_account_type, "SAVINGS");
+        assert_eq!(plan[0].amount, 500.0);
+        // Step 2: Other Savings (£100)
+        assert_eq!(plan[1].from_savings_account_name, "Other Savings");
+        assert_eq!(plan[1].from_savings_account_type, "SAVINGS");
+        assert_eq!(plan[1].amount, 100.0);
+        // Step 3: First Direct Cash (£50)
+        assert_eq!(plan[2].from_savings_account_name, "First Direct Cash");
+        assert_eq!(plan[2].from_savings_account_type, "DEBIT");
+        assert_eq!(plan[2].amount, 50.0);
+        // Step 4: Flex (£428.45)
+        assert_eq!(plan[3].from_savings_account_name, "Flex");
+        assert_eq!(plan[3].from_savings_account_type, "CREDIT");
+        assert_eq!(plan[3].amount, 428.45);
+        // Step 5: Halifax (£32.10)
+        assert_eq!(plan[4].from_savings_account_name, "Halifax");
+        assert_eq!(plan[4].from_savings_account_type, "CREDIT");
+        assert_eq!(plan[4].amount, 32.10);
     }
 }
