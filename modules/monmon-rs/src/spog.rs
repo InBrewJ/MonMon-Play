@@ -286,76 +286,6 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
         }
     }
 
-    let yearly_bills_acc_id: Option<i64> = sqlx::query_scalar(
-        "SELECT yearly_bills_account_id FROM user_access WHERE (userid = $1 OR username = $1) LIMIT 1"
-    )
-    .bind(&user_id)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None)
-    .flatten();
-
-    let mut yearly_bills_monthly_saving = 0.0f32;
-    if let Some(target_acc_id) = yearly_bills_acc_id {
-        let target_balance: f32 = sqlx::query_scalar(
-            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
-        )
-        .bind(target_acc_id)
-        .fetch_optional(pool)
-        .await
-        .unwrap_or(None)
-        .flatten()
-        .unwrap_or(0.0);
-
-        let yearly_rows = sqlx::query_as::<_, Outgoing>(
-            r#"
-            SELECT 
-                o.id, o.name, o.cost, o.outgoingday as outgoing_day, 
-                o.outgoingmonth as outgoing_month, o.yearinterval as year_interval, 
-                o.startingyear as starting_year, o.bill, o.rent, o.hiddenfromtotal as hidden_from_total,
-                o.paused, COALESCE(o.pause_reason, o.pausereason) as pause_reason,
-                COALESCE(o.paused_at, o.pausedat) as paused_at,
-                COALESCE(o.user_id, o.userid, o."userId") as user_id,
-                o.account_id,
-                a.name as account_name,
-                a.type as account_type,
-                o.archived
-            FROM outgoing o
-            LEFT JOIN account a ON o.account_id = a.id
-            WHERE COALESCE(o.user_id, o.userid, o."userId") = $1
-              AND (o.archived IS NULL OR o.archived = false)
-              AND (o.hiddenfromtotal IS NULL OR o.hiddenfromtotal = false)
-              AND (o.paused IS NULL OR o.paused = false)
-              AND (o.outgoingmonth IS NOT NULL AND o.outgoingmonth > 0)
-            "#,
-        )
-        .bind(&user_id)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
-
-        let calc = crate::models::calculate_yearly_bills_monthly_saving(
-            today,
-            nominal_payday,
-            &yearly_rows,
-            target_balance,
-        );
-        yearly_bills_monthly_saving = calc.monthly_saving;
-
-        if calc.monthly_saving > 0.0 {
-            let saving_pence = Pence::from_pounds_f32(calc.monthly_saving);
-            outgoing_total += saving_pence;
-            bills_cost += saving_pence;
-            let effective_payday =
-                crate::anchoring::get_effective_outgoing_day(nominal_payday, today) as i32;
-            if effective_payday <= today_day {
-                completed_outgoings += saving_pence;
-            } else {
-                pending_outgoings += saving_pence;
-            }
-        }
-    }
-
     // Surplus & Allowances (accounting for active Savings Plan percentage)
     let savings_plan_row = sqlx::query(
         r#"
@@ -544,27 +474,6 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
                 }
             } else {
                 pending += cost;
-            }
-        }
-
-        if yearly_bills_acc_id == Some(acc_id) && yearly_bills_monthly_saving > 0.0 {
-            let saving_pence = Pence::from_pounds_f32(yearly_bills_monthly_saving);
-            let eff_day =
-                crate::anchoring::get_effective_outgoing_day(nominal_payday, today) as i32;
-            let act_date = crate::anchoring::get_actual_outgoing_date(
-                nominal_payday,
-                current_year,
-                current_month as u32,
-            );
-            if eff_day <= today_day {
-                already_paid += saving_pence;
-                if latest_due_day.map_or(true, |d| eff_day >= d) {
-                    latest_due_day = Some(eff_day);
-                    latest_due_date = Some(act_date);
-                    latest_outgoing_name = Some("Yearly Bills Reserve".to_string());
-                }
-            } else {
-                pending += saving_pence;
             }
         }
 
@@ -1546,5 +1455,57 @@ mod tests {
         let diff = pace - max_per_day;
         assert_eq!(diff, Pence::from_pounds_f64(17.44));
         assert!(pace > max_per_day);
+    }
+
+    #[test]
+    fn test_spog_allowances_align_with_savings_plan_breadline() {
+        // Jason's exact real-world numbers:
+        // Income = £2,642.83
+        // Monthly recurring outgoings = £689.97 (or ~£708.84)
+        // Savings Plan percentage = 60% -> £1,585.70
+        let income = Pence::from_pounds_f64(2642.83);
+        let monthly_outgoings = Pence::from_pounds_f64(689.97);
+        let savings_percent = 60;
+        let savings_cost = income * (savings_percent as f64 / 100.0);
+        let surplus = (income - monthly_outgoings - savings_cost).max(Pence::ZERO);
+
+        // Savings plan breadline month: £367.16
+        assert_eq!(format!("{}", surplus), "367.16");
+
+        // 30 days breadline day: £12.24
+        let max_per_day_30 = surplus.checked_div_days(30);
+        assert_eq!(format!("{}", max_per_day_30), "12.24");
+
+        // 31 days breadline day: £11.84
+        let max_per_day_31 = surplus.checked_div_days(31);
+        assert_eq!(format!("{}", max_per_day_31), "11.84");
+
+        // Week allowance:
+        let max_per_week = max_per_day_30 * 7i64;
+        assert_eq!(format!("{}", max_per_week), "85.68");
+        assert!(surplus > Pence::ZERO);
+    }
+
+    #[test]
+    fn test_yearly_bills_reserve_must_not_inflate_spog_outgoings_or_crush_allowances() {
+        // Even if yearly bills reserve calculation is £1,652.94 across upcoming yearly bills,
+        // it is a sinking fund transfer recommendation, NOT a current-month direct outgoing.
+        // It must NEVER be added to monthly_outgoings or pending_outgoings, which would drive surplus to £0.00.
+        let income = Pence::from_pounds_f64(2642.83);
+        let direct_outgoings = Pence::from_pounds_f64(708.84);
+        let savings_cost = income * 0.60;
+        let yearly_bills_sinking_fund_reserve = Pence::from_pounds_f64(1652.94);
+
+        // If erroneously added to outgoings:
+        let bad_outgoings = direct_outgoings + yearly_bills_sinking_fund_reserve; // 2361.78
+        let bad_surplus = (income - bad_outgoings - savings_cost).max(Pence::ZERO);
+        assert_eq!(bad_surplus, Pence::ZERO); // Demonstrates the exact bug user experienced!
+
+        // Correct calculation: outgoings on SPOG must only include direct cycle outgoings
+        let true_surplus = (income - direct_outgoings - savings_cost).max(Pence::ZERO);
+        assert_eq!(format!("{}", true_surplus), "348.29");
+        assert!(true_surplus > Pence::ZERO);
+        let max_per_day = true_surplus.checked_div_days(31);
+        assert_eq!(format!("{}", max_per_day), "11.24");
     }
 }

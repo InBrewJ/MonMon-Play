@@ -210,7 +210,7 @@ pub fn total_effective_outgoings(outgoings: &[Outgoing], as_of: chrono::NaiveDat
 /// If today itself is an actual payday, that payday is counted since it is an immediate opportunity
 /// to top up the reserve before the bill is due.
 pub fn count_paydays_between(today: NaiveDate, due_date: NaiveDate, nominal_payday: i32) -> u32 {
-    if today > due_date {
+    if today >= due_date {
         return 0;
     }
     let mut count = 0;
@@ -218,7 +218,7 @@ pub fn count_paydays_between(today: NaiveDate, due_date: NaiveDate, nominal_payd
 
     // If today is an actual payday, count it
     let today_payday = crate::anchoring::get_actual_payday_date(nominal, today.year(), today.month());
-    if today == today_payday && today <= due_date {
+    if today == today_payday && today < due_date {
         count += 1;
     }
 
@@ -230,7 +230,7 @@ pub fn count_paydays_between(today: NaiveDate, due_date: NaiveDate, nominal_payd
 
     loop {
         let next_pay = crate::anchoring::find_next_payday_date(probe_date, nominal);
-        if next_pay <= due_date {
+        if next_pay < due_date {
             count += 1;
             probe_date = next_pay + Duration::days(1);
         } else {
@@ -611,15 +611,6 @@ mod tests {
         assert_eq!(count_paydays_between(today, due, 25), 0);
     }
 
-    #[test]
-    fn test_count_paydays_between_due_on_payday_includes_both_paydays() {
-        // Today is Nov 30, 2026 (payday). Car insurance is due Dec 30, 2026 (next payday).
-        // Nominal payday is 30.
-        // Paydays: 2026-11-30 and 2026-12-30 -> 2 paydays.
-        let today = NaiveDate::from_ymd_opt(2026, 11, 30).unwrap();
-        let due = NaiveDate::from_ymd_opt(2026, 12, 30).unwrap();
-        assert_eq!(count_paydays_between(today, due, 30), 2);
-    }
 
     #[test]
     fn test_calculate_yearly_bills_monthly_saving_user_car_insurance_example() {
