@@ -195,13 +195,8 @@
                            {% endif %}
                            style="width: 100%;">
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; flex-wrap: wrap; gap: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
                     <span>0% (£0.00)</span>
-                    {% if monthly_pot.is_some() %}
-                    <span id="slider-pot-target-marker" class="badge-pill" style="background: var(--primary-light, rgba(79, 70, 229, 0.1)); color: var(--primary); font-weight: 600; cursor: pointer;" title="Click to snap to allowance set by monthly pot">
-                        <i class="fas fa-archive"></i> Monthly Pot Target: <b>£{{ self.pot_target_budget() }}/mo</b> ({{ self.pot_snap_percent() }}%)
-                    </span>
-                    {% endif %}
                     <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main);">
                         <i class="fas fa-lock" style="font-size: 0.75rem; margin-right: 4px; color: var(--primary);"></i>Max from SPOG: <b>£{{ plan.max_surplus }}/mo</b> ({{ plan.max_percent() }}%)
                     </span>
@@ -213,11 +208,6 @@
                     <button type="submit" class="w3-button w3-round w3-small" style="background: var(--primary); color: #fff;">
                         <i class="fas fa-check"></i> Save Target Percentage
                     </button>
-                    {% if monthly_pot.is_some() %}
-                    <button type="button" id="btn-snap-monthly-pot-form" class="w3-button w3-round w3-small" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600;" title="Snap living allowance to monthly pot">
-                        <i class="fas fa-magnet" style="color: var(--primary);"></i> Snap to Pot (£{{ self.pot_target_budget() }})
-                    </button>
-                    {% endif %}
                     <span style="font-size: 0.8rem; color: var(--text-muted);">Adjust the slider to scale all sliced items proportionally</span>
                 </form>
             </div>

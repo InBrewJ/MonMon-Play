@@ -188,6 +188,7 @@ impl SavingsPlanTemplate {
         self.monthly_pot.as_ref().map(|p| p.target_budget()).unwrap_or(0.0)
     }
 
+    #[allow(dead_code)]
     pub fn pot_snap_percent(&self) -> i32 {
         if let Some(ref pot) = self.monthly_pot {
             self.plan.snap_percent_for_budget(pot.target_budget())

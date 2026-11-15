@@ -567,9 +567,9 @@
             updateSliderAndScaleItems(targetPercent);
         }
 
-        var snapBtns = document.querySelectorAll('#btn-snap-monthly-pot, #btn-snap-monthly-pot-form, #slider-pot-target-marker');
-        for (var sb = 0; sb < snapBtns.length; sb++) {
-            snapBtns[sb].addEventListener('click', function (e) {
+        var snapBtn = document.getElementById('btn-snap-monthly-pot');
+        if (snapBtn) {
+            snapBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 snapToMonthlyPot();
             });
