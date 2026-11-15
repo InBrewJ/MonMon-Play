@@ -594,6 +594,8 @@ async fn main() {
         .route("/plans/updateSavingsPayoffPercentage", get(plans::get_update_savings_payoff_percentage))
         // Monthly Pot & Spending Plan
         .route("/myMonthlyPot", get(pot::get_monthly_pot_page))
+        .route("/spendingPlan", get(pot::get_monthly_pot_page))
+        .route("/spendingPlans", get(pot::get_monthly_pot_page))
         .route("/pot", post(pot::post_pot_form))
         .route("/pot/applyGruelling", post(pot::post_apply_gruelling))
         .route("/binPot/:id", get(pot::get_bin_pot).post(pot::get_bin_pot))

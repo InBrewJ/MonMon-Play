@@ -115,6 +115,15 @@
             }
         }
 
+        if (currentPathname === '/myplans' || currentPathname === '/plans') {
+            var plansGroup = document.getElementById('nav-group-plans');
+            if (plansGroup) {
+                plansGroup.classList.add('open', 'has-active');
+                var btn = plansGroup.querySelector('.drawer-group-toggle');
+                if (btn) btn.setAttribute('aria-expanded', 'true');
+            }
+        }
+
         // "until a menu item is clicked" - clicking any navigation link closes the drawer
         for (var i = 0; i < drawerLinks.length; i++) {
             drawerLinks[i].addEventListener('click', function() {
@@ -128,6 +137,9 @@
             var PAGE_MAP = [
                 { path: '/spog', name: 'SPOG', icon: 'fas fa-chart-pie' },
                 { path: '/nommon', name: 'NomMon', icon: 'fas fa-utensils' },
+                { path: '/savingsPlan', name: 'Savings Plan', icon: 'fas fa-piggy-bank' },
+                { path: '/myMonthlyPot', name: 'Spending Plan', icon: 'fas fa-archive' },
+                { path: '/spendingPlan', name: 'Spending Plan', icon: 'fas fa-archive' },
                 { path: '/myPlans', name: 'Plans', icon: 'fas fa-sliders-h' },
                 { path: '/netWorth', name: 'Net Worth', icon: 'fas fa-landmark' },
                 { path: '/transfers', name: 'Transfer Window', icon: 'fas fa-exchange-alt' },

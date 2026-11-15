@@ -224,6 +224,32 @@ impl PotFormPayload {
 
         payload
     }
+
+    pub fn collect_all_pot_accounts(&self) -> std::collections::HashSet<i64> {
+        let mut final_accounts: std::collections::HashSet<i64> = self.accounts.clone().unwrap_or_default().into_iter().collect();
+        if let Some(fid) = self.food_account_id.filter(|&id| id > 0) {
+            final_accounts.insert(fid);
+        }
+        if let Some(fid) = self.fun_account_id.filter(|&id| id > 0) {
+            final_accounts.insert(fid);
+        }
+        if let Some(fid) = self.fuel_account_id.filter(|&id| id > 0) {
+            final_accounts.insert(fid);
+        }
+        if let Some(tid) = self.transport_account_id.filter(|&id| id > 0) {
+            final_accounts.insert(tid);
+        }
+        if let Some(ref s_json) = self.sections_json {
+            if let Ok(sections) = serde_json::from_str::<Vec<serde_json::Value>>(s_json) {
+                for sec in sections {
+                    if let Some(aid) = sec.get("accountId").and_then(|v| v.as_i64()).filter(|&id| id > 0) {
+                        final_accounts.insert(aid);
+                    }
+                }
+            }
+        }
+        final_accounts
+    }
 }
 
 pub fn get_user_id_from_headers_or_default(headers: &HeaderMap, query_uid: Option<&str>) -> String {
@@ -563,6 +589,7 @@ pub async fn post_pot_form(
     body: String,
 ) -> Result<Redirect, (StatusCode, String)> {
     let payload = PotFormPayload::from_form_body(&body);
+    let final_accounts = payload.collect_all_pot_accounts();
     let user_id = get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &user_id).await;
     let now = chrono::Utc::now().timestamp();
@@ -589,8 +616,8 @@ pub async fn post_pot_form(
         sp_trans = Some(0.0);
         sp_sections_json = Some(r#"[{"heading":"Food","amount":216.67,"accountId":null}]"#.to_string());
     } else if preset == "custom" || preset.starts_with("saved_") {
-        sp_name = payload.plan_name.filter(|s| !s.trim().is_empty()).or_else(|| Some("Custom Plan".to_string()));
-        sp_sections_json = payload.sections_json.filter(|s| !s.trim().is_empty());
+        sp_name = payload.plan_name.clone().filter(|s| !s.trim().is_empty()).or_else(|| Some("Custom Plan".to_string()));
+        sp_sections_json = payload.sections_json.clone().filter(|s| !s.trim().is_empty());
         if let Some(ref sec_str) = sp_sections_json {
             if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(sec_str) {
                 for s in parsed {
@@ -648,15 +675,14 @@ pub async fn post_pot_form(
 
     let pot_id: i64 = row.get("id");
 
-    // Link accounts in pot_accounts
-    if let Some(account_ids) = payload.accounts {
-        for aid in account_ids {
-            let _ = sqlx::query("INSERT INTO pot_accounts (pot_id, account_id) VALUES ($1, $2)")
-                .bind(pot_id)
-                .bind(aid)
-                .execute(&state.pool)
-                .await;
-        }
+    // Link accounts in pot_accounts: include all checked accounts PLUS any accounts
+    // nominated in category dropdowns (Food, Fun, Fuel, Transport) or custom plan sections.
+    for aid in final_accounts {
+        let _ = sqlx::query("INSERT INTO pot_accounts (pot_id, account_id) VALUES ($1, $2)")
+            .bind(pot_id)
+            .bind(aid)
+            .execute(&state.pool)
+            .await;
     }
 
     // Save or update custom plan template if requested
@@ -971,5 +997,21 @@ mod tests {
         assert_eq!(p.id, Some(55));
         assert_eq!(p.plan_name.as_deref(), Some("Holiday Fund"));
         assert!(p.sections_json.unwrap().contains("Hotels"));
+    }
+
+    #[test]
+    fn test_collect_all_pot_accounts_includes_nominated_and_checked_accounts() {
+        // accounts checklist has 10, but Food has 12, Fun has 14, Fuel has 16, Transport has 18,
+        // and sections_json has section with accountId 20.
+        let body = "accounts=10&food_account_id=12&fun_account_id=14&fuel_account_id=16&transport_account_id=18&sections_json=%5B%7B%22heading%22%3A%22Groceries%22%2C%22amount%22%3A100%2C%22accountId%22%3A20%7D%5D";
+        let payload = PotFormPayload::from_form_body(body);
+        let all_accounts = payload.collect_all_pot_accounts();
+        assert!(all_accounts.contains(&10));
+        assert!(all_accounts.contains(&12));
+        assert!(all_accounts.contains(&14));
+        assert!(all_accounts.contains(&16));
+        assert!(all_accounts.contains(&18));
+        assert!(all_accounts.contains(&20));
+        assert_eq!(all_accounts.len(), 6);
     }
 }

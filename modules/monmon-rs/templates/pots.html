@@ -362,6 +362,70 @@
     var planNameInput = document.getElementById('plan-name-input');
     var btnSavePresetDirect = document.getElementById('btn-save-preset-direct');
     var btnDeletePresetDirect = document.getElementById('btn-delete-preset-direct');
+    var potConfigForm = document.getElementById('pot-config-form');
+
+    function autoSelectNominatedAccounts() {
+        var nominated = {};
+
+        // 1. Fixed category account dropdowns (Food, Fun, Transport, Fuel)
+        ['food_account_id', 'fun_account_id', 'transport_account_id', 'fuel_account_id'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el && el.value && el.value !== '0') {
+                nominated[el.value] = true;
+            }
+        });
+
+        // 2. Custom plan sections in state
+        if (sectionsState && Array.isArray(sectionsState)) {
+            sectionsState.forEach(function(sec) {
+                if (sec && sec.accountId && sec.accountId > 0) {
+                    nominated[String(sec.accountId)] = true;
+                }
+            });
+        }
+
+        // 3. Custom plan select elements in DOM
+        var domSecAccSelects = document.querySelectorAll('.sec-account-inp');
+        for (var i = 0; i < domSecAccSelects.length; i++) {
+            var val = domSecAccSelects[i].value;
+            if (val && val !== '0') {
+                nominated[val] = true;
+            }
+        }
+
+        // Automatically check matching checkboxes in the Spending Accounts checklist
+        for (var accId in nominated) {
+            if (Object.prototype.hasOwnProperty.call(nominated, accId)) {
+                var chk = document.querySelector('input[name="accounts"][value="' + accId + '"]');
+                if (chk && !chk.checked) {
+                    chk.checked = true;
+                    var label = chk.closest('label');
+                    if (label) {
+                        label.style.transition = 'background-color 0.3s ease';
+                        label.style.backgroundColor = 'rgba(99, 102, 241, 0.2)';
+                        (function(lbl) {
+                            setTimeout(function() {
+                                lbl.style.backgroundColor = '';
+                            }, 600);
+                        })(label);
+                    }
+                }
+            }
+        }
+    }
+
+    ['food_account_id', 'fun_account_id', 'transport_account_id', 'fuel_account_id'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', autoSelectNominatedAccounts);
+        }
+    });
+
+    if (potConfigForm) {
+        potConfigForm.addEventListener('submit', function() {
+            autoSelectNominatedAccounts();
+        });
+    }
 
     var accountOptionsHtml = '<option value="0">-- No Account --</option>';
     {% for a in all_accounts %}
@@ -417,6 +481,7 @@
                 var v = parseInt(accSel.value, 10);
                 sectionsState[idx].accountId = (v && v > 0) ? v : null;
                 serialize();
+                autoSelectNominatedAccounts();
             });
             bDel.addEventListener('click', function() {
                 sectionsState.splice(idx, 1);
@@ -427,6 +492,7 @@
             sectionsContainer.appendChild(row);
         });
         serialize();
+        autoSelectNominatedAccounts();
     }
 
     if (presetSelect) {
@@ -467,6 +533,7 @@
                 if (presetControlsBar) presetControlsBar.style.display = 'none';
                 customFields.style.display = 'none';
             }
+            autoSelectNominatedAccounts();
         });
     }
 
@@ -544,6 +611,7 @@
     });
 
     serialize();
+    autoSelectNominatedAccounts();
 })();
 </script>
 </body>
