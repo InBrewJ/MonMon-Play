@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ANSI color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GREENSTREET_HOST="${1:-greenstreet@greenstreet.local}"
+
+echo -e "${BLUE}${BOLD}================================================================${NC}"
+echo -e "${BLUE}${BOLD}🚀 Shipping Entire Stack (LegMon, MemMon, MonMon) to ${GREENSTREET_HOST}${NC}"
+echo -e "${BLUE}${BOLD}================================================================${NC}"
+
+echo -e "\n${YELLOW}${BOLD}>>> [1/3] Shipping LegMon OCR service...${NC}"
+"$SCRIPT_DIR/legmon.sh" "$@"
+
+echo -e "\n${YELLOW}${BOLD}>>> [2/3] Shipping MemMon AI cache service...${NC}"
+"$SCRIPT_DIR/memmon.sh" "$@"
+
+echo -e "\n${YELLOW}${BOLD}>>> [3/3] Shipping MonMon primary service...${NC}"
+"$SCRIPT_DIR/monmon.sh" "$@"
+
+echo -e "\n${GREEN}${BOLD}🎉 Full stack deployment (LegMon, MemMon, MonMon) to ${GREENSTREET_HOST} completed successfully!${NC}"
