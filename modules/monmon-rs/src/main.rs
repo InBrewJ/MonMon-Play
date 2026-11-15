@@ -164,6 +164,8 @@ pub async fn callback_handler(
 
     let mut user_ident = params.user_id.or(params.username).unwrap_or_default();
     let mut resolved_username = user_ident.clone();
+    let mut resolved_email: Option<String> = None;
+    let mut resolved_sub: Option<String> = None;
     let mut raw_id_token: Option<String> = None;
 
     if user_ident.is_empty() {
@@ -208,6 +210,8 @@ pub async fn callback_handler(
                                     raw_id_token = Some(id_token.to_string());
 
                                     if let Some(claims) = extract_claims_from_id_token(id_token) {
+                                        resolved_email = claims.email.clone();
+                                        resolved_sub = claims.sub.clone();
                                         if let Some(u) = claims.preferred_username {
                                             resolved_username = u.clone();
                                             user_ident = u;
@@ -245,8 +249,78 @@ pub async fn callback_handler(
     // Resolve canonical user UUID in Postgres
     let canonical_uid = crate::spog::resolve_user_id(&state.pool, &user_ident).await;
 
+    // Check user_access approval status or register as PENDING if new user
+    let access_row = sqlx::query_as::<_, admin::UserAccessRow>(
+        r#"
+        SELECT id, userid, username, email, status, createdat, approvedat, approvedby
+        FROM user_access
+        WHERE userid = $1 
+           OR userid = $2
+           OR (username IS NOT NULL AND LOWER(username) = LOWER($1))
+           OR (username IS NOT NULL AND LOWER(username) = LOWER($3))
+           OR (email IS NOT NULL AND LOWER(email) = LOWER($1))
+           OR ($4 IS NOT NULL AND email IS NOT NULL AND LOWER(email) = LOWER($4))
+           OR ($5 IS NOT NULL AND userid = $5)
+        ORDER BY CASE WHEN status = 'APPROVED' THEN 1 ELSE 2 END, id ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(&user_ident)
+    .bind(&canonical_uid)
+    .bind(&resolved_username)
+    .bind(&resolved_email)
+    .bind(&resolved_sub)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+
+    let status = match access_row {
+        Some(row) => row.status,
+        None => {
+            // New user registration flow: auto-insert as PENDING
+            let next_id: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) + 1 FROM user_access")
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(1);
+
+            let email_candidate = resolved_email.clone().or_else(|| {
+                if user_ident.contains('@') {
+                    Some(user_ident.clone())
+                } else {
+                    None
+                }
+            });
+
+            let insert_res = sqlx::query(
+                r#"
+                INSERT INTO user_access (id, userid, username, email, status, createdat)
+                VALUES ($1, $2, $3, $4, 'PENDING', NOW())
+                ON CONFLICT (userid) DO NOTHING
+                "#,
+            )
+            .bind(next_id)
+            .bind(&canonical_uid)
+            .bind(&resolved_username)
+            .bind(&email_candidate)
+            .execute(&state.pool)
+            .await;
+
+            if let Err(e) = insert_res {
+                tracing::warn!("Failed to auto-insert new user into user_access: {}", e);
+            }
+
+            "PENDING".to_string()
+        }
+    };
+
     let is_prod = clean_target.contains("dryark.uk") || host_header.contains("dryark.uk");
     let secure_flag = if is_prod { "; Secure" } else { "" };
+
+    let destination = if status == "APPROVED" {
+        clean_target
+    } else {
+        "/waitinglist".to_string()
+    };
 
     let cookie_val = format!("user_id={}; Path=/; HttpOnly; SameSite=Lax{}", canonical_uid, secure_flag);
     let session_val = format!("monmon_session={}; Path=/; SameSite=Lax{}", resolved_username, secure_flag);
@@ -255,7 +329,7 @@ pub async fn callback_handler(
 
     let mut builder = Response::builder()
         .status(StatusCode::SEE_OTHER)
-        .header(header::LOCATION, clean_target)
+        .header(header::LOCATION, destination)
         .header(header::SET_COOKIE, cookie_val)
         .header(header::SET_COOKIE, session_val)
         .header(header::SET_COOKIE, auth_val)

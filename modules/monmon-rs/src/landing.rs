@@ -1,9 +1,13 @@
+use std::sync::Arc;
 use askama::Template;
 use axum::{
+    extract::State,
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json, Redirect, Response},
 };
 use serde_json::Value;
+
+use crate::AppState;
 
 #[derive(Template)]
 #[template(path = "landing.html")]
@@ -27,19 +31,55 @@ pub async fn get_health_api() -> Json<Value> {
     }))
 }
 
-pub async fn get_access_status_api(headers: HeaderMap) -> Json<Value> {
+pub async fn get_access_status_api(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Json<Value> {
     let auth = crate::management::is_authenticated(&headers);
-    let raw_uid = if auth {
-        crate::pot::get_user_id_from_headers_or_default(&headers, None)
-    } else {
-        "guest".to_string()
+    if !auth {
+        return Json(serde_json::json!({
+            "authenticated": false,
+            "approved": false,
+            "status": "GUEST",
+            "userId": "guest",
+            "username": "guest"
+        }));
+    }
+
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let user_id = crate::spog::resolve_user_id(&state.pool, &raw_uid).await;
+
+    let row = sqlx::query_as::<_, crate::admin::UserAccessRow>(
+        r#"
+        SELECT id, userid, username, email, status, createdat, approvedat, approvedby 
+        FROM user_access 
+        WHERE userid = $1 
+           OR userid = $2
+           OR (username IS NOT NULL AND LOWER(username) = LOWER($1))
+           OR (email IS NOT NULL AND LOWER(email) = LOWER($1))
+        ORDER BY CASE WHEN status = 'APPROVED' THEN 1 ELSE 2 END, id ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(&raw_uid)
+    .bind(&user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+
+    let (status, username) = match row {
+        Some(u) => (u.status, u.username.unwrap_or_else(|| raw_uid.clone())),
+        None => ("PENDING".to_string(), raw_uid.clone()),
     };
+
+    let approved = status == "APPROVED";
+
     Json(serde_json::json!({
-        "authenticated": auth,
-        "approved": true,
-        "status": if auth { "APPROVED" } else { "GUEST" },
-        "userId": raw_uid,
-        "username": raw_uid
+        "authenticated": true,
+        "approved": approved,
+        "status": status,
+        "userId": user_id,
+        "username": username
     }))
 }
 

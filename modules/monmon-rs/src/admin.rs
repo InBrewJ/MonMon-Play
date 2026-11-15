@@ -260,14 +260,25 @@ pub async fn reject_user_handler(
 
 pub async fn get_waiting_list(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, String)> {
-    // Check demo user
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+
     let user = sqlx::query_as::<_, UserAccessRow>(
-        "SELECT id, userid, username, email, status, createdat, approvedat, approvedby 
-         FROM user_access 
-         WHERE username = 'demo' OR userid = 'demo'
-         LIMIT 1",
+        r#"
+        SELECT id, userid, username, email, status, createdat, approvedat, approvedby 
+        FROM user_access 
+        WHERE userid = $1 
+           OR userid = $2
+           OR (username IS NOT NULL AND LOWER(username) = LOWER($1))
+           OR (email IS NOT NULL AND LOWER(email) = LOWER($1))
+        ORDER BY CASE WHEN status = 'APPROVED' THEN 1 ELSE 2 END, id ASC
+        LIMIT 1
+        "#,
     )
+    .bind(&raw_uid)
+    .bind(&user_id)
     .fetch_optional(&state.pool)
     .await
     .unwrap_or(None);
@@ -280,11 +291,43 @@ pub async fn get_waiting_list(
 
     let tmpl = WaitingListTemplate {
         status: user.as_ref().map(|u| u.status.clone()).unwrap_or_else(|| "PENDING".to_string()),
-        username: user.as_ref().and_then(|u| u.username.clone()).unwrap_or_else(|| "demo".to_string()),
-        userid: user.as_ref().map(|u| u.userid.clone()).unwrap_or_else(|| "demo".to_string()),
+        username: user.as_ref().and_then(|u| u.username.clone()).unwrap_or_else(|| raw_uid.clone()),
+        userid: user.as_ref().map(|u| u.userid.clone()).unwrap_or_else(|| raw_uid),
     };
 
     tmpl.render()
         .map(|h| Html(h).into_response())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_waiting_list_template_renders_pending() {
+        let tmpl = WaitingListTemplate {
+            status: "PENDING".to_string(),
+            username: "newuser".to_string(),
+            userid: "usr_12345".to_string(),
+        };
+        let rendered = tmpl.render().expect("Failed to render waiting list template");
+        assert!(rendered.contains("Pending Administrator Approval"));
+        assert!(rendered.contains("newuser"));
+        assert!(rendered.contains("usr_12345"));
+        assert!(rendered.contains("/logout"));
+    }
+
+    #[test]
+    fn test_waiting_list_template_renders_rejected() {
+        let tmpl = WaitingListTemplate {
+            status: "REJECTED".to_string(),
+            username: "blockeduser".to_string(),
+            userid: "usr_67890".to_string(),
+        };
+        let rendered = tmpl.render().expect("Failed to render waiting list template");
+        assert!(rendered.contains("Access Request Not Approved"));
+        assert!(rendered.contains("blockeduser"));
+        assert!(rendered.contains("/logout"));
+    }
 }

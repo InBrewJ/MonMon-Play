@@ -42,3 +42,8 @@ smtp_tls_mode = 'starttls'
 [lifetimes]
 session_lifetime = '336h'
 session_timeout = '24h'
+
+# https://sebadob.github.io/rauthy/config/user_reg.html
+[user_registration]
+enable = true
+

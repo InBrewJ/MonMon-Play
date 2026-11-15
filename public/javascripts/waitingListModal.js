@@ -119,12 +119,20 @@
             if (!data) return;
 
             if (data.authenticated && !data.approved) {
+                if (window.location.pathname.startsWith('/waitinglist')) {
+                    startPolling();
+                    return;
+                }
                 // User is authenticated but on the waiting list!
                 showModal(data.username || data.email);
                 if (statusEl) {
                     statusEl.textContent = 'Checking for approval automatically (every 5s)...';
                 }
             } else if (data.authenticated && data.approved) {
+                if (window.location.pathname.startsWith('/waitinglist')) {
+                    window.location.href = '/spog';
+                    return;
+                }
                 // User is approved! If modal is open, celebrate and reload
                 var modal = document.getElementById('monmon-waiting-list-modal');
                 if (modal && modal.style.display === 'flex') {

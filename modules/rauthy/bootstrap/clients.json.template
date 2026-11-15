@@ -2,6 +2,7 @@
   {
     "id": "monmon-web",
     "name": "MonMon Web",
+    "client_uri": "https://monmon.dryark.uk",
     "secret": {
       "Plain": "__OIDC_CLIENT_SECRET__"
     },
@@ -57,6 +58,7 @@
   {
     "id": "thread-web",
     "name": "Thread",
+    "client_uri": "https://thread.dryark.uk",
     "secret": {
       "Plain": "__OIDC_CLIENT_SECRET__"
     },
