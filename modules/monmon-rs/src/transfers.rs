@@ -668,15 +668,24 @@ pub async fn calculate_payday_window(
 
     let outgoings = sqlx::query_as::<_, Outgoing>(
         r#"
-        SELECT id, name, cost, outgoingday, bill, rent, hiddenfromtotal, paused,
-               outgoingmonth, startingyear, yearinterval, account_id, user_id,
-               pause_reason, paused_at, archived
-        FROM outgoing
-        WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
-          AND (paused IS NULL OR paused = false)
-          AND (outgoingmonth IS NOT NULL AND outgoingmonth > 0)
-        ORDER BY outgoingmonth ASC, outgoingday ASC
+        SELECT 
+            o.id, o.name, o.cost, o.outgoingday as outgoing_day, 
+            o.outgoingmonth as outgoing_month, o.yearinterval as year_interval, 
+            o.startingyear as starting_year, o.bill, o.rent, o.hiddenfromtotal as hidden_from_total,
+            o.paused, COALESCE(o.pause_reason, o.pausereason) as pause_reason,
+            COALESCE(o.paused_at, o.pausedat) as paused_at,
+            COALESCE(o.user_id, o.userid, o."userId") as user_id,
+            o.account_id,
+            a.name as account_name,
+            a.type as account_type,
+            o.archived
+        FROM outgoing o
+        LEFT JOIN account a ON o.account_id = a.id
+        WHERE COALESCE(o.user_id, o.userid, o."userId") = $1
+          AND (o.archived IS NULL OR o.archived = false)
+          AND (o.paused IS NULL OR o.paused = false)
+          AND (o.outgoingmonth IS NOT NULL AND o.outgoingmonth > 0)
+        ORDER BY o.outgoingmonth ASC, o.outgoingday ASC
         "#,
     )
     .bind(resolved_uid)

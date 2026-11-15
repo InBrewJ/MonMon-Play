@@ -301,6 +301,11 @@ pub fn calculate_yearly_bills_monthly_saving(
 ) -> YearlyBillsReserveCalculation {
     let mut upcoming_items: Vec<(NaiveDate, u32, f32, String)> = Vec::new();
 
+    let next_cycle_payday = crate::anchoring::find_next_payday_date(
+        as_of + chrono::Duration::days(1),
+        nominal_payday.max(1),
+    );
+
     for o in outgoings {
         if !o.is_yearly() {
             continue;
@@ -313,18 +318,18 @@ pub fn calculate_yearly_bills_monthly_saving(
             _ => continue,
         };
 
-        // If the outgoing is due in the current month, it is an active outgoing this month.
-        // It is paid directly this month, so do not double-bill with a sinking fund top-up.
-        if o.is_due_in_month(as_of) {
-            continue;
-        }
-
         let next_due_year = o.get_next_due_year(as_of);
         let mut due_date = crate::anchoring::get_actual_outgoing_date(
             o.outgoing_day,
             next_due_year,
             target_month as u32,
         );
+
+        // If the outgoing is due in the upcoming payday cycle (e.g. between this payday and next payday),
+        // it is an active outgoing paid in this cycle (via direct bill or outgoings cover).
+        // It is paid directly, so do not double-bill with a sinking fund top-up.
+        let due_in_cycle = due_date >= as_of && due_date < next_cycle_payday;
+
         if due_date <= as_of {
             let interval = o.get_year_interval();
             due_date = crate::anchoring::get_actual_outgoing_date(
@@ -332,6 +337,10 @@ pub fn calculate_yearly_bills_monthly_saving(
                 next_due_year + interval,
                 target_month as u32,
             );
+        }
+
+        if due_in_cycle || (o.is_due_in_month(as_of) && due_date.year() == as_of.year()) {
+            continue;
         }
 
         let paydays_remaining = count_paydays_between(as_of, due_date, nominal_payday);
@@ -717,5 +726,49 @@ mod tests {
         assert!(tooltip.contains("Test Outgoing"));
         assert!(tooltip.contains("£300.00/mo"));
         assert!(tooltip.contains("£400.00 covered"));
+    }
+
+    #[test]
+    fn test_calculate_yearly_bills_monthly_saving_excludes_upcoming_payday_cycle_bills_and_includes_later_bills() {
+        // Payday is 2026-11-30, nominal payday is 31 (month end).
+        // Cycle covers 2026-11-30 to 2026-12-31.
+        let mut bill_dec1 = make_test_outgoing(Some(12), Some(1), None);
+        bill_dec1.name = "December MOT".to_string();
+        bill_dec1.cost = 55.0;
+        bill_dec1.outgoing_day = 1;
+
+        let mut bill_dec2 = make_test_outgoing(Some(12), Some(1), None);
+        bill_dec2.name = "December Insurance".to_string();
+        bill_dec2.cost = 960.0;
+        bill_dec2.outgoing_day = 19;
+
+        let mut bill_jan = make_test_outgoing(Some(1), Some(1), None);
+        bill_jan.name = "January Domain".to_string();
+        bill_jan.cost = 65.0;
+        bill_jan.outgoing_day = 18;
+
+        let mut bill_apr = make_test_outgoing(Some(4), Some(1), None);
+        bill_apr.name = "April Insurance".to_string();
+        bill_apr.cost = 450.0;
+        bill_apr.outgoing_day = 15;
+
+        let outgoings = vec![bill_dec1, bill_dec2, bill_jan, bill_apr];
+
+        let res = calculate_yearly_bills_monthly_saving(
+            NaiveDate::from_ymd_opt(2026, 11, 30).unwrap(),
+            31,
+            &outgoings,
+            0.0,
+        );
+
+        // December bills are due in the upcoming cycle (funded directly / covered on payday),
+        // so only January (2 paydays -> 32.50) and April (5 paydays -> 90.00) are included in sinking fund!
+        assert_eq!(res.upcoming_count, 2);
+        assert_eq!(res.monthly_saving, 122.50);
+        assert_eq!(res.total_upcoming_cost, 515.00);
+        assert_eq!(res.breakdown[0].name, "January Domain");
+        assert_eq!(res.breakdown[0].monthly_saving, 32.50);
+        assert_eq!(res.breakdown[1].name, "April Insurance");
+        assert_eq!(res.breakdown[1].monthly_saving, 90.00);
     }
 }
