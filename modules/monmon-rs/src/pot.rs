@@ -145,6 +145,9 @@ pub struct PotFormPayload {
     #[serde(default, alias = "transportAccountId", deserialize_with = "deserialize_empty_as_none_i64")]
     pub transport_account_id: Option<i64>,
     pub save_template: Option<String>,
+    #[serde(default, alias = "customPlanId", deserialize_with = "deserialize_empty_as_none_i64")]
+    pub custom_plan_id: Option<i64>,
+    pub preset_save_mode: Option<String>,
 }
 
 impl PotFormPayload {
@@ -201,6 +204,14 @@ impl PotFormPayload {
                 "save_template" | "saveTemplate" => {
                     if !val.is_empty() {
                         payload.save_template = Some(val.to_string());
+                    }
+                }
+                "custom_plan_id" | "customPlanId" => {
+                    payload.custom_plan_id = val.parse::<i64>().ok();
+                }
+                "preset_save_mode" | "presetSaveMode" => {
+                    if !val.is_empty() {
+                        payload.preset_save_mode = Some(val.to_string());
                     }
                 }
                 _ => {}
@@ -458,7 +469,7 @@ pub async fn get_monthly_pot_page(
 
     // 3. Load saved custom spending plan templates
     let custom_rows = sqlx::query(
-        "SELECT id, name, COALESCE(sectionsjson, sections_json, '[]') AS sec_json FROM custom_spending_plan WHERE (userid = $1 OR user_id = $1) AND (archived IS NULL OR archived = false)",
+        "SELECT id, name, COALESCE(sectionsjson, sections_json, '[]') AS sec_json FROM custom_spending_plan WHERE (userid = $1 OR user_id = $1) AND (archived IS NULL OR archived = false) ORDER BY name ASC",
     )
     .bind(&resolved)
     .fetch_all(&state.pool)
@@ -648,23 +659,51 @@ pub async fn post_pot_form(
         }
     }
 
-    // Save custom plan template if requested
-    if payload.save_template.as_deref() == Some("true") || payload.save_template.as_deref() == Some("on") {
+    // Save or update custom plan template if requested
+    let save_requested = payload.save_template.as_deref() == Some("true")
+        || payload.save_template.as_deref() == Some("on")
+        || payload.preset_save_mode.as_deref() == Some("update")
+        || payload.preset_save_mode.as_deref() == Some("new");
+
+    if save_requested {
         if let (Some(ref name), Some(ref json)) = (&sp_name, &sp_sections_json) {
-            let _ = sqlx::query(
-                r#"
-                INSERT INTO custom_spending_plan (
-                    id, userid, user_id, name, sectionsjson, sections_json, createdat, lastupdated, archived
+            let is_update = payload.preset_save_mode.as_deref() == Some("update")
+                || (payload.preset_save_mode.is_none() && payload.custom_plan_id.is_some());
+
+            if is_update && payload.custom_plan_id.is_some() {
+                if let Some(cid) = payload.custom_plan_id.filter(|&id| id > 0) {
+                    let _ = sqlx::query(
+                        r#"
+                        UPDATE custom_spending_plan
+                        SET name = $1, sectionsjson = $2, sections_json = $2, lastupdated = $3, last_updated = $3
+                        WHERE id = $4 AND (userid = $5 OR user_id = $5 OR userid = $6 OR user_id = $6)
+                        "#,
+                    )
+                    .bind(name)
+                    .bind(json)
+                    .bind(now)
+                    .bind(cid)
+                    .bind(&resolved)
+                    .bind(&user_id)
+                    .execute(&state.pool)
+                    .await;
+                }
+            } else {
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO custom_spending_plan (
+                        id, userid, user_id, name, sectionsjson, sections_json, createdat, lastupdated, archived
+                    )
+                    VALUES (nextval('hibernate_sequence'), $1, $1, $2, $3, $3, $4, $4, false)
+                    "#,
                 )
-                VALUES (nextval('hibernate_sequence'), $1, $1, $2, $3, $3, $4, $4, false)
-                "#,
-            )
-            .bind(&resolved)
-            .bind(name)
-            .bind(json)
-            .bind(now)
-            .execute(&state.pool)
-            .await;
+                .bind(&resolved)
+                .bind(name)
+                .bind(json)
+                .bind(now)
+                .execute(&state.pool)
+                .await;
+            }
         }
     }
 
@@ -757,6 +796,114 @@ pub async fn get_bin_pot(
     Ok(Redirect::to("/myMonthlyPot"))
 }
 
+pub async fn get_bin_preset(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let res = sqlx::query(
+        "UPDATE custom_spending_plan SET archived = true WHERE id = $1 AND (userid = $2 OR user_id = $2 OR userid = $3 OR user_id = $3)"
+    )
+    .bind(id)
+    .bind(&user_id)
+    .bind(&raw_uid)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    crate::authz::Authz::verify_affected(res.rows_affected(), "CustomSpendingPlan", id)?;
+
+    Ok(Redirect::to("/myMonthlyPot"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SavePresetPayload {
+    pub id: Option<i64>,
+    pub plan_name: Option<String>,
+    pub sections_json: Option<String>,
+}
+
+pub async fn post_save_preset(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: String,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+    let now = chrono::Utc::now().timestamp();
+
+    let (id, name, sections_json) = if body.trim().starts_with('{') {
+        let p: SavePresetPayload = serde_json::from_str(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+        (p.id, p.plan_name.unwrap_or_else(|| "Custom Plan".to_string()), p.sections_json.unwrap_or_else(|| "[]".to_string()))
+    } else {
+        let mut id_opt = None;
+        let mut name_opt = None;
+        let mut sec_opt = None;
+        for (k, v) in form_urlencoded::parse(body.as_bytes()) {
+            match k.as_ref() {
+                "id" | "custom_plan_id" | "customPlanId" => {
+                    id_opt = v.trim().parse::<i64>().ok();
+                }
+                "name" | "plan_name" | "planName" => {
+                    let s = v.trim().to_string();
+                    if !s.is_empty() {
+                        name_opt = Some(s);
+                    }
+                }
+                "sections_json" | "sectionsJson" => {
+                    let s = v.trim().to_string();
+                    if !s.is_empty() {
+                        sec_opt = Some(s);
+                    }
+                }
+                _ => {}
+            }
+        }
+        (id_opt, name_opt.unwrap_or_else(|| "Custom Plan".to_string()), sec_opt.unwrap_or_else(|| "[]".to_string()))
+    };
+
+    if let Some(preset_id) = id.filter(|&i| i > 0) {
+        let res = sqlx::query(
+            r#"
+            UPDATE custom_spending_plan
+            SET name = $1, sectionsjson = $2, sections_json = $2, lastupdated = $3, last_updated = $3
+            WHERE id = $4 AND (userid = $5 OR user_id = $5 OR userid = $6 OR user_id = $6)
+            "#,
+        )
+        .bind(&name)
+        .bind(&sections_json)
+        .bind(now)
+        .bind(preset_id)
+        .bind(&resolved)
+        .bind(&raw_uid)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        crate::authz::Authz::verify_affected(res.rows_affected(), "CustomSpendingPlan", preset_id)?;
+    } else {
+        sqlx::query(
+            r#"
+            INSERT INTO custom_spending_plan (
+                id, userid, user_id, name, sectionsjson, sections_json, createdat, lastupdated, archived
+            )
+            VALUES (nextval('hibernate_sequence'), $1, $1, $2, $3, $3, $4, $4, false)
+            "#,
+        )
+        .bind(&resolved)
+        .bind(&name)
+        .bind(&sections_json)
+        .bind(now)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    Ok(Redirect::to("/myMonthlyPot"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -804,5 +951,25 @@ mod tests {
         assert_eq!(payload.accounts, Some(vec![18, 19]));
         assert_eq!(payload.plan_name.as_deref(), Some("My Plan"));
         assert_eq!(payload.food_account_id, Some(18));
+    }
+
+    #[test]
+    fn test_preset_fields_form_body_deserialization() {
+        let body = "preset=saved_42&custom_plan_id=42&plan_name=Household+Essentials&preset_save_mode=update&save_template=true";
+        let payload = PotFormPayload::from_form_body(body);
+        assert_eq!(payload.preset.as_deref(), Some("saved_42"));
+        assert_eq!(payload.custom_plan_id, Some(42));
+        assert_eq!(payload.plan_name.as_deref(), Some("Household Essentials"));
+        assert_eq!(payload.preset_save_mode.as_deref(), Some("update"));
+        assert_eq!(payload.save_template.as_deref(), Some("true"));
+    }
+
+    #[test]
+    fn test_save_preset_payload_json_and_form() {
+        let json = r#"{"id":55,"plan_name":"Holiday Fund","sections_json":"[{\"heading\":\"Hotels\",\"amount\":150}]"}"#;
+        let p: SavePresetPayload = serde_json::from_str(json).expect("deserialize SavePresetPayload");
+        assert_eq!(p.id, Some(55));
+        assert_eq!(p.plan_name.as_deref(), Some("Holiday Fund"));
+        assert!(p.sections_json.unwrap().contains("Hotels"));
     }
 }

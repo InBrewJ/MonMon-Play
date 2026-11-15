@@ -572,6 +572,9 @@ async fn main() {
         .route("/pot", post(pot::post_pot_form))
         .route("/pot/applyGruelling", post(pot::post_apply_gruelling))
         .route("/binPot/:id", get(pot::get_bin_pot).post(pot::get_bin_pot))
+        .route("/binPreset/:id", get(pot::get_bin_preset).post(pot::get_bin_preset))
+        .route("/pot/preset/delete/:id", post(pot::get_bin_preset))
+        .route("/pot/preset/save", post(pot::post_save_preset))
         // Savings Plan & Priority Queue
         .route(
             "/api/savings-plan",
