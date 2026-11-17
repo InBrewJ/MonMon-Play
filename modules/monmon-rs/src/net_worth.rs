@@ -897,7 +897,7 @@ pub async fn bin_asset_endpoint(
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let now = Utc::now().timestamp_millis();
     let res = sqlx::query(
-        "UPDATE net_worth_asset SET archived = true, updated_at = $1, deleted_at = $1 WHERE id = $2 AND (userid = $3 OR user_id = $3)",
+        "UPDATE net_worth_asset SET archived = true, updated_at = $1, deleted_at = $1, archived_at = $1 WHERE id = $2 AND (userid = $3 OR user_id = $3)",
     )
     .bind(now)
     .bind(id)

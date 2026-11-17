@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>MonMon — Waste Bin</title>
+    {% include "nav_head.html" %}
+    <style>
+        .wb-hero {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 1.5rem;
+        }
+        .wb-hero-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .wb-hero-title h1 {
+            margin: 0;
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+        .wb-stat-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.28);
+            color: var(--primary, #6366f1);
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .wb-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 1.25rem;
+        }
+        .wb-filter-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+            background: var(--card-bg, rgba(30, 41, 59, 0.7));
+            color: var(--text-muted, #94a3b8);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.15s ease;
+        }
+        .wb-filter-btn:hover {
+            border-color: var(--primary, #6366f1);
+            color: var(--text-main, #f8fafc);
+        }
+        .wb-filter-btn.active {
+            background: var(--primary, #6366f1);
+            border-color: var(--primary, #6366f1);
+            color: #fff;
+        }
+        .wb-banner {
+            background: rgba(16, 185, 129, 0.14);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            color: #34d399;
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+        }
+        .wb-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        /* Stacked Action Card primitive */
+        .wb-card {
+            background: var(--card-bg, rgba(30, 41, 59, 0.75));
+            border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+            border-radius: 14px;
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .wb-card-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .wb-card-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text-main, #f8fafc);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .wb-badge {
+            flex-shrink: 0;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.16);
+            color: var(--text-main, #e2e8f0);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+        }
+        .wb-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 8px 16px;
+            font-size: 0.85rem;
+            color: var(--text-muted, #94a3b8);
+        }
+        .wb-meta-label {
+            display: block;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            opacity: 0.75;
+        }
+        .wb-meta-val {
+            font-weight: 600;
+            color: var(--text-main, #e2e8f0);
+        }
+        .wb-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-top: 8px;
+            border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));
+        }
+        .btn-recover {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(16, 185, 129, 0.16);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: #34d399;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .btn-recover:hover {
+            background: #10b981;
+            color: #fff;
+        }
+        .wb-empty {
+            text-align: center;
+            padding: 48px 20px;
+            background: var(--card-bg, rgba(30, 41, 59, 0.6));
+            border: 1px dashed var(--border-color, rgba(255,255,255,0.15));
+            border-radius: 16px;
+            color: var(--text-muted, #94a3b8);
+        }
+        @media (max-width: 640px) {
+            .wb-actions {
+                justify-content: stretch;
+            }
+            .wb-actions form,
+            .wb-actions .btn-recover {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    {% include "nav_header.html" %}
+    <main class="container" style="max-width: 960px; margin: 1.5rem auto 4rem; padding: 0 16px;">
+        <div class="wb-hero">
+            <div class="wb-hero-title">
+                <i class="fas fa-trash-restore" style="font-size: 1.6rem; color: var(--primary, #6366f1);"></i>
+                <div>
+                    <h1>Waste Bin</h1>
+                    <p style="margin: 4px 0 0; font-size: 0.9rem; color: var(--text-muted, #94a3b8);">
+                        Recover items archived in the last 30 days. Older items are hidden automatically but never permanently purged.
+                    </p>
+                </div>
+            </div>
+            <div class="wb-stat-pill" id="wb-total-pill">
+                <i class="fas fa-box-open"></i>
+                <span>{{ total_count }} recoverable</span>
+            </div>
+        </div>
+
+        {% if recovered_banner %}
+        <div class="wb-banner" role="status">
+            <i class="fas fa-check-circle"></i>
+            <span>Item recovered and restored to your workspace.</span>
+        </div>
+        {% endif %}
+
+        <div class="wb-filters" role="navigation" aria-label="Waste Bin Filters">
+            <a href="/wasteBin" class="wb-filter-btn {% if active_filter == "all" || active_filter == "" %}active{% endif %}">
+                All ({{ total_count }})
+            </a>
+            <a href="/wasteBin?entity_type=account" class="wb-filter-btn {% if active_filter == "account" %}active{% endif %}">
+                Accounts ({{ accounts_count }})
+            </a>
+            <a href="/wasteBin?entity_type=incoming" class="wb-filter-btn {% if active_filter == "incoming" %}active{% endif %}">
+                Incomings ({{ incomings_count }})
+            </a>
+            <a href="/wasteBin?entity_type=outgoing" class="wb-filter-btn {% if active_filter == "outgoing" %}active{% endif %}">
+                Outgoings ({{ outgoings_count }})
+            </a>
+            <a href="/wasteBin?entity_type=net_worth_asset" class="wb-filter-btn {% if active_filter == "net_worth_asset" %}active{% endif %}">
+                Net Worth ({{ net_worth_count }})
+            </a>
+            <a href="/wasteBin?entity_type=plans" class="wb-filter-btn {% if active_filter == "plans" %}active{% endif %}">
+                Plans &amp; Pots ({{ plans_count }})
+            </a>
+        </div>
+
+        {% if items.is_empty() %}
+        <div class="wb-empty">
+            <i class="fas fa-sparkles" style="font-size: 2rem; margin-bottom: 12px; opacity: 0.7;"></i>
+            <h3 style="margin: 0 0 6px; color: var(--text-main, #f8fafc);">Your Waste Bin is empty</h3>
+            <p style="margin: 0; font-size: 0.9rem;">No archived items from the last 30 days were found.</p>
+        </div>
+        {% else %}
+        <div class="wb-list">
+            {% for item in items %}
+            <div class="wb-card" data-entity-type="{{ item.entity_type }}" data-entity-id="{{ item.id }}">
+                <div class="wb-card-top">
+                    <div class="wb-card-title">{{ item.name }}</div>
+                    <span class="wb-badge">{{ item.entity_label }}</span>
+                </div>
+                <div class="wb-meta-grid">
+                    <div>
+                        <span class="wb-meta-label">Details</span>
+                        <span class="wb-meta-val">{{ item.details }}</span>
+                    </div>
+                    <div>
+                        <span class="wb-meta-label">Archived On</span>
+                        <span class="wb-meta-val">{{ item.archived_date }}</span>
+                    </div>
+                    <div>
+                        <span class="wb-meta-label">Recovery Window</span>
+                        <span class="wb-meta-val">{{ item.days_remaining }} day{% if item.days_remaining != 1 %}s{% endif %} left</span>
+                    </div>
+                </div>
+                <div class="wb-actions">
+                    <form method="POST" action="/wasteBin/recover/{{ item.entity_type }}/{{ item.id }}" style="margin: 0;">
+                        <button type="submit" class="btn-recover">
+                            <i class="fas fa-undo-alt"></i> Recover
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </main>
+    {% include "nav_scripts.html" %}
+</body>
+</html>

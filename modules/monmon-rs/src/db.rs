@@ -6,6 +6,79 @@ use chrono::{Datelike, Utc};
 use sqlx::{PgPool, Row};
 
 // ==========================================
+// Schema Migrations (Audit: created_at, updated_at, archived_at)
+// ==========================================
+
+pub async fn run_schema_migrations(pool: &PgPool) {
+    let stmts = [
+        // Legacy column ensurements
+        r#"ALTER TABLE user_access ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)"#,
+        r#"UPDATE user_access SET user_id = userid WHERE user_id IS NULL AND userid IS NOT NULL"#,
+        r#"ALTER TABLE user_access ADD COLUMN IF NOT EXISTS yearly_bills_account_id BIGINT REFERENCES account(id) ON DELETE SET NULL"#,
+        r#"ALTER TABLE user_access ADD COLUMN IF NOT EXISTS region VARCHAR(64) DEFAULT 'UK'"#,
+        r#"ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS overwritten_balances_json TEXT"#,
+        // Audit: created_at, updated_at, archived_at across all tables
+        r#"ALTER TABLE account ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE account ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE account ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"ALTER TABLE app_user ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()"#,
+        r#"ALTER TABLE balance ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE balance ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"UPDATE bank_transaction SET created_at = createdat WHERE created_at IS NULL AND createdat IS NOT NULL"#,
+        r#"ALTER TABLE custom_spending_plan ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE custom_spending_plan ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE custom_spending_plan ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"UPDATE custom_spending_plan SET created_at = createdat WHERE created_at IS NULL AND createdat IS NOT NULL"#,
+        r#"UPDATE custom_spending_plan SET updated_at = COALESCE(last_updated, lastupdated) WHERE updated_at IS NULL AND COALESCE(last_updated, lastupdated) IS NOT NULL"#,
+        r#"ALTER TABLE incoming ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE incoming ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE incoming ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE locked_meal_plan ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"UPDATE locked_meal_plan SET created_at = COALESCE(lockedat, "lockedAt") WHERE created_at IS NULL AND COALESCE(lockedat, "lockedAt") IS NOT NULL"#,
+        r#"ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE monzo_connection ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"UPDATE monzo_connection SET created_at = createdat WHERE created_at IS NULL AND createdat IS NOT NULL"#,
+        r#"ALTER TABLE net_worth_asset ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"UPDATE net_worth_asset SET archived_at = deleted_at WHERE archived = true AND archived_at IS NULL AND deleted_at IS NOT NULL"#,
+        r#"ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE plan ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE plan ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE plan ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"ALTER TABLE pot ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE pot ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE pot ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"UPDATE pot SET created_at = createdat WHERE created_at IS NULL AND createdat IS NOT NULL"#,
+        r#"UPDATE pot SET updated_at = lastupdated WHERE updated_at IS NULL AND lastupdated IS NOT NULL"#,
+        r#"ALTER TABLE pot_accounts ADD COLUMN IF NOT EXISTS created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT"#,
+        r#"ALTER TABLE pot_accounts ADD COLUMN IF NOT EXISTS updated_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT"#,
+        r#"ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE savings_plan ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"UPDATE savings_plan SET created_at = createdat WHERE created_at IS NULL AND createdat IS NOT NULL"#,
+        r#"UPDATE savings_plan SET updated_at = COALESCE(last_updated, lastupdated) WHERE updated_at IS NULL AND COALESCE(last_updated, lastupdated) IS NOT NULL"#,
+        r#"ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
+        r#"ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE savings_plan_item ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
+        r#"ALTER TABLE user_access ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()"#,
+        r#"ALTER TABLE user_access ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()"#,
+        r#"UPDATE user_access SET created_at = createdat WHERE created_at IS NULL AND createdat IS NOT NULL"#,
+        r#"ALTER TABLE user_passkey ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()"#,
+    ];
+
+    for stmt in stmts {
+        if let Err(e) = sqlx::query(stmt).execute(pool).await {
+            tracing::debug!("Schema migration note for '{}': {}", stmt, e);
+        }
+    }
+}
+
+// ==========================================
 // Accounts
 // ==========================================
 
@@ -77,10 +150,11 @@ pub async fn get_account(pool: &PgPool, id: i64, user_id: &str) -> Result<Accoun
 }
 
 pub async fn create_account(pool: &PgPool, acc: &NewAccount) -> Result<Account, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Account>(
         r#"
-        INSERT INTO account (id, name, nickname, type, user_id, userid, "userId", account_limit, interest_rate, archived, ledger_mode)
-        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $6, FALSE, 'TBL')
+        INSERT INTO account (id, name, nickname, type, user_id, userid, "userId", account_limit, interest_rate, archived, ledger_mode, created_at, updated_at)
+        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $6, FALSE, 'TBL', $7, $7)
         RETURNING 
             id, name, nickname, type as account_type, 
             COALESCE(user_id, userid, "userId") as user_id,
@@ -93,16 +167,18 @@ pub async fn create_account(pool: &PgPool, acc: &NewAccount) -> Result<Account, 
     .bind(&acc.user_id)
     .bind(acc.account_limit)
     .bind(acc.interest_rate)
+    .bind(now_epoch)
     .fetch_one(pool)
     .await
 }
 
 pub async fn update_account(pool: &PgPool, id: i64, user_id: &str, acc: &UpdateAccount) -> Result<Account, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Account>(
         r#"
         UPDATE account
-        SET name = $1, nickname = $2, type = $3, account_limit = $4, interest_rate = $5
-        WHERE id = $6 AND COALESCE(user_id, userid, "userId") = $7
+        SET name = $1, nickname = $2, type = $3, account_limit = $4, interest_rate = $5, updated_at = $6
+        WHERE id = $7 AND COALESCE(user_id, userid, "userId") = $8
         RETURNING 
             id, name, nickname, type as account_type, 
             COALESCE(user_id, userid, "userId") as user_id,
@@ -114,6 +190,7 @@ pub async fn update_account(pool: &PgPool, id: i64, user_id: &str, acc: &UpdateA
     .bind(&acc.account_type)
     .bind(acc.account_limit)
     .bind(acc.interest_rate)
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .fetch_one(pool)
@@ -121,17 +198,19 @@ pub async fn update_account(pool: &PgPool, id: i64, user_id: &str, acc: &UpdateA
 }
 
 pub async fn archive_account(pool: &PgPool, id: i64, user_id: &str) -> Result<Account, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Account>(
         r#"
         UPDATE account
-        SET archived = TRUE
-        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
+        SET archived = TRUE, archived_at = $1, updated_at = $1
+        WHERE id = $2 AND COALESCE(user_id, userid, "userId") = $3
         RETURNING 
             id, name, nickname, type as account_type, 
             COALESCE(user_id, userid, "userId") as user_id,
             account_limit, interest_rate, ledger_mode, archived
         "#,
     )
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .fetch_one(pool)
@@ -139,17 +218,19 @@ pub async fn archive_account(pool: &PgPool, id: i64, user_id: &str) -> Result<Ac
 }
 
 pub async fn toggle_ledger_mode(pool: &PgPool, id: i64, user_id: &str) -> Result<Account, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Account>(
         r#"
         UPDATE account
-        SET ledger_mode = CASE WHEN ledger_mode = 'ABL' THEN 'TBL' ELSE 'ABL' END
-        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
+        SET ledger_mode = CASE WHEN ledger_mode = 'ABL' THEN 'TBL' ELSE 'ABL' END, updated_at = $1
+        WHERE id = $2 AND COALESCE(user_id, userid, "userId") = $3
         RETURNING 
             id, name, nickname, type as account_type, 
             COALESCE(user_id, userid, "userId") as user_id,
             account_limit, interest_rate, ledger_mode, archived
         "#,
     )
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .fetch_one(pool)
@@ -298,9 +379,9 @@ pub async fn create_incoming(pool: &PgPool, inc: &NewIncoming) -> Result<Incomin
         r#"
         INSERT INTO incoming (
             id, name, netvalue, grossvalue, incomingmonthday, payday, 
-            user_id, userid, "userId", account_id, created_at, archived
+            user_id, userid, "userId", account_id, created_at, updated_at, archived
         )
-        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $5, $6, $6, $6, $7, $8, FALSE)
+        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $5, $6, $6, $6, $7, $8, $8, FALSE)
         RETURNING 
             id, name, netvalue as net_value, grossvalue as gross_value,
             incomingmonthday as incoming_month_day, payday, type as incoming_type,
@@ -321,11 +402,12 @@ pub async fn create_incoming(pool: &PgPool, inc: &NewIncoming) -> Result<Incomin
 }
 
 pub async fn update_incoming(pool: &PgPool, id: i64, user_id: &str, inc: &UpdateIncoming) -> Result<Incoming, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Incoming>(
         r#"
         UPDATE incoming
-        SET name = $1, netvalue = $2, grossvalue = $3, incomingmonthday = $4, payday = $5, account_id = $6
-        WHERE id = $7 AND COALESCE(user_id, userid, "userId") = $8
+        SET name = $1, netvalue = $2, grossvalue = $3, incomingmonthday = $4, payday = $5, account_id = $6, updated_at = $7
+        WHERE id = $8 AND COALESCE(user_id, userid, "userId") = $9
         RETURNING 
             id, name, netvalue as net_value, grossvalue as gross_value,
             incomingmonthday as incoming_month_day, payday, type as incoming_type,
@@ -339,6 +421,7 @@ pub async fn update_incoming(pool: &PgPool, id: i64, user_id: &str, inc: &Update
     .bind(inc.incoming_month_day)
     .bind(inc.payday.unwrap_or(false))
     .bind(inc.account_id)
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .fetch_one(pool)
@@ -346,11 +429,12 @@ pub async fn update_incoming(pool: &PgPool, id: i64, user_id: &str, inc: &Update
 }
 
 pub async fn archive_incoming(pool: &PgPool, id: i64, user_id: &str) -> Result<Incoming, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Incoming>(
         r#"
         UPDATE incoming
-        SET archived = TRUE
-        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
+        SET archived = TRUE, archived_at = $1, updated_at = $1
+        WHERE id = $2 AND COALESCE(user_id, userid, "userId") = $3
         RETURNING 
             id, name, netvalue as net_value, grossvalue as gross_value,
             incomingmonthday as incoming_month_day, payday, type as incoming_type,
@@ -358,6 +442,7 @@ pub async fn archive_incoming(pool: &PgPool, id: i64, user_id: &str) -> Result<I
             account_id, NULL::text as account_name, archived
         "#,
     )
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .fetch_one(pool)
@@ -532,15 +617,16 @@ pub async fn get_outgoing(pool: &PgPool, id: i64, user_id: &str) -> Result<Outgo
 }
 
 pub async fn create_outgoing(pool: &PgPool, out: &NewOutgoing) -> Result<Outgoing, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Outgoing>(
         r#"
         INSERT INTO outgoing (
             id, name, cost, outgoingday, 
             user_id, userid, "userId", account_id, 
             outgoingmonth, yearinterval, startingyear, bill, rent, hiddenfromtotal, 
-            paused, archived
+            paused, archived, created_at, updated_at
         )
-        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, FALSE)
+        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, FALSE, $12, $12)
         RETURNING 
             id, name, cost, outgoingday as outgoing_day, 
             outgoingmonth as outgoing_month, yearinterval as year_interval, 
@@ -562,18 +648,20 @@ pub async fn create_outgoing(pool: &PgPool, out: &NewOutgoing) -> Result<Outgoin
     .bind(out.bill.unwrap_or(false))
     .bind(out.rent.unwrap_or(false))
     .bind(out.hidden_from_total.unwrap_or(false))
+    .bind(now_epoch)
     .fetch_one(pool)
     .await
 }
 
 pub async fn update_outgoing(pool: &PgPool, id: i64, user_id: &str, out: &UpdateOutgoing) -> Result<Outgoing, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Outgoing>(
         r#"
         UPDATE outgoing
         SET name = $1, cost = $2, outgoingday = $3, outgoingmonth = $4,
             yearinterval = $5, startingyear = $6, bill = $7, rent = $8,
-            hiddenfromtotal = $9, account_id = $10
-        WHERE id = $11 AND COALESCE(user_id, userid, "userId") = $12
+            hiddenfromtotal = $9, account_id = $10, updated_at = $11
+        WHERE id = $12 AND COALESCE(user_id, userid, "userId") = $13
         RETURNING 
             id, name, cost, outgoingday as outgoing_day, 
             outgoingmonth as outgoing_month, yearinterval as year_interval, 
@@ -594,6 +682,7 @@ pub async fn update_outgoing(pool: &PgPool, id: i64, user_id: &str, out: &Update
     .bind(out.rent.unwrap_or(false))
     .bind(out.hidden_from_total.unwrap_or(false))
     .bind(out.account_id)
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .fetch_one(pool)
@@ -601,11 +690,12 @@ pub async fn update_outgoing(pool: &PgPool, id: i64, user_id: &str, out: &Update
 }
 
 pub async fn archive_outgoing(pool: &PgPool, id: i64, user_id: &str) -> Result<Outgoing, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Outgoing>(
         r#"
         UPDATE outgoing
-        SET archived = TRUE
-        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
+        SET archived = TRUE, archived_at = $1, updated_at = $1
+        WHERE id = $2 AND COALESCE(user_id, userid, "userId") = $3
         RETURNING 
             id, name, cost, outgoingday as outgoing_day, 
             outgoingmonth as outgoing_month, yearinterval as year_interval, 
@@ -616,6 +706,7 @@ pub async fn archive_outgoing(pool: &PgPool, id: i64, user_id: &str) -> Result<O
             account_id, NULL::text as account_name, NULL::text as account_type, archived
         "#,
     )
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .fetch_one(pool)
@@ -629,7 +720,7 @@ pub async fn pause_outgoing(pool: &PgPool, id: i64, user_id: &str, reason: &str)
         UPDATE outgoing
         SET paused = TRUE, 
             pause_reason = $1, pausereason = $1, 
-            paused_at = $2, pausedat = $2
+            paused_at = $2, pausedat = $2, updated_at = $2
         WHERE id = $3 AND COALESCE(user_id, userid, "userId") = $4
         RETURNING 
             id, name, cost, outgoingday as outgoing_day, 
@@ -650,13 +741,14 @@ pub async fn pause_outgoing(pool: &PgPool, id: i64, user_id: &str, reason: &str)
 }
 
 pub async fn unpause_outgoing(pool: &PgPool, id: i64, user_id: &str) -> Result<Outgoing, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Outgoing>(
         r#"
         UPDATE outgoing
         SET paused = FALSE, 
             pause_reason = NULL, pausereason = NULL, 
-            paused_at = NULL, pausedat = NULL
-        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
+            paused_at = NULL, pausedat = NULL, updated_at = $1
+        WHERE id = $2 AND COALESCE(user_id, userid, "userId") = $3
         RETURNING 
             id, name, cost, outgoingday as outgoing_day, 
             outgoingmonth as outgoing_month, yearinterval as year_interval, 
@@ -667,6 +759,7 @@ pub async fn unpause_outgoing(pool: &PgPool, id: i64, user_id: &str) -> Result<O
             account_id, NULL::text as account_name, NULL::text as account_type, archived
         "#,
     )
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .fetch_one(pool)
@@ -695,10 +788,11 @@ pub async fn list_balances(pool: &PgPool, user_id: &str) -> Result<Vec<Balance>,
 
 pub async fn create_balance(pool: &PgPool, bal: &NewBalance) -> Result<Balance, sqlx::Error> {
     let ts = bal.timestamp.unwrap_or_else(|| Utc::now().timestamp());
+    let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Balance>(
         r#"
-        INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)
+        INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
+        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)
         RETURNING 
             id, value, timestamp, account_id,
             COALESCE(user_id, userid, "userId") as user_id
@@ -708,6 +802,7 @@ pub async fn create_balance(pool: &PgPool, bal: &NewBalance) -> Result<Balance, 
     .bind(ts)
     .bind(bal.account_id)
     .bind(&bal.user_id)
+    .bind(now_epoch)
     .fetch_one(pool)
     .await
 }

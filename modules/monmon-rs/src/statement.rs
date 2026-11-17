@@ -335,11 +335,11 @@ pub async fn handle_statement_webhook_api(
         INSERT INTO pending_statement (
             userid, user_id, "userId", job_id, bank_name, start_date, end_date,
             opening_balance, closing_balance, transaction_count, total_paid_in, total_paid_out,
-            matched_account_id, raw_payload, status, created_at
+            matched_account_id, raw_payload, status, created_at, updated_at
         ) VALUES (
             $1, $1, $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10,
-            $11, $12, 'PENDING', $13
+            $11, $12, 'PENDING', $13, $13
         )
         RETURNING id
         "#,
@@ -702,18 +702,20 @@ pub async fn confirm_statement_api(
 
     // 1. Insert bank transactions
     for tx in &tx_list {
+        let now_ms_tx = Utc::now().timestamp_millis();
         let _ = sqlx::query(
             r#"
             INSERT INTO bank_transaction (
                 id, userid, user_id, "userId", account_id, accountid, "accountId",
-                externalid, timestamp, date, amount, description, source, pending, createdat
+                externalid, timestamp, date, amount, description, source, pending, createdat, created_at, updated_at
             ) VALUES (
                 nextval('hibernate_sequence'), $1, $1, $1, $2, $2, $2,
-                $3, $4, $5, $6, $7, 'STATEMENT', false, $4
+                $3, $4, $5, $6, $7, 'STATEMENT', false, $4, $8, $8
             )
             ON CONFLICT (externalid) DO UPDATE SET
                 amount = EXCLUDED.amount,
-                description = EXCLUDED.description
+                description = EXCLUDED.description,
+                updated_at = EXCLUDED.updated_at
             "#,
         )
         .bind(&resolved)
@@ -723,6 +725,7 @@ pub async fn confirm_statement_api(
         .bind(&tx.date)
         .bind(tx.amount)
         .bind(&tx.description)
+        .bind(now_ms_tx)
         .execute(&state.pool)
         .await;
     }
@@ -801,10 +804,12 @@ pub async fn confirm_statement_api(
             .collect();
         let backup_json = serde_json::to_string(&backup_items).unwrap_or_default();
 
+        let now_ms_bal = Utc::now().timestamp_millis();
         let _ = sqlx::query(
-            "UPDATE pending_statement SET overwritten_balances_json = $1 WHERE id = $2"
+            "UPDATE pending_statement SET overwritten_balances_json = $1, updated_at = $2 WHERE id = $3"
         )
         .bind(&backup_json)
+        .bind(now_ms_bal)
         .bind(id)
         .execute(&state.pool)
         .await;
@@ -825,25 +830,27 @@ pub async fn confirm_statement_api(
         if tx_list.is_empty() {
             // Standalone balance snapshot (e.g. NS&I holding with 0 txs)
             let _ = sqlx::query(
-                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
+                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)"#,
             )
             .bind(anchor_val)
             .bind(anchor_ts)
             .bind(acc_id)
             .bind(&resolved)
+            .bind(now_ms_bal)
             .execute(&state.pool)
             .await;
         } else {
             // Insert opening balance
             let _ = sqlx::query(
-                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
+                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)"#,
             )
             .bind(calculated_opening)
             .bind(eff_start_ts)
             .bind(acc_id)
             .bind(&resolved)
+            .bind(now_ms_bal)
             .execute(&state.pool)
             .await;
 
@@ -862,13 +869,14 @@ pub async fn confirm_statement_api(
             for (_, (ts, val)) in daily_closing {
                 if ts > eff_start_ts && ts < eff_end_ts {
                     let _ = sqlx::query(
-                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
+                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)"#,
                     )
                     .bind(val)
                     .bind(ts)
                     .bind(acc_id)
                     .bind(&resolved)
+                    .bind(now_ms_bal)
                     .execute(&state.pool)
                     .await;
                 }
@@ -876,13 +884,14 @@ pub async fn confirm_statement_api(
 
             // Insert closing balance
             let _ = sqlx::query(
-                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+                r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
+                   VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)"#,
             )
             .bind(calculated_closing)
             .bind(eff_end_ts)
             .bind(acc_id)
             .bind(&resolved)
+            .bind(now_ms_bal)
             .execute(&state.pool)
             .await;
         }
@@ -890,7 +899,7 @@ pub async fn confirm_statement_api(
 
     let now_ms = Utc::now().timestamp_millis();
     let res = sqlx::query(
-        "UPDATE pending_statement SET status = 'CONFIRMED', matched_account_id = COALESCE($1, matched_account_id), applied_at = $2 WHERE id = $3 AND (user_id = $4 OR userid = $4)",
+        "UPDATE pending_statement SET status = 'CONFIRMED', matched_account_id = COALESCE($1, matched_account_id), applied_at = $2, updated_at = $2 WHERE id = $3 AND (user_id = $4 OR userid = $4)",
     )
     .bind(target_account_id)
     .bind(now_ms)
@@ -929,7 +938,7 @@ pub async fn discard_statement_api(
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let now_ms = Utc::now().timestamp_millis();
     let res = sqlx::query(
-        "UPDATE pending_statement SET status = 'DISCARDED', applied_at = $1 WHERE id = $2 AND (user_id = $3 OR userid = $3)",
+        "UPDATE pending_statement SET status = 'DISCARDED', applied_at = $1, updated_at = $1 WHERE id = $2 AND (user_id = $3 OR userid = $3)",
     )
     .bind(now_ms)
     .bind(id)
@@ -1005,6 +1014,7 @@ pub async fn revert_statement_handler(
         .await;
 
         // 2. Restore backed up balances
+        let now_ms_undo = Utc::now().timestamp_millis();
         if let Some(json_str) = backup_json {
             if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&json_str) {
                 for item in items {
@@ -1012,13 +1022,14 @@ pub async fn revert_statement_handler(
                     let ts = item.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
                     let aid_item = item.get("account_id").and_then(|v| v.as_i64()).unwrap_or(aid);
                     let _ = sqlx::query(
-                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#
+                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
+                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)"#
                     )
                     .bind(val)
                     .bind(ts)
                     .bind(aid_item)
                     .bind(&resolved)
+                    .bind(now_ms_undo)
                     .execute(&state.pool)
                     .await;
                 }
@@ -1038,9 +1049,11 @@ pub async fn revert_statement_handler(
     }
 
     // 4. Reset statement status to PENDING
+    let now_ms_reset = Utc::now().timestamp_millis();
     let _ = sqlx::query(
-        "UPDATE pending_statement SET status = 'PENDING', applied_at = NULL, overwritten_balances_json = NULL WHERE id = $1 AND (user_id = $2 OR userid = $2)"
+        "UPDATE pending_statement SET status = 'PENDING', applied_at = NULL, overwritten_balances_json = NULL, updated_at = $1 WHERE id = $2 AND (user_id = $3 OR userid = $3)"
     )
+    .bind(now_ms_reset)
     .bind(id)
     .bind(&resolved)
     .execute(&state.pool)

@@ -246,8 +246,11 @@ pub async fn post_add_plan(
 
     let notes = payload.notes.filter(|s| !s.trim().is_empty());
 
+    let now = chrono::Utc::now().timestamp_millis();
+
     // Archive any previous agreement of the same type
-    let _ = sqlx::query("UPDATE plan SET archived = true WHERE (userid = $1 OR user_id = $1) AND type = $2")
+    let _ = sqlx::query("UPDATE plan SET archived = true, archived_at = $1, updated_at = $1 WHERE (userid = $2 OR user_id = $2) AND type = $3 AND (archived IS NULL OR archived = false)")
+        .bind(now)
         .bind(&resolved)
         .bind(ptype)
         .execute(&state.pool)
@@ -257,10 +260,10 @@ pub async fn post_add_plan(
     sqlx::query(
         r#"
         INSERT INTO plan (
-            id, userid, user_id, "userId", type, split, notes, archived
+            id, userid, user_id, "userId", type, split, notes, archived, created_at, updated_at
         )
         VALUES (
-            nextval('hibernate_sequence'), $1, $1, $1, $2, $3, $4, false
+            nextval('hibernate_sequence'), $1, $1, $1, $2, $3, $4, false, $5, $5
         )
         "#,
     )
@@ -268,6 +271,7 @@ pub async fn post_add_plan(
     .bind(ptype)
     .bind(split)
     .bind(notes)
+    .bind(now)
     .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -282,7 +286,9 @@ pub async fn get_bin_plan(
 ) -> Result<Redirect, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let res = sqlx::query("UPDATE plan SET archived = true WHERE id = $1 AND (userid = $2 OR user_id = $2)")
+    let now = chrono::Utc::now().timestamp_millis();
+    let res = sqlx::query("UPDATE plan SET archived = true, archived_at = $1, updated_at = $1 WHERE id = $2 AND (userid = $3 OR user_id = $3)")
+        .bind(now)
         .bind(id)
         .bind(&user_id)
         .execute(&state.pool)
@@ -316,24 +322,24 @@ pub async fn get_update_savings_payoff_percentage(
     .await
     .unwrap_or(None);
 
+    let now_ms = chrono::Utc::now().timestamp_millis();
     if let Some(pid) = active_plan_id {
-        let _ = sqlx::query("UPDATE savings_plan SET savingspercentage = $1, lastupdated = $2 WHERE id = $3")
+        let _ = sqlx::query("UPDATE savings_plan SET savingspercentage = $1, lastupdated = $2, last_updated = $2, updated_at = $2 WHERE id = $3")
             .bind(pct)
-            .bind(chrono::Utc::now().timestamp())
+            .bind(now_ms)
             .bind(pid)
             .execute(&state.pool)
             .await;
     } else {
-        let now = chrono::Utc::now().timestamp();
         let _ = sqlx::query(
             r#"
-            INSERT INTO savings_plan (id, userid, user_id, "userId", name, savingspercentage, createdat, lastupdated, archived)
-            VALUES (nextval('hibernate_sequence'), $1, $1, $1, 'Primary Plan', $2, $3, $3, false)
+            INSERT INTO savings_plan (id, userid, user_id, "userId", name, savingspercentage, createdat, lastupdated, last_updated, created_at, updated_at, archived)
+            VALUES (nextval('hibernate_sequence'), $1, $1, $1, 'Primary Plan', $2, $3, $3, $3, $3, $3, false)
             "#,
         )
         .bind(&resolved)
         .bind(pct)
-        .bind(now)
+        .bind(now_ms)
         .execute(&state.pool)
         .await;
     }

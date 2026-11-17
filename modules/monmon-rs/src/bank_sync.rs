@@ -551,7 +551,7 @@ pub async fn refresh_monzo_token_internal(
     sqlx::query(
         r#"
         UPDATE monzo_connection
-        SET accesstoken = $1, refreshtoken = $2, expiresat = $3, lastsyncedat = $4,
+        SET accesstoken = $1, refreshtoken = $2, expiresat = $3, lastsyncedat = $4, updated_at = $4,
             monzouserid = COALESCE($5, monzouserid)
         WHERE userid = $6
         "#,
@@ -688,18 +688,21 @@ pub async fn register_monzo_webhooks(
     }
 
     // Save to DB
+    let now_ms_wh = Utc::now().timestamp_millis();
     sqlx::query(
         r#"
         UPDATE monzo_connection
         SET webhook_debit_id = $1, webhookdebitid = $1,
             webhook_flex_id = $2, webhookflexid = $2,
-            webhook_url = $3, webhookurl = $3
-        WHERE userid = $4
+            webhook_url = $3, webhookurl = $3,
+            updated_at = $4
+        WHERE userid = $5
         "#,
     )
     .bind(&debit_hook_id)
     .bind(&flex_hook_id)
     .bind(&webhook_target_url)
+    .bind(now_ms_wh)
     .bind(user_id)
     .execute(pool)
     .await
@@ -760,15 +763,16 @@ pub async fn connect_monzo_oauth(
     let _ = sqlx::query(
         r#"
         INSERT INTO monzo_connection (
-            id, userid, clientid, clientsecret, redirecturi, createdat, lastsyncedat
+            id, userid, clientid, clientsecret, redirecturi, createdat, lastsyncedat, created_at, updated_at
         ) VALUES (
-            nextval('hibernate_sequence'), $1, $2, $3, $4, $5, $5
+            nextval('hibernate_sequence'), $1, $2, $3, $4, $5, $5, $5, $5
         )
         ON CONFLICT (userid) DO UPDATE SET
             clientid = EXCLUDED.clientid,
             clientsecret = CASE WHEN EXCLUDED.clientsecret IS NOT NULL AND EXCLUDED.clientsecret != '' THEN EXCLUDED.clientsecret ELSE monzo_connection.clientsecret END,
             redirecturi = EXCLUDED.redirecturi,
-            lastsyncedat = EXCLUDED.lastsyncedat
+            lastsyncedat = EXCLUDED.lastsyncedat,
+            updated_at = EXCLUDED.updated_at
         "#,
     )
     .bind(&resolved)
@@ -864,10 +868,10 @@ pub async fn monzo_oauth_callback(
         r#"
         INSERT INTO monzo_connection (
             id, userid, accesstoken, refreshtoken, monzouserid, expiresat,
-            clientid, clientsecret, redirecturi, lastsyncedat, createdat
+            clientid, clientsecret, redirecturi, lastsyncedat, createdat, created_at, updated_at
         ) VALUES (
             nextval('hibernate_sequence'), $1, $2, $3, $4, $5,
-            $6, $7, $8, $9, $9
+            $6, $7, $8, $9, $9, $9, $9
         )
         ON CONFLICT (userid) DO UPDATE SET
             accesstoken = EXCLUDED.accesstoken,
@@ -877,7 +881,8 @@ pub async fn monzo_oauth_callback(
             clientid = COALESCE(EXCLUDED.clientid, monzo_connection.clientid),
             clientsecret = COALESCE(EXCLUDED.clientsecret, monzo_connection.clientsecret),
             redirecturi = COALESCE(EXCLUDED.redirecturi, monzo_connection.redirecturi),
-            lastsyncedat = EXCLUDED.lastsyncedat
+            lastsyncedat = EXCLUDED.lastsyncedat,
+            updated_at = EXCLUDED.updated_at
         "#,
     )
     .bind(&resolved)
@@ -1284,14 +1289,16 @@ pub async fn refresh_balances_internal(
         let Some((acc_id, acc_type, limit)) = find_target_account(pool, user_id, is_credit).await else { continue };
         let Some(raw) = fetch_monzo_balance(pool, user_id, &monzo_id).await else { continue };
         let available = convert_to_available(&acc_type, limit, raw);
+        let now_ms_bal = Utc::now().timestamp_millis();
         sqlx::query(
-            r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-               VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+            r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
+               VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)"#,
         )
         .bind(available as f32)
         .bind(Utc::now().timestamp())
         .bind(acc_id)
         .bind(user_id)
+        .bind(now_ms_bal)
         .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -1467,6 +1474,8 @@ pub async fn handle_monzo_webhook_api(
             let acc_type: String = target.as_ref().map(|t| t.1.clone()).unwrap_or_default();
             let acc_limit: f64 = target.as_ref().map(|t| t.2).unwrap_or(0.0);
 
+            let now_ms = Utc::now().timestamp_millis();
+
             // Insert into bank_transaction
             let _ = sqlx::query(
                 r#"
@@ -1475,19 +1484,20 @@ pub async fn handle_monzo_webhook_api(
                     externalid, timestamp, date, amount, description,
                     merchantname, merchant_name, category, source, pending,
                     merchantaddress, merchant_address, merchantemoji, merchant_emoji,
-                    latitude, longitude, createdat
+                    latitude, longitude, createdat, created_at, updated_at
                 )
                 VALUES (
                     nextval('hibernate_sequence'), $1, $1, $1, $2, $2, $2,
                     $3, $4, $5, $6, $7,
                     $8, $8, $9, 'MONZO', false,
                     $10, $10, $11, $11,
-                    $12, $13, $4
+                    $12, $13, $4, $14, $14
                 )
                 ON CONFLICT (externalid) DO UPDATE SET
                     amount = EXCLUDED.amount,
                     description = EXCLUDED.description,
-                    merchant_name = EXCLUDED.merchant_name
+                    merchant_name = EXCLUDED.merchant_name,
+                    updated_at = EXCLUDED.updated_at
                 "#,
             )
             .bind(&resolved)
@@ -1503,6 +1513,7 @@ pub async fn handle_monzo_webhook_api(
             .bind(merchant_emoji)
             .bind(latitude)
             .bind(longitude)
+            .bind(now_ms)
             .execute(&state.pool)
             .await;
 
@@ -1516,22 +1527,22 @@ pub async fn handle_monzo_webhook_api(
                 if let Some(raw) = raw {
                     let available = convert_to_available(&acc_type, acc_limit, raw);
                     let _ = sqlx::query(
-                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId")
-                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4)"#,
+                        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
+                           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)"#,
                     )
                     .bind(available as f32)
                     .bind(Utc::now().timestamp())
                     .bind(acc_id)
                     .bind(&resolved)
+                    .bind(now_ms)
                     .execute(&state.pool)
                     .await;
                 }
             }
 
             // Update last_received_at on monzo_connection
-            let now_ms = Utc::now().timestamp_millis();
             let _ = sqlx::query(
-                "UPDATE monzo_connection SET last_received_at = $1, lastreceivedat = $1 WHERE userid = $2"
+                "UPDATE monzo_connection SET last_received_at = $1, lastreceivedat = $1, updated_at = $1 WHERE userid = $2"
             )
             .bind(now_ms)
             .bind(&resolved)

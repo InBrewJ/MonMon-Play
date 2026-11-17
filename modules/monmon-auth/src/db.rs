@@ -21,7 +21,8 @@ pub async fn init_db(pool: &PgPool) -> Result<(), sqlx::Error> {
             email VARCHAR(255),
             password_hash VARCHAR(255) NOT NULL,
             roles VARCHAR(255) NOT NULL DEFAULT 'ROLE_ADMIN',
-            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
         )
         "#,
     )

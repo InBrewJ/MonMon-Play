@@ -214,7 +214,7 @@ pub async fn post_settings(
             _ => "UK",
         };
         let _ = sqlx::query(
-            "UPDATE user_access SET region = $1 WHERE (userid = $2 OR user_id = $2 OR username = $2)",
+            "UPDATE user_access SET region = $1, updated_at = NOW() WHERE (userid = $2 OR user_id = $2 OR username = $2)",
         )
         .bind(region)
         .bind(&user_id)
@@ -230,7 +230,7 @@ pub async fn approve_user_handler(
 ) -> Result<Redirect, (StatusCode, String)> {
     sqlx::query(
         "UPDATE user_access 
-         SET status = 'APPROVED', approvedat = NOW(), approvedby = 'admin' 
+         SET status = 'APPROVED', approvedat = NOW(), approvedby = 'admin', updated_at = NOW() 
          WHERE id = $1",
     )
     .bind(id)
@@ -247,7 +247,7 @@ pub async fn reject_user_handler(
 ) -> Result<Redirect, (StatusCode, String)> {
     sqlx::query(
         "UPDATE user_access 
-         SET status = 'REJECTED' 
+         SET status = 'REJECTED', updated_at = NOW() 
          WHERE id = $1",
     )
     .bind(id)

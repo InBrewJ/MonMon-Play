@@ -553,9 +553,9 @@ pub async fn lock_nommon_plan_api(
         r#"
         INSERT INTO locked_meal_plan (
             id, userid, user_id, "userId", planjson, "planJson", lockedat, "lockedAt",
-            weeklybudget, "weeklyBudget", people, postcode
+            weeklybudget, "weeklyBudget", people, postcode, created_at, updated_at
         )
-        VALUES (nextval('hibernate_sequence'), $1, $1, $1, $2, $2, $3, $3, $4, $4, $5, $6)
+        VALUES (nextval('hibernate_sequence'), $1, $1, $1, $2, $2, $3, $3, $4, $4, $5, $6, $3, $3)
         "#,
     )
     .bind(&resolved)

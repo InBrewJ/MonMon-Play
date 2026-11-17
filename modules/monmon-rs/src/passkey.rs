@@ -47,7 +47,8 @@ pub async fn init_passkey_table(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> 
             credential_id VARCHAR(512) NOT NULL UNIQUE,
             public_key TEXT,
             device_name VARCHAR(255),
-            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_user_passkey_user_id ON user_passkey(user_id);
         "#,
@@ -144,9 +145,9 @@ pub async fn register_passkey_api(
     // Save passkey in user_passkey using the canonical UUID
     sqlx::query(
         r#"
-        INSERT INTO user_passkey (user_id, credential_id, public_key, device_name, created_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (credential_id) DO UPDATE SET user_id = EXCLUDED.user_id, public_key = EXCLUDED.public_key, device_name = EXCLUDED.device_name
+        INSERT INTO user_passkey (user_id, credential_id, public_key, device_name, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, NOW(), NOW())
+        ON CONFLICT (credential_id) DO UPDATE SET user_id = EXCLUDED.user_id, public_key = EXCLUDED.public_key, device_name = EXCLUDED.device_name, updated_at = NOW()
         "#,
     )
     .bind(&canonical_user_id)

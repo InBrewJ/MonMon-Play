@@ -593,9 +593,11 @@ pub async fn post_pot_form(
     let user_id = get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &user_id).await;
     let now = chrono::Utc::now().timestamp();
+    let now_ms = chrono::Utc::now().timestamp_millis();
 
     // 1. Archive previous active monthly pots
-    let _ = sqlx::query("UPDATE pot SET archived = true WHERE (userid = $1 OR user_id = $1) AND type = 'MONTHLY'")
+    let _ = sqlx::query("UPDATE pot SET archived = true, archived_at = $1, updated_at = $1 WHERE (userid = $2 OR user_id = $2) AND type = 'MONTHLY' AND (archived IS NULL OR archived = false)")
+        .bind(now_ms)
         .bind(&resolved)
         .execute(&state.pool)
         .await;
@@ -646,12 +648,12 @@ pub async fn post_pot_form(
     let row = sqlx::query(
         r#"
         INSERT INTO pot (
-            id, userid, user_id, "userId", type, createdat, lastupdated, archived,
+            id, userid, user_id, "userId", type, createdat, lastupdated, created_at, updated_at, archived,
             spending_plan_name, spending_plan_food, spending_plan_fuel, spending_plan_transport, spending_plan_fun,
             spending_plan_sections_json, food_account_id, fun_account_id, fuel_account_id, transport_account_id
         )
         VALUES (
-            nextval('hibernate_sequence'), $1, $1, $1, 'MONTHLY', $2, $2, false,
+            nextval('hibernate_sequence'), $1, $1, $1, 'MONTHLY', $2, $2, $13, $13, false,
             $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
         )
         RETURNING id
@@ -669,6 +671,7 @@ pub async fn post_pot_form(
     .bind(fun_id)
     .bind(fuel_id)
     .bind(trans_id)
+    .bind(now_ms)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -678,9 +681,10 @@ pub async fn post_pot_form(
     // Link accounts in pot_accounts: include all checked accounts PLUS any accounts
     // nominated in category dropdowns (Food, Fun, Fuel, Transport) or custom plan sections.
     for aid in final_accounts {
-        let _ = sqlx::query("INSERT INTO pot_accounts (pot_id, account_id) VALUES ($1, $2)")
+        let _ = sqlx::query("INSERT INTO pot_accounts (pot_id, account_id, created_at, updated_at) VALUES ($1, $2, $3, $3)")
             .bind(pot_id)
             .bind(aid)
+            .bind(now_ms)
             .execute(&state.pool)
             .await;
     }
@@ -701,13 +705,14 @@ pub async fn post_pot_form(
                     let _ = sqlx::query(
                         r#"
                         UPDATE custom_spending_plan
-                        SET name = $1, sectionsjson = $2, sections_json = $2, lastupdated = $3, last_updated = $3
-                        WHERE id = $4 AND (userid = $5 OR user_id = $5 OR userid = $6 OR user_id = $6)
+                        SET name = $1, sectionsjson = $2, sections_json = $2, lastupdated = $3, last_updated = $3, updated_at = $4
+                        WHERE id = $5 AND (userid = $6 OR user_id = $6 OR userid = $7 OR user_id = $7)
                         "#,
                     )
                     .bind(name)
                     .bind(json)
                     .bind(now)
+                    .bind(now_ms)
                     .bind(cid)
                     .bind(&resolved)
                     .bind(&user_id)
@@ -718,15 +723,16 @@ pub async fn post_pot_form(
                 let _ = sqlx::query(
                     r#"
                     INSERT INTO custom_spending_plan (
-                        id, userid, user_id, name, sectionsjson, sections_json, createdat, lastupdated, archived
+                        id, userid, user_id, name, sectionsjson, sections_json, createdat, lastupdated, created_at, updated_at, archived
                     )
-                    VALUES (nextval('hibernate_sequence'), $1, $1, $2, $3, $3, $4, $4, false)
+                    VALUES (nextval('hibernate_sequence'), $1, $1, $2, $3, $3, $4, $4, $5, $5, false)
                     "#,
                 )
                 .bind(&resolved)
                 .bind(name)
                 .bind(json)
                 .bind(now)
+                .bind(now_ms)
                 .execute(&state.pool)
                 .await;
             }
@@ -743,6 +749,7 @@ pub async fn post_apply_gruelling(
     let user_id = get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &user_id).await;
     let now = chrono::Utc::now().timestamp();
+    let now_ms = chrono::Utc::now().timestamp_millis();
 
     // Find currently active pot's accounts to retain them
     let active_pot_id: Option<i64> = sqlx::query_scalar(
@@ -764,7 +771,8 @@ pub async fn post_apply_gruelling(
     }
 
     // Archive current monthly pots
-    let _ = sqlx::query("UPDATE pot SET archived = true WHERE (userid = $1 OR user_id = $1) AND type = 'MONTHLY'")
+    let _ = sqlx::query("UPDATE pot SET archived = true, archived_at = $1, updated_at = $1 WHERE (userid = $2 OR user_id = $2) AND type = 'MONTHLY' AND (archived IS NULL OR archived = false)")
+        .bind(now_ms)
         .bind(&resolved)
         .execute(&state.pool)
         .await;
@@ -773,12 +781,12 @@ pub async fn post_apply_gruelling(
     let row = sqlx::query(
         r#"
         INSERT INTO pot (
-            id, userid, user_id, "userId", type, createdat, lastupdated, archived,
+            id, userid, user_id, "userId", type, createdat, lastupdated, created_at, updated_at, archived,
             spending_plan_name, spending_plan_food, spending_plan_fuel, spending_plan_transport, spending_plan_fun,
             spending_plan_sections_json
         )
         VALUES (
-            nextval('hibernate_sequence'), $1, $1, $1, 'MONTHLY', $2, $2, false,
+            nextval('hibernate_sequence'), $1, $1, $1, 'MONTHLY', $2, $2, $3, $3, false,
             'Gruelling', 216.67, 0.0, 0.0, NULL, '[{"heading":"Food","amount":216.67,"accountId":null}]'
         )
         RETURNING id
@@ -786,6 +794,7 @@ pub async fn post_apply_gruelling(
     )
     .bind(&resolved)
     .bind(now)
+    .bind(now_ms)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -793,9 +802,10 @@ pub async fn post_apply_gruelling(
     let new_pot_id: i64 = row.get("id");
 
     for aid in account_ids {
-        let _ = sqlx::query("INSERT INTO pot_accounts (pot_id, account_id) VALUES ($1, $2)")
+        let _ = sqlx::query("INSERT INTO pot_accounts (pot_id, account_id, created_at, updated_at) VALUES ($1, $2, $3, $3)")
             .bind(new_pot_id)
             .bind(aid)
+            .bind(now_ms)
             .execute(&state.pool)
             .await;
     }
@@ -810,7 +820,9 @@ pub async fn get_bin_pot(
 ) -> Result<Redirect, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let res = sqlx::query("UPDATE pot SET archived = true WHERE id = $1 AND (userid = $2 OR user_id = $2)")
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let res = sqlx::query("UPDATE pot SET archived = true, archived_at = $1, updated_at = $1 WHERE id = $2 AND (userid = $3 OR user_id = $3)")
+        .bind(now_ms)
         .bind(id)
         .bind(&user_id)
         .execute(&state.pool)
@@ -829,9 +841,11 @@ pub async fn get_bin_preset(
 ) -> Result<Redirect, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let now_ms = chrono::Utc::now().timestamp_millis();
     let res = sqlx::query(
-        "UPDATE custom_spending_plan SET archived = true WHERE id = $1 AND (userid = $2 OR user_id = $2 OR userid = $3 OR user_id = $3)"
+        "UPDATE custom_spending_plan SET archived = true, archived_at = $1, updated_at = $1 WHERE id = $2 AND (userid = $3 OR user_id = $3 OR userid = $4 OR user_id = $4)"
     )
+    .bind(now_ms)
     .bind(id)
     .bind(&user_id)
     .bind(&raw_uid)
@@ -859,6 +873,7 @@ pub async fn post_save_preset(
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let now = chrono::Utc::now().timestamp();
+    let now_ms = chrono::Utc::now().timestamp_millis();
 
     let (id, name, sections_json) = if body.trim().starts_with('{') {
         let p: SavePresetPayload = serde_json::from_str(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
@@ -894,13 +909,14 @@ pub async fn post_save_preset(
         let res = sqlx::query(
             r#"
             UPDATE custom_spending_plan
-            SET name = $1, sectionsjson = $2, sections_json = $2, lastupdated = $3, last_updated = $3
-            WHERE id = $4 AND (userid = $5 OR user_id = $5 OR userid = $6 OR user_id = $6)
+            SET name = $1, sectionsjson = $2, sections_json = $2, lastupdated = $3, last_updated = $3, updated_at = $4
+            WHERE id = $5 AND (userid = $6 OR user_id = $6 OR userid = $7 OR user_id = $7)
             "#,
         )
         .bind(&name)
         .bind(&sections_json)
         .bind(now)
+        .bind(now_ms)
         .bind(preset_id)
         .bind(&resolved)
         .bind(&raw_uid)
@@ -913,15 +929,16 @@ pub async fn post_save_preset(
         sqlx::query(
             r#"
             INSERT INTO custom_spending_plan (
-                id, userid, user_id, name, sectionsjson, sections_json, createdat, lastupdated, archived
+                id, userid, user_id, name, sectionsjson, sections_json, createdat, lastupdated, created_at, updated_at, archived
             )
-            VALUES (nextval('hibernate_sequence'), $1, $1, $2, $3, $3, $4, $4, false)
+            VALUES (nextval('hibernate_sequence'), $1, $1, $2, $3, $3, $4, $4, $5, $5, false)
             "#,
         )
         .bind(&resolved)
         .bind(&name)
         .bind(&sections_json)
         .bind(now)
+        .bind(now_ms)
         .execute(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

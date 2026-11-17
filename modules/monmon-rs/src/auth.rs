@@ -141,8 +141,8 @@ pub async fn init_auth_db(pool: &PgPool) -> Result<(), sqlx::Error> {
             let hash = hash_password(&plain_password).unwrap_or(plain_password);
             let _ = sqlx::query(
                 r#"
-                INSERT INTO app_user (id, username, email, password_hash, roles, created_at)
-                VALUES ($1, $2, $3, $4, 'ROLE_ADMIN', NOW())
+                INSERT INTO app_user (id, username, email, password_hash, roles, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, 'ROLE_ADMIN', NOW(), NOW())
                 ON CONFLICT (username) DO NOTHING
                 "#,
             )
@@ -155,7 +155,7 @@ pub async fn init_auth_db(pool: &PgPool) -> Result<(), sqlx::Error> {
             info!("Seeded app_user for {}", u.username);
         } else if existing.is_some() && from_env && !plain_password.is_empty() {
             if let Ok(hash) = hash_password(&plain_password) {
-                let _ = sqlx::query("UPDATE app_user SET password_hash = $1 WHERE username = $2")
+                let _ = sqlx::query("UPDATE app_user SET password_hash = $1, updated_at = NOW() WHERE username = $2")
                     .bind(&hash)
                     .bind(u.username)
                     .execute(pool)
@@ -166,9 +166,9 @@ pub async fn init_auth_db(pool: &PgPool) -> Result<(), sqlx::Error> {
         // Ensure user_access has the matching approved entry
         let _ = sqlx::query(
             r#"
-            INSERT INTO user_access (id, approvedat, approvedby, createdat, email, status, userid, username)
-            VALUES (nextval('hibernate_sequence'), NOW(), 'SYSTEM', NOW(), $1, $2, $3, $4)
-            ON CONFLICT (userid) DO UPDATE SET status = EXCLUDED.status, username = EXCLUDED.username
+            INSERT INTO user_access (id, approvedat, approvedby, createdat, created_at, updated_at, email, status, userid, username)
+            VALUES (nextval('hibernate_sequence'), NOW(), 'SYSTEM', NOW(), NOW(), NOW(), $1, $2, $3, $4)
+            ON CONFLICT (userid) DO UPDATE SET status = EXCLUDED.status, username = EXCLUDED.username, updated_at = NOW()
             "#,
         )
         .bind(u.email)
@@ -215,7 +215,7 @@ pub async fn authenticate_user(
             // If the password was plain text, upgrade to Argon2
             if password_hash == password {
                 if let Ok(new_hash) = hash_password(password) {
-                    let _ = sqlx::query("UPDATE app_user SET password_hash = $1 WHERE id = $2")
+                    let _ = sqlx::query("UPDATE app_user SET password_hash = $1, updated_at = NOW() WHERE id = $2")
                         .bind(&new_hash)
                         .bind(&id)
                         .execute(pool)

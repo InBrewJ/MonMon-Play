@@ -22,6 +22,7 @@ mod spog;
 mod statement;
 pub mod time_travel;
 mod transfers;
+mod waste_bin;
 
 pub const BUILD_HASH: &str = env!("BUILD_HASH");
 pub const BUILD_COMMIT: &str = env!("BUILD_COMMIT");
@@ -294,8 +295,8 @@ pub async fn callback_handler(
 
             let insert_res = sqlx::query(
                 r#"
-                INSERT INTO user_access (id, userid, username, email, status, createdat)
-                VALUES ($1, $2, $3, $4, 'PENDING', NOW())
+                INSERT INTO user_access (id, userid, username, email, status, createdat, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, 'PENDING', NOW(), NOW(), NOW())
                 ON CONFLICT (userid) DO NOTHING
                 "#,
             )
@@ -373,60 +374,7 @@ async fn main() {
         .expect("Failed to connect to PostgreSQL");
 
     let _ = passkey::init_passkey_table(&pool).await;
-
-    let _ = sqlx::query(
-        "ALTER TABLE user_access ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)"
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        "UPDATE user_access SET user_id = userid WHERE user_id IS NULL AND userid IS NOT NULL"
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        "ALTER TABLE user_access ADD COLUMN IF NOT EXISTS yearly_bills_account_id BIGINT REFERENCES account(id) ON DELETE SET NULL"
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        "ALTER TABLE user_access ADD COLUMN IF NOT EXISTS region VARCHAR(64) DEFAULT 'UK'"
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        "ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS overwritten_balances_json TEXT"
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS created_at BIGINT"
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        "ALTER TABLE outgoing ADD COLUMN IF NOT EXISTS archived_at BIGINT"
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        "ALTER TABLE account ADD COLUMN IF NOT EXISTS created_at BIGINT"
-    )
-    .execute(&pool)
-    .await;
-
-    let _ = sqlx::query(
-        "ALTER TABLE account ADD COLUMN IF NOT EXISTS archived_at BIGINT"
-    )
-    .execute(&pool)
-    .await;
+    db::run_schema_migrations(&pool).await;
 
     let state = Arc::new(AppState { pool });
 
@@ -451,6 +399,11 @@ async fn main() {
         .route("/settings/approveUser/:id", post(admin::approve_user_handler))
         .route("/settings/rejectUser/:id", post(admin::reject_user_handler))
         .route("/waitinglist", get(admin::get_waiting_list))
+        // Waste Bin (30-day recovery)
+        .route("/wasteBin", get(waste_bin::get_waste_bin_page))
+        .route("/wasteBin/recover/:entity_type/:id", post(waste_bin::recover_item_form))
+        .route("/api/waste-bin", get(waste_bin::list_waste_bin_api))
+        .route("/api/waste-bin/:entity_type/:id/recover", post(waste_bin::recover_item_api))
         .route("/myOutgoings", get(management::get_outgoings_page))
         .route("/myOutgoings/yearlyTargetAccount", post(management::post_yearly_bills_target_account))
         .route("/api/outgoings/yearly-target-account", post(management::post_yearly_bills_target_account))

@@ -485,8 +485,8 @@ pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<S
             let now = chrono::Utc::now().timestamp_millis();
             let new_row = sqlx::query(
                 r#"
-                INSERT INTO savings_plan (id, userid, user_id, "userId", name, savingspercentage, archived, createdat, lastupdated)
-                VALUES (nextval('hibernate_sequence'), $1, $1, $1, 'Monthly Savings Plan', 0, false, $2, $2)
+                INSERT INTO savings_plan (id, userid, user_id, "userId", name, savingspercentage, archived, createdat, lastupdated, last_updated, created_at, updated_at)
+                VALUES (nextval('hibernate_sequence'), $1, $1, $1, 'Monthly Savings Plan', 0, false, $2, $2, $2, $2, $2)
                 RETURNING id
                 "#,
             )
@@ -671,14 +671,15 @@ pub async fn create_savings_plan_item_api(
         _ => None,
     };
     let new_priority = payload.priority.unwrap_or_else(|| (plan.items.len() + 1) as i32);
+    let now_ms = chrono::Utc::now().timestamp_millis();
 
     let row = sqlx::query(
         r#"
         INSERT INTO savings_plan_item (
             id, savings_plan_id, name, type, account_id, targetamount, target_amount,
-            monthlyamount, monthly_amount, priority, locked, archived
+            monthlyamount, monthly_amount, priority, locked, archived, created_at, updated_at
         )
-        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $5, $5, $6, $6, $7, false, false)
+        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $5, $5, $6, $6, $7, false, false, $8, $8)
         RETURNING id, savings_plan_id, name, type, account_id, targetamount, monthlyamount, priority, locked, archived
         "#,
     )
@@ -689,6 +690,7 @@ pub async fn create_savings_plan_item_api(
     .bind(target_amount)
     .bind(monthly_amount)
     .bind(new_priority)
+    .bind(now_ms)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -793,10 +795,11 @@ pub async fn toggle_lock_api(
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, q.user_id.as_deref());
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
 
+    let now_ms = chrono::Utc::now().timestamp_millis();
     let row = sqlx::query(
         r#"
         UPDATE savings_plan_item
-        SET locked = NOT COALESCE(locked, false)
+        SET locked = NOT COALESCE(locked, false), updated_at = $3
         WHERE id = $1
           AND savings_plan_id IN (SELECT id FROM savings_plan WHERE userid = $2 OR user_id = $2)
         RETURNING id, savings_plan_id, name, type, account_id, targetamount, monthlyamount, priority, locked, archived
@@ -804,6 +807,7 @@ pub async fn toggle_lock_api(
     )
     .bind(id)
     .bind(&user_id)
+    .bind(now_ms)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -848,7 +852,9 @@ pub async fn delete_item_api(
     })?;
     let amount_to_roll_over = deleted_item.monthly_amount;
 
-    let res = sqlx::query("UPDATE savings_plan_item SET archived = true, monthlyamount = 0.0, monthly_amount = 0.0 WHERE id = $1 AND savings_plan_id = $2")
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let res = sqlx::query("UPDATE savings_plan_item SET archived = true, archived_at = $1, updated_at = $1, monthlyamount = 0.0, monthly_amount = 0.0 WHERE id = $2 AND savings_plan_id = $3")
+        .bind(now_ms)
         .bind(id)
         .bind(plan.id)
         .execute(&state.pool)
@@ -1433,15 +1439,16 @@ async fn add_debt_candidates(
     candidates: Vec<DebtCandidate>,
 ) -> Result<(), (StatusCode, String)> {
     let mut priority = plan.items.len() as i32;
+    let now_ms = chrono::Utc::now().timestamp_millis();
     for c in candidates {
         priority += 1;
         sqlx::query(
             r#"
             INSERT INTO savings_plan_item (
                 id, savings_plan_id, name, type, account_id, targetamount, target_amount,
-                monthlyamount, monthly_amount, priority, locked, archived
+                monthlyamount, monthly_amount, priority, locked, archived, created_at, updated_at
             )
-            VALUES (nextval('hibernate_sequence'), $1, $2, 'DEBT_PAYOFF', $3, $4, $4, 0.0, 0.0, $5, false, false)
+            VALUES (nextval('hibernate_sequence'), $1, $2, 'DEBT_PAYOFF', $3, $4, $4, 0.0, 0.0, $5, false, false, $6, $6)
             "#,
         )
         .bind(plan.id)
@@ -1449,6 +1456,7 @@ async fn add_debt_candidates(
         .bind(c.account_id)
         .bind(c.debt)
         .bind(priority)
+        .bind(now_ms)
         .execute(pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -1495,11 +1503,13 @@ pub async fn save_allocations_form_handler(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    let now_ms = chrono::Utc::now().timestamp_millis();
     for (item_id, amount) in parse_allocation_amounts(&form) {
         // Only items belonging to the caller's own active plan may be updated.
         if plan.items.iter().any(|it| it.id == item_id) {
-            sqlx::query("UPDATE savings_plan_item SET monthlyamount = $1, monthly_amount = $1 WHERE id = $2 AND savings_plan_id = $3")
+            sqlx::query("UPDATE savings_plan_item SET monthlyamount = $1, monthly_amount = $1, updated_at = $2 WHERE id = $3 AND savings_plan_id = $4")
                 .bind(amount)
+                .bind(now_ms)
                 .bind(item_id)
                 .bind(plan.id)
                 .execute(&state.pool)
@@ -1528,7 +1538,9 @@ pub async fn bin_plan_handler(
 ) -> Result<Redirect, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
-    let res = sqlx::query("UPDATE savings_plan SET archived = true WHERE id = $1 AND (userid = $2 OR user_id = $2)")
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let res = sqlx::query("UPDATE savings_plan SET archived = true, archived_at = $1, updated_at = $1 WHERE id = $2 AND (userid = $3 OR user_id = $3)")
+        .bind(now_ms)
         .bind(id)
         .bind(&user_id)
         .execute(&state.pool)

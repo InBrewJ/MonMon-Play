@@ -836,7 +836,7 @@ pub async fn post_yearly_bills_target_account(
         .filter(|&id| id > 0);
 
     let _ = sqlx::query(
-        "UPDATE user_access SET yearly_bills_account_id = $1 WHERE (userid = $2 OR username = $2)",
+        "UPDATE user_access SET yearly_bills_account_id = $1, updated_at = NOW() WHERE (userid = $2 OR username = $2)",
     )
     .bind(acc_id)
     .bind(&user_id)
