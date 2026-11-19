@@ -131,7 +131,7 @@ test.describe('Rust-through-Java Ship of Theseus: Core Primitives CRUD E2E', () 
     await expect(pausedItem).toContainText('Paused');
 
     // 5. Unpause outgoing
-    const unpauseBtn = pausedItem.locator('a[href*="/unpauseOutgoing/"]');
+    const unpauseBtn = pausedItem.locator('[data-method="PUT"][data-action*="/unpauseOutgoing/"]');
     await Promise.all([
       page.waitForNavigation(),
       unpauseBtn.click()

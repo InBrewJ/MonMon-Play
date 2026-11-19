@@ -178,11 +178,9 @@
                                     <td><span class="account-tag" style="font-weight: 600;">🏛️ {{ b.account_name }}</span></td>
                                     <td style="font-weight: 700; color: {% if b.value < 0.0 %}#ef4444{% else %}var(--text-main){% endif %};">£{{ b.value }}</td>
                                     <td style="text-align: right;">
-                                        <form action="/balance/{{ b.id }}/delete" method="POST" style="margin: 0; display: inline;" onsubmit="return confirm('Delete this balance record of £{{ b.value }} for {{ b.account_name }}?');">
-                                            <button type="submit" class="w3-button w3-round w3-tiny btn-delete-balance" style="background: var(--card-bg-subtle); color: #ef4444; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="Delete balance record">
-                                                <i class="fas fa-trash-alt"></i>
-                                            </button>
-                                        </form>
+                                        <button type="button" data-method="DELETE" data-action="/balance/{{ b.id }}/delete" data-confirm="Delete this balance record of £{{ b.value }} for {{ b.account_name }}?" class="w3-button w3-round w3-tiny btn-delete-balance" style="background: var(--card-bg-subtle); color: #ef4444; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="Delete balance record">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -201,11 +199,9 @@
                             </div>
                             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--text-muted);">
                                 <span>{{ b.date_str }}</span>
-                                <form action="/balance/{{ b.id }}/delete" method="POST" style="margin: 0;" onsubmit="return confirm('Delete this balance record?');">
-                                    <button type="submit" class="w3-button w3-round w3-tiny" style="background: none; color: #ef4444; border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 4px; cursor: pointer;">
-                                        <i class="fas fa-trash-alt"></i> Delete
-                                    </button>
-                                </form>
+                                <button type="button" data-method="DELETE" data-action="/balance/{{ b.id }}/delete" data-confirm="Delete this balance record?" class="w3-button w3-round w3-tiny" style="background: none; color: #ef4444; border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 4px; cursor: pointer;">
+                                    <i class="fas fa-trash-alt"></i> Delete
+                                </button>
                             </div>
                         </div>
                     {% endfor %}
@@ -765,7 +761,7 @@ function loadErraticBalances() {
             data.forEach(function(item) {
                 html += '<div style="padding: 10px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">';
                 html += '<div><strong>' + item.accountName + '</strong> jumped £' + item.prevValue + ' &rarr; £' + item.currValue + ' (&Delta; £' + item.jumpAmount + ')</div>';
-                html += '<form action="/balance/' + item.currBalanceId + '/delete" method="POST" style="margin: 0;"><button type="submit" class="w3-button w3-round w3-tiny" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Delete Jump</button></form>';
+                html += '<button type="button" data-method="DELETE" data-action="/balance/' + item.currBalanceId + '/delete" data-confirm="Delete this erratic balance jump?" class="w3-button w3-round w3-tiny" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Delete Jump</button>';
                 html += '</div>';
             });
             html += '</div>';

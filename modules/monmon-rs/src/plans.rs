@@ -283,7 +283,7 @@ pub async fn get_bin_plan(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
     headers: HeaderMap,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let now = chrono::Utc::now().timestamp_millis();
@@ -297,7 +297,7 @@ pub async fn get_bin_plan(
 
     crate::authz::Authz::verify_affected(res.rows_affected(), "Plan", id)?;
 
-    Ok(Redirect::to("/myPlans"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/myPlans"))
 }
 
 #[derive(Deserialize)]
@@ -309,7 +309,7 @@ pub async fn get_update_savings_payoff_percentage(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(query): Query<UpdateSavingsPercentageQuery>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let user_id = get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &user_id).await;
     let pct = query.percent.unwrap_or(20).clamp(0, 100);
@@ -344,5 +344,5 @@ pub async fn get_update_savings_payoff_percentage(
         .await;
     }
 
-    Ok(Redirect::to("/spog"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/spog"))
 }

@@ -383,13 +383,13 @@
                                             <a href="/editOutgoing/{{ o.id }}#outgoing-modal" class="btn-action btn-edit" title="Edit" style="margin-right: 8px; color: var(--primary); text-decoration: none;">
                                                 <i class="fas fa-pen"></i>
                                             </a>
-                                            <a href="/binOutgoing/{{ o.id }}" class="btn-action btn-delete" title="Delete outgoing" style="margin-right: 8px; color: var(--danger, #ef4444); text-decoration: none;" onclick="return confirm('Are you sure you want to delete this outgoing?');">
+                                            <button type="button" data-method="DELETE" data-action="/binOutgoing/{{ o.id }}" data-confirm="Are you sure you want to delete this outgoing?" class="btn-action btn-delete" title="Delete outgoing" style="margin-right: 8px; color: var(--danger, #ef4444); background: none; border: none; padding: 0; cursor: pointer;">
                                                 <i class="fas fa-trash"></i>
-                                            </a>
+                                            </button>
                                             {% if o.paused %}
-                                                <a href="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="color: #10b981; text-decoration: none; font-weight: 600; font-size: 0.85rem;">
+                                                <button type="button" data-method="PUT" data-action="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="color: #10b981; background: none; border: none; padding: 0; font-weight: 600; font-size: 0.85rem; cursor: pointer;">
                                                     <i class="fas fa-play-circle"></i> Unpause
-                                                </a>
+                                                </button>
                                             {% else %}
                                                 <a href="javascript:void(0)" onclick="openPauseModal(this)" data-id="{{ o.id }}" data-name="{{ o.name }}" data-cost="{{ o.cost }}" class="btn-action" title="Pause outgoing" style="color: #4f46e5; text-decoration: none; font-weight: 600; font-size: 0.85rem;">
                                                     <i class="fas fa-pause-circle"></i> Pause
@@ -573,11 +573,11 @@
                                 </button>
                             {% else %}
                                 <a href="/editOutgoing/{{ o.id }}#outgoing-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-pen"></i> Edit</a>
-                                <a href="/binOutgoing/{{ o.id }}" class="btn-action btn-delete" style="padding: 4px 12px; background: var(--danger-light, rgba(239, 68, 68, 0.15)); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--danger, #ef4444); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" onclick="return confirm('Are you sure you want to delete this outgoing?');"><i class="fas fa-trash"></i> Delete</a>
+                                <button type="button" data-method="DELETE" data-action="/binOutgoing/{{ o.id }}" data-confirm="Are you sure you want to delete this outgoing?" class="btn-action btn-delete" style="padding: 4px 12px; background: var(--danger-light, rgba(239, 68, 68, 0.15)); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--danger, #ef4444); border-radius: 4px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i class="fas fa-trash"></i> Delete</button>
                                 {% if o.paused %}
-                                    <a href="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="padding: 4px 12px; background: #dcfce7; color: #166534; border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                    <button type="button" data-method="PUT" data-action="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="padding: 4px 12px; background: #dcfce7; color: #166534; border: none; border-radius: 4px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
                                         <i class="fas fa-play"></i> Unpause
-                                    </a>
+                                    </button>
                                 {% else %}
                                     <button type="button" onclick="openPauseModal(this)" data-id="{{ o.id }}" data-name="{{ o.name }}" data-cost="{{ o.cost }}" class="btn-action" style="padding: 4px 12px; background: #e0e7ff; color: #3730a3; border: none; border-radius: 4px; font-size: 0.82rem; cursor: pointer;">
                                         <i class="fas fa-pause"></i> Pause

@@ -1137,9 +1137,9 @@ pub async fn get_bin_incoming(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<i64>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     if !is_authenticated(&headers) {
-        return Ok(Redirect::to("/login"));
+        return Ok(Redirect::to("/login").into_response());
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
@@ -1150,16 +1150,16 @@ pub async fn get_bin_incoming(
             _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         })?;
 
-    Ok(Redirect::to("/myIncomings"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/myIncomings"))
 }
 
 pub async fn get_bin_account(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<i64>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     if !is_authenticated(&headers) {
-        return Ok(Redirect::to("/login"));
+        return Ok(Redirect::to("/login").into_response());
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
@@ -1170,16 +1170,16 @@ pub async fn get_bin_account(
             _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         })?;
 
-    Ok(Redirect::to("/myAccounts"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/myAccounts"))
 }
 
 pub async fn get_bin_outgoing(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<i64>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     if !is_authenticated(&headers) {
-        return Ok(Redirect::to("/login"));
+        return Ok(Redirect::to("/login").into_response());
     }
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
@@ -1190,7 +1190,7 @@ pub async fn get_bin_outgoing(
             _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         })?;
 
-    Ok(Redirect::to("/myOutgoings"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/myOutgoings"))
 }
 
 pub async fn get_balances_page(
@@ -1467,7 +1467,7 @@ pub async fn post_delete_balance(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<i64>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let deleted = db::delete_balance(&state.pool, id, &user_id)
@@ -1481,7 +1481,7 @@ pub async fn post_delete_balance(
         ));
     }
 
-    Ok(Redirect::to("/myBalances"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/myBalances"))
 }
 
 pub async fn get_erratic_balances_api(
@@ -1526,14 +1526,14 @@ pub async fn unpause_outgoing_web(
     axum::extract::Path(id): axum::extract::Path<i64>,
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     db::unpause_outgoing(&state.pool, id, &user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Redirect::to("/myOutgoings"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/myOutgoings"))
 }
 
 pub async fn compute_paydays_json(pool: &sqlx::PgPool, user_id: &str) -> String {

@@ -817,7 +817,7 @@ pub async fn get_bin_pot(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
     headers: HeaderMap,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let now_ms = chrono::Utc::now().timestamp_millis();
@@ -831,14 +831,14 @@ pub async fn get_bin_pot(
 
     crate::authz::Authz::verify_affected(res.rows_affected(), "Pot", id)?;
 
-    Ok(Redirect::to("/myMonthlyPot"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/myMonthlyPot"))
 }
 
 pub async fn get_bin_preset(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
     headers: HeaderMap,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let now_ms = chrono::Utc::now().timestamp_millis();
@@ -855,7 +855,7 @@ pub async fn get_bin_preset(
 
     crate::authz::Authz::verify_affected(res.rows_affected(), "CustomSpendingPlan", id)?;
 
-    Ok(Redirect::to("/myMonthlyPot"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/myMonthlyPot"))
 }
 
 #[derive(Debug, Deserialize)]

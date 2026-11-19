@@ -255,7 +255,7 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
 
     // 5. Delete balance
     page.on('dialog', dialog => dialog.accept());
-    const deleteBtn = page.locator('form[action*="/balance/"][action*="/delete"] button[type="submit"]:visible').first();
+    const deleteBtn = page.locator('[data-method="DELETE"][data-action*="/balance/"][data-action*="/delete"]:visible').first();
     await deleteBtn.click();
     await expect(page).toHaveURL(/\/myBalances/);
   });

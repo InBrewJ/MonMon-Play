@@ -243,15 +243,86 @@
         });
     }
 
+    // 5. Delegated handler for [data-method][data-action] mutation buttons (DELETE / PUT)
+    function bindDataMethodActions() {
+        document.addEventListener('click', function (e) {
+            var el = e.target.closest('button[data-method][data-action], a[data-method][data-action]');
+            if (!el) return;
+
+            e.preventDefault();
+
+            if (document.body.classList.contains('is-offline')) {
+                if (window.monmonShowOfflineToast) {
+                    window.monmonShowOfflineToast();
+                }
+                return;
+            }
+
+            var method = (el.getAttribute('data-method') || '').toUpperCase();
+            var action = el.getAttribute('data-action');
+            if (!method || !action) return;
+
+            var confirmMsg = el.getAttribute('data-confirm');
+            if (confirmMsg && !window.confirm(confirmMsg)) {
+                return;
+            }
+
+            if (el.dataset.submitting === '1') return;
+            el.dataset.submitting = '1';
+
+            if (window.showMonmonLoader) {
+                window.showMonmonLoader('Saving changes...', 'Updating MonMon');
+            }
+
+            fetch(action, {
+                method: method,
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            }).then(function (res) {
+                if (!res.ok) {
+                    return res.text().then(function (errText) {
+                        throw new Error(errText || ('Request failed with status ' + res.status));
+                    });
+                }
+                var contentType = res.headers.get('content-type') || '';
+                if (contentType.indexOf('application/json') === -1) {
+                    window.location.assign(res.url || window.location.href);
+                    return;
+                }
+                return res.json().then(function (data) {
+                    var targetUrl = (data && data.redirect) ? data.redirect : window.location.href;
+                    var resolvedTarget = new URL(targetUrl, window.location.origin);
+                    var currentUrl = new URL(window.location.href);
+                    if (resolvedTarget.pathname === currentUrl.pathname && resolvedTarget.search === currentUrl.search && resolvedTarget.hash) {
+                        window.location.hash = resolvedTarget.hash;
+                        window.location.reload();
+                    } else if (resolvedTarget.href === currentUrl.href) {
+                        window.location.reload();
+                    } else {
+                        window.location.assign(resolvedTarget.href);
+                    }
+                });
+            }).catch(function (err) {
+                delete el.dataset.submitting;
+                if (window.hideMonmonLoader) {
+                    window.hideMonmonLoader();
+                }
+                alert((err && err.message) ? err.message : 'Action failed');
+            });
+        });
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             handleScrollState();
             bindScrollPreservation();
             enhanceNumericInputs();
+            bindDataMethodActions();
         });
     } else {
         handleScrollState();
         bindScrollPreservation();
         enhanceNumericInputs();
+        bindDataMethodActions();
     }
 })();

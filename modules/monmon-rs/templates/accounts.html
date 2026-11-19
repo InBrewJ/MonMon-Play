@@ -60,11 +60,9 @@
                                         <a href="/editAccount/{{ a.id }}#account-modal" class="btn-action btn-edit" title="Edit" style="margin-right: 8px; color: var(--primary); text-decoration: none;">
                                             <i class="fas fa-pen"></i>
                                         </a>
-                                        <form method="POST" action="/binAccount/{{ a.id }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this account?');">
-                                            <button type="submit" class="btn-action btn-delete" style="background:none; border:none; color:var(--danger); cursor:pointer;">
-                                                <i class="fas fa-trash-alt"></i>
-                                            </button>
-                                        </form>
+                                        <button type="button" data-method="DELETE" data-action="/binAccount/{{ a.id }}" data-confirm="Are you sure you want to delete this account?" class="btn-action btn-delete" style="background:none; border:none; color:var(--danger); cursor:pointer;">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
                                     </td>
                                 </tr>
                             {% endfor %}
@@ -104,9 +102,7 @@
                         <div class="item-card-actions" style="display: flex; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 8px;">
                             <a href="/bank?uploadAccount={{ a.id }}#statement-upload" class="btn-action" style="padding: 4px 10px; background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; font-size: 0.8rem; text-decoration: none;"><i class="fas fa-file-pdf"></i> Statement</a>
                             <a href="/editAccount/{{ a.id }}#account-modal" class="btn-action btn-edit" style="padding: 4px 10px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.8rem; text-decoration: none;"><i class="fas fa-pen"></i> Edit</a>
-                            <form method="POST" action="/binAccount/{{ a.id }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this account?');">
-                                <button type="submit" class="btn-action btn-delete" style="padding: 4px 10px; background: var(--danger-light); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); border-radius: 4px; font-size: 0.8rem; cursor: pointer;"><i class="fas fa-trash-alt"></i> Delete</button>
-                            </form>
+                            <button type="button" data-method="DELETE" data-action="/binAccount/{{ a.id }}" data-confirm="Are you sure you want to delete this account?" class="btn-action btn-delete" style="padding: 4px 10px; background: var(--danger-light); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); border-radius: 4px; font-size: 0.8rem; cursor: pointer;"><i class="fas fa-trash-alt"></i> Delete</button>
                         </div>
                     </div>
                 {% endfor %}

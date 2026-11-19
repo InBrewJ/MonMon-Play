@@ -65,7 +65,9 @@ $(function() {
             $("#dyn-yearly-surplus").text(newYearlySurplus.toFixed(2));
             $("#savings-amount").text("£" + savingsCost.toFixed(2));
             $("#savings-slider-val").text(pct);
-            $("#savings-slider-val-target").attr("href", "/plans/updateSavingsPayoffPercentage?percent=" + pct);
+            $("#savings-slider-val-target")
+                .attr("data-method", "PUT")
+                .attr("data-action", "/plans/updateSavingsPayoffPercentage?percent=" + pct);
         }
     }
 
@@ -80,7 +82,7 @@ $(function() {
 
 // 3. Deletion safety confirmation
 $(function() {
-    $(document).on("click", "a[href*='/bin'], .btn-delete, a[title*='Delete'], a[title*='Delete Pot']", function(e) {
+    $(document).on("click", "a[href*='/bin']:not([data-method]), .btn-delete:not([data-method]), a[title*='Delete']:not([data-method]), a[title*='Delete Pot']:not([data-method])", function(e) {
         if (!confirm("Are you sure you want to delete this?")) {
             e.preventDefault();
             return false;

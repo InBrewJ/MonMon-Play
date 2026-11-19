@@ -198,7 +198,7 @@
                             </td>
                             <td style="padding: 8px 6px; text-align: right;">
                                 <button type="button" onclick="openEditModal({{ asset.id }}, '{{ asset.name }}', '{{ asset.category }}', {{ asset.value }}, '{% if let Some(n) = asset.notes %}{{ n }}{% endif %}', '{{ asset.acquired_date_html_value }}')" class="w3-button w3-round w3-tiny w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); margin-right: 4px;" title="Edit asset"><i class="fas fa-edit"></i></button>
-                                <a href="/netWorth/binAsset/{{ asset.id }}" onclick="return confirm('Remove this asset from your net worth?');" class="w3-button w3-round w3-tiny w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--danger);" title="Delete asset"><i class="fas fa-trash"></i></a>
+                                <button type="button" data-method="DELETE" data-action="/netWorth/binAsset/{{ asset.id }}" data-confirm="Remove this asset from your net worth?" class="w3-button w3-round w3-tiny w3-border" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--danger); cursor: pointer;" title="Delete asset"><i class="fas fa-trash"></i></button>
                             </td>
                         </tr>
                         {% endfor %}

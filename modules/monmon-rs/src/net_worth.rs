@@ -4,7 +4,7 @@ use askama::Template;
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::{Html, Json, Redirect},
+    response::{Html, Json, Redirect, Response},
 };
 use chrono::{Datelike, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -892,7 +892,7 @@ pub async fn bin_asset_endpoint(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<i64>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let resolved = resolve_user_id(&state.pool, &raw_uid).await;
     let now = Utc::now().timestamp_millis();
@@ -908,7 +908,7 @@ pub async fn bin_asset_endpoint(
 
     crate::authz::Authz::verify_affected(res.rows_affected(), "Net Worth Asset", id)?;
 
-    Ok(Redirect::to("/netWorth"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/netWorth"))
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ use askama::Template;
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::{Html, Json, Redirect},
+    response::{Html, Json, Redirect, Response},
     Form,
 };
 use serde::{Deserialize, Serialize};
@@ -1524,18 +1524,18 @@ pub async fn bin_item_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<i64>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let q = SavingsPlanQuery { user_id: Some(raw_uid) };
-    let _ = delete_item_api(State(state), Path(id), headers, Query(q)).await;
-    Ok(Redirect::to("/savingsPlan#sliced-items-card"))
+    let _ = delete_item_api(State(state), Path(id), headers.clone(), Query(q)).await?;
+    Ok(crate::mutation_redirect_or_json(&headers, "/savingsPlan#sliced-items-card"))
 }
 
 pub async fn bin_plan_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<i64>,
-) -> Result<Redirect, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let now_ms = chrono::Utc::now().timestamp_millis();
@@ -1549,7 +1549,7 @@ pub async fn bin_plan_handler(
 
     crate::authz::Authz::verify_affected(res.rows_affected(), "Savings Plan", id)?;
 
-    Ok(Redirect::to("/savingsPlan"))
+    Ok(crate::mutation_redirect_or_json(&headers, "/savingsPlan"))
 }
 
 // -------------------------------------------------------------

@@ -60,7 +60,7 @@ describe('Net Worth Domain Contract Tests', () => {
 
     // Clean up / archive the asset
     const archiveRes = await fetch(`${MONMON_URL}/netWorth/binAsset/${created.id}?userId=${TEST_USER}`, {
-      method: 'GET',
+      method: 'DELETE',
     });
     assert.ok([200, 302, 303].includes(archiveRes.status), 'Bin asset should return success or redirect');
   });

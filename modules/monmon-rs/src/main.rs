@@ -34,7 +34,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use models::{
@@ -413,26 +413,26 @@ async fn main() {
         .route("/editOutgoing/:id", get(management::get_edit_outgoing_page))
         .route("/updateOutgoing/:id", post(management::post_update_outgoing_form))
         .route("/updateOutgoing", post(management::post_update_outgoing_form_direct))
-        .route("/binOutgoing/:id", get(management::get_bin_outgoing).post(management::get_bin_outgoing))
+        .route("/binOutgoing/:id", delete(management::get_bin_outgoing))
         .route("/myAccounts", get(management::get_accounts_page))
         .route("/editAccount/:id", get(management::get_edit_account_page))
         .route("/updateAccount/:id", post(management::post_update_account_form))
         .route("/updateAccount", post(management::post_update_account_form_direct))
-        .route("/binAccount/:id", get(management::get_bin_account).post(management::get_bin_account))
+        .route("/binAccount/:id", delete(management::get_bin_account))
         .route("/myIncomings", get(management::get_incomings_page))
         .route("/editIncoming/:id", get(management::get_edit_incoming_page))
         .route("/updateIncoming/:id", post(management::post_update_incoming_form))
         .route("/updateIncoming", post(management::post_update_incoming_form_direct))
-        .route("/binIncoming/:id", get(management::get_bin_incoming).post(management::get_bin_incoming))
+        .route("/binIncoming/:id", delete(management::get_bin_incoming))
         .route("/myBalances", get(management::get_balances_page))
         .route("/account", post(management::post_account_form))
         .route("/incoming", post(management::post_incoming_form))
         .route("/outgoing", post(management::post_outgoing_form))
         .route("/balance", post(management::post_balance_form))
-        .route("/balance/:id/delete", post(management::post_delete_balance).get(management::post_delete_balance))
+        .route("/balance/:id/delete", delete(management::post_delete_balance))
         .route("/api/balances/erratic", get(management::get_erratic_balances_api))
         .route("/pauseOutgoing/:id", post(management::pause_outgoing_web))
-        .route("/unpauseOutgoing/:id", get(management::unpause_outgoing_web).post(management::unpause_outgoing_web))
+        .route("/unpauseOutgoing/:id", put(management::unpause_outgoing_web))
         // Accounts
         .route(
             "/internal/accounts",
@@ -546,17 +546,17 @@ async fn main() {
         .route("/myPlans", get(plans::get_plans_page))
         .route("/plans", get(plans::get_plans_page))
         .route("/plan", post(plans::post_add_plan))
-        .route("/binPlan/:id", get(plans::get_bin_plan).post(plans::get_bin_plan))
-        .route("/plans/updateSavingsPayoffPercentage", get(plans::get_update_savings_payoff_percentage))
+        .route("/binPlan/:id", delete(plans::get_bin_plan))
+        .route("/plans/updateSavingsPayoffPercentage", put(plans::get_update_savings_payoff_percentage))
         // Monthly Pot & Spending Plan
         .route("/myMonthlyPot", get(pot::get_monthly_pot_page))
         .route("/spendingPlan", get(pot::get_monthly_pot_page))
         .route("/spendingPlans", get(pot::get_monthly_pot_page))
         .route("/pot", post(pot::post_pot_form))
         .route("/pot/applyGruelling", post(pot::post_apply_gruelling))
-        .route("/binPot/:id", get(pot::get_bin_pot).post(pot::get_bin_pot))
-        .route("/binPreset/:id", get(pot::get_bin_preset).post(pot::get_bin_preset))
-        .route("/pot/preset/delete/:id", post(pot::get_bin_preset))
+        .route("/binPot/:id", delete(pot::get_bin_pot))
+        .route("/binPreset/:id", delete(pot::get_bin_preset))
+        .route("/pot/preset/delete/:id", delete(pot::get_bin_preset))
         .route("/pot/preset/save", post(pot::post_save_preset))
         // Savings Plan & Priority Queue
         .route(
@@ -601,8 +601,8 @@ async fn main() {
         .route("/editSavingsPlanItem/:id", get(savings_plan::get_edit_savings_plan_item_page))
         .route("/savingsPlan/editItem/:id", get(savings_plan::get_edit_savings_plan_item_page))
         .route("/savingsPlan/updateItem/:id", post(savings_plan::update_item_form_handler))
-        .route("/binSavingsPlanItem/:id", get(savings_plan::bin_item_handler))
-        .route("/binSavingsPlan/:id", get(savings_plan::bin_plan_handler))
+        .route("/binSavingsPlanItem/:id", delete(savings_plan::bin_item_handler))
+        .route("/binSavingsPlan/:id", delete(savings_plan::bin_plan_handler))
         // Passkey / WebAuthn APIs
         .route("/api/auth/passkey/options", get(passkey::get_passkey_options_api))
         .route("/api/auth/passkey/register", post(passkey::register_passkey_api))
@@ -615,7 +615,7 @@ async fn main() {
         .route("/api/networth/asset", post(net_worth::add_asset_api))
         .route("/netWorth/addAsset", post(net_worth::add_asset_form))
         .route("/netWorth/updateAsset/:id", post(net_worth::update_asset_endpoint))
-        .route("/netWorth/binAsset/:id", get(net_worth::bin_asset_endpoint))
+        .route("/netWorth/binAsset/:id", delete(net_worth::bin_asset_endpoint))
         // Monzo Dig (Geotagged Heatmap & Category Histogram)
         .route("/dig", get(dig::get_dig_page))
         .route("/monzo-dig", get(dig::get_dig_page))
@@ -1353,6 +1353,25 @@ async fn serve_service_worker_handler() -> Response {
     build_sw_response(rendered)
 }
 
+/// Returns a JSON `{ "ok": true, "redirect": redirect_to }` response when `Accept`
+/// requests `application/json`, or a `303 See Other` redirect otherwise.
+pub fn mutation_redirect_or_json(headers: &HeaderMap, redirect_to: &str) -> Response {
+    let wants_json = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("application/json"))
+        .unwrap_or(false);
+    if wants_json {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "ok": true, "redirect": redirect_to })),
+        )
+            .into_response()
+    } else {
+        axum::response::Redirect::to(redirect_to).into_response()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1403,5 +1422,62 @@ mod tests {
         local_headers.insert("host", "localhost:9000".parse().unwrap());
         let local_resp = logout_handler(local_headers).await;
         assert!(local_resp.headers().get("Clear-Site-Data").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_mutation_redirect_or_json_returns_json_when_requested() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::ACCEPT, "application/json".parse().unwrap());
+        let resp = mutation_redirect_or_json(&headers, "/myOutgoings");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json, serde_json::json!({ "ok": true, "redirect": "/myOutgoings" }));
+    }
+
+    #[test]
+    fn test_mutation_redirect_or_json_returns_see_other_by_default() {
+        let headers = HeaderMap::new();
+        let resp = mutation_redirect_or_json(&headers, "/myOutgoings");
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            resp.headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("/myOutgoings")
+        );
+    }
+
+    #[test]
+    fn test_no_get_mutating_routes_in_main_rs() {
+        let src = include_str!("main.rs");
+        let router_section = src.split("#[cfg(test)]").next().unwrap_or(src);
+        let mutating_routes = [
+            "/binOutgoing/:id",
+            "/binAccount/:id",
+            "/binIncoming/:id",
+            "/balance/:id/delete",
+            "/unpauseOutgoing/:id",
+            "/binPlan/:id",
+            "/binPot/:id",
+            "/binPreset/:id",
+            "/binSavingsPlanItem/:id",
+            "/binSavingsPlan/:id",
+            "/netWorth/binAsset/:id",
+            "/plans/updateSavingsPayoffPercentage",
+        ];
+        for route in mutating_routes {
+            let needle = format!("\"{}\"", route);
+            for line in router_section.lines() {
+                if line.contains(&needle) {
+                    assert!(
+                        !line.contains("get("),
+                        "Mutating route {} must not be wired with get(: {}",
+                        route,
+                        line.trim()
+                    );
+                }
+            }
+        }
     }
 }

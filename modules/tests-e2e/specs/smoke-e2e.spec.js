@@ -94,7 +94,7 @@ test.describe('Production Smoke Test: Full User Lifecycle via RAuthy', () => {
 
     // Locate the row/card containing the account and submit delete
     const accountRowOrCard = page.locator('tr, .item-card', { hasText: uniqueAccountName }).first();
-    const deleteButton = accountRowOrCard.locator('form[action*="/binAccount"] button, .btn-delete').first();
+    const deleteButton = accountRowOrCard.locator('[data-method="DELETE"][data-action*="/binAccount"], .btn-delete').first();
     await deleteButton.click();
 
     // Verify the account is gone from /myAccounts
