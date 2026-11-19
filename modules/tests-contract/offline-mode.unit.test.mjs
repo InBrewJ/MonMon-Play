@@ -406,7 +406,7 @@ function createDomEnvironment({ buildHash = 'hash123', cookie = '', authenticate
 
     // Target + Bubble phase
     if (!event._isStopped()) {
-      const bubbleChain = target === doc ? [doc] : [...chain].reverse();
+      const bubbleChain = target === doc ? [doc] : [...[...chain].reverse(), doc];
       for (let i = 0; i < bubbleChain.length; i++) {
         const node = bubbleChain[i];
         if (i > 0 && !event.bubbles) break;
@@ -1838,5 +1838,118 @@ describe('MonMon Offline Mode Client Controller (offline-mode.js)', () => {
     envTransfers.window.clearAllChecks('next');
     assert.equal(chk1.checked, false);
     assert.equal(envTransfers.localStorage.getItem('monmon_payday_transfer_done_next_1'), null);
+  });
+
+  it('17. Delete/bin confirmation dialogs fire ONCE and clicking Cancel never activates loader, navigates, or deletes', async () => {
+    const navHeaderHtml = fs.readFileSync(path.join(ROOT_DIR, 'modules/monmon-rs/templates/nav_header.html'), 'utf8');
+    const match = navHeaderHtml.match(/<script>\s*\(function\(\)\s*\{\s*var loader = document\.getElementById\('monmon-page-loader'\);[\s\S]*?\}\)\(\);\s*<\/script>/);
+    assert.ok(match, 'Could not locate global loader script in nav_header.html');
+    const loaderScript = match[0].replace(/^<script>/, '').replace(/<\/script>$/, '');
+    const commonSrc = fs.readFileSync(path.join(ROOT_DIR, 'public/javascripts/common.js'), 'utf8');
+
+    const env = createEnv({ buildHash: 'v1', readyState: 'complete', onLine: true, url: 'https://monmon.test/myOutgoings' });
+    const loaderEl = env.createElement('div', { id: 'monmon-page-loader', classes: ['monmon-loader-overlay'] });
+    const loaderText = env.createElement('div', { id: 'monmon-loader-text', text: 'Loading...' });
+    const loaderSub = env.createElement('div', { classes: ['monmon-loader-subtext'], text: 'Crunching' });
+    const closeBtn = env.createElement('button', { id: 'monmon-loader-close' });
+    loaderEl.appendChild(closeBtn);
+    loaderEl.appendChild(loaderText);
+    loaderEl.appendChild(loaderSub);
+    env.document.body.appendChild(loaderEl);
+
+    let confirmDecision = false;
+    const confirmMessages = [];
+    env.window.confirm = (msg) => {
+      confirmMessages.push(msg);
+      return confirmDecision;
+    };
+
+    // Load nav_header loader script + common.js
+    vm.runInNewContext(loaderScript, {
+      window: env.window,
+      document: env.document,
+      URL,
+      setTimeout: env.window.setTimeout,
+      clearTimeout: env.window.clearTimeout,
+    });
+    vm.runInNewContext(commonSrc, {
+      window: env.window,
+      document: env.document,
+      sessionStorage: env.sessionStorage,
+      fetch: env.window.fetch,
+      URL,
+      Event: class { constructor(t) { this.type = t; } },
+      setTimeout: env.window.setTimeout,
+      clearTimeout: env.window.clearTimeout,
+      parseFloat,
+      parseInt,
+      isNaN,
+      alert() {},
+    });
+
+    // Attach a downstream document click listener simulating index.js fallback confirm
+    env.document.addEventListener('click', (e) => {
+      const t = e.target && e.target.closest ? e.target.closest('.btn-delete') : null;
+      if (t && !e.defaultPrevented) {
+        env.window.confirm('Fallback duplicate confirm');
+      }
+    });
+
+    // Case A: [data-method="DELETE"] button clicked and user clicks Cancel
+    const delBtn = env.createElement('button', {
+      classes: ['btn-action', 'btn-delete'],
+      attrs: {
+        type: 'button',
+        'data-method': 'DELETE',
+        'data-action': '/binOutgoing/42',
+        'data-confirm': 'Are you sure you want to delete this outgoing?',
+      },
+    });
+    env.document.body.appendChild(delBtn);
+
+    const initialFetchCount = env.fetchCalls.length;
+    confirmDecision = false;
+    delBtn.dispatchEvent(env.makeEvent('click', { bubbles: true, cancelable: true }));
+    await env.timers.tick(100);
+
+    assert.equal(confirmMessages.length, 1, 'Confirmation must pop up ONCE, never twice');
+    assert.equal(confirmMessages[0], 'Are you sure you want to delete this outgoing?');
+    assert.equal(env.fetchCalls.length, initialFetchCount, 'Clicking Cancel must send zero DELETE requests');
+    assert.equal(loaderEl.classList.contains('is-active'), false, 'Loader must stay inactive on Cancel');
+    assert.equal(env.window.location.href, 'https://monmon.test/spog', 'Must not navigate on Cancel');
+    assert.equal(env.sessionStorage.getItem('monmonReturnScrollPos'), null, 'Scroll position must not be saved when delete is cancelled');
+
+    // Case B: Anchor link with target onclick confirm (e.g. legacy or custom confirm link) cancelled
+    confirmMessages.length = 0;
+    const confirmAnchor = env.createElement('a', {
+      classes: ['btn-action', 'btn-delete'],
+      attrs: { href: '/binOutgoing/99' },
+    });
+    confirmAnchor.addEventListener('click', (e) => {
+      if (!env.window.confirm('Delete via anchor?')) {
+        e.preventDefault();
+      }
+    });
+    env.document.body.appendChild(confirmAnchor);
+    confirmAnchor.dispatchEvent(env.makeEvent('click', { bubbles: true, cancelable: true }));
+    await env.timers.tick(100);
+    assert.equal(confirmMessages.length, 1, 'Anchor confirm must pop up ONCE');
+    assert.equal(loaderEl.classList.contains('is-active'), false, 'nav_header loader must not activate before anchor onclick confirm');
+    assert.equal(env.window.location.href, 'https://monmon.test/spog', 'nav_header 25ms timer must NOT navigate to /binOutgoing/99 after Cancel');
+
+    // Case C: Form with target onsubmit confirm (e.g. bank_sync.html statement discard) cancelled
+    confirmMessages.length = 0;
+    const discardForm = env.createElement('form', {
+      attrs: { action: '/bank/statement/7/discard', method: 'POST' },
+    });
+    discardForm.addEventListener('submit', (e) => {
+      if (!env.window.confirm('Discard this extracted statement?')) {
+        e.preventDefault();
+      }
+    });
+    env.document.body.appendChild(discardForm);
+    discardForm.dispatchEvent(env.makeEvent('submit', { bubbles: true, cancelable: true }));
+    assert.equal(confirmMessages.length, 1);
+    assert.equal(loaderEl.classList.contains('is-active'), false, 'nav_header submit loader must not activate when form onsubmit confirm is cancelled');
   });
 });

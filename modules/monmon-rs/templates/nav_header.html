@@ -244,11 +244,13 @@
         // Skip download links
         if (anchor.hasAttribute('download')) return;
 
-        // Skip elements opting out with data-no-loader
+        // Skip elements opting out with data-no-loader or handled by confirmation/mutation handlers
         if (anchor.hasAttribute('data-no-loader') || anchor.classList.contains('no-loader')) return;
+        if (anchor.hasAttribute('data-method') || anchor.hasAttribute('data-confirm') || anchor.classList.contains('btn-delete') || anchor.hasAttribute('onclick')) return;
 
         var href = anchor.getAttribute('href');
         if (!href) return;
+        if (href.indexOf('/bin') === 0 || href.indexOf('/balance/') === 0) return;
 
         // Skip in-page anchors, javascript:, mailto:, tel:
         if (href === '#' || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
@@ -341,9 +343,10 @@
         setTimeout(function() {
             window.location.href = targetHref;
         }, 25);
-    }, true);
+    }, false);
 
-    // Also intercept form submissions (e.g. settings, outgoings create/edit, pot update)
+    // Also intercept form submissions (e.g. settings, outgoings create/edit, pot update) in bubble phase
+    // so target onsubmit="return confirm(...)" handlers run first and set e.defaultPrevented on Cancel.
     document.addEventListener('submit', function(e) {
         if (e.defaultPrevented) return;
         var form = e.target;
@@ -352,7 +355,7 @@
         if (form.id === 'legmon-upload-form' || (form.action && form.action.indexOf('/bank/statement/upload') !== -1)) return;
         if (document.body && document.body.classList.contains('is-offline') && (!form.hasAttribute('data-offline-allowed') || form.getAttribute('data-offline-allowed') === 'false')) return;
         showLoader('Saving changes...', 'Updating MonMon');
-    }, true);
+    }, false);
 })();
 </script>
 

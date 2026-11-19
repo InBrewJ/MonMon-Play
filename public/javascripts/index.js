@@ -80,11 +80,13 @@ $(function() {
     }
 });
 
-// 3. Deletion safety confirmation
+// 3. Deletion safety confirmation (only for elements without [data-method], [data-confirm], or inline [onclick])
 $(function() {
-    $(document).on("click", "a[href*='/bin']:not([data-method]), .btn-delete:not([data-method]):not(#btn-delete-preset-direct), a[title*='Delete']:not([data-method]), a[title*='Delete Pot']:not([data-method])", function(e) {
+    $(document).on("click", "a[href*='/bin']:not([data-method]):not([data-confirm]):not([onclick]), .btn-delete:not([data-method]):not([data-confirm]):not([onclick]):not(#btn-delete-preset-direct), a[title*='Delete']:not([data-method]):not([data-confirm]):not([onclick]), a[title*='Delete Pot']:not([data-method]):not([data-confirm]):not([onclick])", function(e) {
         if (!confirm("Are you sure you want to delete this?")) {
             e.preventDefault();
+            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            if (typeof e.stopPropagation === 'function') e.stopPropagation();
             return false;
         }
     });

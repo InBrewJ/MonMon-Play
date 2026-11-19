@@ -580,7 +580,10 @@
     }
 
     if (btnDeletePresetDirect) {
-        btnDeletePresetDirect.addEventListener('click', function() {
+        btnDeletePresetDirect.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            if (typeof e.stopPropagation === 'function') e.stopPropagation();
             if (document.body.classList.contains('is-offline')) {
                 if (window.monmonShowOfflineToast) window.monmonShowOfflineToast();
                 return;

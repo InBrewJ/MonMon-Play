@@ -33,10 +33,10 @@
         }
     }
 
-    // 2. Capture scroll position before delete actions or form submits marked for preservation
+    // 2. Capture scroll position before actions or form submits marked for preservation
     function bindScrollPreservation() {
         document.addEventListener('click', function (e) {
-            var target = e.target.closest('.btn-delete, [data-save-scroll], .save-scroll');
+            var target = e.target.closest('[data-save-scroll], .save-scroll');
             if (target) {
                 sessionStorage.setItem('monmonReturnScrollPos', window.scrollY || window.pageYOffset || 0);
             }
@@ -250,6 +250,12 @@
             if (!el) return;
 
             e.preventDefault();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
+            if (typeof e.stopPropagation === 'function') {
+                e.stopPropagation();
+            }
 
             if (document.body.classList.contains('is-offline')) {
                 if (window.monmonShowOfflineToast) {
@@ -269,6 +275,10 @@
 
             if (el.dataset.submitting === '1') return;
             el.dataset.submitting = '1';
+
+            try {
+                sessionStorage.setItem('monmonReturnScrollPos', window.scrollY || window.pageYOffset || 0);
+            } catch (err) {}
 
             if (window.showMonmonLoader) {
                 window.showMonmonLoader('Saving changes...', 'Updating MonMon');
