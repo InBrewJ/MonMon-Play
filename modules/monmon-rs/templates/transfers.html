@@ -450,11 +450,11 @@
 
         <!-- Cycle Switcher Tabs -->
         <div class="tabs-nav" role="tablist">
-            <button type="button" class="tab-btn {% if selected_tab == "next" %}active{% endif %}" onclick="switchWindowTab('next')" id="tab-btn-next">
+            <button type="button" class="tab-btn {% if selected_tab == "next" %}active{% endif %}" onclick="switchWindowTab('next')" id="tab-btn-next" data-offline-allowed="true">
                 <i class="fas fa-forward" style="margin-right: 6px;"></i> Next Payday ({{ next_window.payday_date }})
                 {% if next_window.is_today %}<span style="color: #10b981; font-weight: 800; margin-left: 4px;">• Today</span>{% endif %}
             </button>
-            <button type="button" class="tab-btn {% if selected_tab == "last" %}active{% endif %}" onclick="switchWindowTab('last')" id="tab-btn-last">
+            <button type="button" class="tab-btn {% if selected_tab == "last" %}active{% endif %}" onclick="switchWindowTab('last')" id="tab-btn-last" data-offline-allowed="true">
                 <i class="fas fa-history" style="margin-right: 6px;"></i> Last Payday ({{ last_window.payday_date }})
             </button>
         </div>
@@ -625,7 +625,7 @@
                                 <span style="font-size: 0.76rem; color: var(--text-muted, #94a3b8);">
                                     {{ step.for_outgoings_summary }}
                                 </span>
-                                <button type="button" class="btn-copy-amt" style="padding: 2px 8px; font-size: 0.72rem;" onclick="copyTransferAmount('{{ step.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" style="padding: 2px 8px; font-size: 0.72rem;" onclick="copyTransferAmount('{{ step.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ step.amount_formatted }}
                                 </button>
                             </div>
@@ -709,7 +709,7 @@
                                 Debited straight from {{ item.account_name }} on {{ item.due_date }}
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.cost_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.cost_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ item.cost_formatted }}
                                 </button>
                             </div>
@@ -758,7 +758,7 @@
                                 Retained in {{ next_window.source_account_name }} to pay down overdraft balance
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ overdraft.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ overdraft.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ overdraft.amount_formatted }}
                                 </button>
                             </div>
@@ -776,7 +776,7 @@
                 </h3>
                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                     <span id="next-checked-summary" style="font-size: 0.8rem; color: #10b981; font-weight: 700; display: none;"></span>
-                    <button type="button" id="next-clear-btn" class="btn-clear-checks" onclick="clearAllChecks('next')" style="display: none;" title="Clear all ticks for next payday">
+                    <button type="button" id="next-clear-btn" class="btn-clear-checks" data-offline-allowed="true" onclick="clearAllChecks('next')" style="display: none;" title="Clear all ticks for next payday">
                         <i class="fas fa-undo-alt"></i> Clear all checks
                     </button>
                     <span style="font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
@@ -850,7 +850,7 @@
 
                         {% if !item.breakdown.is_empty() %}
                         <div style="margin-bottom: 10px;">
-                            <button type="button" class="breakdown-toggle-btn" onclick="toggleBreakdown('next-{{ item.id }}')">
+                            <button type="button" class="breakdown-toggle-btn" data-offline-allowed="true" onclick="toggleBreakdown('next-{{ item.id }}')">
                                 <i class="fas fa-chevron-down" id="icon-next-{{ item.id }}"></i> View {{ item.breakdown.len() }} outgoing{% if item.breakdown.len() != 1 %}s{% endif %} covered
                             </button>
                             <div id="breakdown-next-{{ item.id }}" style="display: none; background: var(--card-bg-subtle, #0f172a); border: 1px solid var(--border-color, #334155); border-radius: 6px; padding: 6px 10px; margin-top: 6px;">
@@ -884,7 +884,7 @@
                                 {{ item.description }}
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
                                 </button>
                             </div>
@@ -956,7 +956,7 @@
                                 {{ item.description }}
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
                                 </button>
                             </div>
@@ -1036,7 +1036,7 @@
 
                         {% if !item.breakdown.is_empty() %}
                         <div style="margin-bottom: 10px;">
-                            <button type="button" class="breakdown-toggle-btn" onclick="toggleBreakdown('next-{{ item.id }}')">
+                            <button type="button" class="breakdown-toggle-btn" data-offline-allowed="true" onclick="toggleBreakdown('next-{{ item.id }}')">
                                 <i class="fas fa-chevron-down" id="icon-next-{{ item.id }}"></i> View {{ item.breakdown.len() }} upcoming annual bills covered
                             </button>
                             <div id="breakdown-next-{{ item.id }}" style="display: none; background: var(--card-bg-subtle, #0f172a); border: 1px solid var(--border-color, #334155); border-radius: 6px; padding: 6px 10px; margin-top: 6px;">
@@ -1070,7 +1070,7 @@
                                 {{ item.description }}
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
                                 </button>
                             </div>
@@ -1245,7 +1245,7 @@
                                 <span style="font-size: 0.76rem; color: var(--text-muted, #94a3b8);">
                                     {{ step.for_outgoings_summary }}
                                 </span>
-                                <button type="button" class="btn-copy-amt" style="padding: 2px 8px; font-size: 0.72rem;" onclick="copyTransferAmount('{{ step.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" style="padding: 2px 8px; font-size: 0.72rem;" onclick="copyTransferAmount('{{ step.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ step.amount_formatted }}
                                 </button>
                             </div>
@@ -1329,7 +1329,7 @@
                                 Debited straight from {{ item.account_name }} on {{ item.due_date }}
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.cost_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.cost_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ item.cost_formatted }}
                                 </button>
                             </div>
@@ -1378,7 +1378,7 @@
                                 Retained in {{ last_window.source_account_name }} to pay down overdraft balance
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ overdraft.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ overdraft.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ overdraft.amount_formatted }}
                                 </button>
                             </div>
@@ -1396,7 +1396,7 @@
                 </h3>
                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                     <span id="last-checked-summary" style="font-size: 0.8rem; color: #10b981; font-weight: 700; display: none;"></span>
-                    <button type="button" id="last-clear-btn" class="btn-clear-checks" onclick="clearAllChecks('last')" style="display: none;" title="Clear all ticks for last payday">
+                    <button type="button" id="last-clear-btn" class="btn-clear-checks" data-offline-allowed="true" onclick="clearAllChecks('last')" style="display: none;" title="Clear all ticks for last payday">
                         <i class="fas fa-undo-alt"></i> Clear all checks
                     </button>
                     <span style="font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
@@ -1470,7 +1470,7 @@
 
                         {% if !item.breakdown.is_empty() %}
                         <div style="margin-bottom: 10px;">
-                            <button type="button" class="breakdown-toggle-btn" onclick="toggleBreakdown('last-{{ item.id }}')">
+                            <button type="button" class="breakdown-toggle-btn" data-offline-allowed="true" onclick="toggleBreakdown('last-{{ item.id }}')">
                                 <i class="fas fa-chevron-down" id="icon-last-{{ item.id }}"></i> View {{ item.breakdown.len() }} outgoing{% if item.breakdown.len() != 1 %}s{% endif %} covered
                             </button>
                             <div id="breakdown-last-{{ item.id }}" style="display: none; background: var(--card-bg-subtle, #0f172a); border: 1px solid var(--border-color, #334155); border-radius: 6px; padding: 6px 10px; margin-top: 6px;">
@@ -1504,7 +1504,7 @@
                                 {{ item.description }}
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
                                 </button>
                             </div>
@@ -1576,7 +1576,7 @@
                                 {{ item.description }}
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
                                 </button>
                             </div>
@@ -1660,7 +1660,7 @@
                                 {{ item.description }}
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" class="btn-copy-amt" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
                                     <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
                                 </button>
                             </div>

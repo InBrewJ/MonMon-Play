@@ -125,13 +125,13 @@
     <div id="nommon-content" style="display: none;">
         <!-- Tabs Navigation -->
         <div style="display: flex; gap: 4px; border-bottom: 2px solid var(--border-color, #e2e8f0); margin-bottom: 1rem;">
-            <button type="button" class="nommon-tab-btn active" data-tab="tab-shopping">
+            <button type="button" class="nommon-tab-btn active" data-tab="tab-shopping" data-offline-allowed="true">
                 <i class="fas fa-list-check" style="margin-right: 6px;"></i>Sainsbury's Shopping List (<span id="tab-item-count">0</span>)
             </button>
-            <button type="button" class="nommon-tab-btn" data-tab="tab-days">
+            <button type="button" class="nommon-tab-btn" data-tab="tab-days" data-offline-allowed="true">
                 <i class="fas fa-calendar-week" style="margin-right: 6px;"></i>7-Day Meal Schedule
             </button>
-            <button type="button" class="nommon-tab-btn" data-tab="tab-recipes">
+            <button type="button" class="nommon-tab-btn" data-tab="tab-recipes" data-offline-allowed="true">
                 <i class="fas fa-utensils" style="margin-right: 6px;"></i>Meal Recipes (<span id="tab-recipe-count">0</span>)
             </button>
         </div>
@@ -145,7 +145,7 @@
                         <div id="nutrition-highlight-display" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;"></div>
                     </div>
                     <div style="display: flex; gap: 6px;">
-                        <button type="button" id="btn-uncheck-all" class="w3-button w3-tiny w3-round" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600;">
+                        <button type="button" id="btn-uncheck-all" class="w3-button w3-tiny w3-round" data-offline-allowed="true" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-weight: 600;">
                             Clear Checks
                         </button>
                     </div>

@@ -91,7 +91,21 @@
         }, 900);
     }
 
+    function isOfflineMode() {
+        if (typeof window !== 'undefined' && typeof window.monmonIsOffline === 'function' && window.monmonIsOffline()) {
+            return true;
+        }
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            return true;
+        }
+        if (typeof document !== 'undefined' && document.body && document.body.classList && document.body.classList.contains('is-offline')) {
+            return true;
+        }
+        return false;
+    }
+
     window.monmonCheckWaitingList = function(isManual) {
+        if (isOfflineMode()) return;
         if (isChecking) return;
         isChecking = true;
 

@@ -20,6 +20,28 @@
         init();
     }
 
+    function isCurrentlyOffline() {
+        if (typeof window !== 'undefined' && typeof window.monmonIsOffline === 'function' && window.monmonIsOffline()) {
+            return true;
+        }
+        return Boolean(document.body && document.body.classList && document.body.classList.contains('is-offline'));
+    }
+
+    function applyOfflineState(offline) {
+        var isOff = Boolean(offline);
+        if (searchInput) {
+            searchInput.disabled = isOff;
+            searchInput.placeholder = isOff ? 'Search unavailable offline' : 'Search... (/)';
+        }
+        if (isOff) {
+            clearTimeout(searchDebounceTimer);
+            if (searchSpinner) searchSpinner.style.display = 'none';
+            closeDropdown();
+            if (searchInput && typeof searchInput.blur === 'function') searchInput.blur();
+            if (searchContainer) searchContainer.classList.remove('is-expanded');
+        }
+    }
+
     function init() {
         searchContainer = document.getElementById('header-search-container');
         searchInput = document.getElementById('global-search-input');
@@ -32,7 +54,13 @@
         if (searchInput && searchDropdown) {
             bindSearchInputEvents();
             bindGlobalKeybindings();
+            applyOfflineState(isCurrentlyOffline());
         }
+
+        window.addEventListener('monmon:offline-change', function (e) {
+            var offline = e && e.detail ? Boolean(e.detail.offline) : isCurrentlyOffline();
+            applyOfflineState(offline);
+        });
 
         // On every page load or hash change, check if we need to scroll to and highlight a target entity
         handleTargetEntityHighlight();
@@ -112,6 +140,7 @@
             var isCtrlK = (e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K');
 
             if (isSlash || isCtrlK) {
+                if (isCurrentlyOffline() || (searchInput && searchInput.disabled)) return;
                 e.preventDefault();
                 if (searchContainer) searchContainer.classList.add('is-expanded');
                 if (searchInput) {
@@ -123,6 +152,10 @@
     }
 
     function performSearch(query) {
+        if (isCurrentlyOffline()) {
+            closeDropdown();
+            return;
+        }
         if (!query || query.length === 0) {
             closeDropdown();
             return;

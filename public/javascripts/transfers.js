@@ -88,28 +88,38 @@
         if (!chk) return;
 
         var key = STORAGE_PREFIX + windowType + '_' + itemId;
-        if (chk.checked) {
-            localStorage.setItem(key, 'true');
-            if (card) card.classList.add('is-done');
-        } else {
-            localStorage.removeItem(key);
-            if (card) card.classList.remove('is-done');
+        try {
+            if (chk.checked) {
+                localStorage.setItem(key, 'true');
+                if (card) card.classList.add('is-done');
+            } else {
+                localStorage.removeItem(key);
+                if (card) card.classList.remove('is-done');
+            }
+        } catch (e) {
+            if (chk.checked) {
+                if (card) card.classList.add('is-done');
+            } else {
+                if (card) card.classList.remove('is-done');
+            }
         }
         updateCheckedSummary(windowType);
     };
 
     window.clearAllChecks = function (windowType) {
         var prefix = STORAGE_PREFIX + windowType + '_';
-        var toRemove = [];
-        for (var i = 0; i < localStorage.length; i++) {
-            var k = localStorage.key(i);
-            if (k && k.indexOf(prefix) === 0) {
-                toRemove.push(k);
+        try {
+            var toRemove = [];
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                if (k && k.indexOf(prefix) === 0) {
+                    toRemove.push(k);
+                }
             }
-        }
-        toRemove.forEach(function (k) {
-            localStorage.removeItem(k);
-        });
+            toRemove.forEach(function (k) {
+                localStorage.removeItem(k);
+            });
+        } catch (e) {}
 
         var containerId = windowType === 'next' ? 'transfer-cards-container-next' : 'transfer-cards-container-last';
         var container = document.getElementById(containerId);
@@ -194,7 +204,10 @@
                 var windowType = parts[1];
                 var itemId = parts.slice(2).join('-');
                 var key = STORAGE_PREFIX + windowType + '_' + itemId;
-                var isDone = localStorage.getItem(key) === 'true';
+                var isDone = false;
+                try {
+                    isDone = localStorage.getItem(key) === 'true';
+                } catch (e) {}
                 chk.checked = isDone;
 
                 var cardId = windowType === 'next' ? 'card-' + itemId : 'card-last-' + itemId;
@@ -206,10 +219,31 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+    function markOfflineAllowedControls() {
+        var selectors = '#tab-btn-next, #tab-btn-last, #next-clear-btn, #last-clear-btn, .btn-clear-checks, .btn-copy-amt, .breakdown-toggle-btn, input[id^="chk-"]';
+        document.querySelectorAll(selectors).forEach(function (el) {
+            if (typeof el.setAttribute === 'function' && !el.hasAttribute('data-offline-allowed')) {
+                el.setAttribute('data-offline-allowed', 'true');
+            }
+            el.disabled = false;
+        });
+    }
+
+    function initTransfers() {
         restoreCheckboxStates();
         initCardClickHandlers();
+        markOfflineAllowedControls();
         updateCheckedSummary('next');
         updateCheckedSummary('last');
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTransfers);
+    } else {
+        initTransfers();
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('monmon:offline-change', markOfflineAllowedControls);
+    }
 })();

@@ -267,6 +267,16 @@
         }
 
         if (window.monmonIsOfflineBlockedAnchor && window.monmonIsOfflineBlockedAnchor(anchor)) return;
+        if (document.body && document.body.classList.contains('is-offline') && (!anchor.hasAttribute('data-offline-allowed') || anchor.getAttribute('data-offline-allowed') === 'false')) {
+            var anchorMethod = (anchor.getAttribute('data-method') || '').toUpperCase();
+            if (anchorMethod && anchorMethod !== 'GET' && anchorMethod !== 'HEAD' && anchorMethod !== 'OPTIONS') return;
+            if (!window.monmonIsOfflineBlockedAnchor) {
+                var lowerPath = destinationUrl.pathname.toLowerCase();
+                if (lowerPath.indexOf('/editoutgoing/') === 0 || lowerPath.indexOf('/editaccount/') === 0 || lowerPath.indexOf('/editincoming/') === 0 || lowerPath.indexOf('/editsavingsplanitem/') === 0 || lowerPath.indexOf('/savingsplan/edititem/') === 0 || lowerPath.indexOf('/timetravel/') === 0) {
+                    return;
+                }
+            }
+        }
 
         // Friendly contextual text based on target
         var targetText = "Loading...";
@@ -335,11 +345,11 @@
 
     // Also intercept form submissions (e.g. settings, outgoings create/edit, pot update)
     document.addEventListener('submit', function(e) {
+        if (e.defaultPrevented) return;
         var form = e.target;
         if (window.suppressGlobalLoader) return;
         if (form.hasAttribute('data-no-loader') || form.classList.contains('no-loader')) return;
         if (form.id === 'legmon-upload-form' || (form.action && form.action.indexOf('/bank/statement/upload') !== -1)) return;
-        if (e.defaultPrevented) return;
         if (document.body && document.body.classList.contains('is-offline') && (!form.hasAttribute('data-offline-allowed') || form.getAttribute('data-offline-allowed') === 'false')) return;
         showLoader('Saving changes...', 'Updating MonMon');
     }, true);

@@ -1265,4 +1265,548 @@ describe('MonMon Offline Mode Client Controller (offline-mode.js)', () => {
       'Expected monmon:offline-change event with offline: false on recovery'
     );
   });
+
+  it('10. [Task 6] offline-mode.js dispatches monmon:offline-change with { offline: true/false } only on real transitions', async () => {
+    const env = createEnv({
+      buildHash: 'v1',
+      readyState: 'complete',
+      onLine: true,
+    });
+    await env.timers.flushMicrotasks();
+
+    const initialEvents = env.windowEventsDispatched.filter((e) => e.type === 'monmon:offline-change');
+    assert.equal(initialEvents.length, 0, 'Online boot should not emit offline-change');
+
+    // Transition to offline
+    env.window.monmonOfflineMode.enterOffline();
+    // Duplicate enterOffline should NOT emit a second event
+    env.window.monmonOfflineMode.enterOffline();
+    // Transition back to online
+    env.window.monmonOfflineMode.exitOffline();
+    // Duplicate exitOffline should NOT emit a second event
+    env.window.monmonOfflineMode.exitOffline();
+
+    const changeEvents = env.windowEventsDispatched.filter((e) => e.type === 'monmon:offline-change');
+    assert.deepEqual(
+      changeEvents.map((e) => ({ offline: Boolean(e.detail && e.detail.offline) })),
+      [{ offline: true }, { offline: false }]
+    );
+  });
+
+  it('11. [Task 6] waitingListModal.js skips fetch(/api/user/accessStatus) when navigator.onLine === false or body.is-offline', async () => {
+    const waitingListPath = path.join(ROOT_DIR, 'public/javascripts/waitingListModal.js');
+    const waitingListSrc = fs.readFileSync(waitingListPath, 'utf8');
+
+    // 11a. navigator.onLine === false at load
+    const envNavOffline = createEnv({
+      buildHash: 'v1',
+      readyState: 'complete',
+      onLine: false,
+      fetchImpl: async () => new Response(JSON.stringify({ authenticated: true, approved: true }), { status: 200 }),
+    });
+    const fetchBeforeA = envNavOffline.fetchCalls.length;
+    vm.runInNewContext(waitingListSrc, {
+      window: envNavOffline.window,
+      document: envNavOffline.document,
+      navigator: envNavOffline.window.navigator,
+      fetch: envNavOffline.window.fetch,
+      setTimeout: envNavOffline.window.setTimeout,
+      clearTimeout: envNavOffline.window.clearTimeout,
+      setInterval: envNavOffline.window.setInterval,
+      clearInterval: envNavOffline.window.clearInterval,
+      alert() {},
+    });
+    await envNavOffline.timers.flushMicrotasks();
+    assert.equal(
+      envNavOffline.fetchCalls.slice(fetchBeforeA).filter((c) => String(c.input).includes('/api/user/accessStatus')).length,
+      0,
+      'Must skip /api/user/accessStatus when navigator.onLine === false'
+    );
+
+    // 11b. body.is-offline when navigator.onLine === true (Lie-Fi)
+    const envBodyOffline = createEnv({
+      buildHash: 'v1',
+      readyState: 'complete',
+      onLine: true,
+      fetchImpl: async () => new Response(JSON.stringify({ authenticated: true, approved: true }), { status: 200 }),
+    });
+    envBodyOffline.window.monmonOfflineMode.enterOffline();
+    const fetchBeforeB = envBodyOffline.fetchCalls.length;
+    vm.runInNewContext(waitingListSrc, {
+      window: envBodyOffline.window,
+      document: envBodyOffline.document,
+      navigator: envBodyOffline.window.navigator,
+      fetch: envBodyOffline.window.fetch,
+      setTimeout: envBodyOffline.window.setTimeout,
+      clearTimeout: envBodyOffline.window.clearTimeout,
+      setInterval: envBodyOffline.window.setInterval,
+      clearInterval: envBodyOffline.window.clearInterval,
+      alert() {},
+    });
+    envBodyOffline.window.monmonCheckWaitingList(true);
+    await envBodyOffline.timers.flushMicrotasks();
+    assert.equal(
+      envBodyOffline.fetchCalls.slice(fetchBeforeB).filter((c) => String(c.input).includes('/api/user/accessStatus')).length,
+      0,
+      'Must skip /api/user/accessStatus when body.is-offline is active'
+    );
+  });
+
+  it('12. [Task 6] NomMon & Transfer Window local interactive controls and [data-offline-allowed] are NOT blocked while body.is-offline', () => {
+    const env = createEnv({ buildHash: 'v1', readyState: 'loading' });
+    env.document.body.classList.add('is-offline');
+
+    const localControls = [
+      env.createElement('button', { id: 'btn-uncheck-all', attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+      env.createElement('button', { classes: ['nommon-tab-btn'], attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+      env.createElement('input', { classes: ['nommon-item-check'], attrs: { type: 'checkbox' } }),
+      env.createElement('input', { id: 'chk-next-42', attrs: { type: 'checkbox' } }),
+      env.createElement('button', { id: 'next-clear-btn', classes: ['btn-clear-checks'], attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+      env.createElement('button', { id: 'last-clear-btn', classes: ['btn-clear-checks'], attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+      env.createElement('button', { classes: ['btn-copy-amt'], attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+      env.createElement('button', { classes: ['breakdown-toggle-btn'], attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+      env.createElement('button', { id: 'tab-btn-next', classes: ['tab-btn'], attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+      env.createElement('button', { id: 'tab-btn-last', classes: ['tab-btn'], attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+      env.createElement('button', { attrs: { type: 'button', 'data-offline-allowed': 'true' } }),
+    ];
+
+    for (const el of localControls) {
+      env.document.body.appendChild(el);
+      const clickEv = env.makeEvent('click', { bubbles: true, cancelable: true });
+      el.dispatchEvent(clickEv);
+      assert.equal(clickEv.defaultPrevented, false, `Expected ${el.id || el.tagName} click not to be prevented offline`);
+    }
+
+    // Verify templates explicitly mark local-only buttons with data-offline-allowed="true"
+    const nommonHtml = fs.readFileSync(path.join(ROOT_DIR, 'modules/monmon-rs/templates/nommon.html'), 'utf8');
+    assert.match(nommonHtml, /id="btn-uncheck-all"[^>]*data-offline-allowed="true"/);
+    const nommonTabMatches = nommonHtml.match(/class="nommon-tab-btn[^"]*"[^>]*>/g) || [];
+    assert.equal(nommonTabMatches.length, 3);
+    for (const tag of nommonTabMatches) {
+      assert.match(tag, /data-offline-allowed="true"/);
+    }
+
+    const transfersHtml = fs.readFileSync(path.join(ROOT_DIR, 'modules/monmon-rs/templates/transfers.html'), 'utf8');
+    assert.match(transfersHtml, /id="tab-btn-next"[^>]*data-offline-allowed="true"|class="tab-btn[^"]*"[^>]*data-offline-allowed="true"[^>]*id="tab-btn-next"/);
+    assert.match(transfersHtml, /id="tab-btn-last"[^>]*data-offline-allowed="true"|class="tab-btn[^"]*"[^>]*data-offline-allowed="true"[^>]*id="tab-btn-last"/);
+    assert.match(transfersHtml, /id="next-clear-btn"[^>]*data-offline-allowed="true"/);
+    assert.match(transfersHtml, /id="last-clear-btn"[^>]*data-offline-allowed="true"/);
+    const copyBtns = transfersHtml.match(/<button[^>]*class="btn-copy-amt"[^>]*>/g) || [];
+    assert.ok(copyBtns.length > 0);
+    for (const tag of copyBtns) {
+      assert.match(tag, /data-offline-allowed="true"/);
+    }
+    const breakdownBtns = transfersHtml.match(/<button[^>]*class="breakdown-toggle-btn"[^>]*>/g) || [];
+    assert.ok(breakdownBtns.length > 0);
+    for (const tag of breakdownBtns) {
+      assert.match(tag, /data-offline-allowed="true"/);
+    }
+  });
+
+  it('13. [Task 6] global-search.js disables #global-search-input with "Search unavailable offline" placeholder when offline and restores on online', async () => {
+    const env = createEnv({ buildHash: 'v1', readyState: 'complete', onLine: true });
+    await env.timers.flushMicrotasks();
+
+    const container = env.createElement('div', { id: 'header-search-container' });
+    const input = env.createElement('input', {
+      id: 'global-search-input',
+      attrs: { type: 'text', placeholder: 'Search... (/)' },
+    });
+    input.placeholder = 'Search... (/)';
+    input.value = '';
+    input.focus = () => {};
+    input.blur = () => {};
+    input.select = () => {};
+    const dropdown = env.createElement('div', { id: 'header-search-dropdown' });
+    dropdown.style.display = 'none';
+    const resultsList = env.createElement('div', { id: 'header-search-results-list' });
+    const spinner = env.createElement('span', { id: 'header-search-spinner' });
+    const clearBtn = env.createElement('button', { id: 'header-search-clear' });
+    const kbd = env.createElement('kbd', { id: 'header-search-kbd' });
+    container.contains = (node) => node === container || node === input;
+    container.appendChild(input);
+    container.appendChild(dropdown);
+    container.appendChild(resultsList);
+    container.appendChild(spinner);
+    container.appendChild(clearBtn);
+    container.appendChild(kbd);
+    env.document.body.appendChild(container);
+
+    const searchSrc = fs.readFileSync(path.join(ROOT_DIR, 'public/javascripts/global-search.js'), 'utf8');
+    vm.runInNewContext(searchSrc, {
+      window: env.window,
+      document: env.document,
+      URLSearchParams,
+      fetch: env.window.fetch,
+      setTimeout: env.window.setTimeout,
+      clearTimeout: env.window.clearTimeout,
+    });
+
+    assert.equal(input.disabled, false);
+    assert.equal(input.placeholder, 'Search... (/)');
+
+    env.window.monmonOfflineMode.enterOffline();
+    assert.equal(input.disabled, true);
+    assert.equal(input.placeholder, 'Search unavailable offline');
+
+    env.window.monmonOfflineMode.exitOffline();
+    assert.equal(input.disabled, false);
+    assert.equal(input.placeholder, 'Search... (/)');
+  });
+
+  it('14. [Task 6] nommon.js renders cached plan badge, skips postcodes.io offline, handles offline cache-miss & force-regenerate, and locks mutating controls while keeping checklists/tabs enabled', async () => {
+    const env = createEnv({
+      buildHash: 'v1',
+      readyState: 'loading',
+      onLine: true,
+      fetchImpl: async (url) => {
+        if (String(url).startsWith('/api/nommon/plan')) {
+          return new Response(
+            JSON.stringify({
+              locked: true,
+              plan: {
+                planTitle: 'Cached Sainsbury Plan',
+                weeklyBudget: 50,
+                shoppingList: [{ name: 'Oats', category: 'Bakery', quantity: 1, estimatedPrice: 1.5 }],
+                days: [{ dayName: 'Monday', breakfast: 'Oats', lunch: 'Soup', dinner: 'Pasta' }],
+                recipes: [{ title: 'Oats', ingredientsUsed: ['Oats'], instructions: ['Cook'] }],
+              },
+            }),
+            {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-MonMon-Offline': '1',
+              },
+            }
+          );
+        }
+        throw new Error('Offline');
+      },
+    });
+
+    function addInnerHtmlTracking(el) {
+      let raw = '';
+      Object.defineProperty(el, 'innerHTML', {
+        get() { return raw; },
+        set(val) {
+          raw = String(val);
+          el.children = [];
+          if (raw.includes('class="nommon-item-check"')) {
+            const cb = env.createElement('input', { classes: ['nommon-item-check'], attrs: { type: 'checkbox', 'data-price': '1.5', 'data-qty': '1' } });
+            cb.checked = false;
+            addInnerHtmlTracking(cb);
+            el.appendChild(cb);
+          }
+          if (raw.includes('id="btn-lock-nommon"')) {
+            const b = env.createElement('button', { id: 'btn-lock-nommon', attrs: { type: 'button' } });
+            el.appendChild(b);
+          }
+          if (raw.includes('id="btn-unlock-nommon"')) {
+            const b = env.createElement('button', { id: 'btn-unlock-nommon', attrs: { type: 'button' } });
+            el.appendChild(b);
+          }
+        },
+        configurable: true,
+      });
+      return el;
+    }
+
+    const container = env.createElement('div', { id: 'nommon-container', attrs: { 'data-budget': '50', 'data-configured': 'true' } });
+    const btnRegen = env.createElement('button', { id: 'btn-regenerate-nommon', attrs: { type: 'button' } });
+    const refreshIcon = env.createElement('i', { id: 'nommon-refresh-icon' });
+    const lockWrapper = addInnerHtmlTracking(env.createElement('div', { id: 'nommon-lock-wrapper' }));
+    const budgetTierBadge = env.createElement('span', { id: 'nommon-budget-tier-badge' });
+    const budgetInput = env.createElement('input', { id: 'nommon-budget-input', attrs: { type: 'number' } });
+    budgetInput.value = '50';
+    const peopleSelect = env.createElement('select', { id: 'nommon-people-select' });
+    peopleSelect.value = '1';
+    const budgetSubtext = env.createElement('div', { id: 'nommon-budget-subtext' });
+    const basketVal = env.createElement('div', { id: 'nommon-basket-val' });
+    const basketSubtitle = addInnerHtmlTracking(env.createElement('div', { id: 'nommon-basket-subtitle' }));
+    const bufferVal = env.createElement('div', { id: 'nommon-buffer-val' });
+    const checkedCounter = env.createElement('div', { id: 'nommon-checked-counter' });
+    const checkedSpend = env.createElement('div', { id: 'nommon-checked-spend' });
+    const postcodeInput = env.createElement('input', { id: 'nommon-postcode-input', attrs: { type: 'text' } });
+    postcodeInput.value = 'EC1A 1BB';
+    const btnSavePostcode = env.createElement('button', { id: 'btn-save-postcode', attrs: { type: 'button' } });
+    const finderLink = env.createElement('a', { id: 'link-sainsburys-finder', attrs: { href: 'https://stores.sainsburys.co.uk/' } });
+    const mapsLink = env.createElement('a', { id: 'link-google-maps', attrs: { href: 'https://www.google.com/maps' } });
+    const loadingEl = addInnerHtmlTracking(env.createElement('div', { id: 'nommon-loading' }));
+    const loadingText = env.createElement('p', { id: 'nommon-loading-text' });
+    loadingEl.appendChild(loadingText);
+    const contentEl = env.createElement('div', { id: 'nommon-content' });
+    const tabShopping = env.createElement('button', { classes: ['nommon-tab-btn', 'active'], attrs: { type: 'button', 'data-tab': 'tab-shopping', 'data-offline-allowed': 'true' } });
+    const panelShopping = env.createElement('div', { id: 'tab-shopping', classes: ['nommon-tab-panel'] });
+    const btnUncheck = env.createElement('button', { id: 'btn-uncheck-all', attrs: { type: 'button', 'data-offline-allowed': 'true' } });
+    const shoppingCategories = env.createElement('div', { id: 'shopping-list-categories' });
+    const origAppend = shoppingCategories.appendChild.bind(shoppingCategories);
+    shoppingCategories.appendChild = (child) => {
+      if (child && !Object.getOwnPropertyDescriptor(child, 'innerHTML')?.set) {
+        // wrap appended catBox children too
+      }
+      return origAppend(child);
+    };
+    const daysGrid = env.createElement('div', { id: 'days-grid' });
+    const recipesContainer = env.createElement('div', { id: 'recipes-container' });
+    const tabItemCount = env.createElement('span', { id: 'tab-item-count' });
+    const tabRecipeCount = env.createElement('span', { id: 'tab-recipe-count' });
+    const planTitle = env.createElement('h3', { id: 'plan-title-display' });
+    const nutritionHighlight = env.createElement('div', { id: 'nutrition-highlight-display' });
+
+    const origCreate = env.document.createElement;
+    const patchedDocument = {
+      ...env.document,
+      createElement(tag) {
+        return addInnerHtmlTracking(env.createElement(tag));
+      },
+      getElementById: env.document.getElementById.bind(env.document),
+      querySelector: env.document.querySelector.bind(env.document),
+      querySelectorAll: env.document.querySelectorAll.bind(env.document),
+      addEventListener: env.document.addEventListener.bind(env.document),
+      removeEventListener: env.document.removeEventListener.bind(env.document),
+      dispatchEvent: env.document.dispatchEvent.bind(env.document),
+    };
+
+    for (const el of [
+      btnRegen, refreshIcon, lockWrapper, budgetTierBadge, budgetInput, peopleSelect,
+      budgetSubtext, basketVal, basketSubtitle, bufferVal, checkedCounter, checkedSpend,
+      postcodeInput, btnSavePostcode, finderLink, mapsLink, loadingEl, contentEl,
+      tabShopping, panelShopping, btnUncheck, shoppingCategories, daysGrid, recipesContainer,
+      tabItemCount, tabRecipeCount, planTitle, nutritionHighlight,
+    ]) {
+      container.appendChild(el);
+    }
+    env.document.body.appendChild(container);
+    env.localStorage.setItem('nommon_user_postcode', 'EC1A 1BB');
+
+    const nommonSrc = fs.readFileSync(path.join(ROOT_DIR, 'public/javascripts/nommon.js'), 'utf8');
+    vm.runInNewContext(nommonSrc, {
+      window: env.window,
+      document: patchedDocument,
+      navigator: env.window.navigator,
+      localStorage: env.localStorage,
+      fetch: env.window.fetch,
+      Set,
+      Array,
+      Object,
+      JSON,
+      Math,
+      Number,
+      String,
+      RegExp,
+      Date,
+      Error,
+      parseFloat,
+      parseInt,
+      isNaN,
+      encodeURIComponent,
+      confirm: () => true,
+      alert() {},
+      console: { log() {}, warn() {}, error() {} },
+    });
+
+    // Enter offline before DOMContentLoaded so updateStoreLinks skips api.postcodes.io
+    env.window.monmonOfflineMode.enterOffline();
+    env.document.dispatchEvent(env.makeEvent('DOMContentLoaded'));
+    await env.timers.flushMicrotasks();
+
+    assert.equal(
+      env.fetchCalls.some((c) => String(c.input).includes('api.postcodes.io')),
+      false,
+      'Must skip api.postcodes.io lookup while offline'
+    );
+    assert.match(finderLink.href, /google\.com\/maps\/search/);
+    assert.match(basketSubtitle.innerHTML, /Cached snapshot/);
+    assert.equal(btnRegen.disabled, true);
+    assert.equal(budgetInput.disabled, true);
+    assert.equal(peopleSelect.disabled, true);
+    assert.equal(btnSavePostcode.disabled, true);
+    const unlockBtn = env.document.getElementById('btn-unlock-nommon');
+    assert.ok(unlockBtn, 'Expected unlock button rendered');
+    assert.equal(unlockBtn.disabled, true);
+    assert.equal(btnUncheck.disabled, false);
+    assert.equal(tabShopping.disabled, false);
+
+    // Force-regenerate while offline shows toast and makes zero extra fetch calls
+    const beforeForceCount = env.fetchCalls.length;
+    env.elements.offlineToast.style.display = 'none';
+    btnRegen.dispatchEvent(env.makeEvent('click', { bubbles: true, cancelable: true }));
+    await env.timers.flushMicrotasks();
+    assert.equal(env.fetchCalls.length, beforeForceCount);
+
+    // Coming back online re-enables controls
+    env.window.monmonOfflineMode.exitOffline();
+    assert.equal(btnRegen.disabled, false);
+    assert.equal(budgetInput.disabled, false);
+    assert.equal(peopleSelect.disabled, false);
+    assert.equal(btnSavePostcode.disabled, false);
+    assert.equal(unlockBtn.disabled, false);
+  });
+
+  it('15. [Task 6] nav_header.html global loader returns early on e.defaultPrevented and offline forms/edit links', () => {
+    const navHeaderHtml = fs.readFileSync(path.join(ROOT_DIR, 'modules/monmon-rs/templates/nav_header.html'), 'utf8');
+    // Extract the loader <script> block right after #monmon-page-loader styles
+    const match = navHeaderHtml.match(/<script>\s*\(function\(\)\s*\{\s*var loader = document\.getElementById\('monmon-page-loader'\);[\s\S]*?\}\)\(\);\s*<\/script>/);
+    assert.ok(match, 'Could not locate global loader script in nav_header.html');
+    const loaderScript = match[0].replace(/^<script>/, '').replace(/<\/script>$/, '');
+
+    const env = createEnv({ buildHash: 'v1', readyState: 'complete' });
+    const loaderEl = env.createElement('div', { id: 'monmon-page-loader', classes: ['monmon-loader-overlay'] });
+    const loaderText = env.createElement('div', { id: 'monmon-loader-text', text: 'Loading...' });
+    const loaderSub = env.createElement('div', { classes: ['monmon-loader-subtext'], text: 'Crunching' });
+    const closeBtn = env.createElement('button', { id: 'monmon-loader-close' });
+    loaderEl.appendChild(closeBtn);
+    loaderEl.appendChild(loaderText);
+    loaderEl.appendChild(loaderSub);
+    env.document.body.appendChild(loaderEl);
+
+    const editLink = env.createElement('a', { attrs: { href: '/editOutgoing/12' } });
+    const normalForm = env.createElement('form', { attrs: { method: 'POST', action: '/outgoings/save' } });
+    env.document.body.appendChild(editLink);
+    env.document.body.appendChild(normalForm);
+
+    vm.runInNewContext(loaderScript, {
+      window: env.window,
+      document: env.document,
+      URL,
+      setTimeout: env.window.setTimeout,
+      clearTimeout: env.window.clearTimeout,
+    });
+
+    // Offline: clicking edit link or submitting form must NOT activate loader
+    env.window.monmonOfflineMode.enterOffline();
+    editLink.dispatchEvent(env.makeEvent('click', { bubbles: true, cancelable: true }));
+    assert.equal(loaderEl.classList.contains('is-active'), false);
+
+    normalForm.dispatchEvent(env.makeEvent('submit', { bubbles: true, cancelable: true }));
+    assert.equal(loaderEl.classList.contains('is-active'), false);
+
+    // Online but defaultPrevented: must NOT activate loader
+    env.window.monmonOfflineMode.exitOffline();
+    const preventedSubmit = env.makeEvent('submit', { bubbles: true, cancelable: true });
+    preventedSubmit.preventDefault();
+    normalForm.dispatchEvent(preventedSubmit);
+    assert.equal(loaderEl.classList.contains('is-active'), false);
+  });
+
+  it('16. [Task 6] nommon.js shows "Offline — no cached meal plan found" on offline cache-miss and transfers.js stays 100% interactive offline', async () => {
+    // 16a. NomMon offline cache-miss (503 { offline: true })
+    const envNommonMiss = createEnv({
+      buildHash: 'v1',
+      readyState: 'loading',
+      onLine: false,
+      fetchImpl: async (url) => {
+        if (String(url).startsWith('/api/nommon/plan')) {
+          return new Response(
+            JSON.stringify({ offline: true, error: 'Offline — no cached data available.' }),
+            { status: 503, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response(JSON.stringify({ buildHash: 'v1' }), { status: 200 });
+      },
+    });
+    const container = envNommonMiss.createElement('div', { id: 'nommon-container', attrs: { 'data-budget': '50', 'data-configured': 'true' } });
+    const loadingEl = envNommonMiss.createElement('div', { id: 'nommon-loading' });
+    const contentEl = envNommonMiss.createElement('div', { id: 'nommon-content' });
+    const postcodeInput = envNommonMiss.createElement('input', { id: 'nommon-postcode-input' });
+    postcodeInput.value = '';
+    container.appendChild(loadingEl);
+    container.appendChild(contentEl);
+    container.appendChild(postcodeInput);
+    envNommonMiss.document.body.appendChild(container);
+
+    const nommonSrc = fs.readFileSync(path.join(ROOT_DIR, 'public/javascripts/nommon.js'), 'utf8');
+    vm.runInNewContext(nommonSrc, {
+      window: envNommonMiss.window,
+      document: envNommonMiss.document,
+      navigator: envNommonMiss.window.navigator,
+      localStorage: envNommonMiss.localStorage,
+      fetch: envNommonMiss.window.fetch,
+      Set, Array, Object, JSON, Math, Number, String, RegExp, Date, Error,
+      parseFloat, parseInt, isNaN, encodeURIComponent,
+      confirm: () => true, alert() {}, console: { log() {}, warn() {}, error() {} },
+    });
+    envNommonMiss.document.dispatchEvent(envNommonMiss.makeEvent('DOMContentLoaded'));
+    await envNommonMiss.timers.flushMicrotasks();
+    assert.match(loadingEl.innerHTML, /Offline — no cached meal plan found/);
+
+    // 16b. transfers.js checkboxes, Clear Checks, Copy, breakdown toggle, and Next/Last tabs offline
+    const envTransfers = createEnv({ buildHash: 'v1', readyState: 'loading', onLine: false });
+    const tabBtnNext = envTransfers.createElement('button', { id: 'tab-btn-next', classes: ['tab-btn', 'active'], attrs: { type: 'button', 'data-offline-allowed': 'true' } });
+    const tabBtnLast = envTransfers.createElement('button', { id: 'tab-btn-last', classes: ['tab-btn'], attrs: { type: 'button', 'data-offline-allowed': 'true' } });
+    const panelNext = envTransfers.createElement('div', { id: 'panel-next' });
+    const panelLast = envTransfers.createElement('div', { id: 'panel-last' });
+    const cardsNext = envTransfers.createElement('div', { id: 'transfer-cards-container-next' });
+    const cardsLast = envTransfers.createElement('div', { id: 'transfer-cards-container-last' });
+    const clearNextBtn = envTransfers.createElement('button', { id: 'next-clear-btn', classes: ['btn-clear-checks'], attrs: { type: 'button', 'data-offline-allowed': 'true' } });
+    const summaryNext = envTransfers.createElement('span', { id: 'next-checked-summary' });
+    const card1 = envTransfers.createElement('div', { id: 'card-1', classes: ['transfer-card'], attrs: { 'data-window': 'next', 'data-item-id': '1' } });
+    const chk1 = envTransfers.createElement('input', { id: 'chk-next-1', attrs: { type: 'checkbox' } });
+    chk1.checked = false;
+    const breakdown = envTransfers.createElement('div', { id: 'breakdown-next-1' });
+    breakdown.style.display = 'none';
+    const copyBtn = envTransfers.createElement('button', { classes: ['btn-copy-amt'], attrs: { type: 'button', 'data-offline-allowed': 'true' } });
+    copyBtn.innerHTML = 'Copy';
+
+    card1.appendChild(chk1);
+    card1.appendChild(breakdown);
+    card1.appendChild(copyBtn);
+    cardsNext.appendChild(card1);
+    panelNext.appendChild(clearNextBtn);
+    panelNext.appendChild(summaryNext);
+    panelNext.appendChild(cardsNext);
+    panelLast.appendChild(cardsLast);
+    envTransfers.document.body.appendChild(tabBtnNext);
+    envTransfers.document.body.appendChild(tabBtnLast);
+    envTransfers.document.body.appendChild(panelNext);
+    envTransfers.document.body.appendChild(panelLast);
+
+    let copiedText = '';
+    const navForTransfers = {
+      ...envTransfers.window.navigator,
+      clipboard: {
+        async writeText(txt) { copiedText = txt; },
+      },
+    };
+    const transfersSrc = fs.readFileSync(path.join(ROOT_DIR, 'public/javascripts/transfers.js'), 'utf8');
+    vm.runInNewContext(transfersSrc, {
+      window: envTransfers.window,
+      document: envTransfers.document,
+      navigator: navForTransfers,
+      localStorage: envTransfers.localStorage,
+      URL,
+      setTimeout: envTransfers.window.setTimeout,
+      clearTimeout: envTransfers.window.clearTimeout,
+      console: { log() {}, warn() {}, error() {} },
+    });
+    envTransfers.document.dispatchEvent(envTransfers.makeEvent('DOMContentLoaded'));
+
+    assert.equal(envTransfers.window.monmonIsOffline(), true);
+    // Toggle checkbox via card click
+    card1.dispatchEvent(envTransfers.makeEvent('click', { bubbles: true, cancelable: true }));
+    assert.equal(chk1.checked, true);
+    assert.equal(envTransfers.localStorage.getItem('monmon_payday_transfer_done_next_1'), 'true');
+
+    // Toggle breakdown
+    envTransfers.window.toggleBreakdown('next-1');
+    assert.equal(breakdown.style.display, 'block');
+
+    // Switch tab
+    envTransfers.window.switchWindowTab('last');
+    assert.equal(panelLast.style.display, 'block');
+    assert.equal(panelNext.style.display, 'none');
+
+    // Copy amount
+    envTransfers.window.copyTransferAmount('125.00', copyBtn);
+    await envTransfers.timers.flushMicrotasks();
+    assert.equal(copiedText, '125.00');
+
+    // Clear all checks
+    envTransfers.localStorage.key = (idx) => Array.from(envTransfers.localStorage._map.keys())[idx] ?? null;
+    Object.defineProperty(envTransfers.localStorage, 'length', { get: () => envTransfers.localStorage._map.size });
+    envTransfers.window.clearAllChecks('next');
+    assert.equal(chk1.checked, false);
+    assert.equal(envTransfers.localStorage.getItem('monmon_payday_transfer_done_next_1'), null);
+  });
 });

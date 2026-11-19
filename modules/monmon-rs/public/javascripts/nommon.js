@@ -18,6 +18,40 @@
     var STORAGE_POSTCODE_KEY = 'nommon_user_postcode';
     var STORAGE_PEOPLE_KEY = 'nommon_people_count';
     var peopleCount = 1;
+    var isLastPlanCachedSnapshot = false;
+
+    function isOfflineNow() {
+        if (typeof window !== 'undefined' && typeof window.monmonIsOffline === 'function' && window.monmonIsOffline()) {
+            return true;
+        }
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            return true;
+        }
+        return Boolean(typeof document !== 'undefined' && document.body && document.body.classList && document.body.classList.contains('is-offline'));
+    }
+
+    function applyNommonOfflineState(offline) {
+        var isOff = offline === undefined ? isOfflineNow() : Boolean(offline);
+        var lockIds = [
+            'btn-regenerate-nommon',
+            'nommon-budget-input',
+            'nommon-people-select',
+            'btn-save-postcode',
+            'btn-lock-nommon',
+            'btn-unlock-nommon'
+        ];
+        for (var i = 0; i < lockIds.length; i++) {
+            var el = document.getElementById(lockIds[i]);
+            if (el) {
+                el.disabled = isOff;
+            }
+        }
+        var uncheckBtn = document.getElementById('btn-uncheck-all');
+        if (uncheckBtn) uncheckBtn.disabled = false;
+        document.querySelectorAll('.nommon-tab-btn, .nommon-item-check').forEach(function (ctrl) {
+            ctrl.disabled = false;
+        });
+    }
 
     // Load saved checked items from localStorage
     function loadSavedChecks() {
@@ -63,6 +97,10 @@
             // Sensible immediate fallback: Google Maps search until coordinates resolve
             var fallbackMapsUrl = 'https://www.google.com/maps/search/Sainsbury\'s+near+' + encodeURIComponent(cleanCode);
             finderLink.href = fallbackMapsUrl;
+
+            if (isOfflineNow()) {
+                return;
+            }
 
             // Fetch coordinates from free, fast UK postcodes.io API (CORS-enabled, no key needed)
             var cleanForApi = cleanCode.replace(/[^a-zA-Z0-9]/g, '');
@@ -538,6 +576,19 @@
         });
     }
 
+    function renderCachedSnapshotBadge() {
+        var subtitle = document.getElementById('nommon-basket-subtitle');
+        if (!subtitle) return;
+        var baseText = subtitle.getAttribute('data-base-subtitle') || subtitle.textContent || "Sainsbury's groceries";
+        subtitle.setAttribute('data-base-subtitle', baseText);
+        if (isLastPlanCachedSnapshot) {
+            subtitle.innerHTML = escapeHtml(baseText) +
+                ' <span class="badge-pill nommon-cached-badge" style="font-size: 0.68rem; padding: 1px 6px; margin-left: 4px; background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.35);">Cached snapshot</span>';
+        } else {
+            subtitle.textContent = baseText;
+        }
+    }
+
     // Update budget tier badge styling & text based on per-person weekly spend
     function updateBudgetTierBadge(budget, people) {
         var badge = document.getElementById('nommon-budget-tier-badge');
@@ -552,35 +603,49 @@
             subtext.textContent = '£' + perPerson.toFixed(2) + '/person/wk (' + p + ' ' + (p === 1 ? 'person' : 'people') + ')';
         }
 
+        var subtitleText = '';
         if (perPerson >= 120) {
             badge.textContent = 'Opulent / Gourmet Luxury';
             badge.style.background = 'rgba(168, 85, 247, 0.15)';
             badge.style.color = '#9333ea';
             badge.style.border = '1px solid #9333ea';
-            if (subtitle) subtitle.textContent = 'Taste the Difference prime steaks & seafood';
+            subtitleText = 'Taste the Difference prime steaks & seafood';
         } else if (perPerson >= 80) {
             badge.textContent = 'Generous / Quality Fresh';
             badge.style.background = 'rgba(22, 163, 74, 0.15)';
             badge.style.color = '#16a34a';
             badge.style.border = '1px solid #16a34a';
-            if (subtitle) subtitle.textContent = 'Fresh meat, produce & staples';
+            subtitleText = 'Fresh meat, produce & staples';
         } else if (perPerson >= 55) {
             badge.textContent = 'Moderate / Balanced';
             badge.style.background = 'rgba(59, 130, 246, 0.15)';
             badge.style.color = '#2563eb';
             badge.style.border = '1px solid #2563eb';
-            if (subtitle) subtitle.textContent = 'Balanced meat & family staples';
+            subtitleText = 'Balanced meat & family staples';
         } else {
             badge.textContent = 'Frugal / Budget Staples';
             badge.style.background = 'rgba(234, 88, 12, 0.15)';
             badge.style.color = '#ea580c';
             badge.style.border = '1px solid #ea580c';
-            if (subtitle) subtitle.textContent = 'Stamford St & value staples';
+            subtitleText = 'Stamford St & value staples';
+        }
+
+        if (subtitle) {
+            subtitle.setAttribute('data-base-subtitle', subtitleText);
+            subtitle.textContent = subtitleText;
+            renderCachedSnapshotBadge();
         }
     }
 
     // Fetch Plan from Backend
     function fetchPlan(force) {
+        if (force && isOfflineNow()) {
+            if (typeof window !== 'undefined' && typeof window.monmonShowOfflineToast === 'function') {
+                window.monmonShowOfflineToast();
+            }
+            return;
+        }
+
         var loadingEl = document.getElementById('nommon-loading');
         var contentEl = document.getElementById('nommon-content');
         var refreshIcon = document.getElementById('nommon-refresh-icon');
@@ -618,10 +683,30 @@
             headers: { 'Accept': 'application/json' }
         })
             .then(function (res) {
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                return res.json();
+                var isCachedSnapshot = Boolean(
+                    res &&
+                    res.headers &&
+                    typeof res.headers.get === 'function' &&
+                    (res.headers.get('X-MonMon-Offline') || res.headers.get('X-MonMon-Cached-Fallback'))
+                );
+                if (!res.ok) {
+                    if (res.status === 503) {
+                        return res.json().catch(function () { return null; }).then(function (body) {
+                            var missErr = new Error((body && body.error) || 'Offline — no cached meal plan found');
+                            missErr.isOfflineMiss = Boolean((body && body.offline) || isOfflineNow());
+                            throw missErr;
+                        });
+                    }
+                    throw new Error('HTTP ' + res.status);
+                }
+                return res.json().then(function (data) {
+                    return { data: data, isCachedSnapshot: isCachedSnapshot };
+                });
             })
-            .then(function (data) {
+            .then(function (payload) {
+                var data = payload ? payload.data : null;
+                isLastPlanCachedSnapshot = Boolean(payload && payload.isCachedSnapshot);
+
                 if (!data) {
                     throw new Error('No response data received from server');
                 }
@@ -685,10 +770,21 @@
 
                 if (loadingEl) loadingEl.style.display = 'none';
                 if (contentEl) contentEl.style.display = 'block';
+                applyNommonOfflineState();
             })
             .catch(function (err) {
                 console.error('NomMon plan load error:', err);
                 if (loadingEl) {
+                    if (err && (err.isOfflineMiss || isOfflineNow())) {
+                        loadingEl.style.display = 'block';
+                        loadingEl.innerHTML =
+                            '<div style="color: var(--text-muted, #64748b); padding: 1.5rem;">' +
+                            '  <i class="fas fa-wifi" style="font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.7;"></i>' +
+                            '  <div style="font-weight: 700; color: var(--text-main, #0f172a); margin-bottom: 0.35rem;">Offline — no cached meal plan found</div>' +
+                            '  <div style="font-size: 0.85rem;">Reconnect to generate or load your Sainsbury\'s meal plan.</div>' +
+                            '</div>';
+                        return;
+                    }
                     loadingEl.innerHTML =
                         '<div style="color: #ef4444; padding: 1.5rem;">' +
                         '  <i class="fas fa-exclamation-triangle" style="font-size: 1.8rem; margin-bottom: 0.5rem;"></i>' +
@@ -760,9 +856,16 @@
                 lockBtn.addEventListener('click', lockCurrentPlan);
             }
         }
+        applyNommonOfflineState();
     }
 
     function lockCurrentPlan() {
+        if (isOfflineNow()) {
+            if (typeof window !== 'undefined' && typeof window.monmonShowOfflineToast === 'function') {
+                window.monmonShowOfflineToast();
+            }
+            return;
+        }
         if (!currentPlan) return;
         var lockBtn = document.getElementById('btn-lock-nommon');
         if (lockBtn) {
@@ -803,6 +906,12 @@
     }
 
     function unlockCurrentPlan() {
+        if (isOfflineNow()) {
+            if (typeof window !== 'undefined' && typeof window.monmonShowOfflineToast === 'function') {
+                window.monmonShowOfflineToast();
+            }
+            return;
+        }
         if (!confirm('Unlock this meal plan? It will no longer be stored as your permanent non-volatile cache in the database.')) {
             return;
         }
@@ -836,7 +945,7 @@
     }
 
     // DOM Ready Initialization
-    document.addEventListener('DOMContentLoaded', function () {
+    function initNommon() {
         loadSavedChecks();
         initTabs();
 
@@ -865,6 +974,12 @@
                 }
             } catch (e) {}
             peopleSelect.addEventListener('change', function () {
+                if (isOfflineNow()) {
+                    if (typeof window !== 'undefined' && typeof window.monmonShowOfflineToast === 'function') {
+                        window.monmonShowOfflineToast();
+                    }
+                    return;
+                }
                 peopleCount = parseInt(peopleSelect.value, 10) || 1;
                 try {
                     localStorage.setItem(STORAGE_PEOPLE_KEY, peopleCount);
@@ -879,6 +994,12 @@
             budgetInput.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
+                    if (isOfflineNow()) {
+                        if (typeof window !== 'undefined' && typeof window.monmonShowOfflineToast === 'function') {
+                            window.monmonShowOfflineToast();
+                        }
+                        return;
+                    }
                     fetchPlan(false);
                 }
             });
@@ -895,6 +1016,12 @@
         var btnSavePostcode = document.getElementById('btn-save-postcode');
         if (btnSavePostcode && postcodeInput) {
             btnSavePostcode.addEventListener('click', function () {
+                if (isOfflineNow()) {
+                    if (typeof window !== 'undefined' && typeof window.monmonShowOfflineToast === 'function') {
+                        window.monmonShowOfflineToast();
+                    }
+                    return;
+                }
                 var code = postcodeInput.value.trim();
                 try {
                     localStorage.setItem(STORAGE_POSTCODE_KEY, code);
@@ -907,6 +1034,12 @@
         var btnRegen = document.getElementById('btn-regenerate-nommon');
         if (btnRegen) {
             btnRegen.addEventListener('click', function () {
+                if (isOfflineNow()) {
+                    if (typeof window !== 'undefined' && typeof window.monmonShowOfflineToast === 'function') {
+                        window.monmonShowOfflineToast();
+                    }
+                    return;
+                }
                 if (isPlanLocked) {
                     if (!confirm('This meal plan is currently locked in your database. Regenerating will unlock and replace it with a fresh plan from Mistral. Proceed?')) {
                         return;
@@ -931,7 +1064,21 @@
             });
         }
 
+        applyNommonOfflineState(isOfflineNow());
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('monmon:offline-change', function (e) {
+                var offline = e && e.detail ? Boolean(e.detail.offline) : isOfflineNow();
+                applyNommonOfflineState(offline);
+            });
+        }
+
         // Initial Load
         fetchPlan(false);
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initNommon);
+    } else {
+        initNommon();
+    }
 })();
