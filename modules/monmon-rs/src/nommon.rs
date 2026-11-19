@@ -17,6 +17,8 @@ pub struct NomMonQuery {
     #[serde(alias = "userId")]
     pub user_id: Option<String>,
     pub force: Option<bool>,
+    #[serde(alias = "lockedOnly")]
+    pub locked_only: Option<bool>,
     pub budget: Option<f32>,
     pub people: Option<i32>,
     pub postcode: Option<String>,
@@ -405,6 +407,14 @@ fn build_fallback_plan(budget: f32, people: i32) -> Value {
     })
 }
 
+pub fn build_unlocked_empty_response() -> Value {
+    serde_json::json!({
+        "configured": true,
+        "locked": false,
+        "plan": Value::Null
+    })
+}
+
 pub async fn get_nommon_plan_api(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -445,6 +455,10 @@ pub async fn get_nommon_plan_api(
                 "plan": parsed
             })));
         }
+    }
+
+    if q.locked_only.unwrap_or(false) {
+        return Ok(Json(build_unlocked_empty_response()));
     }
 
     // 2. Mistral AI generation if API key is provided
@@ -591,4 +605,31 @@ pub async fn unlock_nommon_plan_api(
         "success": true,
         "locked": false
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::Query;
+    use axum::http::Uri;
+
+    #[test]
+    fn test_nommon_query_deserializes_locked_only_alias() {
+        let uri_camel: Uri = "http://localhost/api/nommon/plan?lockedOnly=true"
+            .parse()
+            .unwrap();
+        let Query(q_camel) = Query::<NomMonQuery>::try_from_uri(&uri_camel).unwrap();
+        assert_eq!(q_camel.locked_only, Some(true));
+
+        let uri_snake: Uri = "http://localhost/api/nommon/plan?locked_only=true"
+            .parse()
+            .unwrap();
+        let Query(q_snake) = Query::<NomMonQuery>::try_from_uri(&uri_snake).unwrap();
+        assert_eq!(q_snake.locked_only, Some(true));
+
+        let empty = build_unlocked_empty_response();
+        assert_eq!(empty["configured"], true);
+        assert_eq!(empty["locked"], false);
+        assert!(empty["plan"].is_null());
+    }
 }

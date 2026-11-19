@@ -2,7 +2,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::{
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json, Redirect, Response},
 };
 use serde_json::Value;
@@ -29,6 +29,37 @@ pub async fn get_health_api() -> Json<Value> {
         "service": "monmon-rs",
         "timestamp": chrono::Utc::now().timestamp_millis()
     }))
+}
+
+pub async fn get_version_api() -> Response {
+    let mut response = Json(serde_json::json!({
+        "buildHash": crate::BUILD_HASH,
+        "buildCommit": crate::BUILD_COMMIT,
+        "buildNumber": crate::BUILD_NUMBER,
+        "buildTimestamp": crate::BUILD_TIMESTAMP
+    }))
+    .into_response();
+
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-cache, no-store, must-revalidate, max-age=0"),
+    );
+    headers.insert(header::PRAGMA, header::HeaderValue::from_static("no-cache"));
+    headers.insert(header::EXPIRES, header::HeaderValue::from_static("0"));
+
+    response
+}
+
+#[derive(Template)]
+#[template(path = "offline.html")]
+pub struct OfflineTemplate {}
+
+pub async fn get_offline_page() -> Result<Html<String>, (StatusCode, String)> {
+    let tmpl = OfflineTemplate {};
+    tmpl.render()
+        .map(Html)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 pub async fn get_access_status_api(
@@ -164,6 +195,58 @@ mod tests {
                 full_path.display()
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_version_api_returns_build_metadata_and_no_store() {
+        let resp = super::get_version_api().await;
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let cache_control = resp
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            cache_control.contains("no-store"),
+            "Expected Cache-Control to contain no-store, got: {}",
+            cache_control
+        );
+
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .expect("should read version body");
+        let json: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("version response should be valid JSON");
+
+        assert_eq!(json["buildHash"], crate::BUILD_HASH);
+        assert_eq!(json["buildCommit"], crate::BUILD_COMMIT);
+        assert_eq!(json["buildNumber"], crate::BUILD_NUMBER);
+        assert_eq!(json["buildTimestamp"], crate::BUILD_TIMESTAMP);
+    }
+
+    #[tokio::test]
+    async fn test_offline_page_renders_with_local_assets() {
+        use axum::response::IntoResponse;
+
+        let html_resp = super::get_offline_page()
+            .await
+            .expect("offline page should render")
+            .into_response();
+        assert_eq!(html_resp.status(), axum::http::StatusCode::OK);
+
+        let bytes = axum::body::to_bytes(html_resp.into_body(), usize::MAX)
+            .await
+            .expect("should read offline page body");
+        let html = String::from_utf8(bytes.to_vec()).expect("offline page should be valid UTF-8");
+
+        assert!(html.contains("/spog"), "offline page should link to /spog");
+        assert!(html.contains("/nommon"), "offline page should link to /nommon");
+        assert!(html.contains("Retry"), "offline page should contain Retry button");
+        assert!(
+            !html.contains("https://"),
+            "offline page must not contain external https:// CDN URLs"
+        );
     }
 }
 

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="monmon-build-hash" content="{{ crate::BUILD_HASH }}">
+    <title>MonMon — Offline</title>
+
+    <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
+    <link rel="shortcut icon" type="image/png" href="/assets/images/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+    <link rel="manifest" href="/assets/site.webmanifest">
+
+    <script>
+        (function() {
+            try {
+                var savedTheme = localStorage.getItem('monmon-theme');
+                var theme = savedTheme ? savedTheme : 'dark';
+                document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+
+    <link href="/assets/vendor/fonts/fonts.css?v={{ crate::BUILD_HASH }}" rel="stylesheet">
+    <link rel="stylesheet" href="/assets/vendor/w3css/w3.css?v={{ crate::BUILD_HASH }}">
+    <link rel="stylesheet" href="/assets/stylesheets/main.{{ crate::BUILD_HASH }}.css" type="text/css">
+</head>
+<body style="min-height: 100vh; display: flex; flex-direction: column; background: var(--bg-main); color: var(--text-main);">
+    <main style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;">
+        <div class="w3-card w3-round" style="max-width: 460px; width: 100%; background: var(--card-bg); border: 1px solid var(--border-color); padding: 2rem; border-radius: 14px; box-shadow: var(--shadow-lg); text-align: center;">
+            <div style="display: inline-flex; align-items: center; justify-content: center; width: 68px; height: 68px; border-radius: 16px; background: var(--warning-light); color: var(--warning); margin-bottom: 1.15rem;">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                    <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                    <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                    <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+                    <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+            </div>
+
+            <h1 style="font-size: 1.55rem; font-weight: 800; margin: 0 0 0.5rem 0; color: var(--text-main);">You're Offline</h1>
+            <p style="color: var(--text-muted); font-size: 0.94rem; line-height: 1.55; margin: 0 0 1.5rem 0;">
+                This page wasn't cached before your connection dropped. You can retry connecting or open a cached read-only view below.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <button type="button" onclick="window.location.reload()" class="w3-button w3-round" style="width: 100%; padding: 11px 16px; background: var(--primary); color: #fff; font-weight: 700; font-size: 0.95rem; border-radius: 8px; border: none; cursor: pointer;">
+                    Retry connection
+                </button>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                    <a href="/spog" class="w3-button w3-round" style="padding: 10px 12px; background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 600; font-size: 0.9rem; border-radius: 8px; text-decoration: none;">
+                        Open SPOG
+                    </a>
+                    <a href="/nommon" class="w3-button w3-round" style="padding: 10px 12px; background: var(--card-bg-subtle); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 600; font-size: 0.9rem; border-radius: 8px; text-decoration: none;">
+                        Open NomMon
+                    </a>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

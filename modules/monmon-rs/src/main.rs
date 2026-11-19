@@ -383,6 +383,9 @@ async fn main() {
         .route("/", get(landing::get_landing_page))
         .route("/about", get(landing::get_landing_page))
         .route("/health", get(landing::get_health_api))
+        .route("/api/version", get(landing::get_version_api))
+        .route("/offline", get(landing::get_offline_page))
+        .route("/sw.js", get(serve_service_worker_handler))
         .route("/api/user/accessStatus", get(landing::get_access_status_api))
         .route("/api/search", get(search::search_api))
         .route("/login", get(get_login_page).post(get_login_page))
@@ -1045,6 +1048,13 @@ async fn logout_handler(headers: HeaderMap) -> Response {
         );
     }
 
+    if host.contains("dryark.uk") {
+        resp_headers.append(
+            header::HeaderName::from_static("clear-site-data"),
+            header::HeaderValue::from_static("\"cache\""),
+        );
+    }
+
     response
 }
 
@@ -1290,4 +1300,108 @@ async fn serve_favicon_handler(req: axum::extract::Request) -> Response {
 
 async fn serve_manifest_handler(req: axum::extract::Request) -> Response {
     serve_asset_handler(axum::extract::Path("site.webmanifest".to_string()), req).await
+}
+
+pub fn render_service_worker_script(template: &str, build_hash: &str) -> String {
+    template.replace("__MONMON_BUILD_HASH__", build_hash)
+}
+
+pub fn build_sw_response(body: String) -> Response {
+    let mut response = (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        body,
+    )
+        .into_response();
+
+    let headers = response.headers_mut();
+    headers.insert(
+        header::HeaderName::from_static("service-worker-allowed"),
+        header::HeaderValue::from_static("/"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-cache, no-store, must-revalidate, max-age=0"),
+    );
+    headers.insert(header::PRAGMA, header::HeaderValue::from_static("no-cache"));
+    headers.insert(header::EXPIRES, header::HeaderValue::from_static("0"));
+
+    response
+}
+
+async fn serve_service_worker_handler() -> Response {
+    let sw_path = if std::path::Path::new("public/javascripts/sw.js").is_file() {
+        "public/javascripts/sw.js"
+    } else if std::path::Path::new("../../public/javascripts/sw.js").is_file() {
+        "../../public/javascripts/sw.js"
+    } else {
+        return (StatusCode::NOT_FOUND, "Service worker not found").into_response();
+    };
+
+    let template = match tokio::fs::read_to_string(sw_path).await {
+        Ok(content) => content,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to read service worker",
+            )
+                .into_response()
+        }
+    };
+
+    let rendered = render_service_worker_script(&template, BUILD_HASH);
+    build_sw_response(rendered)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_service_worker_injects_build_hash() {
+        let template = "const MONMON_BUILD_HASH = '__MONMON_BUILD_HASH__';";
+        let rendered = render_service_worker_script(template, "abc123def");
+        assert_eq!(rendered, "const MONMON_BUILD_HASH = 'abc123def';");
+        assert!(!rendered.contains("__MONMON_BUILD_HASH__"));
+
+        let resp = build_sw_response(rendered);
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("application/javascript; charset=utf-8")
+        );
+        let cc = resp
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(cc.contains("no-store"));
+        assert_eq!(
+            resp.headers()
+                .get("Service-Worker-Allowed")
+                .and_then(|v| v.to_str().ok()),
+            Some("/")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_logout_handler_sets_clear_site_data_only_on_dryark() {
+        let mut prod_headers = HeaderMap::new();
+        prod_headers.insert("host", "monmon.dryark.uk".parse().unwrap());
+        let prod_resp = logout_handler(prod_headers).await;
+        assert_eq!(
+            prod_resp
+                .headers()
+                .get("Clear-Site-Data")
+                .and_then(|v| v.to_str().ok()),
+            Some("\"cache\"")
+        );
+
+        let mut local_headers = HeaderMap::new();
+        local_headers.insert("host", "localhost:9000".parse().unwrap());
+        let local_resp = logout_handler(local_headers).await;
+        assert!(local_resp.headers().get("Clear-Site-Data").is_none());
+    }
 }

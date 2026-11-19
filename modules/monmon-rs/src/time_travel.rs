@@ -134,15 +134,28 @@ pub async fn get_stop_time_travel(headers: HeaderMap) -> Response {
         .unwrap()
 }
 
+/// Attaches `X-MonMon-Time-Travel: 1` when Time Travel mode is active for the request.
+pub fn apply_time_travel_response_header(resp: &mut Response, is_active: bool) {
+    if is_active {
+        resp.headers_mut().insert(
+            header::HeaderName::from_static("x-monmon-time-travel"),
+            header::HeaderValue::from_static("1"),
+        );
+    }
+}
+
 /// Axum middleware guard: strictly forbids state mutations (POST, PUT, DELETE, PATCH)
 /// while MonMon is in Time Travel mode, preserving read-only access.
 pub async fn enforce_time_travel_read_only(
     req: Request,
     next: Next,
 ) -> Result<Response, (StatusCode, String)> {
+    let is_tt = get_time_travel_date(req.headers()).is_some();
     let method = req.method();
     if method == Method::GET || method == Method::HEAD || method == Method::OPTIONS {
-        return Ok(next.run(req).await);
+        let mut resp = next.run(req).await;
+        apply_time_travel_response_header(&mut resp, is_tt);
+        return Ok(resp);
     }
 
     let path = req.uri().path();
@@ -153,10 +166,12 @@ pub async fn enforce_time_travel_read_only(
         || path.starts_with("/centralLogout")
         || path.starts_with("/callback")
     {
-        return Ok(next.run(req).await);
+        let mut resp = next.run(req).await;
+        apply_time_travel_response_header(&mut resp, is_tt);
+        return Ok(resp);
     }
 
-    if get_time_travel_date(req.headers()).is_some() {
+    if is_tt {
         tracing::warn!(
             "Blocked mutating request {} {} due to active Time Travel read-only mode",
             method,
@@ -168,7 +183,9 @@ pub async fn enforce_time_travel_read_only(
         ));
     }
 
-    Ok(next.run(req).await)
+    let mut resp = next.run(req).await;
+    apply_time_travel_response_header(&mut resp, is_tt);
+    Ok(resp)
 }
 
 #[cfg(test)]
@@ -244,5 +261,28 @@ mod tests {
         let (effective, is_tt) = get_effective_date(&headers);
         assert!(!is_tt);
         assert_eq!(effective, Local::now().date_naive());
+    }
+
+    #[test]
+    fn test_time_travel_header_helper_sets_header_when_cookie_present() {
+        let mut active_resp = Response::builder()
+            .status(StatusCode::OK)
+            .body(axum::body::Body::empty())
+            .unwrap();
+        apply_time_travel_response_header(&mut active_resp, true);
+        assert_eq!(
+            active_resp
+                .headers()
+                .get("X-MonMon-Time-Travel")
+                .and_then(|v| v.to_str().ok()),
+            Some("1")
+        );
+
+        let mut inactive_resp = Response::builder()
+            .status(StatusCode::OK)
+            .body(axum::body::Body::empty())
+            .unwrap();
+        apply_time_travel_response_header(&mut inactive_resp, false);
+        assert!(inactive_resp.headers().get("X-MonMon-Time-Travel").is_none());
     }
 }
