@@ -2905,6 +2905,260 @@ input[type="text"].header-search-input:focus,
   }
 }
 
+/* =========================================================================
+   Offline Read-Only Mode, Version Update Banner & Warming Indicator
+   ========================================================================= */
+
+.monmon-update-banner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 100000;
+  background: linear-gradient(90deg, #312e81 0%, #4338ca 50%, #4f46e5 100%);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-bottom: 2px solid #818cf8;
+  box-shadow: 0 4px 14px rgba(49, 46, 129, 0.4);
+  font-size: 0.88rem;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.update-banner-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.monmon-offline-banner {
+  display: none;
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 99999;
+  background: linear-gradient(90deg, #1e293b 0%, #273549 50%, #334155 100%);
+  color: #f8fafc;
+  padding: 8px 16px;
+  border-bottom: 2px solid #38bdf8;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.45);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+body.is-offline #monmon-offline-banner {
+  display: block;
+}
+
+body.is-offline #monmon-time-travel-banner {
+  display: none !important;
+}
+
+.offline-banner-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.offline-banner-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.offline-banner-icon {
+  color: #38bdf8;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.offline-banner-badge {
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #7dd3fc;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+#offline-banner-subtext {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.offline-snapshot-age {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  opacity: 0.9;
+}
+
+.offline-banner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.offline-retry-feedback {
+  font-size: 0.78rem;
+  color: #bae6fd;
+  font-weight: 600;
+}
+
+.btn-offline-retry {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  font-weight: 700;
+  font-size: 0.8rem;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-offline-retry:hover {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: #38bdf8;
+}
+
+.btn-offline-retry:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+@media (max-width: 600px) {
+  .monmon-offline-banner {
+    padding: 6px 10px;
+  }
+  .offline-banner-content {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .offline-banner-left {
+    gap: 6px;
+    flex: 1 1 auto;
+  }
+  #offline-banner-subtext {
+    font-size: 0.78rem;
+  }
+  .offline-snapshot-age {
+    font-size: 0.72rem;
+  }
+  .btn-offline-retry {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+  }
+}
+
+.offline-warm-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  line-height: 1;
+  margin-left: 2px;
+  opacity: 1;
+  transition: opacity 0.3s ease, transform 0.2s ease;
+  user-select: none;
+}
+
+.offline-warm-indicator[data-state="done"] {
+  color: var(--success, #34d399);
+  font-weight: 800;
+}
+
+.offline-warm-indicator.is-fading {
+  opacity: 0;
+}
+
+.monmon-offline-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100001;
+  background: rgba(15, 23, 42, 0.96);
+  color: #f8fafc;
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+  padding: 9px 18px;
+  border-radius: 9999px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Read-only dimming for server-mutating controls while offline */
+body.is-offline button[type="submit"]:not([data-offline-allowed]),
+body.is-offline form button:not([type="button"]):not([type="reset"]):not([data-offline-allowed]),
+body.is-offline input[type="submit"]:not([data-offline-allowed]),
+body.is-offline [data-method="DELETE"]:not([data-offline-allowed]),
+body.is-offline [data-method="PUT"]:not([data-offline-allowed]),
+body.is-offline .btn-delete:not([data-offline-allowed]),
+body.is-offline #btn-regenerate-nommon:not([data-offline-allowed]),
+body.is-offline #nommon-lock-wrapper button:not([data-offline-allowed]),
+body.is-offline #btn-save-postcode:not([data-offline-allowed]),
+body.is-offline #nav-drawer-time-travel-link,
+body.is-offline .drawer-logout a,
+body.is-offline a[href="/logout"],
+body.is-offline a[href="/centralLogout"],
+body.is-offline a[href^="/timeTravel/"],
+body.is-offline a[href^="/editOutgoing/"],
+body.is-offline a[href^="/editAccount/"],
+body.is-offline a[href^="/editIncoming/"],
+body.is-offline a[href^="/editSavingsPlanItem/"],
+body.is-offline a[href^="/savingsPlan/editItem/"],
+body.is-offline #btn-verify-monzo-tbl,
+body.is-offline #btn-refresh-webhooks,
+body.is-offline #btn-preview-align-payday,
+body.is-offline #btn-final-confirm-overwrite,
+body.is-offline #btn-save-preset-direct,
+body.is-offline #btn-delete-preset-direct,
+body.is-offline #btn-save-allocations,
+body.is-offline #btn-snap-monthly-pot,
+body.is-offline button[onclick*="openOutgoingModal"],
+body.is-offline button[onclick*="openIncomingModal"],
+body.is-offline button[onclick*="openAccountModal"],
+body.is-offline button[onclick*="openPauseModal"],
+body.is-offline button[onclick*="openEditModal"] {
+  opacity: 0.45 !important;
+  filter: grayscale(0.35);
+  cursor: not-allowed !important;
+}
+
+/* Keep local-only interactive controls crisp and interactive offline */
+body.is-offline .nommon-item-check,
+body.is-offline #btn-uncheck-all,
+body.is-offline .nommon-tab-btn,
+body.is-offline input[id^="chk-"],
+body.is-offline [data-offline-allowed]:not([data-offline-allowed="false"]) {
+  opacity: 1 !important;
+  filter: none !important;
+  cursor: pointer !important;
+}
+
+
 
 
 

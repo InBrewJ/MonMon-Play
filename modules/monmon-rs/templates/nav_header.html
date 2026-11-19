@@ -229,7 +229,7 @@
 
     // Intercept clicks on links that perform page navigation
     document.addEventListener('click', function(e) {
-        if (loader.classList.contains('is-active')) return;
+        if (e.defaultPrevented || loader.classList.contains('is-active')) return;
 
         var target = e.target;
         var anchor = target.closest ? target.closest('a') : null;
@@ -260,9 +260,13 @@
             if (destinationUrl.origin !== window.location.origin) return;
             // Skip hash changes on same page
             if (destinationUrl.pathname === window.location.pathname && destinationUrl.search === window.location.search && destinationUrl.hash) return;
+            // Logout is orchestrated by offline-mode.js so user caches purge before navigation
+            if (destinationUrl.pathname === '/logout' || destinationUrl.pathname === '/centralLogout') return;
         } catch (err) {
             return;
         }
+
+        if (window.monmonIsOfflineBlockedAnchor && window.monmonIsOfflineBlockedAnchor(anchor)) return;
 
         // Friendly contextual text based on target
         var targetText = "Loading...";
@@ -336,6 +340,7 @@
         if (form.hasAttribute('data-no-loader') || form.classList.contains('no-loader')) return;
         if (form.id === 'legmon-upload-form' || (form.action && form.action.indexOf('/bank/statement/upload') !== -1)) return;
         if (e.defaultPrevented) return;
+        if (document.body && document.body.classList.contains('is-offline') && (!form.hasAttribute('data-offline-allowed') || form.getAttribute('data-offline-allowed') === 'false')) return;
         showLoader('Saving changes...', 'Updating MonMon');
     }, true);
 })();
@@ -352,20 +357,23 @@
             var ticker = document.getElementById('ticker');
             if (!ticker) return;
 
+            var isOffline = Boolean(document.body && document.body.classList.contains('is-offline'));
             var ttDate = null;
-            try {
-                var cookies = document.cookie.split(';');
-                for (var i = 0; i < cookies.length; i++) {
-                    var c = cookies[i].trim();
-                    if (c.indexOf('monmon_time_travel=') === 0) {
-                        var v = c.substring(19);
-                        if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
-                            ttDate = v;
-                            break;
+            if (!isOffline) {
+                try {
+                    var cookies = document.cookie.split(';');
+                    for (var i = 0; i < cookies.length; i++) {
+                        var c = cookies[i].trim();
+                        if (c.indexOf('monmon_time_travel=') === 0) {
+                            var v = c.substring(19);
+                            if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                                ttDate = v;
+                                break;
+                            }
                         }
                     }
-                }
-            } catch(e) {}
+                } catch(e) {}
+            }
 
             if (ttDate) {
                 var parts = ttDate.split('-');
@@ -394,12 +402,40 @@
             var timeStr = now.toLocaleTimeString('en-GB');
             ticker.innerHTML = "<span style='color: #60a5fa; font-weight: 700; margin-right: 8px;'><i class='far fa-calendar-alt'></i> Today: Day " + day + " (" + day + suffix + ")</span> · <span style='color: #cbd5e1;'>" + dateStr + " " + timeStr + "</span>";
         }
+        window.monmonRenderLiveTicker = renderLiveTicker;
         renderLiveTicker();
         if (!window.__monmonTickerInterval) {
             window.__monmonTickerInterval = setInterval(renderLiveTicker, 1000);
         }
     })();
 </script>
+
+<!-- Version Update Banner (Shown briefly while purging stale cache & reloading) -->
+<div id="monmon-update-banner" class="monmon-update-banner" role="status" aria-live="polite" style="display: none;">
+    <div class="update-banner-content">
+        <i class="fas fa-sync-alt fa-spin" aria-hidden="true"></i>
+        <span>Updating MonMon to the latest version…</span>
+    </div>
+</div>
+
+<!-- Persistent Offline Read-Only Banner -->
+<div id="monmon-offline-banner" class="monmon-offline-banner" role="status" aria-live="polite" style="display: none;">
+    <div class="offline-banner-content">
+        <div class="offline-banner-left">
+            <svg class="offline-banner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+            <span class="offline-banner-badge">OFFLINE</span>
+            <span id="offline-banner-subtext">Read-Only Mode</span>
+            <span id="offline-snapshot-age" class="offline-snapshot-age"></span>
+        </div>
+        <div class="offline-banner-actions">
+            <span id="offline-retry-feedback" class="offline-retry-feedback" style="display: none;" aria-live="polite"></span>
+            <button type="button" id="btn-offline-retry" class="btn-offline-retry">Retry</button>
+        </div>
+    </div>
+</div>
 
 <!-- Constant Time Travel Banner (Active when in Time Travel mode) -->
 <div id="monmon-time-travel-banner" class="monmon-time-travel-banner" style="display: none;">
@@ -582,9 +618,11 @@
         <div class="user-chip nav-user-chip" id="nav-user-chip" title="Signed in user" style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 0.8rem; border-radius: 9999px; background: var(--card-bg-subtle, rgba(255,255,255,0.05)); border: 1px solid var(--border-color); text-decoration: none;">
             <i class="fas fa-user-circle" style="color: var(--primary);"></i>
             <span id="nav-username-display" style="font-weight: 600; color: var(--text-main);">User</span>
+            <span id="offline-warm-indicator" class="offline-warm-indicator" data-state="idle" style="display: none;" aria-live="polite"></span>
         </div>
     </div>
 </nav>
+<div id="monmon-offline-toast" class="monmon-offline-toast" role="alert" aria-live="assertive" style="display: none;"></div>
 <script>
 (function() {
     try {
@@ -909,7 +947,9 @@ if (ttModalEl) {
         var drawerLink = document.getElementById('nav-drawer-time-travel-link');
         if (ttDate) {
             document.body.classList.add('in-time-travel');
-            if (banner) banner.style.display = 'block';
+            if (banner) {
+                banner.style.display = document.body.classList.contains('is-offline') ? 'none' : 'block';
+            }
             if (dateDisplay) {
                 try {
                     var parts = ttDate.split('-');
