@@ -3137,11 +3137,12 @@ body.is-offline #btn-save-preset-direct,
 body.is-offline #btn-delete-preset-direct,
 body.is-offline #btn-save-allocations,
 body.is-offline #btn-snap-monthly-pot,
-body.is-offline button[onclick*="openOutgoingModal"],
-body.is-offline button[onclick*="openIncomingModal"],
-body.is-offline button[onclick*="openAccountModal"],
-body.is-offline button[onclick*="openPauseModal"],
-body.is-offline button[onclick*="openEditModal"] {
+body.is-offline [onclick*="openOutgoingModal"],
+body.is-offline [onclick*="openIncomingModal"],
+body.is-offline [onclick*="openAccountModal"],
+body.is-offline [onclick*="openPauseModal"],
+body.is-offline [onclick*="openEditModal"],
+body.is-offline .btn-edit-preset {
   opacity: 0.45 !important;
   filter: grayscale(0.35);
   cursor: not-allowed !important;
@@ -3151,11 +3152,15 @@ body.is-offline button[onclick*="openEditModal"] {
 body.is-offline .nommon-item-check,
 body.is-offline #btn-uncheck-all,
 body.is-offline .nommon-tab-btn,
-body.is-offline input[id^="chk-"],
-body.is-offline [data-offline-allowed]:not([data-offline-allowed="false"]) {
+body.is-offline .transfer-chk-box,
+body.is-offline [data-offline-allowed]:not([data-offline-allowed="false"]):not(input[id^="chk-"]) {
   opacity: 1 !important;
   filter: none !important;
   cursor: pointer !important;
+}
+
+body.is-offline .transfer-chk-box input[type="checkbox"] {
+  opacity: 0 !important;
 }
 
 

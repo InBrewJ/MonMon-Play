@@ -82,7 +82,7 @@ $(function() {
 
 // 3. Deletion safety confirmation
 $(function() {
-    $(document).on("click", "a[href*='/bin']:not([data-method]), .btn-delete:not([data-method]), a[title*='Delete']:not([data-method]), a[title*='Delete Pot']:not([data-method])", function(e) {
+    $(document).on("click", "a[href*='/bin']:not([data-method]), .btn-delete:not([data-method]):not(#btn-delete-preset-direct), a[title*='Delete']:not([data-method]), a[title*='Delete Pot']:not([data-method])", function(e) {
         if (!confirm("Are you sure you want to delete this?")) {
             e.preventDefault();
             return false;

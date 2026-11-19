@@ -951,7 +951,7 @@
 
         var mutatingControl = closestEl(
             target,
-            '.btn-delete, #btn-regenerate-nommon, #nommon-lock-wrapper button, #btn-save-postcode, #nav-drawer-time-travel-link, #btn-verify-monzo-tbl, #btn-refresh-webhooks, #btn-preview-align-payday, #btn-final-confirm-overwrite, #btn-save-preset-direct, #btn-delete-preset-direct, #btn-save-allocations, #btn-snap-monthly-pot, button[onclick*="openOutgoingModal"], button[onclick*="openIncomingModal"], button[onclick*="openAccountModal"], button[onclick*="openPauseModal"], button[onclick*="openEditModal"]'
+            '.btn-delete, #btn-regenerate-nommon, #nommon-lock-wrapper button, #btn-save-postcode, #nav-drawer-time-travel-link, #btn-verify-monzo-tbl, #btn-refresh-webhooks, #btn-preview-align-payday, #btn-final-confirm-overwrite, #btn-save-preset-direct, #btn-delete-preset-direct, #btn-save-allocations, #btn-snap-monthly-pot, [onclick*="openOutgoingModal"], [onclick*="openIncomingModal"], [onclick*="openAccountModal"], [onclick*="openPauseModal"], [onclick*="openEditModal"], .btn-edit-preset'
         );
         if (mutatingControl && !hasOfflineAllowedAttr(mutatingControl)) {
             return DEFAULT_OFFLINE_TOAST_MSG;
@@ -1098,9 +1098,7 @@
                 if (data.type === 'MONMON_PREWARM_DONE') {
                     var warmedVal = data.warmedAt ? String(data.warmedAt) : new Date().toISOString();
                     safeStorageSet(getLocalStorage(), STORAGE_LAST_WARM_AT, warmedVal);
-                    if (!currentSnapshotTimestamp) {
-                        currentSnapshotTimestamp = warmedVal;
-                    }
+                    currentSnapshotTimestamp = warmedVal;
                     setWarmState('done');
                     return;
                 }

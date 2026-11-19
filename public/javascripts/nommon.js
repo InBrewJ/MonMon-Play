@@ -664,6 +664,10 @@
             peopleCount = parseInt(peopleSelect.value, 10) || 1;
         }
 
+        if (force) {
+            isLastPlanCachedSnapshot = false;
+        }
+
         updateBudgetTierBadge(weeklyBudget, peopleCount);
 
         var loadingText = document.getElementById('nommon-loading-text');

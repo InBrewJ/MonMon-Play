@@ -1007,6 +1007,18 @@ describe('MonMon Offline Mode Client Controller (offline-mode.js)', () => {
     assert.notEqual(ind.style.display, 'none');
     assert.equal(env.localStorage.getItem('monmon_last_warm_at'), warmedIso);
 
+    // Even if an older snapshot timestamp was previously set, MONMON_PREWARM_DONE refreshes currentSnapshotTimestamp
+    const olderIso = new Date(env.timers.getNow() - 60 * 60 * 1000).toISOString();
+    env.window.monmonOfflineMode.enterOffline(olderIso);
+    assert.match(env.elements.offlineSnapshotAge.textContent, /1h ago/i);
+    env.window.monmonOfflineMode.exitOffline();
+
+    const newerIso = new Date(env.timers.getNow()).toISOString();
+    env.dispatchSwMessage({ type: 'MONMON_PREWARM_DONE', total: 17, warmedAt: newerIso });
+    env.window.monmonOfflineMode.enterOffline();
+    assert.match(env.elements.offlineSnapshotAge.textContent, /just now/i);
+    env.window.monmonOfflineMode.exitOffline();
+
     // After fade delay (~2.5s), indicator hides
     await env.timers.tick(2600);
     assert.equal(ind.style.display, 'none');
@@ -1147,6 +1159,24 @@ describe('MonMon Offline Mode Client Controller (offline-mode.js)', () => {
     const deleteClick = env.makeEvent('click', { bubbles: true, cancelable: true });
     deleteBtn.dispatchEvent(deleteClick);
     assert.equal(deleteClick.defaultPrevented, true);
+
+    // Desktop <a onclick="openPauseModal(this)"> and <button class="btn-edit-preset"> are also prevented and show toast offline
+    const pauseAnchor = env.createElement('a', { attrs: { href: 'javascript:void(0)', onclick: 'openPauseModal(this)' } });
+    const editPresetBtn = env.createElement('button', { classes: ['btn-edit-preset'], attrs: { type: 'button' } });
+    env.document.body.appendChild(pauseAnchor);
+    env.document.body.appendChild(editPresetBtn);
+
+    env.elements.offlineToast.style.display = 'none';
+    const pauseClick = env.makeEvent('click', { bubbles: true, cancelable: true });
+    pauseAnchor.dispatchEvent(pauseClick);
+    assert.equal(pauseClick.defaultPrevented, true);
+    assert.notEqual(env.elements.offlineToast.style.display, 'none');
+
+    env.elements.offlineToast.style.display = 'none';
+    const editPresetClick = env.makeEvent('click', { bubbles: true, cancelable: true });
+    editPresetBtn.dispatchEvent(editPresetClick);
+    assert.equal(editPresetClick.defaultPrevented, true);
+    assert.notEqual(env.elements.offlineToast.style.display, 'none');
   });
 
   it('8. Logout cache clearing: clicking a[href="/centralLogout"] online posts MONMON_CLEAR_USER_CACHES and removes monmon_last_warm_at before navigating; offline is blocked', async () => {
