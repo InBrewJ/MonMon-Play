@@ -91,3 +91,80 @@ pub async fn auth_redirect(target_path: Option<&str>) -> Redirect {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    #[test]
+    fn test_templates_have_no_external_cdn_links() {
+        let templates = [
+            ("nav_head.html", include_str!("../templates/nav_head.html")),
+            ("landing.html", include_str!("../templates/landing.html")),
+            ("dig.html", include_str!("../templates/dig.html")),
+        ];
+        let forbidden = [
+            "w3schools.com",
+            "cdnjs.cloudflare.com",
+            "fonts.googleapis.com",
+            "fonts.gstatic.com",
+            "unpkg.com",
+        ];
+
+        for (name, content) in templates {
+            for cdn in forbidden {
+                assert!(
+                    !content.contains(cdn),
+                    "Template {} still contains external CDN reference: {}",
+                    name,
+                    cdn
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_templates_include_build_hash_meta() {
+        let nav_head = include_str!("../templates/nav_head.html");
+        let landing = include_str!("../templates/landing.html");
+
+        assert!(
+            nav_head.contains(r#"name="monmon-build-hash""#),
+            "nav_head.html must include monmon-build-hash meta tag"
+        );
+        assert!(
+            landing.contains(r#"name="monmon-build-hash""#),
+            "landing.html must include monmon-build-hash meta tag"
+        );
+    }
+
+    #[test]
+    fn test_vendor_assets_exist_on_disk() {
+        let base_dir = if Path::new("public").exists() {
+            "public"
+        } else {
+            "../../public"
+        };
+
+        let required_assets = [
+            "vendor/w3css/w3.css",
+            "vendor/fontawesome/css/all.min.css",
+            "vendor/fonts/fonts.css",
+            "vendor/leaflet/leaflet.css",
+            "vendor/leaflet/leaflet.js",
+        ];
+
+        for asset in required_assets {
+            let full_path = Path::new(base_dir).join(asset);
+            let metadata = std::fs::metadata(&full_path).unwrap_or_else(|e| {
+                panic!("Expected vendor asset {} to exist: {}", full_path.display(), e)
+            });
+            assert!(
+                metadata.is_file() && metadata.len() > 0,
+                "Expected vendor asset {} to be a non-empty file",
+                full_path.display()
+            );
+        }
+    }
+}
+
+

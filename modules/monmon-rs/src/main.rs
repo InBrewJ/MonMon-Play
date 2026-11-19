@@ -1237,6 +1237,7 @@ async fn serve_asset_handler(
         "woff" => "font/woff",
         "woff2" => "font/woff2",
         "ttf" => "font/ttf",
+        "eot" => "application/vnd.ms-fontobject",
         "json" => "application/json",
         "webmanifest" => "application/manifest+json",
         _ => "application/octet-stream",

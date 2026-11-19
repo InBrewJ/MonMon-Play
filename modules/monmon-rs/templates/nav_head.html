@@ -1,5 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="monmon-build-hash" content="{{ crate::BUILD_HASH }}">
 <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
 <link rel="shortcut icon" type="image/png" href="/assets/images/favicon.png">
 
@@ -24,13 +25,11 @@
     })();
 </script>
 
-<!-- Google Fonts -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+<!-- Google Fonts (Self-Hosted) -->
+<link href="/assets/vendor/fonts/fonts.css?v={{ crate::BUILD_HASH }}" rel="stylesheet">
 
 <!-- Stylesheets -->
-<link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-<!-- Font Awesome 5.15.2 (clean, zero glyph bbox console warnings) -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" integrity="sha512-HK5fgLBL+xu6dm/Ii3z4xhlSUyZgTT9tuc/hSrtw6uzJOvgRr2a9jyxxT1ely+B+xFAmJKVSTbpM/CuL7qxO8w==" crossorigin="anonymous" />
+<link rel="stylesheet" href="/assets/vendor/w3css/w3.css?v={{ crate::BUILD_HASH }}">
+<!-- Font Awesome 5.15.2 (Self-Hosted) -->
+<link rel="stylesheet" href="/assets/vendor/fontawesome/css/all.min.css?v={{ crate::BUILD_HASH }}" />
 <link rel="stylesheet" href="/assets/stylesheets/main.{{ crate::BUILD_HASH }}.css" type="text/css">
