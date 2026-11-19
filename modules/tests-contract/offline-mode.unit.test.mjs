@@ -1189,4 +1189,80 @@ describe('MonMon Offline Mode Client Controller (offline-mode.js)', () => {
     assert.equal(envOffline.navigatedUrls.length, 0, 'Must not navigate to /centralLogout while offline');
     assert.notEqual(envOffline.elements.offlineToast.style.display, 'none');
   });
+
+  it('9. [Fix #1] Online recovery reloads when initial load was offline/Lie-Fi cached HTML, and exits offline cleanly without reload when initial load was live', async () => {
+    // 9a. Initial load fails /api/version under Lie-Fi (MONMON_OFFLINE_SERVED fired before script init)
+    const envLieFi = createEnv({
+      buildHash: 'v1',
+      readyState: 'complete',
+      onLine: true,
+      fetchImpl: async () => {
+        throw new Error('Lie-Fi timeout/failure');
+      },
+    });
+    await envLieFi.timers.flushMicrotasks();
+
+    assert.equal(envLieFi.document.body.classList.contains('is-offline'), true);
+    assert.equal(envLieFi.reloadCount, 0);
+
+    // Later connectivity returns via window 'online' event -> must reload to fetch live HTML
+    envLieFi.setFetchImpl(async () =>
+      new Response(JSON.stringify({ buildHash: 'v1' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    envLieFi.setOnline(true);
+    await envLieFi.timers.flushMicrotasks();
+
+    assert.equal(envLieFi.reloadCount, 1, 'Expected reload when recovering from cached offline/Lie-Fi initial load');
+
+    // 9a-ii. Initial load starts with navigator.onLine === false -> comes online -> reloads
+    const envBootOffline = createEnv({
+      buildHash: 'v1',
+      readyState: 'complete',
+      onLine: false,
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ buildHash: 'v1' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    });
+    assert.equal(envBootOffline.document.body.classList.contains('is-offline'), true);
+    envBootOffline.setOnline(true);
+    await envBootOffline.timers.flushMicrotasks();
+    assert.equal(envBootOffline.reloadCount, 1, 'Expected reload when recovering from navigator.onLine === false boot');
+
+    // 9b. Initial load succeeds online -> goes offline briefly -> comes back online -> exits offline WITHOUT reload
+    const envLiveFirst = createEnv({
+      buildHash: 'v1',
+      readyState: 'complete',
+      onLine: true,
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ buildHash: 'v1' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    });
+    await envLiveFirst.timers.flushMicrotasks();
+    assert.equal(envLiveFirst.document.body.classList.contains('is-offline'), false);
+
+    // Drop offline temporarily without navigating
+    envLiveFirst.setOnline(false);
+    assert.equal(envLiveFirst.document.body.classList.contains('is-offline'), true);
+
+    // Come back online -> calls exitOffline() without unnecessary reload
+    envLiveFirst.setOnline(true);
+    await envLiveFirst.timers.flushMicrotasks();
+
+    assert.equal(envLiveFirst.reloadCount, 0, 'Must NOT reload when initial load succeeded live online');
+    assert.equal(envLiveFirst.document.body.classList.contains('is-offline'), false);
+    assert.equal(envLiveFirst.elements.offlineBanner.style.display, 'none');
+    assert.ok(
+      envLiveFirst.windowEventsDispatched.some(
+        (e) => e.type === 'monmon:offline-change' && e.detail && e.detail.offline === false
+      ),
+      'Expected monmon:offline-change event with offline: false on recovery'
+    );
+  });
 });

@@ -65,6 +65,7 @@
     ];
 
     var isOfflineFlag = false;
+    var hasCompletedLiveLoad = false;
     var servedFromCacheOffline = false;
     var currentSnapshotTimestamp = null;
     var warmState = 'idle';
@@ -769,6 +770,13 @@
             });
     }
 
+    function enterOfflineFromProbe() {
+        if (!hasCompletedLiveLoad) {
+            servedFromCacheOffline = true;
+        }
+        enterOffline();
+    }
+
     function checkVersionAndSync(options) {
         if (activeVersionCheckPromise) {
             return activeVersionCheckPromise;
@@ -779,14 +787,14 @@
 
         var runPromise = (function () {
             if (!opts.fromRetry && typeof navigator !== 'undefined' && navigator.onLine === false) {
-                enterOffline();
+                enterOfflineFromProbe();
                 return Promise.resolve({ status: 'offline' });
             }
 
             return fetchVersionWithTimeout()
                 .then(function (data) {
                     if (!data || !data.buildHash) {
-                        enterOffline();
+                        enterOfflineFromProbe();
                         return { status: 'offline' };
                     }
 
@@ -815,9 +823,11 @@
                                 reloadPage();
                                 return { status: 'reloading', buildHash: serverHash };
                             }
+                            hasCompletedLiveLoad = true;
                             exitOffline();
                             schedulePrewarm(true);
                         } else {
+                            hasCompletedLiveLoad = true;
                             schedulePrewarm(versionChanged || reconnectedFlag);
                         }
 
@@ -836,6 +846,7 @@
                         if (updateBanner) {
                             updateBanner.style.display = 'none';
                         }
+                        hasCompletedLiveLoad = true;
                         if (monmonIsOffline()) {
                             exitOffline();
                         }
@@ -854,7 +865,7 @@
                     });
                 })
                 .catch(function () {
-                    enterOffline();
+                    enterOfflineFromProbe();
                     return { status: 'offline' };
                 });
         })();
@@ -1109,7 +1120,7 @@
         }
 
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-            enterOffline();
+            enterOfflineFromProbe();
         } else {
             checkVersionAndSync();
         }
