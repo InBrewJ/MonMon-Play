@@ -64,13 +64,20 @@ function createFakeTimers() {
 }
 
 function makeResponse(body, init = {}) {
-  const { url, redirected, ...respInit } = init;
+  const { url, redirected, type, statusOverride, ...respInit } = init;
   const resp = new Response(body, respInit);
   if (url !== undefined) {
     Object.defineProperty(resp, 'url', { value: url, configurable: true });
   }
   if (redirected !== undefined) {
     Object.defineProperty(resp, 'redirected', { value: Boolean(redirected), configurable: true });
+  }
+  if (type !== undefined) {
+    Object.defineProperty(resp, 'type', { value: type, configurable: true });
+  }
+  if (statusOverride !== undefined) {
+    Object.defineProperty(resp, 'status', { value: statusOverride, configurable: true });
+    Object.defineProperty(resp, 'ok', { value: statusOverride >= 200 && statusOverride < 300, configurable: true });
   }
   return resp;
 }
@@ -854,5 +861,218 @@ describe('Service Worker (public/javascripts/sw.js)', () => {
     assert.equal(await sw.caches.has(`monmon-pages-${TEST_BUILD_HASH}`), false);
     assert.equal(await sw.caches.has(`monmon-static-${TEST_BUILD_HASH}`), false);
     assert.ok(sw.postedMessages.some((m) => m.type === 'MONMON_CACHES_PURGED'));
+  });
+
+  it('12. [Critical #1] mode: "navigate" uses redirect: "manual" and mode: "same-origin", passing opaqueredirect through uncached', async () => {
+    let seenFetchReq = null;
+    const sw = (activeHarness = loadServiceWorker({
+      fetchImpl: async (input) => {
+        seenFetchReq = input;
+        return makeResponse('', {
+          status: 200,
+          statusOverride: 0,
+          type: 'opaqueredirect',
+          url: `${ORIGIN}/spog`,
+        });
+      },
+    }));
+
+    const staticCache = await sw.caches.open(`monmon-static-${TEST_BUILD_HASH}`);
+    await staticCache.put(`${ORIGIN}/offline`, makeResponse('<html>offline</html>', { status: 200 }));
+
+    // Simulate browser navigation FetchEvent.request (mode: 'navigate', redirect: 'manual')
+    const navRequest = {
+      url: `${ORIGIN}/spog`,
+      method: 'GET',
+      mode: 'navigate',
+      redirect: 'manual',
+      headers: new Headers({ Accept: 'text/html' }),
+    };
+
+    const { intercepted, responsePromise } = sw.dispatchFetch(navRequest);
+    assert.equal(intercepted, true);
+    const resp = await responsePromise;
+
+    assert.ok(seenFetchReq, 'fetch should be called');
+    assert.equal(seenFetchReq.redirect, 'manual', 'Navigate request must preserve redirect: "manual"');
+    assert.equal(seenFetchReq.mode, 'same-origin', 'Same-origin navigate fetch must use mode: "same-origin"');
+    assert.equal(resp.type, 'opaqueredirect', 'Must pass opaqueredirect through verbatim');
+    assert.equal(resp.status, 0);
+
+    const pagesCache = await sw.caches.open(`monmon-pages-${TEST_BUILD_HASH}`);
+    assert.equal(await pagesCache.match(`${ORIGIN}/spog`), undefined, 'opaqueredirect must never be cached');
+  });
+
+  it('13. [Important #1] cloneResponseWithHeaders strips Content-Encoding and Content-Length on cache write and offline fallback', async () => {
+    const sw = (activeHarness = loadServiceWorker({
+      fetchImpl: async () =>
+        makeResponse('<html><body>Decoded HTML payload</body></html>', {
+          status: 200,
+          url: `${ORIGIN}/spog`,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Encoding': 'gzip',
+            'Content-Length': '12',
+          },
+        }),
+    }));
+
+    // Online fetch stores decoded response in cache without Content-Encoding or compressed Content-Length
+    const liveRes = sw.dispatchFetch(new Request(`${ORIGIN}/spog`, { headers: { Accept: 'text/html' } }));
+    await liveRes.responsePromise;
+
+    const pagesCache = await sw.caches.open(`monmon-pages-${TEST_BUILD_HASH}`);
+    const stored = await pagesCache.match(`${ORIGIN}/spog`);
+    assert.ok(stored);
+    assert.equal(stored.headers.get('content-encoding'), null, 'Stored response must strip Content-Encoding');
+    assert.equal(stored.headers.get('content-length'), null, 'Stored response must strip Content-Length');
+
+    // Also test offline fallback cloning a pre-existing cache entry that carries Content-Encoding/Content-Length
+    await pagesCache.put(
+      `${ORIGIN}/nommon`,
+      makeResponse('<html><body>Cached NomMon</body></html>', {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Encoding': 'br',
+          'Content-Length': '5',
+          'X-MonMon-Cached-At': '2026-11-19T11:00:00.000Z',
+        },
+      })
+    );
+    sw.setFetch(async () => {
+      throw new TypeError('Offline');
+    });
+
+    const fallbackRes = sw.dispatchFetch(new Request(`${ORIGIN}/nommon`, { headers: { Accept: 'text/html' } }));
+    const fallbackResp = await fallbackRes.responsePromise;
+    assert.equal(fallbackResp.headers.get('X-MonMon-Offline'), '1');
+    assert.equal(fallbackResp.headers.get('content-encoding'), null, 'Fallback response must strip Content-Encoding');
+    assert.equal(fallbackResp.headers.get('content-length'), null, 'Fallback response must strip Content-Length');
+    assert.equal(await fallbackResp.text(), '<html><body>Cached NomMon</body></html>');
+  });
+
+  it('14. [Important #2] cache.put QuotaExceededError never breaks valid live responses (AI JSON, HTML navigation, static asset)', async () => {
+    const sw = (activeHarness = loadServiceWorker({
+      fetchImpl: async (input) => {
+        const u = typeof input === 'string' ? input : input.url;
+        if (u.endsWith('/api/ed-says')) {
+          return makeResponse(JSON.stringify({ configured: true, edSays: 'Live despite quota' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (u.endsWith('/spog')) {
+          return makeResponse('<html>Live SPOG despite quota</html>', {
+            status: 200,
+            url: `${ORIGIN}/spog`,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          });
+        }
+        return makeResponse('body { color: #fff; }', {
+          status: 200,
+          headers: { 'Content-Type': 'text/css' },
+        });
+      },
+    }));
+
+    const origOpen = sw.caches.open.bind(sw.caches);
+    sw.caches.open = async (name) => {
+      const realCache = await origOpen(name);
+      return {
+        ...realCache,
+        async put() {
+          const err = new Error('Storage quota exceeded');
+          err.name = 'QuotaExceededError';
+          throw err;
+        },
+      };
+    };
+
+    const aiRes = await sw.dispatchFetch(new Request(`${ORIGIN}/api/ed-says`)).responsePromise;
+    assert.equal(aiRes.status, 200);
+    assert.deepEqual(await aiRes.json(), { configured: true, edSays: 'Live despite quota' });
+
+    const htmlRes = await sw.dispatchFetch(
+      new Request(`${ORIGIN}/spog`, { headers: { Accept: 'text/html' } })
+    ).responsePromise;
+    assert.equal(htmlRes.status, 200);
+    assert.equal(await htmlRes.text(), '<html>Live SPOG despite quota</html>');
+
+    const staticRes = await sw.dispatchFetch(
+      new Request(`${ORIGIN}/assets/stylesheets/quota-test.css`)
+    ).responsePromise;
+    assert.equal(staticRes.status, 200);
+    assert.equal(await staticRes.text(), 'body { color: #fff; }');
+  });
+
+  it('15. [Important #3] MONMON_CLEAR_USER_CACHES and MONMON_PURGE_CACHES cancel active runPrewarm so it does not repopulate caches', async () => {
+    const signals = [];
+    const resolvers = [];
+    const sw = (activeHarness = loadServiceWorker({
+      fetchImpl: (input, init) => {
+        const url = typeof input === 'string' ? input : input.url;
+        const signal = (init && init.signal) || (input && input.signal);
+        signals.push({ url, signal });
+        return new Promise((resolve) => {
+          resolvers.push({ url, resolve });
+        });
+      },
+    }));
+
+    // Start prewarm with 4 URLs; first 2 are in flight immediately
+    const prewarmTask = sw.dispatchMessage({
+      type: 'MONMON_PREWARM',
+      urls: ['/spog', '/nommon', '/myOutgoings', '/transfers'],
+    });
+    await sw.timers.flushMicrotasks();
+    assert.equal(signals.length, 2, 'Expected 2 concurrent prewarm fetches in flight');
+    assert.equal(signals[0].signal.aborted, false);
+    assert.equal(signals[1].signal.aborted, false);
+
+    // Send MONMON_CLEAR_USER_CACHES (logout) while prewarm is active
+    await sw.dispatchMessage({ type: 'MONMON_CLEAR_USER_CACHES' });
+    assert.equal(signals[0].signal.aborted, true, 'MONMON_CLEAR_USER_CACHES must abort active prewarm signal');
+    assert.equal(signals[1].signal.aborted, true, 'MONMON_CLEAR_USER_CACHES must abort all active prewarm workers');
+
+    // Even if a stubborn fetch resolves despite abort signal, it must NOT write back to monmon-pages-*
+    for (const item of resolvers) {
+      item.resolve(
+        makeResponse(`<html>${item.url}</html>`, {
+          status: 200,
+          url: item.url,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        })
+      );
+    }
+    await prewarmTask;
+
+    const pagesCache = await sw.caches.open(`monmon-pages-${TEST_BUILD_HASH}`);
+    assert.equal((await pagesCache.keys()).length, 0, 'Cancelled prewarm must not repopulate monmon-pages-* after clear');
+    assert.equal(sw.postedMessages.some((m) => m.type === 'MONMON_PREWARM_DONE'), false);
+    assert.equal(signals.length, 2, 'Queued URLs (/myOutgoings, /transfers) must never be fetched after cancel');
+
+    // Also test MONMON_PURGE_CACHES cancels an active prewarm
+    signals.length = 0;
+    resolvers.length = 0;
+    const prewarmTask2 = sw.dispatchMessage({
+      type: 'MONMON_PREWARM',
+      urls: ['/spog', '/nommon'],
+    });
+    await sw.timers.flushMicrotasks();
+    assert.equal(signals.length, 2);
+    await sw.dispatchMessage({ type: 'MONMON_PURGE_CACHES' });
+    assert.equal(signals[0].signal.aborted, true, 'MONMON_PURGE_CACHES must abort active prewarm signal');
+    for (const item of resolvers) {
+      item.resolve(
+        makeResponse(`<html>${item.url}</html>`, {
+          status: 200,
+          url: item.url,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        })
+      );
+    }
+    await prewarmTask2;
+    assert.equal(await sw.caches.has(`monmon-pages-${TEST_BUILD_HASH}`), false);
   });
 });

@@ -169,7 +169,7 @@ function getFinalUrl(response, fallbackUrl) {
 }
 
 function isCacheableHtmlResponse(response, requestUrl) {
-  if (!response || response.status !== 200) {
+  if (!response || response.type === 'opaqueredirect' || response.status !== 200) {
     return false;
   }
   if (isTimeTravelResponse(response)) {
@@ -217,6 +217,8 @@ function canonicalCacheKey(url) {
 async function cloneResponseWithHeaders(response, extraHeaders) {
   const cloned = response.clone();
   const headers = new Headers(cloned.headers);
+  headers.delete('content-encoding');
+  headers.delete('content-length');
   for (const [key, value] of Object.entries(extraHeaders)) {
     headers.set(key, value);
   }
@@ -228,10 +230,14 @@ async function cloneResponseWithHeaders(response, extraHeaders) {
   });
 }
 
-async function putWithTimestamp(cache, key, response) {
+async function putWithTimestamp(cache, key, response, shouldWrite) {
+  if (!cache) return null;
   const stamped = await cloneResponseWithHeaders(response, {
     'X-MonMon-Cached-At': new Date().toISOString()
   });
+  if (shouldWrite && !shouldWrite()) {
+    return null;
+  }
   await cache.put(key, stamped);
   return stamped;
 }
@@ -245,8 +251,8 @@ async function cloneWithFallbackHeader(cachedResponse, headerName) {
   return cloneResponseWithHeaders(cachedResponse, extraHeaders);
 }
 
-async function cacheAiResponseIfValid(cache, cacheKey, url, response) {
-  if (!isCacheableJsonResponse(response, url.href)) {
+async function cacheAiResponseIfValid(cache, cacheKey, url, response, shouldWrite) {
+  if (!cache || !isCacheableJsonResponse(response, url.href)) {
     return false;
   }
   if (url.pathname === '/api/nommon/plan') {
@@ -259,8 +265,12 @@ async function cacheAiResponseIfValid(cache, cacheKey, url, response) {
       return false;
     }
   }
-  await putWithTimestamp(cache, cacheKey, response);
-  return true;
+  try {
+    const written = await putWithTimestamp(cache, cacheKey, response, shouldWrite);
+    return Boolean(written);
+  } catch (_e) {
+    return false;
+  }
 }
 
 async function matchPagesCache(pagesCache, url, overrideKey) {
@@ -312,8 +322,12 @@ function offlineJsonResponse() {
 }
 
 async function getCachedOfflineFallback() {
-  const staticCache = await caches.open(STATIC_CACHE);
-  return staticCache.match(toAbsoluteUrl('/offline'));
+  try {
+    const staticCache = await caches.open(STATIC_CACHE);
+    return staticCache.match(toAbsoluteUrl('/offline'));
+  } catch (_e) {
+    return undefined;
+  }
 }
 
 async function handleMutationRequest(request) {
@@ -325,15 +339,21 @@ async function handleMutationRequest(request) {
 }
 
 async function handleStaticAsset(request, url) {
-  const staticCache = await caches.open(STATIC_CACHE);
   const absKey = url.href;
-  const cached = (await staticCache.match(absKey)) || (await staticCache.match(request));
-  if (cached) {
-    return cached;
-  }
+  let staticCache = null;
+  try {
+    staticCache = await caches.open(STATIC_CACHE);
+    const cached = (await staticCache.match(absKey)) || (await staticCache.match(request));
+    if (cached) {
+      return cached;
+    }
+  } catch (_e) {}
+
   const resp = await fetch(request);
-  if (resp && resp.status === 200) {
-    await staticCache.put(absKey, resp.clone());
+  if (staticCache && resp && resp.status === 200) {
+    try {
+      await staticCache.put(absKey, resp.clone());
+    } catch (_e) {}
   }
   return resp;
 }
@@ -341,12 +361,14 @@ async function handleStaticAsset(request, url) {
 function buildTimeoutFetchRequest(request, signal) {
   if (!signal) return request;
   try {
-    // Avoid Chromium TypeError when constructing Request from mode='navigate' with RequestInit
+    // Avoid Chromium TypeError when constructing Request from mode='navigate' with RequestInit;
+    // preserve redirect: 'manual' on navigations so 3xx redirects pass through as opaqueredirect.
     return new Request(request.url, {
       method: request.method || 'GET',
       headers: request.headers,
       credentials: 'same-origin',
-      redirect: 'follow',
+      mode: 'same-origin',
+      redirect: request.mode === 'navigate' ? 'manual' : (request.redirect || 'follow'),
       signal: signal
     });
   } catch (_e) {
@@ -354,18 +376,24 @@ function buildTimeoutFetchRequest(request, signal) {
   }
 }
 
-async function cacheNetworkFirstResponse(pagesCache, url, liveResp, isHtml) {
-  if (isHtml) {
-    if (isCacheableHtmlResponse(liveResp, url.href)) {
-      await putWithTimestamp(pagesCache, url.href, liveResp);
+async function cacheNetworkFirstResponse(pagesCache, url, liveResp, isHtml, shouldWrite) {
+  if (!pagesCache) return;
+  try {
+    if (isHtml) {
+      if (isCacheableHtmlResponse(liveResp, url.href)) {
+        await putWithTimestamp(pagesCache, url.href, liveResp, shouldWrite);
+      }
+    } else if (isCacheableJsonResponse(liveResp, url.href)) {
+      await putWithTimestamp(pagesCache, url.href, liveResp, shouldWrite);
     }
-  } else if (isCacheableJsonResponse(liveResp, url.href)) {
-    await putWithTimestamp(pagesCache, url.href, liveResp);
-  }
+  } catch (_e) {}
 }
 
 async function handleNetworkFirstWithTimeout(event, request, url, isHtml) {
-  const pagesCache = await caches.open(PAGES_CACHE);
+  let pagesCache = null;
+  try {
+    pagesCache = await caches.open(PAGES_CACHE);
+  } catch (_e) {}
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const fetchReq = buildTimeoutFetchRequest(request, controller ? controller.signal : undefined);
 
@@ -435,7 +463,7 @@ async function handleNetworkFirstWithTimeout(event, request, url, isHtml) {
     bgAbortTimerId = null;
   }
 
-  const cached = await matchPagesCache(pagesCache, url);
+  const cached = pagesCache ? await matchPagesCache(pagesCache, url) : undefined;
   if (cached) {
     const offlineResp = await cloneWithFallbackHeader(cached, 'X-MonMon-Offline');
     const cachedAt = offlineResp.headers.get('X-MonMon-Cached-At') || new Date().toISOString();
@@ -471,9 +499,13 @@ async function handleAiJsonRequest(event, request, url) {
     }
   }
 
-  const pagesCache = await caches.open(PAGES_CACHE);
+  let pagesCache = null;
+  let cached = undefined;
   const cacheKey = canonicalCacheKey(url);
-  const cached = await pagesCache.match(cacheKey);
+  try {
+    pagesCache = await caches.open(PAGES_CACHE);
+    cached = await pagesCache.match(cacheKey);
+  } catch (_e) {}
 
   // Never attach timeout or abort controller to slow Mistral AI requests
   const networkPromise = fetch(request);
@@ -553,14 +585,20 @@ function isAuthRedirectOrUnauthorized(resp, reqUrl) {
   return Boolean(resp.redirected && !resp.url);
 }
 
-async function runPrewarm(urls) {
+function cancelActivePrewarm() {
+  activePrewarmId++;
   if (activePrewarmController) {
     try {
       activePrewarmController.abort();
     } catch (_e) {}
+    activePrewarmController = null;
   }
+}
 
-  const runId = ++activePrewarmId;
+async function runPrewarm(urls) {
+  cancelActivePrewarm();
+
+  const runId = activePrewarmId;
   const list = Array.isArray(urls) ? urls.filter((u) => typeof u === 'string' && u.length > 0) : [];
   if (list.length === 0) {
     await broadcastToClients({
@@ -580,8 +618,10 @@ async function runPrewarm(urls) {
   let completed = 0;
   let aborted = false;
 
+  const isRunActive = () => !aborted && runId === activePrewarmId;
+
   async function abortPrewarm(reason) {
-    if (aborted || runId !== activePrewarmId) return;
+    if (!isRunActive()) return;
     aborted = true;
     if (controller) {
       try {
@@ -595,7 +635,7 @@ async function runPrewarm(urls) {
   }
 
   async function worker() {
-    while (!aborted && runId === activePrewarmId) {
+    while (isRunActive()) {
       const idx = nextIdx++;
       if (idx >= total) return;
 
@@ -620,7 +660,7 @@ async function runPrewarm(urls) {
         return;
       }
 
-      if (aborted || runId !== activePrewarmId) return;
+      if (!isRunActive()) return;
 
       if (isAuthRedirectOrUnauthorized(resp, reqUrl)) {
         await abortPrewarm('auth_redirect');
@@ -628,18 +668,20 @@ async function runPrewarm(urls) {
       }
 
       if (resp.status === 200 && !isTimeTravelResponse(resp)) {
-        if (isAiJsonEndpoint(reqUrl)) {
-          await cacheAiResponseIfValid(pagesCache, canonicalCacheKey(reqUrl), reqUrl, resp);
-        } else if (isFastJsonEndpoint(reqUrl) || reqUrl.pathname.startsWith('/api/')) {
-          if (isCacheableJsonResponse(resp, reqUrl.href)) {
-            await putWithTimestamp(pagesCache, reqUrl.href, resp);
+        try {
+          if (isAiJsonEndpoint(reqUrl)) {
+            await cacheAiResponseIfValid(pagesCache, canonicalCacheKey(reqUrl), reqUrl, resp, isRunActive);
+          } else if (isFastJsonEndpoint(reqUrl) || reqUrl.pathname.startsWith('/api/')) {
+            if (isCacheableJsonResponse(resp, reqUrl.href)) {
+              await putWithTimestamp(pagesCache, reqUrl.href, resp, isRunActive);
+            }
+          } else if (isCacheableHtmlResponse(resp, reqUrl.href)) {
+            await putWithTimestamp(pagesCache, reqUrl.href, resp, isRunActive);
           }
-        } else if (isCacheableHtmlResponse(resp, reqUrl.href)) {
-          await putWithTimestamp(pagesCache, reqUrl.href, resp);
-        }
+        } catch (_e) {}
       }
 
-      if (aborted || runId !== activePrewarmId) return;
+      if (!isRunActive()) return;
 
       completed++;
       await broadcastToClients({
@@ -785,6 +827,7 @@ self.addEventListener('message', (event) => {
   }
 
   if (data.type === 'MONMON_CLEAR_USER_CACHES') {
+    cancelActivePrewarm();
     const task = (async () => {
       await deleteCachesByPrefix('monmon-pages-');
       await broadcastToClients({ type: 'MONMON_USER_CACHES_CLEARED' }, event);
@@ -794,6 +837,7 @@ self.addEventListener('message', (event) => {
   }
 
   if (data.type === 'MONMON_PURGE_CACHES') {
+    cancelActivePrewarm();
     const task = (async () => {
       await deleteCachesByPrefix('monmon-');
       await broadcastToClients({ type: 'MONMON_CACHES_PURGED' }, event);
