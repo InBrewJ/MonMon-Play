@@ -40,8 +40,19 @@ test.describe('Authenticated Outgoings & Pause Modal E2E', () => {
     const count = await page.locator('.col-name b').count();
     expect(count).toBeGreaterThanOrEqual(6);
 
-    // Locate the exact Ionos VPS row/card containing brackets and apostrophe (supports desktop table and mobile Stacked Action Cards)
+    // Verify Today horizontal divider line is present and visible
     const isMobile = await page.locator('.mobile-cards-view').isVisible();
+    if (isMobile) {
+      const mobileDivider = page.locator('#today-divider-card');
+      await expect(mobileDivider).toBeVisible();
+      await expect(mobileDivider.locator('.today-divider-badge')).toContainText('Today —');
+    } else {
+      const desktopDivider = page.locator('#today-divider-row');
+      await expect(desktopDivider).toBeVisible();
+      await expect(desktopDivider.locator('.today-divider-badge')).toContainText('Today —');
+    }
+
+    // Locate the exact Ionos VPS row/card containing brackets and apostrophe (supports desktop table and mobile Stacked Action Cards)
     let pauseBtn;
     if (isMobile) {
       const vpsCard = page.locator('.item-card').filter({ hasText: 'boom.dryark.uk' });

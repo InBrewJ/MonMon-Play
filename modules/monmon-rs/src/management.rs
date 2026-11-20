@@ -64,6 +64,9 @@ pub struct OutgoingsTemplate {
     pub current_year: i32,
     #[allow(dead_code)]
     pub current_month_name: String,
+    pub today_day: u32,
+    pub today_month: u32,
+    pub today_label: String,
     pub editing: bool,
     pub editing_outgoing: Option<Outgoing>,
     pub yearly_bills_account_id: Option<i64>,
@@ -72,6 +75,16 @@ pub struct OutgoingsTemplate {
     pub yearly_bills_target_balance: f32,
     pub yearly_bills_total_cost: f32,
     pub yearly_bills_remaining_deficit: f32,
+}
+
+pub fn format_today_divider_label(today: chrono::NaiveDate) -> String {
+    let short_month = match today.month() {
+        1 => "Jan", 2 => "Feb", 3 => "Mar", 4 => "Apr",
+        5 => "May", 6 => "Jun", 7 => "Jul", 8 => "Aug",
+        9 => "Sep", 10 => "Oct", 11 => "Nov", 12 => "Dec",
+        _ => "",
+    };
+    format!("Today — {} {} (Day {})", today.day(), short_month, today.day())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,7 +157,9 @@ impl OutgoingViewDto {
 pub fn sort_outgoings_view_dtos(dtos: &mut [OutgoingViewDto]) {
     dtos.sort_by(|a, b| {
         match (a.is_yearly, b.is_yearly) {
-            (false, false) => a.outgoing_day.cmp(&b.outgoing_day).then(a.id.cmp(&b.id)),
+            (false, false) => a.effective_day.cmp(&b.effective_day)
+                .then(a.outgoing_day.cmp(&b.outgoing_day))
+                .then(a.id.cmp(&b.id)),
             (true, true) => {
                 let a_month = a.outgoing_month.unwrap_or(0);
                 let b_month = b.outgoing_month.unwrap_or(0);
@@ -617,6 +632,9 @@ pub async fn get_outgoings_page(
         outgoing_total,
         current_year,
         current_month_name,
+        today_day: today.day(),
+        today_month: today.month(),
+        today_label: format_today_divider_label(today),
         editing: false,
         editing_outgoing: None,
         yearly_bills_account_id,
@@ -798,6 +816,9 @@ pub async fn get_edit_outgoing_page(
         outgoing_total,
         current_year,
         current_month_name,
+        today_day: today.day(),
+        today_month: today.month(),
+        today_label: format_today_divider_label(today),
         editing,
         editing_outgoing,
         yearly_bills_account_id,
@@ -1683,5 +1704,64 @@ mod tests {
         let is_yearly_true = true;
         let yearly_due_today = !is_yearly_true && !is_paused && effective_day == today.day();
         assert!(!yearly_due_today, "Yearly bill must not be flagged by monthly due today rule");
+    }
+
+    #[test]
+    fn test_format_today_divider_label() {
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
+        assert_eq!(format_today_divider_label(date), "Today — 20 Nov (Day 20)");
+    }
+
+    #[test]
+    fn test_outgoings_template_renders_today_divider() {
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
+        let mut dto_past = make_dto(1, "Past Bill", false, None, 10);
+        dto_past.effective_day = 10;
+        let mut dto_today = make_dto(2, "Today Bill", false, None, 20);
+        dto_today.effective_day = 20;
+        dto_today.is_due_today = true;
+
+        let tmpl = OutgoingsTemplate {
+            outgoings: vec![dto_past, dto_today],
+            accounts: vec![],
+            outgoing_total: 100.0,
+            current_year: 2026,
+            current_month_name: "November".to_string(),
+            today_day: date.day(),
+            today_month: date.month(),
+            today_label: format_today_divider_label(date),
+            editing: false,
+            editing_outgoing: None,
+            yearly_bills_account_id: None,
+            yearly_bills_monthly_saving: 0.0,
+            yearly_bills_count: 0,
+            yearly_bills_target_balance: 0.0,
+            yearly_bills_total_cost: 0.0,
+            yearly_bills_remaining_deficit: 0.0,
+        };
+        let html = tmpl.render().expect("OutgoingsTemplate should render");
+        assert!(html.contains("id=\"today-divider-row\""));
+        assert!(html.contains("id=\"today-divider-card\""));
+        assert!(html.contains("data-today-day=\"20\""));
+        assert!(html.contains("Today — 20 Nov (Day 20)"));
+        assert!(html.contains("data-effective-day=\"20\""));
+    }
+
+    #[test]
+    fn test_outgoings_template_orders_divider_above_today_and_upcoming_items() {
+        let mut dto_future = make_dto(3, "Future Bill", false, None, 25);
+        dto_future.effective_day = 25;
+        let mut dto_past = make_dto(1, "Past Bill", false, None, 10);
+        dto_past.effective_day = 10;
+        let mut dto_today = make_dto(2, "Today Bill", false, None, 20);
+        dto_today.effective_day = 20;
+        dto_today.is_due_today = true;
+
+        let mut dtos = vec![dto_future, dto_past, dto_today];
+        sort_outgoings_view_dtos(&mut dtos);
+
+        assert_eq!(dtos[0].name, "Past Bill");
+        assert_eq!(dtos[1].name, "Today Bill");
+        assert_eq!(dtos[2].name, "Future Bill");
     }
 }

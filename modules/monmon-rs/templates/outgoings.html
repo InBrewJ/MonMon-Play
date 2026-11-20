@@ -122,6 +122,47 @@
             border-left: 4px solid #f59e0b !important;
             background: rgba(245, 158, 11, 0.05) !important;
         }
+        .today-divider-row,
+        .today-divider-row td {
+            background: transparent !important;
+            padding: 4px 8px !important;
+            border: none !important;
+        }
+        .today-divider-line {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            margin: 2px 0;
+        }
+        .today-divider-line::before,
+        .today-divider-line::after {
+            content: "";
+            flex: 1;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(245, 158, 11, 0.25), #f59e0b, rgba(245, 158, 11, 0.25));
+            border-radius: 2px;
+        }
+        .today-divider-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 2px 10px;
+            border-radius: 999px;
+            background: #fef3c7;
+            color: #92400e;
+            border: 1.5px solid #f59e0b;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(245, 158, 11, 0.15);
+        }
+        .today-divider-mobile {
+            margin: 6px 0 12px 0;
+            padding: 2px 0;
+        }
     </style>
 </head>
 <body>
@@ -227,6 +268,16 @@
                         {% if outgoings.is_empty() %}
                             <tr><td colspan="7" style="text-align: center; color: #64748b; padding: 2rem;">No outgoings configured.</td></tr>
                         {% else %}
+                            <tr id="today-divider-row" class="today-divider-row" data-today-day="{{ today_day }}" data-today-month="{{ today_month }}">
+                                <td colspan="7">
+                                    <div class="today-divider-line">
+                                        <span class="today-divider-badge">
+                                            <i class="fas fa-calendar-day" style="color: #d97706;"></i>
+                                            <span>{{ today_label }}</span>
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
                             {% for o in outgoings %}
                                 <tr id="outgoing-{{ o.id }}"
                                     class="outgoing-row{% if o.is_yearly && o.is_due_now %} yearly-due-this-month{% endif %}{% if o.is_due_today %} monthly-due-today{% endif %}"
@@ -236,6 +287,7 @@
                                     data-is-calculated="{% if o.is_calculated %}true{% else %}false{% endif %}"
                                     data-outgoing-month="{% if let Some(m) = o.outgoing_month %}{{ m }}{% else %}0{% endif %}"
                                     data-outgoing-day="{{ o.outgoing_day }}"
+                                    data-effective-day="{{ o.effective_day }}"
                                     data-outgoing-id="{{ o.id }}"
                                     style="{% if o.paused %}opacity: 0.75; background: rgba(245, 158, 11, 0.05);{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04);{% endif %}{% if o.is_yearly && o.is_due_now %}border-left: 3px solid #6366f1; background: rgba(99, 102, 241, 0.04);{% endif %}{% if o.is_due_today && !o.is_yearly && !o.paused %}border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.05);{% endif %}">
                                     <td class="col-name">
@@ -406,6 +458,16 @@
 
             <!-- Mobile Stacked Action Cards View -->
             <div class="mobile-cards-view" style="display: none;">
+                {% if !outgoings.is_empty() %}
+                    <div id="today-divider-card" class="today-divider-mobile" data-today-day="{{ today_day }}" data-today-month="{{ today_month }}">
+                        <div class="today-divider-line">
+                            <span class="today-divider-badge">
+                                <i class="fas fa-calendar-day" style="color: #d97706;"></i>
+                                <span>{{ today_label }}</span>
+                            </span>
+                        </div>
+                    </div>
+                {% endif %}
                 {% for o in outgoings %}
                     <div class="item-card outgoing-card{% if o.is_yearly && o.is_due_now %} yearly-due-this-month{% endif %}{% if o.is_due_today %} monthly-due-today{% endif %}" id="card-outgoing-{{ o.id }}"
                          data-is-yearly="{% if o.is_yearly %}true{% else %}false{% endif %}"
@@ -414,6 +476,7 @@
                          data-is-calculated="{% if o.is_calculated %}true{% else %}false{% endif %}"
                          data-outgoing-month="{% if let Some(m) = o.outgoing_month %}{{ m }}{% else %}0{% endif %}"
                          data-outgoing-day="{{ o.outgoing_day }}"
+                         data-effective-day="{{ o.effective_day }}"
                          data-outgoing-id="{{ o.id }}"
                          style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; {% if o.paused %}opacity: 0.8; border-left: 3px solid #f59e0b;{% endif %}{% if o.paused || (o.is_yearly && !o.is_due_now) %}display: none;{% endif %}{% if o.is_calculated %}background: rgba(99, 102, 241, 0.04); border-left: 3px solid #6366f1;{% endif %}{% if o.is_yearly && o.is_due_now %}border-left: 4px solid #6366f1; background: rgba(99, 102, 241, 0.04);{% endif %}{% if o.is_due_today && !o.is_yearly && !o.paused %}border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.05);{% endif %}">
                         <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
@@ -735,6 +798,64 @@
                 grp.style.display = 'none';
             }
         }
+        function positionTodayDividerInContainer(container, divider, itemSelector, tab) {
+            if (!container || !divider) return;
+            var todayDay = parseInt(divider.getAttribute('data-today-day'), 10) || 1;
+            var todayMonth = parseInt(divider.getAttribute('data-today-month'), 10) || 1;
+            var items = container.querySelectorAll(itemSelector);
+            var visibleItems = [];
+            items.forEach(function(el) {
+                if (el.style.display !== 'none') {
+                    visibleItems.push(el);
+                }
+            });
+            if (visibleItems.length === 0) {
+                divider.style.display = 'none';
+                return;
+            }
+            divider.style.display = '';
+            var insertBeforeEl = null;
+            for (var i = 0; i < visibleItems.length; i++) {
+                var item = visibleItems[i];
+                var isYearly = item.getAttribute('data-is-yearly') === 'true';
+                var itemMonth = parseInt(item.getAttribute('data-outgoing-month'), 10) || 0;
+                var itemDay = parseInt(item.getAttribute('data-effective-day') || item.getAttribute('data-outgoing-day'), 10) || 0;
+                if (tab === 'yearly') {
+                    if (itemMonth > todayMonth || (itemMonth === todayMonth && itemDay >= todayDay)) {
+                        insertBeforeEl = item;
+                        break;
+                    }
+                } else {
+                    if (isYearly && tab === 'all') {
+                        insertBeforeEl = item;
+                        break;
+                    }
+                    if (itemDay >= todayDay) {
+                        insertBeforeEl = item;
+                        break;
+                    }
+                }
+            }
+            if (insertBeforeEl) {
+                container.insertBefore(divider, insertBeforeEl);
+            } else {
+                container.appendChild(divider);
+            }
+        }
+        function positionTodayDividers(tab) {
+            positionTodayDividerInContainer(
+                document.querySelector('#outgoings-table tbody'),
+                document.getElementById('today-divider-row'),
+                'tr.outgoing-row',
+                tab
+            );
+            positionTodayDividerInContainer(
+                document.querySelector('.mobile-cards-view'),
+                document.getElementById('today-divider-card'),
+                '.outgoing-card',
+                tab
+            );
+        }
         function filterTab(tab) {
             document.querySelectorAll('.outgoings-tab-btn').forEach(function(btn) {
                 btn.classList.remove('active');
@@ -768,6 +889,7 @@
                     el.style.display = '';
                 }
             });
+            positionTodayDividers(tab);
         }
         document.addEventListener('DOMContentLoaded', function() {
             var urlParams = new URLSearchParams(window.location.search);

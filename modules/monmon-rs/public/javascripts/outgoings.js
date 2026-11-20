@@ -97,6 +97,10 @@
                 filterElement(currentMobileCards[j]);
             }
 
+            if (typeof window.positionTodayDividers === 'function') {
+                window.positionTodayDividers(tabName);
+            }
+
             if (emptyMsg) {
                 if (visibleCount === 0) {
                     emptyMsg.style.display = 'block';
