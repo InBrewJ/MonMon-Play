@@ -33,6 +33,8 @@ backups/
 __pycache__/
 *.pyc
 modules/legmon-rs/scripts/output/
+modules/*/prebuilt/
+
 
 
 

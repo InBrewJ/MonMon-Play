@@ -987,6 +987,25 @@ async fn get_login_page(
         .unwrap()
 }
 
+fn is_jwt_unexpired(id_token: &str) -> bool {
+    let parts: Vec<&str> = id_token.split('.').collect();
+    if parts.len() < 2 {
+        return false;
+    }
+    let Some(decoded) = base64_url_decode(parts[1]) else {
+        return false;
+    };
+    let Ok(val) = serde_json::from_slice::<serde_json::Value>(&decoded) else {
+        return false;
+    };
+    let Some(exp) = val.get("exp").and_then(|v| v.as_i64()) else {
+        return false;
+    };
+    let now_secs = chrono::Utc::now().timestamp();
+    // Require at least 5 seconds remaining so Rauthy does not reject with "Token has expired"
+    exp > now_secs + 5
+}
+
 async fn logout_handler(headers: HeaderMap) -> Response {
     let host = headers
         .get("x-forwarded-host")
@@ -1017,16 +1036,18 @@ async fn logout_handler(headers: HeaderMap) -> Response {
             })
         });
 
-    // Build the query: post_logout_redirect_uri is primary, id_token_hint is required by Rauthy
-    let mut logout_target = format!(
-        "{}?post_logout_redirect_uri={}",
-        rauthy_logout_base,
-        urlencoding::encode(post_logout)
-    );
-
-    if let Some(token) = id_token {
-        logout_target.push_str(&format!("&id_token_hint={}", urlencoding::encode(&token)));
-    }
+    // Build the query: post_logout_redirect_uri is primary.
+    // Only include id_token_hint when the JWT has not expired; otherwise Rauthy rejects the request
+    // with `{"error":"JwtToken","message":"Token has expired"}`.
+    let logout_target = match id_token.filter(|t| is_jwt_unexpired(t)) {
+        Some(token) => format!(
+            "{}?post_logout_redirect_uri={}&id_token_hint={}",
+            rauthy_logout_base,
+            urlencoding::encode(post_logout),
+            urlencoding::encode(&token)
+        ),
+        None => post_logout.to_string(),
+    };
 
     let mut response = axum::response::Redirect::to(&logout_target).into_response();
     let resp_headers = response.headers_mut();
@@ -1422,6 +1443,48 @@ mod tests {
         local_headers.insert("host", "localhost:9000".parse().unwrap());
         let local_resp = logout_handler(local_headers).await;
         assert!(local_resp.headers().get("Clear-Site-Data").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_logout_handler_skips_rauthy_when_id_token_is_expired() {
+        // Payload: {"sub":"u1","exp":1000000000} (expired in 2001)
+        let expired_jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1MSIsImV4cCI6MTAwMDAwMDAwMH0.sig";
+        let mut headers = HeaderMap::new();
+        headers.insert("host", "monmon.dryark.uk".parse().unwrap());
+        headers.insert(
+            header::COOKIE,
+            format!("id_token={}; user_id=u1", expired_jwt).parse().unwrap(),
+        );
+        let resp = logout_handler(headers).await;
+        let loc = resp
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert_eq!(
+            loc, "https://monmon.dryark.uk/",
+            "Expired id_token must redirect directly to post_logout without hitting Rauthy's JwtToken expired error"
+        );
+
+        // Payload: {"sub":"u1","exp":4102444800} (expires in 2100)
+        let future_jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1MSIsImV4cCI6NDEwMjQ0NDgwMH0.sig";
+        let mut valid_headers = HeaderMap::new();
+        valid_headers.insert("host", "monmon.dryark.uk".parse().unwrap());
+        valid_headers.insert(
+            header::COOKIE,
+            format!("id_token={}; user_id=u1", future_jwt).parse().unwrap(),
+        );
+        let valid_resp = logout_handler(valid_headers).await;
+        let valid_loc = valid_resp
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            valid_loc.starts_with("https://identity.dryark.uk/auth/v1/oidc/logout"),
+            "Unexpired id_token must redirect through Rauthy OIDC logout with id_token_hint"
+        );
+        assert!(valid_loc.contains("id_token_hint="));
     }
 
     #[tokio::test]

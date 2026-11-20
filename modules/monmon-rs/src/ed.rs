@@ -813,16 +813,49 @@ fn build_networth_system_prompt() -> &'static str {
     "You are Ed, long-range financial strategist and observer in MonMon. \
 Speak strictly in the style of Ernest Hemingway: lean, spare, direct, honest, and unadorned. \
 Short sentences. No melodrama, no emojis, no exclamation marks. \
-Face the user's total net worth, pensions, physical assets, and debts with cool clarity.\n\n\
+Face the user's total net worth, pensions, physical assets, debts, and age with cool clarity.\n\n\
+Critical UK Pension Law Rule:\n\
+- Under current UK law, private and workplace pensions are strictly locked until the Normal Minimum Pension Age of 57.\n\
+- If the user's age is under 57, NEVER tell them they can retire today based on their pension pot. They cannot touch a penny of their pension until age 57.\n\
+- To retire before age 57, their accessible liquid cash and non-pension savings alone must bridge every year of living expenses until they turn 57, while their pension compounds untouched until 57.\n\n\
 Your objective:\n\
-1. Make a rough, honest judgement on when the user can retire or achieve financial independence, using sensible rules of thumb (e.g. 4% safe withdrawal rule, compound growth of pensions, and debt drag).\n\
-2. OR evaluate how the future value and annual yield of their portfolio could pay for essential living costs, such as food and groceries.\n\
-3. Provide exactly 2-3 blunt, practical steps to accelerate their timeline.\n\n\
+1. Make a rough, honest judgement on when the user can retire or achieve financial independence, explicitly accounting for their current age, the UK age-57 pension lock, their liquid pre-57 bridge (cash & savings), the 4% safe withdrawal rule, and debt drag.\n\
+2. Evaluate how the accessible vs locked yield of their portfolio covers essential living costs, such as food and groceries.\n\
+3. Provide exactly 2-3 blunt, practical steps to strengthen their pre-57 liquid bridge, clear debt drag, and accelerate their timeline.\n\n\
 Use clean Markdown formatting with simple bold headings and bullet points."
 }
 
-fn build_networth_context_prompt(nw: &NetWorthDto) -> String {
+fn build_networth_context_prompt(nw: &NetWorthDto, user_age: Option<i32>) -> String {
     let mut sb = String::new();
+    sb.push_str("User Age & UK Pension Access Law Context:\n");
+    match user_age {
+        Some(age) if age < 57 => {
+            let years_to_57 = 57 - age;
+            let liquid_annual_4pct = nw.cash_total * 0.04;
+            let liquid_monthly_4pct = liquid_annual_4pct / 12.0;
+            sb.push_str(&format!("- User's Current Age: {} years old\n", age));
+            sb.push_str(&format!(
+                "- UK Pension Lock: {} years remaining until UK minimum pension access age of 57 (pensions are strictly inaccessible until age 57 under current UK law)\n",
+                years_to_57
+            ));
+            sb.push_str(&format!(
+                "- Immediately Accessible Liquid Bridge (Cash & Savings): £{:.2} (4% safe withdrawal on accessible cash alone: £{:.2}/year or £{:.2}/month)\n",
+                nw.cash_total, liquid_annual_4pct, liquid_monthly_4pct
+            ));
+            sb.push_str(&format!(
+                "- Locked until age 57 (Pensions): £{:.2} (cannot be drawn today; will compound for {} years until age 57)\n\n",
+                nw.pension_total, years_to_57
+            ));
+        }
+        Some(age) => {
+            sb.push_str(&format!("- User's Current Age: {} years old\n", age));
+            sb.push_str("- UK Pension Lock: Eligible to access UK pensions now (age 57+ threshold reached)\n\n");
+        }
+        None => {
+            sb.push_str("- User's Current Age: Not set in Settings (Note: Under current UK law, UK minimum pension access age is 57; pensions cannot be accessed before 57, so only liquid Cash & Savings can fund retirement before age 57)\n\n");
+        }
+    }
+
     sb.push_str("Financial Portfolio & Net Worth Snapshot:\n");
     sb.push_str(&format!("- Total Net Worth: £{:.2}\n", nw.net_worth));
     sb.push_str(&format!("- Total Assets: £{:.2}\n", nw.total_assets));
@@ -833,7 +866,7 @@ fn build_networth_context_prompt(nw: &NetWorthDto) -> String {
     sb.push_str(&format!("- Pensions & Retirement: £{:.2}\n", nw.pension_total));
     sb.push_str(&format!("- Combined Investable Portfolio: £{:.2}\n", nw.investable_portfolio));
     sb.push_str(&format!(
-        "- 4% Safe Withdrawal Rule: £{:.2}/year (£{:.2}/month)\n\n",
+        "- 4% Safe Withdrawal Rule (Combined Portfolio): £{:.2}/year (£{:.2}/month)\n\n",
         nw.annual_safe_withdrawal, nw.monthly_safe_withdrawal
     ));
 
@@ -891,11 +924,20 @@ pub async fn ed_says_networth_api(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    let user_age: Option<i32> = sqlx::query_scalar::<_, Option<i32>>(
+        "SELECT age FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1) LIMIT 1",
+    )
+    .bind(&resolved)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .flatten();
+
     let configured = is_mistral_configured();
     let force = q.force.unwrap_or(false);
 
     let system_prompt = build_networth_system_prompt();
-    let user_prompt = build_networth_context_prompt(&nw);
+    let user_prompt = build_networth_context_prompt(&nw, user_age);
     let current_fp = compute_prompt_fingerprint(system_prompt, &user_prompt);
 
     // 1. Check cache: valid if within 1 month TTL AND net worth/assets unchanged
@@ -1112,12 +1154,23 @@ mod tests {
             loan_accounts: vec![],
         };
 
-        let prompt = build_networth_context_prompt(&nw);
+        let prompt = build_networth_context_prompt(&nw, None);
         assert!(prompt.contains("Total Net Worth: £150000.00"));
         assert!(prompt.contains("Combined Investable Portfolio: £130000.00"));
-        assert!(prompt.contains("4% Safe Withdrawal Rule: £5200.00/year (£433.33/month)"));
+        assert!(prompt.contains("4% Safe Withdrawal Rule (Combined Portfolio): £5200.00/year (£433.33/month)"));
         assert!(prompt.contains("Campervan (Vehicle): £50000.00 [Solar setup]"));
         assert!(prompt.contains("Current Portfolio Food Coverage: 124% of monthly food covered"));
+        assert!(prompt.contains("UK minimum pension access age is 57"));
+
+        let prompt_under_57 = build_networth_context_prompt(&nw, Some(42));
+        assert!(prompt_under_57.contains("User's Current Age: 42"));
+        assert!(prompt_under_57.contains("15 years remaining until UK minimum pension access age of 57"));
+        assert!(prompt_under_57.contains("Locked until age 57 (Pensions): £110000.00"));
+        assert!(prompt_under_57.contains("Immediately Accessible Liquid Bridge (Cash & Savings): £20000.00"));
+
+        let prompt_over_57 = build_networth_context_prompt(&nw, Some(58));
+        assert!(prompt_over_57.contains("User's Current Age: 58"));
+        assert!(prompt_over_57.contains("Eligible to access UK pensions now (age 57+ threshold reached)"));
     }
 
     #[test]

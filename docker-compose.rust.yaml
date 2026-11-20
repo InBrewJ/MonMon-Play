@@ -60,6 +60,5 @@ services:
       - ./.env:/app/.env:ro
     network_mode: host
     depends_on:
-      - rauthy
       - legmon
     restart: always

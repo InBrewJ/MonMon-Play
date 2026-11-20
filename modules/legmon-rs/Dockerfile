@@ -1,14 +1,4 @@
-FROM rust:bookworm AS builder
-WORKDIR /build
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-RUN --mount=type=cache,id=legmon-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=legmon-cargo-git,target=/usr/local/cargo/git \
-    --mount=type=cache,id=legmon-build-target,target=/build/target \
-    cargo build --release && \
-    cp /build/target/release/legmon-rs /build/legmon-rs
-
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
@@ -19,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /build/legmon-rs /app/legmon-rs
+COPY prebuilt/legmon-rs /app/legmon-rs
 
 ENV PORT=9005 \
     RUST_LOG=info

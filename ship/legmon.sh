@@ -20,14 +20,11 @@ GREENSTREET_HOST="${1:-greenstreet@greenstreet.local}"
 REMOTE_USER="${GREENSTREET_HOST%@*}"
 REMOTE_DIR="/home/${REMOTE_USER}/app"
 
-echo -e "${BLUE}${BOLD}==> [1/4] Checking legmon-rs local compilation...${NC}"
-if command -v cargo >/dev/null 2>&1; then
-    (cd modules/legmon-rs && cargo check --quiet)
-    echo -e "${GREEN}✓ legmon-rs local check passed.${NC}"
-fi
+echo -e "${BLUE}${BOLD}==> [1/4] Cross-compiling legmon-rs for ARM64 on local machine...${NC}"
+./build-arm64.sh legmon
 
-echo -e "${BLUE}${BOLD}==> [2/4] Syncing legmon-rs source and Dockerfile to ${GREENSTREET_HOST}...${NC}"
-ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/legmon-rs"
+echo -e "${BLUE}${BOLD}==> [2/4] Syncing legmon-rs prebuilt ARM64 binary and Dockerfile to ${GREENSTREET_HOST}...${NC}"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/legmon-rs/prebuilt"
 rsync -avz --delete \
     --exclude 'target' \
     modules/legmon-rs/ \
@@ -38,12 +35,23 @@ if [[ -f .env ]]; then
     ssh "$GREENSTREET_HOST" "chmod 600 ${REMOTE_DIR}/.env"
 fi
 
-echo -e "${BLUE}${BOLD}==> [3/4] Building and updating legmon container on ${GREENSTREET_HOST}...${NC}"
+echo -e "${BLUE}${BOLD}==> [3/4] Packaging and updating legmon runtime container on ${GREENSTREET_HOST} (no Rust compile on Pi)...${NC}"
 ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml build legmon && docker compose -f docker-compose.rust.yaml up -d --no-deps --force-recreate legmon"
 
 echo -e "${BLUE}${BOLD}==> [4/4] Verifying LegMon health on port 9005...${NC}"
-sleep 2
-ssh "$GREENSTREET_HOST" "curl -sf http://127.0.0.1:9005/health || curl -sf http://127.0.0.1:9005/status"
+LEGMON_HEALTHY=false
+for _ in $(seq 1 15); do
+    if ssh "$GREENSTREET_HOST" "curl -sf http://127.0.0.1:9005/health || curl -sf http://127.0.0.1:9005/status"; then
+        LEGMON_HEALTHY=true
+        break
+    fi
+    sleep 1
+done
 echo ""
+if [ "$LEGMON_HEALTHY" != true ]; then
+    echo -e "${RED}${BOLD}ERROR: LegMon failed health check on port 9005! Container logs:${NC}" >&2
+    ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml logs --tail 30 legmon" || true
+    exit 1
+fi
 
 echo -e "${GREEN}${BOLD}🎉 LegMon Rust deployment to ${GREENSTREET_HOST} completed successfully!${NC}"

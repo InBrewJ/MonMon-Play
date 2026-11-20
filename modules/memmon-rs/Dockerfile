@@ -1,14 +1,4 @@
-FROM rust:bookworm AS builder
-WORKDIR /build
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-RUN --mount=type=cache,id=memmon-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=memmon-cargo-git,target=/usr/local/cargo/git \
-    --mount=type=cache,id=memmon-build-target,target=/build/target \
-    cargo build --release && \
-    cp /build/target/release/memmon-rs /build/memmon-rs
-
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -17,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /build/memmon-rs /app/memmon-rs
+COPY prebuilt/memmon-rs /app/memmon-rs
 
 ENV PORT=9006 \
     HOST=127.0.0.1 \

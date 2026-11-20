@@ -20,14 +20,15 @@ GREENSTREET_HOST="${1:-greenstreet@greenstreet.local}"
 REMOTE_USER="${GREENSTREET_HOST%@*}"
 REMOTE_DIR="/home/${REMOTE_USER}/app"
 
-echo -e "${BLUE}${BOLD}==> [1/4] Checking memmon-rs local compilation and unit tests...${NC}"
+echo -e "${BLUE}${BOLD}==> [1/4] Testing & cross-compiling memmon-rs for ARM64 on local machine...${NC}"
 if command -v cargo >/dev/null 2>&1; then
     (cd modules/memmon-rs && cargo test --quiet)
-    echo -e "${GREEN}✓ memmon-rs local check & tests passed.${NC}"
+    echo -e "${GREEN}✓ memmon-rs unit tests passed.${NC}"
 fi
+./build-arm64.sh memmon
 
-echo -e "${BLUE}${BOLD}==> [2/4] Syncing memmon-rs source and Dockerfile to ${GREENSTREET_HOST}...${NC}"
-ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/memmon-rs"
+echo -e "${BLUE}${BOLD}==> [2/4] Syncing memmon-rs prebuilt ARM64 binary and Dockerfile to ${GREENSTREET_HOST}...${NC}"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/memmon-rs/prebuilt"
 rsync -avz --delete \
     --exclude 'target' \
     modules/memmon-rs/ \
@@ -38,12 +39,23 @@ if [[ -f .env ]]; then
     ssh "$GREENSTREET_HOST" "chmod 600 ${REMOTE_DIR}/.env"
 fi
 
-echo -e "${BLUE}${BOLD}==> [3/4] Building and updating memmon container on ${GREENSTREET_HOST}...${NC}"
+echo -e "${BLUE}${BOLD}==> [3/4] Packaging and updating memmon runtime container on ${GREENSTREET_HOST} (no Rust compile on Pi)...${NC}"
 ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml build memmon && docker compose -f docker-compose.rust.yaml up -d --no-deps --force-recreate memmon"
 
 echo -e "${BLUE}${BOLD}==> [4/4] Verifying MemMon health on port 9006...${NC}"
-sleep 2
-ssh "$GREENSTREET_HOST" "curl -sf http://127.0.0.1:9006/health || curl -sf http://127.0.0.1:9006/status"
+MEMMON_HEALTHY=false
+for _ in $(seq 1 15); do
+    if ssh "$GREENSTREET_HOST" "curl -sf http://127.0.0.1:9006/health || curl -sf http://127.0.0.1:9006/status"; then
+        MEMMON_HEALTHY=true
+        break
+    fi
+    sleep 1
+done
 echo ""
+if [ "$MEMMON_HEALTHY" != true ]; then
+    echo -e "${RED}${BOLD}ERROR: MemMon failed health check on port 9006! Container logs:${NC}" >&2
+    ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml logs --tail 30 memmon" || true
+    exit 1
+fi
 
 echo -e "${GREEN}${BOLD}🎉 MemMon in-memory cache deployment to ${GREENSTREET_HOST} completed successfully!${NC}"

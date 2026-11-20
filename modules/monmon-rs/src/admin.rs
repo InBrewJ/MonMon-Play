@@ -116,6 +116,7 @@ pub struct SettingsTemplate {
     pub pending_users: Vec<UserAccessRow>,
     pub approved_users: Vec<UserAccessRow>,
     pub region: String,
+    pub age: Option<i32>,
     #[allow(dead_code)]
     pub bank_holidays: Vec<crate::anchoring::BankHolidayEvent>,
     pub all_bank_holidays_json: String,
@@ -136,8 +137,21 @@ pub struct WaitingListTemplate {
 
 #[derive(Deserialize)]
 pub struct SettingsForm {
-    #[allow(dead_code)]
     pub region: Option<String>,
+    pub age: Option<String>,
+}
+
+pub fn parse_age_input(raw: Option<&str>) -> Option<i32> {
+    let trimmed = raw?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let parsed: i32 = trimmed.parse().ok()?;
+    if (16..=120).contains(&parsed) {
+        Some(parsed)
+    } else {
+        None
+    }
 }
 
 pub async fn get_settings(
@@ -147,15 +161,15 @@ pub async fn get_settings(
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
 
-    let region = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT region FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1) LIMIT 1",
+    let (region, age) = sqlx::query_as::<_, (Option<String>, Option<i32>)>(
+        "SELECT region, age FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1) LIMIT 1",
     )
     .bind(&user_id)
     .fetch_optional(&state.pool)
     .await
     .unwrap_or(None)
-    .flatten()
-    .unwrap_or_else(|| "UK".to_string());
+    .map(|(r, a)| (r.unwrap_or_else(|| "UK".to_string()), a))
+    .unwrap_or_else(|| ("UK".to_string(), None));
 
     let pending_users = sqlx::query_as::<_, UserAccessRow>(
         "SELECT id, userid, username, email, status, createdat, approvedat, approvedby 
@@ -186,6 +200,7 @@ pub async fn get_settings(
         pending_users,
         approved_users,
         region,
+        age,
         bank_holidays,
         all_bank_holidays_json,
         max_year,
@@ -221,6 +236,17 @@ pub async fn post_settings(
         .execute(&state.pool)
         .await;
     }
+    if form.age.is_some() {
+        let parsed_age = parse_age_input(form.age.as_deref());
+        let _ = sqlx::query(
+            "UPDATE user_access SET age = $1, updated_at = NOW() WHERE (userid = $2 OR user_id = $2 OR username = $2)",
+        )
+        .bind(parsed_age)
+        .bind(&user_id)
+        .execute(&state.pool)
+        .await;
+    }
+    crate::ed::clear_ed_cache(&user_id);
     Redirect::to("/settings")
 }
 
@@ -329,5 +355,16 @@ mod tests {
         assert!(rendered.contains("Access Request Not Approved"));
         assert!(rendered.contains("blockeduser"));
         assert!(rendered.contains("/logout"));
+    }
+
+    #[test]
+    fn test_parse_age_input() {
+        assert_eq!(parse_age_input(Some("42")), Some(42));
+        assert_eq!(parse_age_input(Some(" 57 ")), Some(57));
+        assert_eq!(parse_age_input(Some("")), None);
+        assert_eq!(parse_age_input(Some("0")), None);
+        assert_eq!(parse_age_input(Some("-5")), None);
+        assert_eq!(parse_age_input(Some("150")), None);
+        assert_eq!(parse_age_input(None), None);
     }
 }

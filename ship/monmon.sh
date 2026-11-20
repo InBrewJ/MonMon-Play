@@ -18,30 +18,19 @@ REMOTE_DIR="/home/${REMOTE_USER}/app"
 
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
 GIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "dev")
-BUILD_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
-echo "build.commit=${GIT_COMMIT}" > modules/monmon-rs/build.properties
-echo "build.number=${GIT_COUNT}" >> modules/monmon-rs/build.properties
-echo "build.timestamp=${BUILD_TIME}" >> modules/monmon-rs/build.properties
 
-echo -e "${BLUE}${BOLD}==> [1/4] Preparing remote directories on ${GREENSTREET_HOST} (commit: ${GIT_COMMIT}, build: ${GIT_COUNT})...${NC}"
-ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/monmon-rs ${REMOTE_DIR}/modules/legmon-rs ${REMOTE_DIR}/modules/memmon-rs ${REMOTE_DIR}/modules/rauthy/bootstrap ${REMOTE_DIR}/modules/rauthy/data ${REMOTE_DIR}/public ${REMOTE_DIR}/logs"
+echo -e "${BLUE}${BOLD}==> [1/5] Cross-compiling monmon-rs for ARM64 on local machine (commit: ${GIT_COMMIT}, build: ${GIT_COUNT})...${NC}"
+./build-arm64.sh monmon
 
-echo -e "${BLUE}${BOLD}==> [2/4] Syncing source code, templates, and configs to ${GREENSTREET_HOST}...${NC}"
-# Copy monmon-rs source, templates, Dockerfile, Cargo files
+echo -e "${BLUE}${BOLD}==> [2/5] Preparing remote directories on ${GREENSTREET_HOST}...${NC}"
+ssh "$GREENSTREET_HOST" "mkdir -p ${REMOTE_DIR}/modules/monmon-rs/prebuilt ${REMOTE_DIR}/modules/legmon-rs ${REMOTE_DIR}/modules/memmon-rs ${REMOTE_DIR}/public ${REMOTE_DIR}/logs"
+
+echo -e "${BLUE}${BOLD}==> [3/5] Syncing prebuilt ARM64 binary, assets, and configs to ${GREENSTREET_HOST}...${NC}"
+# Copy monmon-rs prebuilt ARM64 binary, Dockerfile, and assets (excluding target)
 rsync -avz --delete \
     --exclude 'target' \
     modules/monmon-rs/ \
     "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/monmon-rs/"
-
-# Copy legmon-rs source, Dockerfile, Cargo files
-rsync -avz --delete \
-    --exclude 'target' \
-    modules/legmon-rs/ \
-    "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/legmon-rs/"
-
-# Copy rauthy configuration template and bootstrap templates
-scp modules/rauthy/config.toml.template "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/rauthy/"
-rsync -avz --exclude 'clients.json' --exclude 'users.json' modules/rauthy/bootstrap/ "${GREENSTREET_HOST}:${REMOTE_DIR}/modules/rauthy/bootstrap/"
 
 # Copy public static directory
 rsync -avz public/ "${GREENSTREET_HOST}:${REMOTE_DIR}/public/"
@@ -57,10 +46,10 @@ if [[ -f .env ]]; then
     ssh "$GREENSTREET_HOST" "chmod 600 ${REMOTE_DIR}/.env"
 fi
 
-echo -e "${BLUE}${BOLD}==> [3/4] Building MonMon Rust container image natively on ${GREENSTREET_HOST}...${NC}"
-ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && BUILD_COMMIT=${GIT_COMMIT} BUILD_NUMBER=${GIT_COUNT} docker compose -f docker-compose.rust.yaml build monmon"
+echo -e "${BLUE}${BOLD}==> [4/5] Packaging lightweight MonMon runtime container image on ${GREENSTREET_HOST} (no Rust compile on Pi)...${NC}"
+ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && docker compose -f docker-compose.rust.yaml build monmon"
 
-echo -e "${BLUE}${BOLD}==> [4/4] Starting Rust stack on ${GREENSTREET_HOST} via run_prod.sh...${NC}"
+echo -e "${BLUE}${BOLD}==> [5/5] Starting MonMon Rust stack on ${GREENSTREET_HOST} via run_prod.sh...${NC}"
 ssh "$GREENSTREET_HOST" "cd ${REMOTE_DIR} && ./run_prod.sh"
 
 echo -e "${GREEN}${BOLD}🎉 MonMon Rust deployment to ${GREENSTREET_HOST} completed successfully!${NC}"

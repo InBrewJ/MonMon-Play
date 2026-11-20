@@ -16,6 +16,7 @@ pub async fn run_schema_migrations(pool: &PgPool) {
         r#"UPDATE user_access SET user_id = userid WHERE user_id IS NULL AND userid IS NOT NULL"#,
         r#"ALTER TABLE user_access ADD COLUMN IF NOT EXISTS yearly_bills_account_id BIGINT REFERENCES account(id) ON DELETE SET NULL"#,
         r#"ALTER TABLE user_access ADD COLUMN IF NOT EXISTS region VARCHAR(64) DEFAULT 'UK'"#,
+        r#"ALTER TABLE user_access ADD COLUMN IF NOT EXISTS age INTEGER"#,
         r#"ALTER TABLE pending_statement ADD COLUMN IF NOT EXISTS overwritten_balances_json TEXT"#,
         // Audit: created_at, updated_at, archived_at across all tables
         r#"ALTER TABLE account ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
