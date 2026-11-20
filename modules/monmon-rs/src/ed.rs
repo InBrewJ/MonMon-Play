@@ -924,14 +924,16 @@ pub async fn ed_says_networth_api(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let user_age: Option<i32> = sqlx::query_scalar::<_, Option<i32>>(
-        "SELECT age FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1) LIMIT 1",
+    let user_age: Option<i32> = sqlx::query_as::<_, (Option<i32>, Option<i32>, Option<i32>)>(
+        "SELECT birth_month, birth_year, age FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1) LIMIT 1",
     )
     .bind(&resolved)
     .fetch_optional(&state.pool)
     .await
     .unwrap_or(None)
-    .flatten();
+    .and_then(|(bm, by, a)| {
+        crate::admin::calculate_age_from_birth_month_year(bm, by, effective_date).or(a)
+    });
 
     let configured = is_mistral_configured();
     let force = q.force.unwrap_or(false);

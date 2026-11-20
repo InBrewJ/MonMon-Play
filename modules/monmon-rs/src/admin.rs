@@ -4,6 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
 };
+use chrono::Datelike;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -116,6 +117,8 @@ pub struct SettingsTemplate {
     pub pending_users: Vec<UserAccessRow>,
     pub approved_users: Vec<UserAccessRow>,
     pub region: String,
+    pub birth_month: Option<i32>,
+    pub birth_year: Option<i32>,
     pub age: Option<i32>,
     #[allow(dead_code)]
     pub bank_holidays: Vec<crate::anchoring::BankHolidayEvent>,
@@ -139,6 +142,10 @@ pub struct WaitingListTemplate {
 pub struct SettingsForm {
     pub region: Option<String>,
     pub age: Option<String>,
+    #[serde(alias = "birthMonth")]
+    pub birth_month: Option<String>,
+    #[serde(alias = "birthYear")]
+    pub birth_year: Option<String>,
 }
 
 pub fn parse_age_input(raw: Option<&str>) -> Option<i32> {
@@ -154,22 +161,72 @@ pub fn parse_age_input(raw: Option<&str>) -> Option<i32> {
     }
 }
 
+pub fn parse_birth_month_input(raw: Option<&str>) -> Option<i32> {
+    let trimmed = raw?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let parsed: i32 = trimmed.parse().ok()?;
+    if (1..=12).contains(&parsed) {
+        Some(parsed)
+    } else {
+        None
+    }
+}
+
+pub fn parse_birth_year_input(raw: Option<&str>) -> Option<i32> {
+    let trimmed = raw?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let parsed: i32 = trimmed.parse().ok()?;
+    if (1900..=2100).contains(&parsed) {
+        Some(parsed)
+    } else {
+        None
+    }
+}
+
+pub fn calculate_age_from_birth_month_year(
+    birth_month: Option<i32>,
+    birth_year: Option<i32>,
+    today: chrono::NaiveDate,
+) -> Option<i32> {
+    let bm = birth_month?;
+    let by = birth_year?;
+    if !(1..=12).contains(&bm) || !(1900..=2100).contains(&by) {
+        return None;
+    }
+    let mut years = today.year() - by;
+    if (today.month() as i32) < bm {
+        years -= 1;
+    }
+    if (1..=120).contains(&years) {
+        Some(years)
+    } else {
+        None
+    }
+}
+
 pub async fn get_settings(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Html<String>, (StatusCode, String)> {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let (today, _) = crate::time_travel::get_effective_date(&headers);
 
-    let (region, age) = sqlx::query_as::<_, (Option<String>, Option<i32>)>(
-        "SELECT region, age FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1) LIMIT 1",
+    let (region, birth_month, birth_year, legacy_age) = sqlx::query_as::<_, (Option<String>, Option<i32>, Option<i32>, Option<i32>)>(
+        "SELECT region, birth_month, birth_year, age FROM user_access WHERE (userid = $1 OR user_id = $1 OR username = $1) LIMIT 1",
     )
     .bind(&user_id)
     .fetch_optional(&state.pool)
     .await
     .unwrap_or(None)
-    .map(|(r, a)| (r.unwrap_or_else(|| "UK".to_string()), a))
-    .unwrap_or_else(|| ("UK".to_string(), None));
+    .map(|(r, bm, by, a)| (r.unwrap_or_else(|| "UK".to_string()), bm, by, a))
+    .unwrap_or_else(|| ("UK".to_string(), None, None, None));
+
+    let age = calculate_age_from_birth_month_year(birth_month, birth_year, today).or(legacy_age);
 
     let pending_users = sqlx::query_as::<_, UserAccessRow>(
         "SELECT id, userid, username, email, status, createdat, approvedat, approvedby 
@@ -200,6 +257,8 @@ pub async fn get_settings(
         pending_users,
         approved_users,
         region,
+        birth_month,
+        birth_year,
         age,
         bank_holidays,
         all_bank_holidays_json,
@@ -222,6 +281,7 @@ pub async fn post_settings(
 ) -> Redirect {
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
+    let (today, _) = crate::time_travel::get_effective_date(&headers);
     if let Some(r) = form.region {
         let region = match r.to_uppercase().as_str() {
             "SCOTLAND" => "SCOTLAND",
@@ -236,7 +296,20 @@ pub async fn post_settings(
         .execute(&state.pool)
         .await;
     }
-    if form.age.is_some() {
+    if form.birth_month.is_some() || form.birth_year.is_some() {
+        let bm = parse_birth_month_input(form.birth_month.as_deref());
+        let by = parse_birth_year_input(form.birth_year.as_deref());
+        let computed_age = calculate_age_from_birth_month_year(bm, by, today);
+        let _ = sqlx::query(
+            "UPDATE user_access SET birth_month = $1, birth_year = $2, age = $3, updated_at = NOW() WHERE (userid = $4 OR user_id = $4 OR username = $4)",
+        )
+        .bind(bm)
+        .bind(by)
+        .bind(computed_age)
+        .bind(&user_id)
+        .execute(&state.pool)
+        .await;
+    } else if form.age.is_some() {
         let parsed_age = parse_age_input(form.age.as_deref());
         let _ = sqlx::query(
             "UPDATE user_access SET age = $1, updated_at = NOW() WHERE (userid = $2 OR user_id = $2 OR username = $2)",
@@ -366,5 +439,20 @@ mod tests {
         assert_eq!(parse_age_input(Some("-5")), None);
         assert_eq!(parse_age_input(Some("150")), None);
         assert_eq!(parse_age_input(None), None);
+    }
+
+    #[test]
+    fn test_calculate_age_from_birth_month_year() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
+        // Birthday already reached this year (May 1984 -> 42 in Nov 2026)
+        assert_eq!(calculate_age_from_birth_month_year(Some(5), Some(1984), today), Some(42));
+        // Birthday is this month (Nov 1984 -> 42 in Nov 2026)
+        assert_eq!(calculate_age_from_birth_month_year(Some(11), Some(1984), today), Some(42));
+        // Birthday not yet reached this year (Dec 1984 -> 41 in Nov 2026)
+        assert_eq!(calculate_age_from_birth_month_year(Some(12), Some(1984), today), Some(41));
+        // Missing or out of range returns None
+        assert_eq!(calculate_age_from_birth_month_year(None, Some(1984), today), None);
+        assert_eq!(calculate_age_from_birth_month_year(Some(5), None, today), None);
+        assert_eq!(calculate_age_from_birth_month_year(Some(13), Some(1984), today), None);
     }
 }

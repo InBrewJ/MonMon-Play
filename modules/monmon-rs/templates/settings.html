@@ -125,8 +125,27 @@
                         </select>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                        <label for="age" style="font-size: 0.9rem; font-weight: 600; color: var(--text-main);">Your Age (Years):</label>
-                        <input type="number" name="age" id="age" min="16" max="120" step="1" placeholder="e.g. 42" value="{% if let Some(a) = age %}{{ a }}{% endif %}" class="w3-input w3-border w3-round" style="width: 110px; padding: 6px 12px; font-size: 0.9rem; background: var(--card-bg-subtle); color: var(--text-main); border-color: var(--border-color); box-sizing: border-box;">
+                        <label for="birthMonth" style="font-size: 0.9rem; font-weight: 600; color: var(--text-main);">Birthday (Month & Year):</label>
+                        <select name="birthMonth" id="birthMonth" onchange="updateCalculatedAgeDisplay()" class="w3-select w3-border w3-round" style="width: auto; min-width: 135px; padding: 6px 10px; font-size: 0.9rem; background: var(--card-bg-subtle); color: var(--text-main); border-color: var(--border-color); box-sizing: border-box;">
+                            <option value="">-- Month --</option>
+                            <option value="1" {% if birth_month == Some(1) %}selected{% endif %}>January</option>
+                            <option value="2" {% if birth_month == Some(2) %}selected{% endif %}>February</option>
+                            <option value="3" {% if birth_month == Some(3) %}selected{% endif %}>March</option>
+                            <option value="4" {% if birth_month == Some(4) %}selected{% endif %}>April</option>
+                            <option value="5" {% if birth_month == Some(5) %}selected{% endif %}>May</option>
+                            <option value="6" {% if birth_month == Some(6) %}selected{% endif %}>June</option>
+                            <option value="7" {% if birth_month == Some(7) %}selected{% endif %}>July</option>
+                            <option value="8" {% if birth_month == Some(8) %}selected{% endif %}>August</option>
+                            <option value="9" {% if birth_month == Some(9) %}selected{% endif %}>September</option>
+                            <option value="10" {% if birth_month == Some(10) %}selected{% endif %}>October</option>
+                            <option value="11" {% if birth_month == Some(11) %}selected{% endif %}>November</option>
+                            <option value="12" {% if birth_month == Some(12) %}selected{% endif %}>December</option>
+                        </select>
+                        <input type="number" name="birthYear" id="birthYear" min="1900" max="2026" step="1" placeholder="Year (e.g. 1984)" value="{% if let Some(by) = birth_year %}{{ by }}{% endif %}" oninput="updateCalculatedAgeDisplay()" class="w3-input w3-border w3-round" style="width: 145px; padding: 6px 10px; font-size: 0.9rem; background: var(--card-bg-subtle); color: var(--text-main); border-color: var(--border-color); box-sizing: border-box;">
+                        <span id="calculated-age-badge" class="badge-pill" style="background: rgba(99, 102, 241, 0.12); color: var(--primary); border: 1px solid rgba(99, 102, 241, 0.3); font-size: 0.85rem; padding: 4px 10px; border-radius: 9999px; font-weight: 700; display: {% if age.is_some() %}inline-flex{% else %}none{% endif %}; align-items: center; gap: 5px;">
+                            <i class="fas fa-birthday-cake"></i>
+                            <span id="calculated-age-text">{% if let Some(a) = age %}Age: {{ a }}{% endif %}</span>
+                        </span>
                     </div>
                     <button type="submit" class="btn-action" style="background: var(--primary); color: #fff; padding: 7px 16px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;">
                         <i class="fas fa-save" style="margin-right: 4px;"></i> Save Preferences
@@ -352,6 +371,33 @@
                 }
             });
             renderBankHolidays(reg);
+        }
+
+        function updateCalculatedAgeDisplay() {
+            var monthEl = document.getElementById('birthMonth');
+            var yearEl = document.getElementById('birthYear');
+            var badgeEl = document.getElementById('calculated-age-badge');
+            var textEl = document.getElementById('calculated-age-text');
+            if (!monthEl || !yearEl || !badgeEl || !textEl) return;
+            var bm = parseInt(monthEl.value, 10);
+            var by = parseInt(yearEl.value, 10);
+            if (!bm || !by || bm < 1 || bm > 12 || by < 1900 || by > 2100) {
+                badgeEl.style.display = 'none';
+                return;
+            }
+            var now = new Date();
+            var curYear = now.getFullYear();
+            var curMonth = now.getMonth() + 1;
+            var years = curYear - by;
+            if (curMonth < bm) {
+                years -= 1;
+            }
+            if (years >= 1 && years <= 120) {
+                textEl.textContent = 'Age: ' + years;
+                badgeEl.style.display = 'inline-flex';
+            } else {
+                badgeEl.style.display = 'none';
+            }
         }
 
         document.addEventListener('DOMContentLoaded', function() {
