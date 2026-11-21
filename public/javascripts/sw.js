@@ -31,6 +31,7 @@ const JS_PRECACHE_NAMES = [
   'networth-chart',
   'spending-pace-chart',
   'historic-spent',
+  'balances-chart',
   'erratic-balances',
   'savingsPlan',
   'transfers',

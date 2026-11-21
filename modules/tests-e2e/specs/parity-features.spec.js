@@ -198,7 +198,9 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
     const href = await updateLink.getAttribute('href');
     expect(href).toMatch(/\/myBalances\?accountId=\d+/);
 
-    // 4. Click update link and verify balance screen loads with prefilled account
+    // 4. Click update link and verify balance screen loads with prefilled account and no JS crash
+    const pageErrors = [];
+    page.on('pageerror', err => pageErrors.push(err.message));
     await updateLink.click();
     await expect(page).toHaveURL(/\/myBalances\?accountId=\d+/);
     await expect(page.locator('text=Updating balance for')).toBeVisible();
@@ -206,6 +208,11 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
     await expect(accountSelect).toBeVisible();
     const selectedVal = await accountSelect.inputValue();
     expect(selectedVal).not.toBe('');
+    expect(pageErrors, `Unexpected JS page errors on /myBalances?accountId=${selectedVal}`).toEqual([]);
+
+    // 5. Verify chart filter focuses on the selected account
+    const checkedIds = await page.locator('.account-filter-chk:checked').evaluateAll(els => els.map(el => el.value));
+    expect(checkedIds).toEqual([selectedVal]);
   });
 
   test('9. /myBalances Parity: Interactive Chart Canvas, Account Multiselect Filters, Sign Toggle & CRUD', async ({ page, context }) => {
@@ -258,6 +265,68 @@ test.describe('Rust Parity Features: Nav Crumb, Auth Redirect, Passkeys, Histori
     const deleteBtn = page.locator('[data-method="DELETE"][data-action*="/balance/"][data-action*="/delete"]:visible').first();
     await deleteBtn.click();
     await expect(page).toHaveURL(/\/myBalances/);
+  });
+
+  test('9b. /myBalances Selected Account Graph: ?accountId= and #account dropdown show that account on the graph', async ({ page, context }) => {
+    await context.addCookies(AUTH_COOKIES);
+    const pageErrors = [];
+    page.on('pageerror', err => pageErrors.push(err.message));
+
+    await page.goto('/myBalances', { waitUntil: 'networkidle' });
+
+    // Pick an account present in #account that has at least one recorded balance in window.rawBalances
+    const targetAcc = await page.evaluate(() => {
+      const optionIds = new Set(Array.from(document.querySelectorAll('#account option')).map(o => String(o.value)));
+      const raw = window.rawBalances || [];
+      const found = raw.find(b => optionIds.has(String(b.accountId)));
+      return found ? { id: String(found.accountId), name: String(found.accountName) } : null;
+    });
+    expect(targetAcc, 'Expected at least one seeded account with balance history').not.toBeNull();
+
+    // 1. Direct navigation to /myBalances?accountId=<id> shows that account on the graph
+    await page.goto(`/myBalances?accountId=${targetAcc.id}`, { waitUntil: 'networkidle' });
+    expect(pageErrors).toEqual([]);
+    await expect(page.locator('#account')).toHaveValue(targetAcc.id);
+    const checkedOnQuery = await page.locator('.account-filter-chk:checked').evaluateAll(els => els.map(el => el.value));
+    expect(checkedOnQuery).toEqual([targetAcc.id]);
+    await expect(page.locator('#multiselect-label')).toHaveText(targetAcc.name);
+    await expect(page.locator('#empty-chart-msg')).toBeHidden();
+    await expect(page.locator('#chart-legend-accounts')).toContainText(targetAcc.name);
+
+    const hasPixelsOnQuery = await page.evaluate(() => {
+      const c = document.getElementById('balance-chart');
+      const data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 0) return true;
+      }
+      return false;
+    });
+    expect(hasPixelsOnQuery).toBe(true);
+
+    // 2. Navigating to /myBalances and selecting an account in #account switches the graph to that account
+    await page.goto('/myBalances', { waitUntil: 'networkidle' });
+    const otherAcc = await page.evaluate((currentId) => {
+      const opts = Array.from(document.querySelectorAll('#account option')).map(o => String(o.value));
+      const raw = window.rawBalances || [];
+      const otherWithBal = raw.find(b => opts.includes(String(b.accountId)) && String(b.accountId) !== String(currentId));
+      if (otherWithBal) return { id: String(otherWithBal.accountId), name: String(otherWithBal.accountName) };
+      const firstVal = document.getElementById('account')?.value;
+      const altOpt = opts.find(v => v !== firstVal);
+      return altOpt ? { id: altOpt, name: null } : null;
+    }, targetAcc.id);
+
+    // First select a different option if targetAcc is already the initial dropdown value, then select targetAcc
+    if (otherAcc && (await page.locator('#account').inputValue()) === targetAcc.id) {
+      await page.selectOption('#account', otherAcc.id);
+    }
+    await page.selectOption('#account', targetAcc.id);
+
+    const checkedOnSelect = await page.locator('.account-filter-chk:checked').evaluateAll(els => els.map(el => el.value));
+    expect(checkedOnSelect).toEqual([targetAcc.id]);
+    await expect(page.locator('#multiselect-label')).toHaveText(targetAcc.name);
+    await expect(page.locator('#empty-chart-msg')).toBeHidden();
+    await expect(page.locator('#chart-legend-accounts')).toContainText(targetAcc.name);
+    expect(pageErrors).toEqual([]);
   });
 
   test('10. Passkey WebAuthn: options allow cross-platform password managers (BitWarden/1Password)', async ({ page, request, context }) => {
