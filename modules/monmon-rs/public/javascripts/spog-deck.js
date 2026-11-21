@@ -5,6 +5,9 @@
     if (window.__monmonDeckInitialized) return;
     window.__monmonDeckInitialized = true;
 
+    var lastMetricsKey = '';
+    var lastViewportWidth = window.innerWidth;
+
     // Dynamically calculate the navigation metrics across mobile viewports
     function getDynamicNavMetrics() {
         var ticker = document.getElementById('ticker');
@@ -30,6 +33,10 @@
 
     function updateNavCssVariables() {
         var m = getDynamicNavMetrics();
+        var key = m.tickerHeight + ':' + m.headerHeight + ':' + m.mainNavHeight;
+        if (key === lastMetricsKey) return;
+        lastMetricsKey = key;
+
         var root = document.documentElement;
         root.style.setProperty('--ticker-height', m.tickerHeight + 'px');
         root.style.setProperty('--header-height', m.headerHeight + 'px');
@@ -67,10 +74,47 @@
         }
 
         var currentActiveCard = null;
+        var lastSyncedCard = null;
+        var lastSyncedHeight = 0;
         var isClickScrolling = false;
         var clickScrollTimeout = null;
         var isTouchActive = false;
+        var touchStartScrollLeft = 0;
+        var lastObservedScrollLeft = grid.scrollLeft || 0;
+        var didScrollHorizontally = false;
         var scrollDebounceTimeout = null;
+
+        // Scroll ONLY the horizontal pill strip — NEVER call pill.scrollIntoView(),
+        // which cancels native vertical momentum scrolling on iOS Safari.
+        function scrollPillIntoNav(pill) {
+            if (!nav || !pill || window.innerWidth > 768) return;
+            var navRect = nav.getBoundingClientRect();
+            var pillRect = pill.getBoundingClientRect();
+            var targetLeft = nav.scrollLeft + (pillRect.left - navRect.left) - (nav.clientWidth - pillRect.width) / 2;
+            var maxScroll = Math.max(0, nav.scrollWidth - nav.clientWidth);
+            var clamped = Math.max(0, Math.min(maxScroll, targetLeft));
+            if (Math.abs(nav.scrollLeft - clamped) > 2) {
+                if (typeof nav.scrollTo === 'function') {
+                    nav.scrollTo({ left: clamped, behavior: 'smooth' });
+                } else {
+                    nav.scrollLeft = clamped;
+                }
+            }
+        }
+
+        // Scroll ONLY the horizontal deck grid — NEVER call card.scrollIntoView(),
+        // which can fight vertical scrolling on iOS Safari.
+        function scrollCardIntoGrid(targetEl, behavior) {
+            if (!grid || !targetEl) return;
+            var gridRect = grid.getBoundingClientRect();
+            var cardRect = targetEl.getBoundingClientRect();
+            var targetLeft = Math.max(0, grid.scrollLeft + (cardRect.left - gridRect.left));
+            if (typeof grid.scrollTo === 'function') {
+                grid.scrollTo({ left: targetLeft, behavior: behavior || 'smooth' });
+            } else {
+                grid.scrollLeft = targetLeft;
+            }
+        }
 
         // Snap window scroll up to the top of the view if scrolled down into content,
         // dynamically taking into account the dynamic height of sticky nav elements
@@ -89,6 +133,8 @@
 
         // Clean up mobile-specific height and overflow overrides on desktop
         function clearMobileStyles() {
+            lastSyncedCard = null;
+            lastSyncedHeight = 0;
             cards.forEach(function(card) {
                 card.style.maxHeight = '';
                 card.style.overflow = '';
@@ -98,28 +144,41 @@
 
         // Dynamically adjust inactive card heights so the grid viewport height
         // is strictly determined by the active card's content, avoiding extra empty space
-        function syncCardHeights(activeCard) {
+        function syncCardHeights(activeCard, force) {
             if (!activeCard || window.innerWidth > 768) {
                 clearMobileStyles();
                 return;
             }
 
             // 1. Ensure active card is unconstrained so its full natural height can be measured
-            activeCard.classList.remove('deck-card-inactive');
-            activeCard.classList.add('deck-card-active');
-            activeCard.style.maxHeight = '';
-            activeCard.style.overflow = '';
+            if (activeCard.classList.contains('deck-card-inactive') || !activeCard.classList.contains('deck-card-active')) {
+                activeCard.classList.remove('deck-card-inactive');
+                activeCard.classList.add('deck-card-active');
+            }
+            if (activeCard.style.maxHeight !== '') activeCard.style.maxHeight = '';
+            if (activeCard.style.overflow !== '') activeCard.style.overflow = '';
 
             var activeHeight = activeCard.offsetHeight;
             if (!activeHeight || activeHeight <= 0) return;
 
+            if (!force && activeCard === lastSyncedCard && activeHeight === lastSyncedHeight) {
+                return;
+            }
+            lastSyncedCard = activeCard;
+            lastSyncedHeight = activeHeight;
+
             // 2. Clamp inactive cards to activeHeight so they cannot push down grid/page height
+            var maxHeightPx = activeHeight + 'px';
             cards.forEach(function(card) {
                 if (card !== activeCard) {
                     card.classList.remove('deck-card-active');
                     card.classList.add('deck-card-inactive');
-                    card.style.maxHeight = activeHeight + 'px';
-                    card.style.overflow = 'hidden';
+                    if (card.style.maxHeight !== maxHeightPx) {
+                        card.style.maxHeight = maxHeightPx;
+                    }
+                    if (card.style.overflow !== 'hidden') {
+                        card.style.overflow = 'hidden';
+                    }
                 }
             });
         }
@@ -136,7 +195,7 @@
                 pill.classList.toggle('active', isMatch);
                 pill.setAttribute('aria-selected', isMatch ? 'true' : 'false');
                 if (isMatch && scrollNavPill && window.innerWidth <= 768) {
-                    pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                    scrollPillIntoNav(pill);
                 }
             });
         }
@@ -148,8 +207,10 @@
             var isChange = currentActiveCard !== targetCard;
             currentActiveCard = targetCard;
 
-            updatePillVisuals(targetCard, scrollNavPill);
-            syncCardHeights(targetCard);
+            updatePillVisuals(targetCard, isChange && scrollNavPill);
+            if (isChange || lastSyncedCard !== targetCard) {
+                syncCardHeights(targetCard, true);
+            }
 
             if (isChange && snapTop) {
                 snapToTopIfNeeded();
@@ -165,11 +226,12 @@
                 if (targetEl) {
                     isClickScrolling = true;
                     setActiveCard(targetEl, true, true);
-                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+                    scrollCardIntoGrid(targetEl, 'smooth');
 
                     clearTimeout(clickScrollTimeout);
                     clickScrollTimeout = setTimeout(function() {
                         isClickScrolling = false;
+                        lastObservedScrollLeft = grid.scrollLeft || 0;
                     }, 500);
                 }
             });
@@ -209,36 +271,47 @@
         // When swipe scroll completes and settles: finalize card activation, sync height, and snap scroll up if needed
         function onScrollSettled() {
             if (isClickScrolling) return;
+            didScrollHorizontally = false;
+            lastObservedScrollLeft = grid.scrollLeft || 0;
             var closest = getClosestCard();
             if (closest) {
                 setActiveCard(closest, true, true);
             }
         }
 
-        // Touch tracking to distinguish mid-drag from settling
+        // Touch tracking to distinguish pure vertical scrolling from horizontal deck swipes.
+        // Pure vertical touches MUST NOT schedule onScrollSettled() or touch layout/scroll mid-momentum.
         grid.addEventListener('touchstart', function() {
             isTouchActive = true;
+            touchStartScrollLeft = grid.scrollLeft || 0;
+            didScrollHorizontally = false;
         }, { passive: true });
 
-        grid.addEventListener('touchend', function() {
+        function handleTouchRelease() {
             isTouchActive = false;
+            var movedHorizontally = didScrollHorizontally || Math.abs((grid.scrollLeft || 0) - touchStartScrollLeft) > 1;
+            if (!movedHorizontally) {
+                return;
+            }
             clearTimeout(scrollDebounceTimeout);
             scrollDebounceTimeout = setTimeout(function() {
                 onScrollSettled();
             }, 100);
-        }, { passive: true });
+        }
 
-        grid.addEventListener('touchcancel', function() {
-            isTouchActive = false;
-            clearTimeout(scrollDebounceTimeout);
-            scrollDebounceTimeout = setTimeout(function() {
-                onScrollSettled();
-            }, 100);
-        }, { passive: true });
+        grid.addEventListener('touchend', handleTouchRelease, { passive: true });
+        grid.addEventListener('touchcancel', handleTouchRelease, { passive: true });
 
-        // Scroll listener with RAF throttling for responsive pill progress
+        // Scroll listener with RAF throttling for responsive pill progress (horizontal scroll only)
         var ticking = false;
         grid.addEventListener('scroll', function() {
+            var currentLeft = grid.scrollLeft || 0;
+            if (Math.abs(currentLeft - lastObservedScrollLeft) < 0.5) {
+                return;
+            }
+            lastObservedScrollLeft = currentLeft;
+            didScrollHorizontally = true;
+
             if (!ticking) {
                 window.requestAnimationFrame(function() {
                     onScrollProgress();
@@ -249,7 +322,7 @@
 
             clearTimeout(scrollDebounceTimeout);
             scrollDebounceTimeout = setTimeout(function() {
-                if (!isTouchActive) {
+                if (!isTouchActive && didScrollHorizontally) {
                     onScrollSettled();
                 }
             }, 140);
@@ -257,18 +330,24 @@
 
         if ('onscrollend' in window) {
             grid.addEventListener('scrollend', function() {
-                if (!isTouchActive) {
+                if (!isTouchActive && didScrollHorizontally) {
                     onScrollSettled();
                 }
             });
         }
 
-        // Responsive resize and content change handling
+        // Responsive resize: ignore vertical-only height changes caused by iOS Safari
+        // URL/toolbar collapse & expand during scrolling (only react when width changes).
         window.addEventListener('resize', function() {
+            var newWidth = window.innerWidth;
+            if (newWidth === lastViewportWidth) {
+                return;
+            }
+            lastViewportWidth = newWidth;
             updateNavCssVariables();
-            if (window.innerWidth <= 768) {
+            if (newWidth <= 768) {
                 if (currentActiveCard) {
-                    syncCardHeights(currentActiveCard);
+                    syncCardHeights(currentActiveCard, true);
                 }
             } else {
                 clearMobileStyles();
@@ -278,14 +357,22 @@
         window.addEventListener('load', function() {
             updateNavCssVariables();
             if (currentActiveCard && window.innerWidth <= 768) {
-                syncCardHeights(currentActiveCard);
+                syncCardHeights(currentActiveCard, false);
             }
         });
 
         if ('ResizeObserver' in window) {
-            var ro = new ResizeObserver(function() {
-                if (window.innerWidth <= 768 && currentActiveCard) {
-                    syncCardHeights(currentActiveCard);
+            var ro = new ResizeObserver(function(entries) {
+                if (window.innerWidth > 768 || !currentActiveCard) return;
+                var activeChanged = false;
+                for (var i = 0; i < entries.length; i++) {
+                    if (entries[i].target === currentActiveCard) {
+                        activeChanged = true;
+                        break;
+                    }
+                }
+                if (activeChanged) {
+                    syncCardHeights(currentActiveCard, false);
                 }
             });
             cards.forEach(function(card) {
@@ -314,7 +401,8 @@
             setActiveCard(initialCard, false, false);
             if (initialCard !== cards[0] && hash) {
                 setTimeout(function() {
-                    initialCard.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'start' });
+                    scrollCardIntoGrid(initialCard, 'auto');
+                    lastObservedScrollLeft = grid.scrollLeft || 0;
                 }, 50);
             }
         }

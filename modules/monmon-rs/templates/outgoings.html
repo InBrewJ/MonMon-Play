@@ -432,7 +432,7 @@
                                                 <i class="fas fa-cog"></i> Configure
                                             </button>
                                         {% else %}
-                                            <a href="/editOutgoing/{{ o.id }}#outgoing-modal" class="btn-action btn-edit" title="Edit" style="margin-right: 8px; color: var(--primary); text-decoration: none;">
+                                            <a href="/editOutgoing/{{ o.id }}" data-base-href="/editOutgoing/{{ o.id }}" class="btn-action btn-edit" title="Edit" style="margin-right: 8px; color: var(--primary); text-decoration: none;">
                                                 <i class="fas fa-pen"></i>
                                             </a>
                                             <button type="button" data-method="DELETE" data-action="/binOutgoing/{{ o.id }}" data-confirm="Are you sure you want to delete this outgoing?" class="btn-action btn-delete" title="Delete outgoing" style="margin-right: 8px; color: var(--danger, #ef4444); background: none; border: none; padding: 0; cursor: pointer;">
@@ -635,7 +635,7 @@
                                     <i class="fas fa-cog"></i> Configure
                                 </button>
                             {% else %}
-                                <a href="/editOutgoing/{{ o.id }}#outgoing-modal" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-pen"></i> Edit</a>
+                                <a href="/editOutgoing/{{ o.id }}" data-base-href="/editOutgoing/{{ o.id }}" class="btn-action btn-edit" style="padding: 4px 12px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"><i class="fas fa-pen"></i> Edit</a>
                                 <button type="button" data-method="DELETE" data-action="/binOutgoing/{{ o.id }}" data-confirm="Are you sure you want to delete this outgoing?" class="btn-action btn-delete" style="padding: 4px 12px; background: var(--danger-light, rgba(239, 68, 68, 0.15)); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--danger, #ef4444); border-radius: 4px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i class="fas fa-trash"></i> Delete</button>
                                 {% if o.paused %}
                                     <button type="button" data-method="PUT" data-action="/unpauseOutgoing/{{ o.id }}" class="btn-action" style="padding: 4px 12px; background: #dcfce7; color: #166534; border: none; border-radius: 4px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
@@ -663,6 +663,7 @@
                 {% if editing %}Amend Outgoing{% else %}Add New Outgoing{% endif %}
             </div>
             <form id="outgoing-modal-form" method="POST" action="{% if let Some(o) = editing_outgoing %}/updateOutgoing/{{ o.id }}{% else %}/outgoing{% endif %}">
+                <input type="hidden" name="returnTab" id="outgoing-return-tab" value="{{ return_tab }}">
                 <div style="margin-bottom: 0.75rem;">
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Outgoing Name</label>
                     <input id="outgoing-name" name="name" type="text" required value="{% if let Some(o) = editing_outgoing %}{{ o.name }}{% endif %}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
@@ -751,6 +752,7 @@
                 Pause <b id="pause-outgoing-name">Outgoing</b> (<span id="pause-outgoing-cost">£0.00</span>)?
             </div>
             <form id="pause-outgoing-form" method="POST" action="">
+                <input type="hidden" name="returnTab" id="pause-return-tab" value="{{ return_tab }}">
                 <div style="margin-bottom: 1rem;">
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Reason for pausing *</label>
                     <input id="pause-reason-input" name="reason" type="text" placeholder="e.g. Free trial, holiday pause" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main); margin-top: 4px;">
@@ -767,12 +769,68 @@
     {% include "nav_scripts.html" %}
 
     <script>
+        var OUTGOINGS_TAB_TO_HASH = {
+            active: 'monthly',
+            monthly: 'monthly',
+            yearly: 'yearly',
+            paused: 'paused',
+            all: 'all'
+        };
+        var OUTGOINGS_HASH_TO_TAB = {
+            monthly: 'active',
+            active: 'active',
+            yearly: 'yearly',
+            paused: 'paused',
+            all: 'all'
+        };
+        var currentOutgoingsTab = 'active';
+
+        function normalizeOutgoingsTab(raw) {
+            if (!raw) return null;
+            var key = String(raw).replace(/^#/, '').trim().toLowerCase();
+            return OUTGOINGS_HASH_TO_TAB[key] || null;
+        }
+
+        function outgoingsTabToHash(tab) {
+            return OUTGOINGS_TAB_TO_HASH[tab] || 'monthly';
+        }
+
+        function syncTabLinksAndForms(tab) {
+            var hash = outgoingsTabToHash(tab);
+            var outgoingReturnTab = document.getElementById('outgoing-return-tab');
+            if (outgoingReturnTab) {
+                outgoingReturnTab.value = hash;
+            }
+            var pauseReturnTab = document.getElementById('pause-return-tab');
+            if (pauseReturnTab) {
+                pauseReturnTab.value = hash;
+            }
+            document.querySelectorAll('a.btn-edit[data-base-href]').forEach(function(link) {
+                var baseHref = link.getAttribute('data-base-href');
+                if (baseHref) {
+                    link.setAttribute('href', baseHref + '?tab=' + encodeURIComponent(hash) + '#' + hash);
+                }
+            });
+        }
+
+        function resolveInitialOutgoingsTab() {
+            var fromHash = normalizeOutgoingsTab(window.location.hash);
+            if (fromHash) return fromHash;
+            var urlParams = new URLSearchParams(window.location.search);
+            var fromQuery = normalizeOutgoingsTab(urlParams.get('tab'));
+            if (fromQuery) return fromQuery;
+            var hiddenInput = document.getElementById('outgoing-return-tab');
+            var fromHidden = hiddenInput ? normalizeOutgoingsTab(hiddenInput.value) : null;
+            return fromHidden || 'active';
+        }
+
         function openOutgoingModal() {
+            syncTabLinksAndForms(currentOutgoingsTab);
             document.getElementById('outgoing-modal').style.display = 'flex';
         }
         function closeOutgoingModal() {
             {% if editing %}
-                window.location.href = '/myOutgoings';
+                window.location.href = '/myOutgoings#' + outgoingsTabToHash(currentOutgoingsTab);
             {% else %}
                 document.getElementById('outgoing-modal').style.display = 'none';
             {% endif %}
@@ -784,6 +842,7 @@
             document.getElementById('pause-outgoing-name').textContent = name;
             document.getElementById('pause-outgoing-cost').textContent = '£' + cost;
             document.getElementById('pause-outgoing-form').action = '/pauseOutgoing/' + id;
+            syncTabLinksAndForms(currentOutgoingsTab);
             document.getElementById('pause-outgoing-modal').style.display = 'flex';
         }
         function closePauseModal() {
@@ -856,13 +915,17 @@
                 tab
             );
         }
-        function filterTab(tab) {
+        function filterTab(tab, options) {
+            var normalized = normalizeOutgoingsTab(tab) || 'active';
+            currentOutgoingsTab = normalized;
+            var hash = outgoingsTabToHash(normalized);
+
             document.querySelectorAll('.outgoings-tab-btn').forEach(function(btn) {
                 btn.classList.remove('active');
                 btn.style.borderBottom = 'none';
                 btn.style.color = 'var(--text-muted)';
                 btn.style.fontWeight = '500';
-                if (btn.getAttribute('data-tab') === tab) {
+                if (btn.getAttribute('data-tab') === normalized) {
                     btn.classList.add('active');
                     btn.style.borderBottom = '2px solid var(--primary)';
                     btn.style.color = 'var(--primary)';
@@ -871,7 +934,7 @@
             });
             var configPanel = document.getElementById('yearly-bills-config-panel');
             if (configPanel) {
-                configPanel.style.display = (tab === 'yearly') ? 'block' : 'none';
+                configPanel.style.display = (normalized === 'yearly') ? 'block' : 'none';
             }
             var rows = document.querySelectorAll('tr[data-is-yearly], .item-card[data-is-yearly]');
             rows.forEach(function(el) {
@@ -879,26 +942,41 @@
                 var isPaused = el.getAttribute('data-is-paused') === 'true';
                 var isDueNow = el.getAttribute('data-is-due-now') === 'true';
                 var isCalculated = el.getAttribute('data-is-calculated') === 'true';
-                if (tab === 'active') {
+                if (normalized === 'active') {
                     el.style.display = (!isPaused && (!isYearly || isDueNow || isCalculated)) ? '' : 'none';
-                } else if (tab === 'yearly') {
+                } else if (normalized === 'yearly') {
                     el.style.display = (isYearly && !isCalculated) ? '' : 'none';
-                } else if (tab === 'paused') {
+                } else if (normalized === 'paused') {
                     el.style.display = (isPaused && !isCalculated) ? '' : 'none';
                 } else {
                     el.style.display = '';
                 }
             });
-            positionTodayDividers(tab);
+            positionTodayDividers(normalized);
+            syncTabLinksAndForms(normalized);
+
+            var shouldUpdateHash = !options || options.updateHash !== false;
+            if (shouldUpdateHash && typeof history !== 'undefined' && typeof history.replaceState === 'function') {
+                var params = new URLSearchParams(window.location.search);
+                if (window.location.pathname === '/myOutgoings') {
+                    params.delete('tab');
+                }
+                var searchStr = params.toString();
+                var nextUrl = window.location.pathname + (searchStr ? '?' + searchStr : '') + '#' + hash;
+                if (window.location.pathname + window.location.search + window.location.hash !== nextUrl) {
+                    history.replaceState(null, '', nextUrl);
+                }
+            }
         }
         document.addEventListener('DOMContentLoaded', function() {
-            var urlParams = new URLSearchParams(window.location.search);
-            var tabParam = urlParams.get('tab');
-            if (tabParam === 'yearly' || tabParam === 'paused' || tabParam === 'all') {
-                filterTab(tabParam);
-            } else {
-                filterTab('active');
-            }
+            filterTab(resolveInitialOutgoingsTab(), { updateHash: true });
+
+            window.addEventListener('hashchange', function() {
+                var nextTab = normalizeOutgoingsTab(window.location.hash);
+                if (nextTab && nextTab !== currentOutgoingsTab) {
+                    filterTab(nextTab, { updateHash: false });
+                }
+            });
 
             document.addEventListener('click', function(e) {
                 var trigger = e.target.closest('.yearly-tooltip-wrap');

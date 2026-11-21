@@ -119,41 +119,50 @@
             }
         }
 
+        var TAB_TO_HASH = { active: 'monthly', monthly: 'monthly', yearly: 'yearly', paused: 'paused', all: 'all' };
+        var HASH_TO_TAB = { monthly: 'active', active: 'active', yearly: 'yearly', paused: 'paused', all: 'all' };
+
+        function normalizeTab(raw) {
+            if (!raw) return null;
+            return HASH_TO_TAB[String(raw).replace(/^#/, '').trim().toLowerCase()] || null;
+        }
+
+        function activateTab(tab, updateHash) {
+            var normalized = normalizeTab(tab) || 'active';
+            var hash = TAB_TO_HASH[normalized] || 'monthly';
+            tabBtns.forEach(function (b) {
+                var isMatch = b.getAttribute('data-tab') === normalized;
+                b.classList.toggle('active', isMatch);
+                b.style.borderBottom = isMatch ? '2px solid var(--primary)' : 'none';
+                b.style.fontWeight = isMatch ? '700' : '500';
+                b.style.color = isMatch ? 'var(--primary)' : 'var(--text-muted)';
+            });
+            applyTabFilter(normalized);
+            if (updateHash !== false && typeof history !== 'undefined' && typeof history.replaceState === 'function') {
+                var params = new URLSearchParams(window.location.search);
+                params.delete('tab');
+                var searchStr = params.toString();
+                history.replaceState(null, '', window.location.pathname + (searchStr ? '?' + searchStr : '') + '#' + hash);
+            }
+        }
+
         tabBtns.forEach(function (btn) {
             btn.addEventListener('click', function () {
-                tabBtns.forEach(function (b) {
-                    b.classList.remove('active');
-                    b.style.borderBottom = 'none';
-                    b.style.fontWeight = '500';
-                    b.style.color = 'var(--text-muted)';
-                });
-                btn.classList.add('active');
-                btn.style.borderBottom = '2px solid var(--primary)';
-                btn.style.fontWeight = '700';
-                btn.style.color = 'var(--primary)';
-
-                var tab = btn.getAttribute('data-tab');
-                applyTabFilter(tab);
+                activateTab(btn.getAttribute('data-tab'), true);
             });
         });
 
-        // Apply initial filter (checking URL ?tab= parameter or defaulting to 'active')
+        // Apply initial filter (checking URL #hash or ?tab= parameter, defaulting to 'active')
         var urlParams = new URLSearchParams(window.location.search);
-        var initialTab = urlParams.get('tab') || 'active';
-        var initialBtn = document.querySelector('.outgoings-tab-btn[data-tab="' + initialTab + '"]');
-        if (initialBtn) {
-            tabBtns.forEach(function (b) {
-                b.classList.remove('active');
-                b.style.borderBottom = 'none';
-                b.style.fontWeight = '500';
-                b.style.color = 'var(--text-muted)';
-            });
-            initialBtn.classList.add('active');
-            initialBtn.style.borderBottom = '2px solid var(--primary)';
-            initialBtn.style.fontWeight = '700';
-            initialBtn.style.color = 'var(--primary)';
-        }
-        applyTabFilter(initialTab);
+        var initialTab = normalizeTab(window.location.hash) || normalizeTab(urlParams.get('tab')) || 'active';
+        activateTab(initialTab, true);
+
+        window.addEventListener('hashchange', function () {
+            var fromHash = normalizeTab(window.location.hash);
+            if (fromHash) {
+                activateTab(fromHash, false);
+            }
+        });
 
         // Form frequency toggle (Monthly vs Yearly)
         var freqSelect = document.getElementById('outgoing-frequency');

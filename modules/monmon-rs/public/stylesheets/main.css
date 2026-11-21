@@ -2104,11 +2104,13 @@ body.modal-scroll-locked {
   .spog-layout-grid {
     display: flex !important;
     overflow-x: auto;
+    overflow-y: hidden;
     align-items: flex-start !important;
     scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
     gap: 16px;
+    padding-top: 2px;
     padding-bottom: 1.5rem;
     width: 100%;
     box-sizing: border-box;
@@ -2127,7 +2129,7 @@ body.modal-scroll-locked {
     align-self: flex-start !important;
     height: auto !important;
     min-height: calc(100vh - var(--total-nav-height, 120px) - 60px);
-    min-height: calc(100dvh - var(--total-nav-height, 120px) - 60px);
+    min-height: calc(100svh - var(--total-nav-height, 120px) - 60px);
     scroll-snap-align: start;
     scroll-snap-stop: always;
     box-sizing: border-box;

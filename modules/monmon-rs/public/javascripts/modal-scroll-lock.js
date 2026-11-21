@@ -82,6 +82,24 @@
         return null;
     }
 
+    var listenersAttached = false;
+
+    function attachScrollListeners() {
+        if (listenersAttached) return;
+        listenersAttached = true;
+        window.addEventListener('wheel', onWheel, { passive: false, capture: true });
+        window.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
+        window.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
+    }
+
+    function detachScrollListeners() {
+        if (!listenersAttached) return;
+        listenersAttached = false;
+        window.removeEventListener('wheel', onWheel, { capture: true });
+        window.removeEventListener('touchstart', onTouchStart, { capture: true });
+        window.removeEventListener('touchmove', onTouchMove, { capture: true });
+    }
+
     function lockScroll() {
         if (isLocked) return;
         isLocked = true;
@@ -95,12 +113,14 @@
         if (scrollbarWidth > 0) {
             document.body.style.paddingRight = scrollbarWidth + 'px';
         }
+        attachScrollListeners();
     }
 
     function unlockScroll() {
         if (!isLocked) return;
         isLocked = false;
 
+        detachScrollListeners();
         document.documentElement.classList.remove('modal-scroll-locked');
         document.body.classList.remove('modal-scroll-locked');
         document.body.style.paddingRight = '';
@@ -233,10 +253,5 @@
     document.addEventListener('DOMContentLoaded', function () {
         setupObserver();
         syncLockState();
-
-        // Non-passive wheel and touch listeners with capture to intercept boundary events
-        window.addEventListener('wheel', onWheel, { passive: false, capture: true });
-        window.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
-        window.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
     });
 })();

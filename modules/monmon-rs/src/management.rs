@@ -69,12 +69,37 @@ pub struct OutgoingsTemplate {
     pub today_label: String,
     pub editing: bool,
     pub editing_outgoing: Option<Outgoing>,
+    pub return_tab: String,
     pub yearly_bills_account_id: Option<i64>,
     pub yearly_bills_monthly_saving: f32,
     pub yearly_bills_count: usize,
     pub yearly_bills_target_balance: f32,
     pub yearly_bills_total_cost: f32,
     pub yearly_bills_remaining_deficit: f32,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct OutgoingsQuery {
+    #[serde(default)]
+    pub tab: Option<String>,
+}
+
+pub fn normalize_outgoings_tab(raw: Option<&str>) -> Option<&'static str> {
+    let cleaned = raw?.trim().trim_start_matches('#').to_ascii_lowercase();
+    match cleaned.as_str() {
+        "monthly" | "active" => Some("monthly"),
+        "yearly" => Some("yearly"),
+        "paused" => Some("paused"),
+        "all" => Some("all"),
+        _ => None,
+    }
+}
+
+pub fn outgoings_redirect_url(return_tab: Option<&str>) -> String {
+    match normalize_outgoings_tab(return_tab) {
+        Some(tab) => format!("/myOutgoings#{}", tab),
+        None => "/myOutgoings".to_string(),
+    }
 }
 
 pub fn format_today_divider_label(today: chrono::NaiveDate) -> String {
@@ -332,6 +357,8 @@ pub struct OutgoingForm {
     pub rent: Option<bool>,
     #[serde(default, alias = "hiddenFromTotal", deserialize_with = "deserialize_checkbox")]
     pub hidden_from_total: Option<bool>,
+    #[serde(default, alias = "returnTab", alias = "return_tab")]
+    pub return_tab: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -471,10 +498,12 @@ pub async fn post_account_form(
 pub async fn get_outgoings_page(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(query): Query<OutgoingsQuery>,
 ) -> Result<Response, (StatusCode, String)> {
     if !is_authenticated(&headers) {
         return Ok(crate::landing::auth_redirect(Some("/myOutgoings")).await.into_response());
     }
+    let return_tab = normalize_outgoings_tab(query.tab.as_deref()).unwrap_or("").to_string();
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let (today, is_time_travel) = crate::time_travel::get_effective_date(&headers);
@@ -637,6 +666,7 @@ pub async fn get_outgoings_page(
         today_label: format_today_divider_label(today),
         editing: false,
         editing_outgoing: None,
+        return_tab,
         yearly_bills_account_id,
         yearly_bills_monthly_saving: calc.monthly_saving,
         yearly_bills_count: calc.upcoming_count,
@@ -653,10 +683,12 @@ pub async fn get_edit_outgoing_page(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<i64>,
+    Query(query): Query<OutgoingsQuery>,
 ) -> Result<Response, (StatusCode, String)> {
     if !is_authenticated(&headers) {
         return Ok(crate::landing::auth_redirect(Some(&format!("/editOutgoing/{}", id))).await.into_response());
     }
+    let return_tab = normalize_outgoings_tab(query.tab.as_deref()).unwrap_or("").to_string();
     let raw_uid = get_user_id_from_headers_or_default(&headers, None);
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let (today, is_time_travel) = crate::time_travel::get_effective_date(&headers);
@@ -821,6 +853,7 @@ pub async fn get_edit_outgoing_page(
         today_label: format_today_divider_label(today),
         editing,
         editing_outgoing,
+        return_tab,
         yearly_bills_account_id,
         yearly_bills_monthly_saving: calc.monthly_saving,
         yearly_bills_count: calc.upcoming_count,
@@ -864,7 +897,7 @@ pub async fn post_yearly_bills_target_account(
     .execute(&state.pool)
     .await;
 
-    Ok(Redirect::to("/myOutgoings?tab=yearly"))
+    Ok(Redirect::to("/myOutgoings#yearly"))
 }
 
 fn resolve_frequency_fields(form: &OutgoingForm) -> (Option<i32>, Option<i32>, Option<i32>) {
@@ -913,7 +946,7 @@ pub async fn post_update_outgoing_form(
             _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         })?;
 
-    Ok(Redirect::to("/myOutgoings"))
+    Ok(Redirect::to(&outgoings_redirect_url(form.return_tab.as_deref())))
 }
 
 pub async fn post_update_outgoing_form_direct(
@@ -945,7 +978,7 @@ pub async fn post_update_outgoing_form_direct(
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             })?;
     }
-    Ok(Redirect::to("/myOutgoings"))
+    Ok(Redirect::to(&outgoings_redirect_url(form.return_tab.as_deref())))
 }
 
 pub async fn post_outgoing_form(
@@ -973,7 +1006,7 @@ pub async fn post_outgoing_form(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Redirect::to("/myOutgoings"))
+    Ok(Redirect::to(&outgoings_redirect_url(form.return_tab.as_deref())))
 }
 
 pub async fn get_incomings_page(
@@ -1525,6 +1558,8 @@ pub async fn get_erratic_balances_api(
 #[derive(Debug, Deserialize)]
 pub struct PauseForm {
     pub reason: Option<String>,
+    #[serde(default, alias = "returnTab", alias = "return_tab")]
+    pub return_tab: Option<String>,
 }
 
 pub async fn pause_outgoing_web(
@@ -1540,7 +1575,7 @@ pub async fn pause_outgoing_web(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Redirect::to("/myOutgoings"))
+    Ok(Redirect::to(&outgoings_redirect_url(form.return_tab.as_deref())))
 }
 
 pub async fn unpause_outgoing_web(
@@ -1732,6 +1767,7 @@ mod tests {
             today_label: format_today_divider_label(date),
             editing: false,
             editing_outgoing: None,
+            return_tab: "yearly".to_string(),
             yearly_bills_account_id: None,
             yearly_bills_monthly_saving: 0.0,
             yearly_bills_count: 0,
@@ -1745,6 +1781,29 @@ mod tests {
         assert!(html.contains("data-today-day=\"20\""));
         assert!(html.contains("Today — 20 Nov (Day 20)"));
         assert!(html.contains("data-effective-day=\"20\""));
+        assert!(html.contains("id=\"outgoing-return-tab\" value=\"yearly\""));
+        assert!(html.contains("id=\"pause-return-tab\" value=\"yearly\""));
+        assert!(html.contains("data-base-href=\"/editOutgoing/1\""));
+    }
+
+    #[test]
+    fn test_normalize_outgoings_tab_and_redirect_url() {
+        assert_eq!(normalize_outgoings_tab(Some("monthly")), Some("monthly"));
+        assert_eq!(normalize_outgoings_tab(Some("#monthly")), Some("monthly"));
+        assert_eq!(normalize_outgoings_tab(Some("active")), Some("monthly"));
+        assert_eq!(normalize_outgoings_tab(Some("yearly")), Some("yearly"));
+        assert_eq!(normalize_outgoings_tab(Some("#paused")), Some("paused"));
+        assert_eq!(normalize_outgoings_tab(Some("ALL")), Some("all"));
+        assert_eq!(normalize_outgoings_tab(Some("evil/../../foo")), None);
+        assert_eq!(normalize_outgoings_tab(None), None);
+
+        assert_eq!(outgoings_redirect_url(Some("yearly")), "/myOutgoings#yearly");
+        assert_eq!(outgoings_redirect_url(Some("paused")), "/myOutgoings#paused");
+        assert_eq!(outgoings_redirect_url(Some("all")), "/myOutgoings#all");
+        assert_eq!(outgoings_redirect_url(Some("active")), "/myOutgoings#monthly");
+        assert_eq!(outgoings_redirect_url(Some("monthly")), "/myOutgoings#monthly");
+        assert_eq!(outgoings_redirect_url(Some("")), "/myOutgoings");
+        assert_eq!(outgoings_redirect_url(None), "/myOutgoings");
     }
 
     #[test]

@@ -306,6 +306,8 @@
                     if (resolvedTarget.pathname === currentUrl.pathname && resolvedTarget.search === currentUrl.search && resolvedTarget.hash) {
                         window.location.hash = resolvedTarget.hash;
                         window.location.reload();
+                    } else if (resolvedTarget.pathname === currentUrl.pathname && resolvedTarget.search === currentUrl.search && !resolvedTarget.hash && currentUrl.hash) {
+                        window.location.reload();
                     } else if (resolvedTarget.href === currentUrl.href) {
                         window.location.reload();
                     } else {
