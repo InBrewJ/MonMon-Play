@@ -462,6 +462,8 @@ pub struct ErraticBalance {
     pub curr_value: f32,
     pub jump_amount: f32,
     pub timestamp: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev_timestamp: Option<i64>,
 }
 
 #[cfg(test)]

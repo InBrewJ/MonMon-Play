@@ -839,7 +839,8 @@ pub async fn find_erratic_balances(
                 b.value,
                 b.timestamp,
                 LAG(b.id) OVER (PARTITION BY b.account_id ORDER BY b.timestamp ASC, b.id ASC) as prev_id,
-                LAG(b.value) OVER (PARTITION BY b.account_id ORDER BY b.timestamp ASC, b.id ASC) as prev_value
+                LAG(b.value) OVER (PARTITION BY b.account_id ORDER BY b.timestamp ASC, b.id ASC) as prev_value,
+                LAG(b.timestamp) OVER (PARTITION BY b.account_id ORDER BY b.timestamp ASC, b.id ASC) as prev_timestamp
             FROM balance b
             JOIN account a ON b.account_id = a.id
             WHERE COALESCE(b.user_id, b.userid, b."userId") = $1
@@ -852,7 +853,8 @@ pub async fn find_erratic_balances(
             prev_value,
             value as curr_value,
             ABS(value - prev_value) as jump_amount,
-            timestamp
+            timestamp,
+            prev_timestamp
         FROM ranked_balances
         WHERE prev_value IS NOT NULL
           AND ABS(value - prev_value) >= $2
@@ -875,6 +877,7 @@ pub async fn find_erratic_balances(
             curr_value: r.get("curr_value"),
             jump_amount: r.get("jump_amount"),
             timestamp: r.get("timestamp"),
+            prev_timestamp: r.try_get("prev_timestamp").ok(),
         })
         .collect();
 
