@@ -9,14 +9,14 @@
 {% include "nav_header.html" %}
 
 <div class="w3-content" style="max-width: 1100px; padding: 0 1rem 3rem 1rem;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 8px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; margin-bottom: 1.15rem; flex-wrap: wrap; gap: 8px;">
         <div>
             <h3 style="margin: 0; font-weight: 800; display: inline-flex; align-items: center; gap: 10px;">
                 <i class="fas fa-history" style="color: var(--primary);"></i>
-                Spent This Month — History
+                Spending History
             </h3>
             <div style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;">
-                Review what you spent across all past pay cycles compared to your monthly allowance.
+                Track your monthly pots pace over time, or zoom out to total spend across all accounts.
             </div>
         </div>
         <div>
@@ -26,226 +26,430 @@
         </div>
     </div>
 
-    <!-- Summary Statistics Grid -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-        <div class="metric-box" style="margin: 0;">
-            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600;">Avg per completed cycle</div>
-            <div style="font-size: 1.5rem; font-weight: 800; color: var(--primary); margin-top: 2px;">£{{ average_monthly_spend }}</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Per completed pay cycle</div>
-        </div>
-
-        <div class="metric-box" style="margin: 0;">
-            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600;">Highest Spend Cycle</div>
-            <div style="font-size: 1.5rem; font-weight: 800; color: #ef4444; margin-top: 2px;">
-                {% if let Some(h) = highest_spent %}£{{ h }}{% else %}—{% endif %}
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
-                {% if let Some(hr) = highest_spent_range %}{{ hr }}{% else %}—{% endif %}
-            </div>
-        </div>
-
-        <div class="metric-box" style="margin: 0;">
-            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600;">Lowest Spend Cycle</div>
-            <div style="font-size: 1.5rem; font-weight: 800; color: #10b981; margin-top: 2px;">
-                {% if let Some(l) = lowest_spent %}£{{ l }}{% else %}—{% endif %}
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
-                {% if let Some(lr) = lowest_spent_range %}{{ lr }}{% else %}—{% endif %}
-            </div>
-        </div>
-    </div>
-
     {% if !has_history %}
-        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); text-align: center; padding: 3rem 1rem;">
+        <div class="w3-card w3-padding" style="background: var(--card-bg); border: 1px solid var(--border-color); text-align: center; padding: 3rem 1rem; border-radius: var(--border-radius-sm);">
             <i class="fas fa-calendar-times" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 0.75rem;"></i>
             <h3 style="font-weight: 700; margin: 0 0 0.5rem 0;">No Historic Spending Data Yet</h3>
             <p style="color: var(--text-muted); margin: 0;">Once balance snapshots are recorded over your pay cycles, your historic spend timeline will show here.</p>
         </div>
     {% else %}
-        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-            {% for c in cycles %}
-                <details style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.75rem 1rem; margin-bottom: 0.75rem; background: var(--card-bg); {% if c.is_current_cycle %}border-left: 4px solid var(--primary);{% endif %}">
-                    <summary style="cursor: pointer; list-style: none;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-                            <div>
-                                <b>{{ c.cycle_date_range }}</b>
-                                {% if c.is_current_cycle %}
-                                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); margin-left: 6px;">Day {{ c.days_elapsed }} of {{ c.days_in_cycle }}</span>
-                                {% endif %}
-                            </div>
-                            <div>
-                                <span style="font-size: 1.15rem; font-weight: 800;" title="Total spent in month">£{{ c.total_spent }}</span>
-                                <span style="font-size: 0.85rem; color: var(--text-muted);" title="Monthly income">/ £{{ c.monthly_income }}</span>
-                                {% if c.pot_allowance > 0.0 %}
-                                    <span class="badge-pill {% if c.is_over_pot_allowance %}badge-danger{% else %}badge-success{% endif %}" style="margin-left: 6px;" title="Based on last monthly pot: £{{ c.pot_spent }} spent vs £{{ c.pot_allowance }} allowance">
-                                        {% if c.is_over_pot_allowance %}
-                                            £{{ c.absolute_pot_overspend }} over allowance (last pot)
+        <!-- Two-View Deck Pill Switcher (Desktop Tabs + Mobile Swipe Deck with Dot Indicator) -->
+        <div class="deck-nav historic-spent-deck-nav" id="historic-spent-nav" role="tablist" aria-label="Spending History Views">
+            <button type="button" class="deck-nav-pill active" data-target="historic-card-pots" data-hash="pots" role="tab" aria-selected="true" aria-controls="historic-card-pots">
+                <i class="fas fa-chart-line"></i> Monthly Pots
+            </button>
+            <button type="button" class="deck-nav-pill" data-target="historic-card-all-accounts" data-hash="all-accounts" role="tab" aria-selected="false" aria-controls="historic-card-all-accounts">
+                <i class="fas fa-university"></i> All Accounts
+            </button>
+        </div>
+
+        <div class="deck-layout-grid historic-spent-deck-grid" id="historic-spent-grid">
+            <!-- VIEW 1: MONTHLY POTS (SPOG "Spent This Month" Historic View) -->
+            <section class="deck-card historic-tab-active" id="historic-card-pots" role="tabpanel" aria-label="Monthly Pots History">
+                <!-- At-a-Glance KPI Strip (Monthly Pots) -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.85rem; margin-bottom: 1.25rem;">
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Avg Pot Spend</div>
+                        <div style="font-size: 1.45rem; font-weight: 800; color: var(--primary); margin-top: 2px;">£{{ pots_summary.avg_pot_spend }}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Per completed pay cycle</div>
+                    </div>
+
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Avg Daily Pace</div>
+                        <div style="font-size: 1.45rem; font-weight: 800; color: var(--text-main); margin-top: 2px;">£{{ pots_summary.avg_daily_pace }} <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">/ day</span></div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Across {{ pots_summary.total_completed_cycles }} cycle{% if pots_summary.total_completed_cycles != 1 %}s{% endif %}</div>
+                    </div>
+
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Within MAX Pace</div>
+                        <div style="font-size: 1.45rem; font-weight: 800; color: {% if pots_summary.within_max_percent >= 50 %}#10b981{% else %}#ef4444{% endif %}; margin-top: 2px;">
+                            {{ pots_summary.cycles_within_max }} / {{ pots_summary.total_completed_cycles }}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">{{ pots_summary.within_max_percent }}% of cycles on or under MAX</div>
+                    </div>
+                </div>
+
+                <!-- Monthly Pots Cycle Timeline (SPOG Card Parity) -->
+                <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+                    {% for c in cycles %}
+                        <details class="historic-cycle-card" style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.9rem 1.05rem; background: var(--card-bg); {% if c.is_current_cycle %}border-left: 4px solid var(--primary);{% endif %}">
+                            <summary>
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.45rem;">
+                                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                                        <span style="font-weight: 800; font-size: 0.98rem; color: var(--text-main);">{{ c.cycle_date_range }}</span>
+                                        {% if c.is_current_cycle %}
+                                            <span class="badge-pill {% if c.is_pot_overspent_daily %}badge-danger{% else %}badge-success{% endif %}">
+                                                Day {{ c.days_elapsed }} of {{ c.days_in_cycle }}
+                                            </span>
                                         {% else %}
-                                            £{{ c.absolute_pot_overspend }} under allowance (last pot)
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">
+                                                {{ c.days_in_cycle }} days
+                                            </span>
                                         {% endif %}
-                                    </span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div style="height: 6px; background: var(--card-bg-subtle); border-radius: 3px; margin-top: 0.65rem; overflow: hidden;">
-                            <div style="height: 100%; width: {{ c.budget_utilization_percent }}%; background: {% if c.is_over_pot_allowance %}#ef4444{% else %}#10b981{% endif %};"></div>
-                        </div>
-                    </summary>
-
-                    <div style="font-size: 0.85rem; margin-top: 0.75rem; border-top: 1px dashed var(--border-color); padding-top: 0.6rem;">
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 0.6rem;">
-                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Total Spent</span>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.total_spent }}</div>
-                            </div>
-                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Monthly Income</span>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.monthly_income }}</div>
-                            </div>
-                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Pot Spent (Last Pot)</span>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.pot_spent }}</div>
-                            </div>
-                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Pot Allowance</span>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.pot_allowance }}</div>
-                            </div>
-                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Starting Balance</span>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.starting_total_balance }}</div>
-                            </div>
-                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Ending Balance</span>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.ending_total_balance }}</div>
-                            </div>
-                            <div style="background: var(--card-bg-subtle); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                <span style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Daily Spending Pace</span>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">£{{ c.actual_daily_spend }} / day</div>
-                            </div>
-                        </div>
-
-                        <!-- Monthly Pots Configured in this Period -->
-                        <div style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem 0.9rem; margin-bottom: 0.75rem;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.4rem;">
-                                <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">
-                                    <i class="fas fa-archive" style="color: var(--primary); margin-right: 5px;"></i>Monthly Pots Configured in this Period
-                                    {% if c.has_multiple_pots %}
-                                        <span class="badge-pill" style="font-size: 0.72rem; background: var(--primary-light); color: var(--primary); margin-left: 6px;">{{ c.pots_in_period.len() }} configured (using LAST pot for allowance)</span>
-                                    {% endif %}
-                                </span>
-                                <span style="font-size: 0.8rem; color: var(--text-muted);">
-                                    Last Pot Spending: <b>£{{ c.pot_spent }}</b> / <b>£{{ c.pot_allowance }}</b>
-                                    ({% if c.is_over_pot_allowance %}<span style="color: var(--danger); font-weight: 700;">£{{ c.absolute_pot_overspend }} over allowance</span>{% else %}<span style="color: var(--success); font-weight: 700;">£{{ c.absolute_pot_overspend }} under allowance</span>{% endif %})
-                                </span>
-                            </div>
-
-                            {% if c.pots_in_period.is_empty() %}
-                                <div style="font-size: 0.82rem; color: var(--text-muted);">
-                                    No custom monthly pot configured; defaulted to active debit accounts.
-                                </div>
-                            {% else %}
-                                {% for pot_snap in c.pots_in_period %}
-                                    <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.4rem; background: var(--card-bg);">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
-                                            <div>
-                                                <b>{{ pot_snap.plan_summary }}</b>
-                                                <span style="color: var(--text-muted); font-size: 0.75rem; margin-left: 4px;">(Created: {{ pot_snap.created_at_human_readable }})</span>
-                                                {% if pot_snap.is_first_pot && !pot_snap.is_last_pot %}
-                                                    <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">First Active Pot</span>
-                                                {% endif %}
-                                                {% if pot_snap.is_intermediary_pot %}
-                                                    <span class="badge-pill" style="background: var(--card-bg-subtle); border: 1px dashed var(--border-color); color: var(--text-muted); font-size: 0.7rem; margin-left: 4px;">Intermediary Pot</span>
-                                                {% endif %}
-                                                {% if pot_snap.is_last_pot %}
-                                                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">Last Monthly Pot (Allowance Tracking)</span>
-                                                {% endif %}
-                                                {% if pot_snap.is_archived_in_period %}
-                                                    <span class="badge-pill badge-warning" style="font-size: 0.7rem; margin-left: 4px;"><i class="fas fa-trash-alt"></i> Replaced / Ended on {{ pot_snap.archived_date_human_readable }}</span>
-                                                {% endif %}
-                                            </div>
-                                            <div>
-                                                <span style="font-size: 0.78rem; color: var(--text-muted);">Spent in pot window:</span>
-                                                <b style="color: var(--text-main);">£{{ pot_snap.pot_spent }}</b>
-                                            </div>
-                                        </div>
-
-                                        {% if !pot_snap.account_snapshots.is_empty() %}
-                                            <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.35rem;">
-                                                <thead>
-                                                    <tr style="color: var(--text-muted); border-bottom: 1px dashed var(--border-color); text-align: left;">
-                                                        <th style="padding: 2px 4px;">Pot Account</th>
-                                                        <th style="padding: 2px 4px; text-align: right;">
-                                                            {% if pot_snap.is_archived_in_period %}Balance on Replacement / Deletion ({{ pot_snap.archived_date_human_readable }}){% else %}Balance at Period End{% endif %}
-                                                        </th>
-                                                        <th style="padding: 2px 4px; text-align: right;">Spent in Pot Window</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {% for acc_snap in pot_snap.account_snapshots %}
-                                                        <tr>
-                                                            <td style="padding: 2px 4px;"><b>{{ acc_snap.account_name }}</b> <span style="color: var(--text-muted); font-size: 0.7rem;">({{ acc_snap.account_type }})</span></td>
-                                                            <td style="padding: 2px 4px; text-align: right;">£{{ acc_snap.balance_on_date }}</td>
-                                                            <td style="padding: 2px 4px; text-align: right; font-weight: 600;">£{{ acc_snap.amount_spent }}</td>
-                                                        </tr>
-                                                    {% endfor %}
-                                                </tbody>
-                                            </table>
+                                        {% if c.has_multiple_pots %}
+                                            <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.72rem;">
+                                                {{ c.pots_in_period.len() }} pots
+                                            </span>
                                         {% endif %}
                                     </div>
-                                {% endfor %}
-                            {% endif %}
-                        </div>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <a href="/spendingPace?cycleOffset={{ loop.index0 }}" class="historic-pace-link" title="View spending pace histogram" aria-label="View spending pace histogram for {{ c.cycle_date_range }}"
+                                           style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); color: var(--primary); text-decoration: none;">
+                                            <i class="fas fa-chart-bar" style="font-size: 0.82rem;"></i>
+                                        </a>
+                                        <i class="fas fa-chevron-down historic-cycle-chevron"></i>
+                                    </div>
+                                </div>
 
-                        <!-- Per-Cycle Accounts Breakdown Table -->
-                        {% if c.account_breakdowns.is_empty() %}
-                            <div style="color: var(--text-muted);">No recorded spending in this cycle.</div>
-                        {% else %}
-                            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.4rem;">
-                                <thead>
-                                    <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border-color); text-align: left;">
-                                        <th style="padding: 4px 6px;">Account</th>
-                                        <th style="padding: 4px 6px; text-align: right;">Start Value</th>
-                                        <th style="padding: 4px 6px; text-align: right;">End Value</th>
-                                        <th style="padding: 4px 6px; text-align: right;">Spent in Cycle</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for item in c.account_breakdowns %}
-                                        <tr style="border-bottom: 1px solid var(--border-color);">
-                                            <td style="padding: 6px;">
-                                                <b>{{ item.account_name }}</b>
-                                                <span style="color: var(--text-muted); font-size: 0.75rem;">({{ item.account_type }})</span>
-                                                {% if item.is_pot_account %}
-                                                    <span class="badge-pill" style="font-size: 0.68rem; background: var(--primary-light); color: var(--primary); padding: 1px 6px; margin-left: 4px;">Pot Account</span>
-                                                {% endif %}
-                                            </td>
-                                            <td style="padding: 6px; text-align: right;">£{{ item.start_balance }}</td>
-                                            <td style="padding: 6px; text-align: right;">£{{ item.end_balance }}</td>
-                                            <td style="padding: 6px; text-align: right; font-weight: 700; {% if item.amount_spent < 0.0 %}color: var(--success);{% endif %}">
-                                                {% if item.amount_spent < 0.0 %}
-                                                    -£{{ item.amount_spent.abs() }}
-                                                {% else %}
-                                                    £{{ item.amount_spent }}
-                                                {% endif %}
-                                            </td>
-                                        </tr>
+                                <!-- SPOG Headline: £spent / £monthly pot -->
+                                <div style="margin: 0.2rem 0 0.25rem 0;">
+                                    <span style="font-size: 1.55rem; font-weight: 800; color: var(--text-main);">£{{ c.pot_spent_pence }}</span>
+                                    <span style="font-size: 0.88rem; color: var(--text-muted); font-weight: 500;">/ £{{ c.pot_allowance_pence }} monthly pot</span>
+                                </div>
+
+                                <!-- SPOG Spending Pace Line -->
+                                <div style="font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-main);">
+                                    {% if c.is_current_cycle %}Current spending pace:{% else %}Spending pace:{% endif %}
+                                    <b>£{{ c.pot_daily_pace }} / day</b>
+                                </div>
+
+                                <!-- SPOG Red/Green Banner -->
+                                <div class="w3-panel w3-round {% if c.is_pot_overspent_daily %}w3-pale-red w3-border-red{% else %}w3-pale-green w3-border-green{% endif %}" style="margin: 0; padding: 7px 11px; font-size: 0.86rem; border-left: 4px solid;">
+                                    {% if c.is_pot_overspent_daily %}
+                                        <span>
+                                            <i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 4px;"></i>
+                                            Overspent by <b>£{{ c.absolute_pot_daily_overspend }}</b> per day based on MAX (£{{ c.pot_max_per_day }})<sup><i class="fas fa-arrow-up" style="color: #ef4444;"></i></sup>
+                                        </span>
+                                    {% else %}
+                                        <span>
+                                            <i class="fas fa-check-circle" style="color: #10b981; margin-right: 4px;"></i>
+                                            <b>£{{ c.absolute_pot_daily_overspend }}</b> per day under MAX (£{{ c.pot_max_per_day }})<sup><i class="fas fa-arrow-down" style="color: #10b981;"></i></sup>
+                                        </span>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Utilization Progress Bar -->
+                                <div style="height: 6px; background: var(--card-bg-subtle); border-radius: 3px; margin-top: 0.65rem; overflow: hidden;">
+                                    <div style="height: 100%; width: {{ c.budget_utilization_percent }}%; background: {% if c.is_current_cycle %}{% if c.is_pot_overspent_daily %}#ef4444{% else %}#10b981{% endif %}{% else %}{% if c.is_over_pot_allowance %}#ef4444{% else %}#10b981{% endif %}{% endif %};"></div>
+                                </div>
+                            </summary>
+
+                            <!-- Expanded Monthly Pots Breakdown -->
+                            <div style="font-size: 0.85rem; margin-top: 0.85rem; border-top: 1px dashed var(--border-color); padding-top: 0.7rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.55rem;">
+                                    <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">
+                                        <i class="fas fa-archive" style="color: var(--primary); margin-right: 5px;"></i>Monthly Pots in this Cycle
+                                        {% if c.has_multiple_pots %}
+                                            <span class="badge-pill" style="font-size: 0.7rem; background: var(--primary-light); color: var(--primary); margin-left: 4px;">{{ c.pots_in_period.len() }} pots summed</span>
+                                        {% endif %}
+                                    </span>
+                                    <span style="font-size: 0.8rem; color: var(--text-muted);">
+                                        Total vs Allowance:
+                                        {% if c.is_over_pot_allowance %}
+                                            <span style="color: var(--danger, #ef4444); font-weight: 700;">£{{ c.absolute_pot_overspend_pence }} over</span>
+                                        {% else %}
+                                            <span style="color: var(--success, #10b981); font-weight: 700;">£{{ c.absolute_pot_overspend_pence }} under</span>
+                                        {% endif %}
+                                    </span>
+                                </div>
+
+                                {% if c.pots_in_period.is_empty() %}
+                                    <div style="font-size: 0.83rem; color: var(--text-muted); padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--card-bg-subtle); border: 1px solid var(--border-color);">
+                                        {% if c.is_current_cycle %}
+                                            No active monthly pot configured for the current cycle.
+                                        {% else %}
+                                            No custom monthly pot configured for this cycle; active debit accounts were used for outflow tracking.
+                                        {% endif %}
+                                    </div>
+                                {% else %}
+                                    {% for pot_snap in c.pots_in_period %}
+                                        <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 0.65rem 0.85rem; margin-top: 0.5rem; background: var(--card-bg-subtle);">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+                                                <div>
+                                                    <b style="color: var(--text-main);">{{ pot_snap.plan_summary }}</b>
+                                                    <span style="color: var(--text-muted); font-size: 0.75rem; margin-left: 4px;">(Created: {{ pot_snap.created_at_human_readable }})</span>
+                                                    {% if pot_snap.is_first_pot && !pot_snap.is_last_pot %}
+                                                        <span class="badge-pill" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">First Pot</span>
+                                                    {% endif %}
+                                                    {% if pot_snap.is_intermediary_pot %}
+                                                        <span class="badge-pill" style="background: var(--card-bg); border: 1px dashed var(--border-color); color: var(--text-muted); font-size: 0.7rem; margin-left: 4px;">Intermediary Pot</span>
+                                                    {% endif %}
+                                                    {% if pot_snap.is_last_pot && c.has_multiple_pots %}
+                                                        <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.7rem; font-weight: 700; margin-left: 4px;">Latest Pot</span>
+                                                    {% endif %}
+                                                    {% if pot_snap.is_archived_in_period %}
+                                                        <span class="badge-pill badge-warning" style="font-size: 0.7rem; margin-left: 4px;"><i class="fas fa-trash-alt"></i> Ended {{ pot_snap.archived_date_human_readable }}</span>
+                                                    {% endif %}
+                                                </div>
+                                                <div>
+                                                    <span style="font-size: 0.78rem; color: var(--text-muted);">Spent in window:</span>
+                                                    <b style="color: var(--text-main);">£{{ pot_snap.pot_spent_pence }}</b>
+                                                </div>
+                                            </div>
+
+                                            {% if !pot_snap.account_snapshots.is_empty() %}
+                                                <!-- Desktop Pot Accounts Table -->
+                                                <div class="historic-desktop-table" style="margin-top: 0.45rem;">
+                                                    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                                                        <thead>
+                                                            <tr style="color: var(--text-muted); border-bottom: 1px dashed var(--border-color); text-align: left;">
+                                                                <th style="padding: 3px 4px;">Pot Account</th>
+                                                                <th style="padding: 3px 4px; text-align: right;">
+                                                                    {% if pot_snap.is_archived_in_period %}Balance on End ({{ pot_snap.archived_date_human_readable }}){% else %}Balance at Period End{% endif %}
+                                                                </th>
+                                                                <th style="padding: 3px 4px; text-align: right;">Outflow in Window</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for acc_snap in pot_snap.account_snapshots %}
+                                                                <tr>
+                                                                    <td style="padding: 3px 4px;"><b>{{ acc_snap.account_name }}</b> <span style="color: var(--text-muted); font-size: 0.72rem;">({{ acc_snap.account_type }})</span></td>
+                                                                    <td style="padding: 3px 4px; text-align: right;">{{ acc_snap.balance_gbp() }}</td>
+                                                                    <td style="padding: 3px 4px; text-align: right; font-weight: 700;">£{{ acc_snap.amount_spent_pence }}</td>
+                                                                </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                <!-- Mobile Stacked Action Cards (Pot Accounts) -->
+                                                <div class="historic-mobile-cards" style="margin-top: 0.5rem;">
+                                                    {% for acc_snap in pot_snap.account_snapshots %}
+                                                        <div class="item-card" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+                                                            <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                                                <div class="item-card-title" style="font-weight: 700; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ acc_snap.account_name }}</div>
+                                                                <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.7rem; flex-shrink: 0;">{{ acc_snap.account_type }}</span>
+                                                            </div>
+                                                            <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.82rem; background: var(--card-bg-subtle); padding: 7px 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                                                <div class="stat-cell">
+                                                                    <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.7rem;">Balance at End</div>
+                                                                    <div class="stat-cell-val" style="font-weight: 600; color: var(--text-main);">{{ acc_snap.balance_gbp() }}</div>
+                                                                </div>
+                                                                <div class="stat-cell">
+                                                                    <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.7rem;">Outflow in Window</div>
+                                                                    <div class="stat-cell-val" style="font-weight: 700; color: var(--text-main);">£{{ acc_snap.amount_spent_pence }}</div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+                                        </div>
                                     {% endfor %}
-                                    <tr style="font-weight: 800; background: var(--card-bg-subtle);">
-                                        <td style="padding: 6px;">Total Across Accounts</td>
-                                        <td style="padding: 6px; text-align: right;">£{{ c.starting_total_balance }}</td>
-                                        <td style="padding: 6px; text-align: right;">£{{ c.ending_total_balance }}</td>
-                                        <td style="padding: 6px; text-align: right; color: var(--primary);">£{{ c.total_spent }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        {% endif %}
+                                {% endif %}
+                            </div>
+                        </details>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <!-- VIEW 2: ALL ACCOUNTS (Wider Picture: Post-Payday Start -> Pre-Next-Payday End) -->
+            <section class="deck-card" id="historic-card-all-accounts" role="tabpanel" aria-label="All Accounts Spending History">
+                <!-- At-a-Glance KPI Strip (All Accounts) -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.85rem; margin-bottom: 1.25rem;">
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Avg All-Accounts Spend</div>
+                        <div style="font-size: 1.45rem; font-weight: 800; color: {% if all_accounts_summary.avg_is_net_inflow %}#10b981{% else %}var(--primary){% endif %}; margin-top: 2px;">
+                            {% if all_accounts_summary.avg_is_net_inflow %}+£{{ all_accounts_summary.avg_abs_net_change }}{% else %}£{{ all_accounts_summary.avg_abs_net_change }}{% endif %}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                            {% if all_accounts_summary.avg_is_net_inflow %}Avg net inflow per cycle{% else %}Per completed pay cycle{% endif %}
+                        </div>
                     </div>
-                </details>
-            {% endfor %}
+
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Highest Spend Cycle</div>
+                        <div style="font-size: 1.45rem; font-weight: 800; color: #ef4444; margin-top: 2px;">
+                            {% if let Some(h) = all_accounts_summary.highest_spent %}
+                                {% if h.is_negative() %}+£{{ h.abs() }}{% else %}£{{ h }}{% endif %}
+                            {% else %}—{% endif %}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                            {% if let Some(hr) = all_accounts_summary.highest_spent_range %}{{ hr }}{% else %}—{% endif %}
+                        </div>
+                    </div>
+
+                    <div class="metric-box" style="margin: 0;">
+                        <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Lowest Spend Cycle</div>
+                        <div style="font-size: 1.45rem; font-weight: 800; color: #10b981; margin-top: 2px;">
+                            {% if let Some(abs_l) = all_accounts_summary.lowest_abs_net_change %}
+                                {% if all_accounts_summary.lowest_is_net_inflow %}+£{{ abs_l }}{% else %}£{{ abs_l }}{% endif %}
+                            {% else %}—{% endif %}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                            {% if let Some(lr) = all_accounts_summary.lowest_spent_range %}{{ lr }}{% else %}—{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.85rem; padding: 0.5rem 0.75rem; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px;">
+                    <i class="fas fa-info-circle" style="color: var(--primary); margin-right: 5px;"></i>
+                    Sums all active debit, credit, savings, and loan accounts (excluding mortgages &amp; pensions) from <b>on-payday start</b> to <b>pre-next-payday end</b> as one combined balance.
+                </div>
+
+                <!-- All-Accounts Cycle Timeline -->
+                <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+                    {% for c in cycles %}
+                        <details class="historic-cycle-card" style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 0.9rem 1.05rem; background: var(--card-bg); {% if c.is_current_cycle %}border-left: 4px solid var(--primary);{% endif %}">
+                            <summary>
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.45rem;">
+                                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                                        <span style="font-weight: 800; font-size: 0.98rem; color: var(--text-main);">{{ c.cycle_date_range }}</span>
+                                        {% if c.is_current_cycle %}
+                                            <span class="badge-pill" style="background: var(--primary-light); color: var(--primary);">Day {{ c.days_elapsed }} of {{ c.days_in_cycle }}</span>
+                                        {% else %}
+                                            <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color);">{{ c.days_in_cycle }} days</span>
+                                        {% endif %}
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span style="font-size: 0.8rem; color: var(--text-muted);">Income: <b>£{{ c.monthly_income_pence }}</b></span>
+                                        <i class="fas fa-chevron-down historic-cycle-chevron"></i>
+                                    </div>
+                                </div>
+
+                                <!-- Primary Signed Net Spend Headline -->
+                                <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem;">
+                                    <div>
+                                        {% if c.all_accounts_is_net_inflow %}
+                                            <span style="font-size: 1.55rem; font-weight: 800; color: #10b981;">+£{{ c.all_accounts_abs_net_change }}</span>
+                                            <span style="font-size: 0.86rem; color: #10b981; font-weight: 600; margin-left: 4px;">net inflow</span>
+                                        {% else %}
+                                            <span style="font-size: 1.55rem; font-weight: 800; color: var(--text-main);">£{{ c.all_accounts_abs_net_change }}</span>
+                                            <span style="font-size: 0.86rem; color: var(--text-muted); font-weight: 500; margin-left: 4px;">spent across all accounts</span>
+                                        {% endif %}
+                                    </div>
+                                    <div style="font-size: 0.86rem; color: var(--text-muted);">
+                                        Start <b style="color: var(--text-main);">{{ c.start_gbp() }}</b>
+                                        <i class="fas fa-arrow-right" style="margin: 0 4px; font-size: 0.72rem; color: var(--primary);"></i>
+                                        End <b style="color: var(--text-main);">{{ c.end_gbp() }}</b>
+                                    </div>
+                                </div>
+                            </summary>
+
+                            <!-- Expanded Per-Account Breakdown -->
+                            <div style="font-size: 0.85rem; margin-top: 0.85rem; border-top: 1px dashed var(--border-color); padding-top: 0.7rem;">
+                                {% if c.account_breakdowns.is_empty() %}
+                                    <div style="color: var(--text-muted);">No recorded account balances in this cycle.</div>
+                                {% else %}
+                                    <!-- Desktop Table -->
+                                    <div class="historic-desktop-table" style="overflow-x: auto;">
+                                        <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem;">
+                                            <thead>
+                                                <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border-color); text-align: left;">
+                                                    <th style="padding: 5px 6px;">Account</th>
+                                                    <th style="padding: 5px 6px; text-align: right;">Start</th>
+                                                    <th style="padding: 5px 6px; text-align: right;">End</th>
+                                                    <th style="padding: 5px 6px; text-align: right;">Net Spend</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for item in c.account_breakdowns %}
+                                                    <tr style="border-bottom: 1px solid var(--border-color);">
+                                                        <td style="padding: 6px;">
+                                                            <b>{{ item.account_name }}</b>
+                                                            <span style="color: var(--text-muted); font-size: 0.74rem;">({{ item.account_type }})</span>
+                                                            {% if item.is_liability %}
+                                                                <span class="badge-pill badge-danger" style="font-size: 0.66rem; padding: 1px 6px; margin-left: 4px;">Liability</span>
+                                                            {% endif %}
+                                                            {% if item.is_pot_account %}
+                                                                <span class="badge-pill" style="font-size: 0.66rem; background: var(--primary-light); color: var(--primary); padding: 1px 6px; margin-left: 4px;">Pot</span>
+                                                            {% endif %}
+                                                        </td>
+                                                        <td style="padding: 6px; text-align: right;">{{ item.start_gbp() }}</td>
+                                                        <td style="padding: 6px; text-align: right;">{{ item.end_gbp() }}</td>
+                                                        <td style="padding: 6px; text-align: right; font-weight: 700; {% if item.is_net_inflow %}color: #10b981;{% endif %}">
+                                                            {% if item.is_net_inflow %}
+                                                                +£{{ item.abs_amount_spent_pence }}
+                                                            {% else %}
+                                                                £{{ item.abs_amount_spent_pence }}
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                                <tr style="font-weight: 800; background: var(--card-bg-subtle);">
+                                                    <td style="padding: 7px 6px;">Total Across Accounts</td>
+                                                    <td style="padding: 7px 6px; text-align: right;">{{ c.start_gbp() }}</td>
+                                                    <td style="padding: 7px 6px; text-align: right;">{{ c.end_gbp() }}</td>
+                                                    <td style="padding: 7px 6px; text-align: right; color: {% if c.all_accounts_is_net_inflow %}#10b981{% else %}var(--primary){% endif %};">
+                                                        {% if c.all_accounts_is_net_inflow %}
+                                                            +£{{ c.all_accounts_abs_net_change }}
+                                                        {% else %}
+                                                            £{{ c.all_accounts_abs_net_change }}
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <!-- Mobile Stacked Action Cards -->
+                                    <div class="historic-mobile-cards">
+                                        {% for item in c.account_breakdowns %}
+                                            <div class="item-card" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+                                                <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 7px;">
+                                                    <div class="item-card-title" style="font-weight: 700; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ item.account_name }}</div>
+                                                    <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                                                        {% if item.is_pot_account %}
+                                                            <span class="badge-pill" style="font-size: 0.68rem; background: var(--primary-light); color: var(--primary);">Pot</span>
+                                                        {% endif %}
+                                                        {% if item.is_liability %}
+                                                            <span class="badge-pill badge-danger" style="font-size: 0.68rem;">LOAN</span>
+                                                        {% else %}
+                                                            <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.68rem;">{{ item.account_type }}</span>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                                <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; font-size: 0.8rem; background: var(--card-bg-subtle); padding: 7px 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                                    <div class="stat-cell">
+                                                        <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.68rem;">Start</div>
+                                                        <div class="stat-cell-val" style="font-weight: 600; color: var(--text-main);">{{ item.start_gbp() }}</div>
+                                                    </div>
+                                                    <div class="stat-cell">
+                                                        <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.68rem;">End</div>
+                                                        <div class="stat-cell-val" style="font-weight: 600; color: var(--text-main);">{{ item.end_gbp() }}</div>
+                                                    </div>
+                                                    <div class="stat-cell">
+                                                        <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.68rem;">Net</div>
+                                                        <div class="stat-cell-val" style="font-weight: 700; {% if item.is_net_inflow %}color: #10b981;{% else %}color: var(--text-main);{% endif %}">
+                                                            {% if item.is_net_inflow %}+£{{ item.abs_amount_spent_pence }}{% else %}£{{ item.abs_amount_spent_pence }}{% endif %}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% endfor %}
+                                        <div class="item-card" style="background: var(--card-bg-subtle); border: 1px solid var(--primary); border-radius: 8px; padding: 10px; margin-top: 8px;">
+                                            <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                                <div class="item-card-title" style="font-weight: 800; color: var(--text-main);">Total Across Accounts</div>
+                                            </div>
+                                            <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; font-size: 0.82rem;">
+                                                <div class="stat-cell">
+                                                    <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.68rem;">Start</div>
+                                                    <div class="stat-cell-val" style="font-weight: 700; color: var(--text-main);">{{ c.start_gbp() }}</div>
+                                                </div>
+                                                <div class="stat-cell">
+                                                    <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.68rem;">End</div>
+                                                    <div class="stat-cell-val" style="font-weight: 700; color: var(--text-main);">{{ c.end_gbp() }}</div>
+                                                </div>
+                                                <div class="stat-cell">
+                                                    <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.68rem;">{% if c.all_accounts_is_net_inflow %}Net Inflow{% else %}Spent{% endif %}</div>
+                                                    <div class="stat-cell-val" style="font-weight: 800; color: {% if c.all_accounts_is_net_inflow %}#10b981{% else %}var(--primary){% endif %};">
+                                                        {% if c.all_accounts_is_net_inflow %}+£{{ c.all_accounts_abs_net_change }}{% else %}£{{ c.all_accounts_abs_net_change }}{% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </details>
+                    {% endfor %}
+                </div>
+            </section>
         </div>
     {% endif %}
 </div>
 
 {% include "nav_scripts.html" %}
+<script src="/assets/javascripts/historic-spent.{{ crate::BUILD_HASH }}.js" type="text/javascript"></script>
 </body>
 </html>

@@ -350,6 +350,15 @@ pub struct AccountSpentDto {
     pub is_pot_account: bool,
 }
 
+impl AccountSpentDto {
+    pub fn start_gbp(&self) -> String {
+        format_signed_gbp(self.start_balance_pence)
+    }
+    pub fn end_gbp(&self) -> String {
+        format_signed_gbp(self.end_balance_pence)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountBalanceSnapshotDto {
     pub account_name: String,
@@ -358,6 +367,12 @@ pub struct AccountBalanceSnapshotDto {
     pub amount_spent: f32,
     pub balance_on_date_pence: Pence,
     pub amount_spent_pence: Pence,
+}
+
+impl AccountBalanceSnapshotDto {
+    pub fn balance_gbp(&self) -> String {
+        format_signed_gbp(self.balance_on_date_pence)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -444,17 +459,21 @@ pub struct HistoricCycleDto {
     pub has_multiple_pots: bool,
 }
 
+impl HistoricCycleDto {
+    pub fn start_gbp(&self) -> String {
+        format_signed_gbp(self.starting_total_balance_pence)
+    }
+    pub fn end_gbp(&self) -> String {
+        format_signed_gbp(self.ending_total_balance_pence)
+    }
+}
+
 #[derive(Template)]
 #[template(path = "historic_spent.html")]
 pub struct HistoricSpentTemplate {
     pub has_history: bool,
     pub pots_summary: HistoricPotsSummaryDto,
     pub all_accounts_summary: HistoricAllAccountsSummaryDto,
-    pub average_monthly_spend: f32,
-    pub highest_spent: Option<f32>,
-    pub highest_spent_range: Option<String>,
-    pub lowest_spent: Option<f32>,
-    pub lowest_spent_range: Option<String>,
     pub cycles: Vec<HistoricCycleDto>,
 }
 
@@ -1728,11 +1747,6 @@ pub async fn get_historic_spent_page(
 
     let tmpl = HistoricSpentTemplate {
         has_history,
-        average_monthly_spend: all_accounts_summary.avg_net_spend.to_pounds_f32(),
-        highest_spent: all_accounts_summary.highest_spent.map(|v| v.to_pounds_f32()),
-        highest_spent_range: all_accounts_summary.highest_spent_range.clone(),
-        lowest_spent: all_accounts_summary.lowest_spent.map(|v| v.to_pounds_f32()),
-        lowest_spent_range: all_accounts_summary.lowest_spent_range.clone(),
         pots_summary,
         all_accounts_summary,
         cycles,

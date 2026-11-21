@@ -30,6 +30,7 @@ const JS_PRECACHE_NAMES = [
   'edNetWorth',
   'networth-chart',
   'spending-pace-chart',
+  'historic-spent',
   'savingsPlan',
   'transfers',
   'dig',

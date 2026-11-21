@@ -2223,6 +2223,69 @@ body.modal-scroll-locked {
   .spog-deck-card {
     margin-bottom: 0;
   }
+
+  /* Historic Spent two-view pill switcher visible on desktop */
+  .historic-spent-deck-nav {
+    display: flex;
+    position: static;
+    background: transparent;
+    border-bottom: none;
+    padding: 0;
+    margin-bottom: 1.25rem;
+    gap: 10px;
+  }
+
+  .historic-spent-deck-nav .deck-nav-pill {
+    flex: 0 0 auto;
+    padding: 9px 18px;
+    font-size: 0.9rem;
+  }
+
+  .historic-spent-deck-grid .deck-card {
+    display: none;
+  }
+
+  .historic-spent-deck-grid .deck-card.historic-tab-active {
+    display: block;
+  }
+}
+
+/* Historic Spent responsive breakdown tables & Stacked Action Cards */
+.historic-cycle-card summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.historic-cycle-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.historic-cycle-chevron {
+  transition: transform 0.2s ease;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.historic-cycle-card[open] .historic-cycle-chevron {
+  transform: rotate(180deg);
+}
+
+.historic-desktop-table {
+  display: block;
+}
+
+.historic-mobile-cards {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .historic-desktop-table {
+    display: none;
+  }
+
+  .historic-mobile-cards {
+    display: block;
+  }
 }
 
 /* Waiting List UI Blocking Modal */
