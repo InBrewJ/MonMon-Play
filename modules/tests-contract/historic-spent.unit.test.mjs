@@ -232,4 +232,137 @@ describe('historic-spent.js view switcher & hash sync', () => {
     assert.equal(env.locationObj.hash, '#all-accounts');
     assert.equal(env.cardAll.classList.contains('historic-tab-active'), true);
   });
+
+  it('integrates with spog-deck.js on mobile initial #all-accounts load and hashchange without hash race', () => {
+    const spogDeckCode = fs.readFileSync(path.join(ROOT_DIR, 'public', 'javascripts', 'spog-deck.js'), 'utf8');
+    const historicCode = fs.readFileSync(path.join(ROOT_DIR, 'public', 'javascripts', 'historic-spent.js'), 'utf8');
+
+    const pillPots = createFakeEl('pill-pots', {
+      classes: ['deck-nav-pill', 'active'],
+      attrs: { 'data-target': 'historic-card-pots', 'data-hash': 'pots', 'aria-selected': 'true' },
+    });
+    const pillAll = createFakeEl('pill-all', {
+      classes: ['deck-nav-pill'],
+      attrs: { 'data-target': 'historic-card-all-accounts', 'data-hash': 'all-accounts', 'aria-selected': 'false' },
+    });
+    const cardPots = createFakeEl('historic-card-pots', {
+      classes: ['deck-card', 'historic-tab-active'],
+      rectLeft: 0,
+      rectWidth: 375,
+    });
+    cardPots.style = { maxHeight: '', overflow: '' };
+    cardPots.offsetHeight = 600;
+    const cardAll = createFakeEl('historic-card-all-accounts', {
+      classes: ['deck-card'],
+      rectLeft: 391,
+      rectWidth: 375,
+    });
+    cardAll.style = { maxHeight: '', overflow: '' };
+    cardAll.offsetHeight = 900;
+
+    const nav = createFakeEl('historic-spent-nav', {
+      classes: ['deck-nav', 'historic-spent-deck-nav'],
+      querySelectorAll: (sel) => (sel.includes('.deck-nav-pill') ? [pillPots, pillAll] : []),
+    });
+    nav.querySelector = (sel) => (sel.includes('.active') ? (pillAll.classList.contains('active') ? pillAll : pillPots) : null);
+    nav.closest = () => container;
+
+    const grid = createFakeEl('historic-spent-grid', {
+      classes: ['deck-layout-grid', 'historic-spent-deck-grid'],
+      rectLeft: 0,
+      rectWidth: 375,
+      querySelectorAll: (sel) => (sel.includes('.deck-card') ? [cardPots, cardAll] : []),
+    });
+    grid.scrollWidth = 766;
+    grid.clientWidth = 375;
+
+    const container = {
+      querySelector: (sel) => (sel.includes('.deck-layout-grid') ? grid : null),
+    };
+
+    const byId = new Map([
+      ['historic-spent-nav', nav],
+      ['historic-spent-grid', grid],
+      ['historic-card-pots', cardPots],
+      ['historic-card-all-accounts', cardAll],
+    ]);
+
+    const windowListeners = new Map();
+    const locationObj = { hash: '#all-accounts', pathname: '/historicSpent', search: '' };
+    const timers = [];
+
+    class FakeMutationObserver {
+      constructor(cb) { this.cb = cb; }
+      observe(target) { if (target && target._registerObserver) target._registerObserver(this.cb); }
+      disconnect() {}
+    }
+
+    const sandbox = {
+      document: {
+        readyState: 'complete',
+        documentElement: { style: { setProperty: () => {} }, scrollTop: 0 },
+        getElementById: (id) => byId.get(id) || null,
+        querySelector: () => null,
+        querySelectorAll: (sel) => (sel === '.deck-nav' ? [nav] : []),
+        addEventListener: () => {},
+      },
+      MutationObserver: FakeMutationObserver,
+      history: {
+        replaceState: (_s, _t, url) => {
+          const idx = String(url).indexOf('#');
+          locationObj.hash = idx >= 0 ? String(url).slice(idx) : '';
+        },
+      },
+      location: locationObj,
+      setTimeout: (fn, ms) => {
+        const id = timers.length + 1;
+        timers.push({ fn, ms, cleared: false });
+        return id;
+      },
+      clearTimeout: (id) => {
+        if (timers[id - 1]) timers[id - 1].cleared = true;
+      },
+      requestAnimationFrame: (fn) => { fn(); return 1; },
+    };
+
+    sandbox.window = {
+      innerWidth: 375,
+      pageYOffset: 0,
+      location: locationObj,
+      history: sandbox.history,
+      scrollTo: () => {},
+      requestAnimationFrame: sandbox.requestAnimationFrame,
+      addEventListener: (type, fn) => {
+        if (!windowListeners.has(type)) windowListeners.set(type, []);
+        windowListeners.get(type).push(fn);
+      },
+      dispatch: (type, ev = {}) => {
+        for (const fn of windowListeners.get(type) || []) fn(ev);
+      },
+    };
+
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(spogDeckCode, ctx);
+    vm.runInContext(historicCode, ctx);
+
+    // 1. Initial #all-accounts load: spog-deck resolves data-hash="all-accounts" to cardAll!
+    assert.equal(cardAll.classList.contains('deck-card-active'), true);
+    assert.equal(cardPots.classList.contains('deck-card-inactive'), true);
+    assert.equal(cardAll.style.maxHeight, '');
+    assert.equal(cardPots.style.maxHeight, '900px');
+
+    // 2. hashchange back to #pots: delegates via grid.__monmonActivateCard so mid-scroll events
+    // while cardAll is still visually centered do NOT revert the hash back to #all-accounts!
+    locationObj.hash = '#pots';
+    sandbox.window.dispatch('hashchange');
+    // Simulate a scroll event fired immediately on frame 1 while grid.scrollLeft hasn't crossed midpoint
+    cardPots.getBoundingClientRect = () => ({ left: -350, width: 375 });
+    cardAll.getBoundingClientRect = () => ({ left: 25, width: 375 });
+    grid.scrollLeft = 350;
+    grid.dispatch('scroll', {});
+
+    assert.equal(locationObj.hash, '#pots');
+    assert.equal(pillPots.classList.contains('active'), true);
+    assert.equal(cardPots.classList.contains('deck-card-active'), true);
+  });
 });

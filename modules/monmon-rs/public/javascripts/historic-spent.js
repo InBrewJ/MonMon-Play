@@ -73,8 +73,16 @@
                     updateHash(key);
                 }
 
-                if (options.scrollMobile) {
-                    scrollGridToCard(targetCard, options.scrollBehavior || 'auto');
+                if (options.scrollMobile && window.innerWidth <= 768) {
+                    if (typeof grid.__monmonActivateCard === 'function') {
+                        grid.__monmonActivateCard(targetCard, {
+                            snapTop: false,
+                            scrollNavPill: true,
+                            behavior: options.scrollBehavior || 'auto'
+                        });
+                    } else {
+                        scrollGridToCard(targetCard, options.scrollBehavior || 'auto');
+                    }
                 }
             } finally {
                 isSyncing = false;

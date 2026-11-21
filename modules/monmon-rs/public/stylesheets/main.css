@@ -2286,6 +2286,15 @@ body.modal-scroll-locked {
   .historic-mobile-cards {
     display: block;
   }
+
+  .historic-mobile-cards .stat-cell {
+    min-width: 0;
+  }
+
+  .historic-mobile-cards .stat-cell-val {
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+  }
 }
 
 /* Waiting List UI Blocking Modal */

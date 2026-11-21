@@ -217,6 +217,24 @@
             }
         }
 
+        function activateCardProgrammatically(targetEl, opts) {
+            if (!targetEl) return;
+            var options = opts || {};
+            isClickScrolling = true;
+            setActiveCard(targetEl, Boolean(options.snapTop), options.scrollNavPill !== false);
+            if (window.innerWidth <= 768) {
+                scrollCardIntoGrid(targetEl, options.behavior || 'smooth');
+            }
+            clearTimeout(clickScrollTimeout);
+            clickScrollTimeout = setTimeout(function() {
+                isClickScrolling = false;
+                lastObservedScrollLeft = grid.scrollLeft || 0;
+            }, 500);
+        }
+
+        // Expose programmatic activation hook for page-level hash controllers (e.g. historic-spent.js)
+        grid.__monmonActivateCard = activateCardProgrammatically;
+
         // Click on a navigation pill -> switch card, snap up if needed, smoothly scroll to card
         pills.forEach(function(pill, index) {
             pill.addEventListener('click', function(e) {
@@ -224,15 +242,7 @@
                 var targetId = pill.getAttribute('data-target');
                 var targetEl = (targetId ? document.getElementById(targetId) : null) || cards[index];
                 if (targetEl) {
-                    isClickScrolling = true;
-                    setActiveCard(targetEl, true, true);
-                    scrollCardIntoGrid(targetEl, 'smooth');
-
-                    clearTimeout(clickScrollTimeout);
-                    clickScrollTimeout = setTimeout(function() {
-                        isClickScrolling = false;
-                        lastObservedScrollLeft = grid.scrollLeft || 0;
-                    }, 500);
+                    activateCardProgrammatically(targetEl, { snapTop: true, scrollNavPill: true, behavior: 'smooth' });
                 }
             });
         });
@@ -343,9 +353,24 @@
             if (newWidth === lastViewportWidth) {
                 return;
             }
+            var wasDesktop = lastViewportWidth > 768;
             lastViewportWidth = newWidth;
             updateNavCssVariables();
             if (newWidth <= 768) {
+                if (wasDesktop) {
+                    var activePill = nav.querySelector('.spog-nav-pill.active, .deck-nav-pill.active');
+                    if (activePill) {
+                        var tid = activePill.getAttribute('data-target');
+                        var pillCard = tid ? document.getElementById(tid) : null;
+                        if (pillCard) {
+                            currentActiveCard = pillCard;
+                            syncCardHeights(pillCard, true);
+                            scrollCardIntoGrid(pillCard, 'auto');
+                            lastObservedScrollLeft = grid.scrollLeft || 0;
+                            return;
+                        }
+                    }
+                }
                 if (currentActiveCard) {
                     syncCardHeights(currentActiveCard, true);
                 }
@@ -380,11 +405,21 @@
             });
         }
 
-        // Initialize active card (supports URL hash or active pill)
-        var hash = window.location.hash ? window.location.hash.substring(1) : '';
+        // Initialize active card (supports URL hash by element ID or pill data-hash, or active pill)
+        var hash = window.location.hash ? window.location.hash.substring(1).trim().toLowerCase() : '';
         var initialCard = null;
         if (hash) {
             initialCard = document.getElementById(hash);
+            if (!initialCard) {
+                for (var hi = 0; hi < pills.length; hi++) {
+                    var pHash = pills[hi].getAttribute('data-hash');
+                    if (pHash && pHash.toLowerCase() === hash) {
+                        var pTarget = pills[hi].getAttribute('data-target');
+                        initialCard = (pTarget ? document.getElementById(pTarget) : null) || cards[hi];
+                        break;
+                    }
+                }
+            }
         }
         if (!initialCard) {
             var activePill = nav.querySelector('.spog-nav-pill.active, .deck-nav-pill.active');

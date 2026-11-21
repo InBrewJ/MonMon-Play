@@ -51,7 +51,7 @@
                     <div class="metric-box" style="margin: 0;">
                         <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Avg Pot Spend</div>
                         <div style="font-size: 1.45rem; font-weight: 800; color: var(--primary); margin-top: 2px;">£{{ pots_summary.avg_pot_spend }}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Per completed pay cycle</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">{% if pots_summary.using_current_cycle_fallback %}Current cycle (in progress){% else %}Per completed pay cycle{% endif %}</div>
                     </div>
 
                     <div class="metric-box" style="margin: 0;">
@@ -195,7 +195,7 @@
                                                             <tr style="color: var(--text-muted); border-bottom: 1px dashed var(--border-color); text-align: left;">
                                                                 <th style="padding: 3px 4px;">Pot Account</th>
                                                                 <th style="padding: 3px 4px; text-align: right;">
-                                                                    {% if pot_snap.is_archived_in_period %}Balance on End ({{ pot_snap.archived_date_human_readable }}){% else %}Balance at Period End{% endif %}
+                                                                    {% if pot_snap.is_archived_in_period %}Balance at Window End{% else %}Balance at Period End{% endif %}
                                                                 </th>
                                                                 <th style="padding: 3px 4px; text-align: right;">Outflow in Window</th>
                                                             </tr>
@@ -253,13 +253,13 @@
                             {% if all_accounts_summary.avg_is_net_inflow %}+£{{ all_accounts_summary.avg_abs_net_change }}{% else %}£{{ all_accounts_summary.avg_abs_net_change }}{% endif %}
                         </div>
                         <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
-                            {% if all_accounts_summary.avg_is_net_inflow %}Avg net inflow per cycle{% else %}Per completed pay cycle{% endif %}
+                            {% if all_accounts_summary.avg_is_net_inflow %}Avg net inflow{% else %}{% if all_accounts_summary.using_current_cycle_fallback %}Current cycle (in progress){% else %}Per completed pay cycle{% endif %}{% endif %}
                         </div>
                     </div>
 
                     <div class="metric-box" style="margin: 0;">
                         <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Highest Spend Cycle</div>
-                        <div style="font-size: 1.45rem; font-weight: 800; color: #ef4444; margin-top: 2px;">
+                        <div style="font-size: 1.45rem; font-weight: 800; color: {% if let Some(h) = all_accounts_summary.highest_spent %}{% if h.is_negative() %}#10b981{% else %}#ef4444{% endif %}{% else %}#ef4444{% endif %}; margin-top: 2px;">
                             {% if let Some(h) = all_accounts_summary.highest_spent %}
                                 {% if h.is_negative() %}+£{{ h.abs() }}{% else %}£{{ h }}{% endif %}
                             {% else %}—{% endif %}
@@ -273,7 +273,7 @@
                         <div style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Lowest Spend Cycle</div>
                         <div style="font-size: 1.45rem; font-weight: 800; color: #10b981; margin-top: 2px;">
                             {% if let Some(abs_l) = all_accounts_summary.lowest_abs_net_change %}
-                                {% if all_accounts_summary.lowest_is_net_inflow %}+£{{ abs_l }}{% else %}£{{ abs_l }}{% endif %}
+                                {% if all_accounts_summary.lowest_is_net_inflow %}+£{{ abs_l }} <span style="font-size: 0.78rem; font-weight: 600;">net inflow</span>{% else %}£{{ abs_l }}{% endif %}
                             {% else %}—{% endif %}
                         </div>
                         <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">

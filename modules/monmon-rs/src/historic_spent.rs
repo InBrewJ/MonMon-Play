@@ -407,6 +407,7 @@ pub struct HistoricPotsSummaryDto {
     pub cycles_within_max: usize,
     pub total_completed_cycles: usize,
     pub within_max_percent: i32,
+    pub using_current_cycle_fallback: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -420,6 +421,7 @@ pub struct HistoricAllAccountsSummaryDto {
     pub lowest_is_net_inflow: bool,
     pub lowest_abs_net_change: Option<Pence>,
     pub lowest_spent_range: Option<String>,
+    pub using_current_cycle_fallback: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -534,13 +536,55 @@ pub fn compute_cycle_pot_snapshots(
             return (Pence::ZERO, Vec::new());
         }
         let mut fallback_spent = Pence::ZERO;
+        let mut account_snapshots = Vec::new();
         for &acc_id in debit_account_ids {
-            if let Some(bals) = balance_map.get(&acc_id) {
-                let s = calculate_account_spent_window(bals, start_sec, effective_end_sec, true);
-                fallback_spent += Pence::from_pounds_f32(s);
+            let empty_vec = Vec::new();
+            let bals = balance_map.get(&acc_id).unwrap_or(&empty_vec);
+            if bals.is_empty() || bals[0].0 > effective_end_sec {
+                continue;
             }
+            let (acc_name, acc_type) = account_names_map
+                .get(&acc_id)
+                .cloned()
+                .unwrap_or_else(|| ("Account".to_string(), "DEBIT".to_string()));
+            let s = calculate_account_spent_window(bals, start_sec, effective_end_sec, true);
+            let s_pence = Pence::from_pounds_f32(s);
+            let bal_end = get_account_end_balance(bals, start_sec, effective_end_sec, false, effective_end_sec);
+            fallback_spent += s_pence;
+            account_snapshots.push(AccountBalanceSnapshotDto {
+                account_name: acc_name,
+                account_type: acc_type,
+                balance_on_date: bal_end,
+                amount_spent: s,
+                balance_on_date_pence: Pence::from_pounds_f32(bal_end),
+                amount_spent_pence: s_pence,
+            });
         }
-        return (fallback_spent, Vec::new());
+        let fallback_pots = if account_snapshots.is_empty() {
+            Vec::new()
+        } else {
+            vec![HistoricPotSnapshotDto {
+                plan_summary: "Active Debit Accounts (No Custom Pot Configured)".to_string(),
+                created_at_human_readable: "Default".to_string(),
+                is_first_pot: true,
+                is_last_pot: true,
+                is_intermediary_pot: false,
+                is_archived_in_period: false,
+                archived_date_human_readable: "Active".to_string(),
+                pot_spent: fallback_spent.to_pounds_f32(),
+                pot_spent_pence: fallback_spent,
+                account_snapshots,
+            }]
+        };
+        return (fallback_spent, fallback_pots);
+    }
+
+    // In the current cycle, SPOG only considers unarchived MONTHLY pots. If every pot overlapping
+    // the current cycle is archived (no active monthly pot), match SPOG (£0.00) cleanly without
+    // showing contradictory non-zero archived pot rows underneath a £0.00 headline.
+    let has_active_unarchived_pot = intervals.iter().any(|i| !i.pot.archived);
+    if is_current && !has_active_unarchived_pot {
+        return (Pence::ZERO, Vec::new());
     }
 
     let num_display = intervals.len();
@@ -667,11 +711,6 @@ pub fn compute_cycle_pot_snapshots(
         });
     }
 
-    // In the current cycle, if the latest pot is archived (no active monthly pot), SPOG shows £0.00
-    if is_current && intervals.last().map(|i| i.pot.archived).unwrap_or(false) {
-        total_pot_spent = Pence::ZERO;
-    }
-
     (total_pot_spent, pots_in_period)
 }
 
@@ -720,6 +759,7 @@ pub fn compute_historic_summaries(
     cycles: &[HistoricCycleDto],
 ) -> (HistoricPotsSummaryDto, HistoricAllAccountsSummaryDto) {
     let completed: Vec<&HistoricCycleDto> = cycles.iter().filter(|c| !c.is_current_cycle).collect();
+    let using_current_cycle_fallback = completed.is_empty() && !cycles.is_empty();
     let sample: Vec<&HistoricCycleDto> = if !completed.is_empty() {
         completed
     } else {
@@ -734,6 +774,7 @@ pub fn compute_historic_summaries(
             cycles_within_max: 0,
             total_completed_cycles: 0,
             within_max_percent: 0,
+            using_current_cycle_fallback: false,
         }
     } else {
         let sum_pot: Pence = sample.iter().map(|c| c.pot_spent_pence).sum();
@@ -746,6 +787,7 @@ pub fn compute_historic_summaries(
             cycles_within_max: within_max,
             total_completed_cycles: n,
             within_max_percent: pct,
+            using_current_cycle_fallback,
         }
     };
 
@@ -760,6 +802,7 @@ pub fn compute_historic_summaries(
             lowest_is_net_inflow: false,
             lowest_abs_net_change: None,
             lowest_spent_range: None,
+            using_current_cycle_fallback: false,
         }
     } else {
         let sum_all: Pence = sample.iter().map(|c| c.all_accounts_net_spent).sum();
@@ -777,6 +820,7 @@ pub fn compute_historic_summaries(
             lowest_is_net_inflow: lowest_val.map(|v| v.is_negative()).unwrap_or(false),
             lowest_abs_net_change: lowest_val.map(|v| v.abs()),
             lowest_spent_range: lowest.map(|c| c.cycle_date_range.clone()),
+            using_current_cycle_fallback,
         }
     };
 
@@ -991,13 +1035,21 @@ pub fn compute_pot_intervals(monthly_pots: &[PotRecord]) -> Vec<ActivePotInterva
 
         let mut next_start = i64::MAX;
         if i + 1 < n {
-            let next = &sorted[i + 1];
-            let n_created = normalize_to_epoch_sec(next.created_at).unwrap_or(0);
-            let n_updated = normalize_to_epoch_sec(next.last_updated).unwrap_or(0);
-            if n_created > 0 {
-                next_start = n_created;
-            } else if n_updated > 0 {
-                next_start = n_updated;
+            // If this pot is still unarchived, a newer *archived* pot should not truncate it;
+            // only another unarchived replacement (or if this pot itself is archived) bounds its end.
+            let next_opt = if p.archived {
+                Some(&sorted[i + 1])
+            } else {
+                sorted[(i + 1)..].iter().find(|cand| !cand.archived)
+            };
+            if let Some(next) = next_opt {
+                let n_created = normalize_to_epoch_sec(next.created_at).unwrap_or(0);
+                let n_updated = normalize_to_epoch_sec(next.last_updated).unwrap_or(0);
+                if n_created > 0 {
+                    next_start = n_created;
+                } else if n_updated > 0 {
+                    next_start = n_updated;
+                }
             }
         }
 
@@ -1185,7 +1237,7 @@ pub async fn calculate_historic_cycles(
 
     let accounts_rows = sqlx::query(
         r#"
-        SELECT id, name, type, COALESCE(ledger_mode, 'ABL') AS ledger_mode
+        SELECT id, name, type
         FROM account
         WHERE (userid = $1 OR user_id = $1)
           AND (archived IS NULL OR archived = false)
@@ -1201,19 +1253,16 @@ pub async fn calculate_historic_cycles(
     let mut ledger_account_ids = Vec::new();
     let mut debit_account_ids = Vec::new();
     let mut account_names_map: HashMap<i64, (String, String)> = HashMap::new();
-    let mut account_ledger_modes: HashMap<i64, String> = HashMap::new();
 
     for r in accounts_rows {
         let acc_id: i64 = r.get("id");
         let name: String = r.get("name");
         let acc_type: String = r.get("type");
-        let ledger_mode: String = r.get("ledger_mode");
         let t_upper = acc_type.to_uppercase();
         account_names_map.insert(acc_id, (name.clone(), acc_type.clone()));
-        account_ledger_modes.insert(acc_id, ledger_mode.clone());
         if t_upper != "MORTGAGE" && t_upper != "PENSION" {
             ledger_account_ids.push(acc_id);
-            ledger_accounts.push((acc_id, name, acc_type.clone(), ledger_mode));
+            ledger_accounts.push((acc_id, name, acc_type.clone()));
             if t_upper == "DEBIT" || t_upper == "CURRENT" {
                 debit_account_ids.push(acc_id);
             }
@@ -1476,9 +1525,25 @@ pub async fn calculate_historic_cycles(
             days_in_cycle
         };
 
-        // Determine active pot for this cycle (using last monthly pot in active interval if multiple)
-        let active_intervals_in_cycle = find_active_pots_in_cycle(&pot_intervals, start_sec, end_sec);
-        let active_pot = if !active_intervals_in_cycle.is_empty() {
+        // Determine active pot for this cycle. For the current cycle, match spog.rs by preferring
+        // the latest unarchived MONTHLY pot so a newer archived pot never shadows an active older pot.
+        let mut active_intervals_in_cycle = find_active_pots_in_cycle(&pot_intervals, start_sec, end_sec);
+        if is_current {
+            if let Some(unarchived_pos) = active_intervals_in_cycle.iter().rposition(|i| !i.pot.archived) {
+                // Ensure the active unarchived pot is last in display/window ordering if newer pots were archived
+                if unarchived_pos + 1 < active_intervals_in_cycle.len() {
+                    let active_int = active_intervals_in_cycle.remove(unarchived_pos);
+                    active_intervals_in_cycle.push(active_int);
+                }
+            }
+        }
+        let active_pot = if is_current {
+            active_intervals_in_cycle
+                .iter()
+                .rev()
+                .find(|i| !i.pot.archived)
+                .map(|i| i.pot.clone())
+        } else if !active_intervals_in_cycle.is_empty() {
             Some(active_intervals_in_cycle.last().unwrap().pot.clone())
         } else {
             find_active_pot_for_cycle(&pots, start_sec, end_sec)
@@ -1567,7 +1632,7 @@ pub async fn calculate_historic_cycles(
         let mut starting_pot_budget = 0.0f32;
         let mut account_breakdowns = Vec::new();
 
-        for &(acc_id, ref acc_name, ref acc_type, ref _ledger_mode) in &ledger_accounts {
+        for &(acc_id, ref acc_name, ref acc_type) in &ledger_accounts {
             let empty_vec = Vec::new();
             let bals = balance_map.get(&acc_id).unwrap_or(&empty_vec);
             if bals.is_empty() {
@@ -2160,7 +2225,7 @@ mod tests {
             true,
         );
         assert_eq!(spent_arch, Pence::ZERO);
-        assert_eq!(snaps_arch.len(), 1);
+        assert!(snaps_arch.is_empty());
 
         // 3. Active pot with empty pot_accounts in current cycle -> £0.00 (matches SPOG)
         let empty_pot = PotRecord {
@@ -2259,6 +2324,87 @@ mod tests {
             false,
         );
         assert_eq!(spent_fallback, Pence::from_pounds_f64(160.0));
+
+        // Past cycle with NO custom pots populates a fallback snapshot listing debit accounts
+        let (spent_no_pot, snaps_no_pot) = compute_cycle_pot_snapshots(
+            &[],
+            &balance_map,
+            &names,
+            &[10],
+            start_sec,
+            end_sec,
+            end_sec,
+            false,
+        );
+        assert_eq!(spent_no_pot, Pence::from_pounds_f64(160.0));
+        assert_eq!(snaps_no_pot.len(), 1);
+        assert_eq!(snaps_no_pot[0].account_snapshots.len(), 1);
+        assert_eq!(snaps_no_pot[0].account_snapshots[0].amount_spent_pence, Pence::from_pounds_f64(160.0));
+    }
+
+    #[test]
+    fn test_active_older_pot_not_shadowed_by_newer_archived_pot() {
+        let start_sec = 1_000_000;
+        let t_temp_create = 1_400_000;
+        let t_temp_arch = 1_500_000;
+        let end_sec = 2_000_000;
+
+        let active_older = PotRecord {
+            id: 1,
+            name: "Main Active Pot".to_string(),
+            created_at: Some(start_sec - 50_000),
+            last_updated: None,
+            archived: false,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![10],
+        };
+        let newer_archived = PotRecord {
+            id: 2,
+            name: "Temporary Deleted Pot".to_string(),
+            created_at: Some(t_temp_create),
+            last_updated: Some(t_temp_arch),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![20],
+        };
+
+        let intervals = compute_pot_intervals(&[active_older, newer_archived]);
+        assert_eq!(intervals[0].end, i64::MAX);
+
+        let mut active = find_active_pots_in_cycle(&intervals, start_sec, end_sec);
+        // Simulate calculate_historic_cycles moving the unarchived active pot last
+        if let Some(pos) = active.iter().rposition(|i| !i.pot.archived) {
+            if pos + 1 < active.len() {
+                let item = active.remove(pos);
+                active.push(item);
+            }
+        }
+
+        let mut balance_map: HashMap<i64, Vec<(i64, f32)>> = HashMap::new();
+        balance_map.insert(10, vec![(start_sec - 100, 500.0), (t_temp_arch + 100, 420.0)]);
+        balance_map.insert(20, vec![(start_sec - 100, 200.0)]);
+        let mut names = HashMap::new();
+        names.insert(10, ("Monzo".to_string(), "DEBIT".to_string()));
+        names.insert(20, ("Temp".to_string(), "DEBIT".to_string()));
+
+        let (total_spent, _) = compute_cycle_pot_snapshots(
+            &active,
+            &balance_map,
+            &names,
+            &[10],
+            start_sec,
+            end_sec,
+            end_sec,
+            true,
+        );
+        // Must NOT be zeroed out — older unarchived pot is still active in SPOG!
+        assert_eq!(total_spent, Pence::from_pounds_f64(80.0));
     }
 
     #[test]
