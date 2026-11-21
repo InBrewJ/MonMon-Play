@@ -144,11 +144,16 @@
             });
         });
 
-        // Initial activation from URL hash
-        var initialHash = normalizeHash(window.location.hash);
-        var hasExplicitHash = Boolean(window.location.hash && HASH_TO_CARD[String(window.location.hash).replace(/^#/, '').trim().toLowerCase()]);
+        // Initial activation from URL hash (or ?tab= fallback), normalizing the URL hash so tabs are always refresh-safe
+        var queryTab = '';
+        if (window.location && window.location.search && typeof URLSearchParams === 'function') {
+            queryTab = new URLSearchParams(window.location.search).get('tab') || '';
+        }
+        var rawInitial = window.location.hash || queryTab;
+        var initialHash = normalizeHash(rawInitial);
+        var hasExplicitHash = Boolean(rawInitial && HASH_TO_CARD[String(rawInitial).replace(/^#/, '').trim().toLowerCase()]);
         activateView(initialHash, {
-            updateUrl: false,
+            updateUrl: true,
             scrollMobile: hasExplicitHash && initialHash !== 'pots',
             scrollBehavior: 'auto'
         });

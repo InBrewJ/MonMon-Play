@@ -172,16 +172,18 @@ function setupEnv({ initialHash = '', innerWidth = 1280 } = {}) {
 }
 
 describe('historic-spent.js view switcher & hash sync', () => {
-  it('defaults to Monthly Pots (#pots) when URL hash is empty or unknown', () => {
+  it('defaults to Monthly Pots (#pots) and writes #pots into URL when hash is empty or unknown', () => {
     const env = setupEnv({ initialHash: '', innerWidth: 1280 });
     assert.equal(env.cardPots.classList.contains('historic-tab-active'), true);
     assert.equal(env.cardAll.classList.contains('historic-tab-active'), false);
     assert.equal(env.pillPots.classList.contains('active'), true);
     assert.equal(env.pillAll.classList.contains('active'), false);
+    assert.equal(env.locationObj.hash, '#pots');
 
     const envUnknown = setupEnv({ initialHash: '#something-else', innerWidth: 1280 });
     assert.equal(envUnknown.cardPots.classList.contains('historic-tab-active'), true);
     assert.equal(envUnknown.cardAll.classList.contains('historic-tab-active'), false);
+    assert.equal(envUnknown.locationObj.hash, '#pots');
   });
 
   it('initializes directly to All Accounts when hash is #all-accounts', () => {

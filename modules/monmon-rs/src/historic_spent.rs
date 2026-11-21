@@ -1478,15 +1478,13 @@ pub async fn calculate_historic_cycles(
     let max_allowed = today - chrono::Months::new(24);
     let earliest_date = if earliest_date < max_allowed { max_allowed } else { earliest_date };
 
-    // Only pots that actually linked at least one account can track monthly pot spending;
-    // excluding empty-account draft/legacy pots avoids 30-second preset holes and avoids
-    // leaking salary debit accounts into old cycles that predated pot_accounts tracking.
-    let pots_with_accounts: Vec<PotRecord> = pots
-        .iter()
-        .filter(|p| !p.accounts.is_empty())
-        .cloned()
+    // Compute intervals across ALL monthly pots first so legacy empty-account pots still bound
+    // the end of preceding pots (e.g. a 2024 pot won't stretch across 2 years until 2026),
+    // then discard intervals with empty pot_accounts so they don't create false gaps or leak debit hubs.
+    let pot_intervals: Vec<ActivePotInterval> = compute_pot_intervals(&pots)
+        .into_iter()
+        .filter(|i| !i.pot.accounts.is_empty())
         .collect();
-    let pot_intervals = compute_pot_intervals(&pots_with_accounts);
 
     let mut cycles = Vec::new();
     let current_cycle_start = find_last_payday_date(today, nominal_payday);
@@ -2466,6 +2464,64 @@ mod tests {
         assert_eq!(total_spent, Pence::from_pounds_f64(504.87));
         // Transient 45-second £0 pot_10841 omitted from display, keeping 10842 + 11657
         assert_eq!(snaps.len(), 2);
+    }
+
+    #[test]
+    fn test_empty_pots_still_bound_preceding_pot_end_so_old_pot_never_stretches_years() {
+        let apr_2024 = 1_712_534_400;
+        let may_2024 = 1_715_000_000;
+        let jul_2026 = 1_783_100_000;
+
+        let old_pot = PotRecord {
+            id: 6133,
+            name: "".to_string(),
+            created_at: Some(apr_2024),
+            last_updated: Some(apr_2024),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![51],
+        };
+        let legacy_empty_pot = PotRecord {
+            id: 6200,
+            name: "".to_string(),
+            created_at: Some(may_2024),
+            last_updated: Some(may_2024),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![],
+        };
+        let jul_2026_pot = PotRecord {
+            id: 8597,
+            name: "".to_string(),
+            created_at: Some(jul_2026),
+            last_updated: Some(jul_2026),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![95],
+        };
+
+        let intervals: Vec<ActivePotInterval> = compute_pot_intervals(&[old_pot, legacy_empty_pot, jul_2026_pot])
+            .into_iter()
+            .filter(|i| !i.pot.accounts.is_empty())
+            .collect();
+
+        assert_eq!(intervals.len(), 2);
+        // 6133 must end at may_2024 (bounded by legacy_empty_pot), NOT stretch to jul_2026!
+        assert_eq!(intervals[0].pot.id, 6133);
+        assert_eq!(intervals[0].end, may_2024);
+
+        // A 2025 cycle has NO active pots with accounts
+        let active_2025 = find_active_pots_in_cycle(&intervals, 1_740_000_000, 1_742_600_000);
+        assert!(active_2025.is_empty());
     }
 
     #[test]
