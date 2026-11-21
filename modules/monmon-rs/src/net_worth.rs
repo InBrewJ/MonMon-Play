@@ -232,14 +232,6 @@ pub async fn calculate_net_worth_as_of(
         Some(c_sec) => {
             sqlx::query(
                 r#"
-                WITH latest_balances AS (
-                    SELECT DISTINCT ON (account_id)
-                        account_id AS acc_id,
-                        value AS val
-                    FROM balance
-                    WHERE (timestamp IS NULL OR (CASE WHEN timestamp > 100000000000 THEN timestamp/1000 ELSE timestamp END) <= $2)
-                    ORDER BY account_id, timestamp DESC NULLS LAST, id DESC
-                )
                 SELECT
                     a.id,
                     a.name,
@@ -251,7 +243,15 @@ pub async fn calculate_net_worth_as_of(
                     a.archived,
                     a.archived_at
                 FROM account a
-                LEFT JOIN latest_balances lb ON lb.acc_id = a.id
+                LEFT JOIN LATERAL (
+                    SELECT b.value AS val
+                    FROM balance b
+                    WHERE b.account_id = a.id
+                      AND b.timestamp IS NOT NULL
+                      AND (CASE WHEN b.timestamp > 100000000000 THEN b.timestamp/1000 ELSE b.timestamp END) <= $2
+                    ORDER BY (CASE WHEN b.timestamp > 100000000000 THEN b.timestamp/1000 ELSE b.timestamp END) DESC, b.id DESC
+                    LIMIT 1
+                ) lb ON true
                 WHERE (a.userid = $1 OR a.user_id = $1)
                 ORDER BY a.name ASC
                 "#,
@@ -264,13 +264,6 @@ pub async fn calculate_net_worth_as_of(
         None => {
             sqlx::query(
                 r#"
-                WITH latest_balances AS (
-                    SELECT DISTINCT ON (account_id)
-                        account_id AS acc_id,
-                        value AS val
-                    FROM balance
-                    ORDER BY account_id, timestamp DESC NULLS LAST, id DESC
-                )
                 SELECT
                     a.id,
                     a.name,
@@ -282,7 +275,14 @@ pub async fn calculate_net_worth_as_of(
                     a.archived,
                     a.archived_at
                 FROM account a
-                LEFT JOIN latest_balances lb ON lb.acc_id = a.id
+                LEFT JOIN LATERAL (
+                    SELECT b.value AS val
+                    FROM balance b
+                    WHERE b.account_id = a.id
+                      AND b.timestamp IS NOT NULL
+                    ORDER BY b.timestamp DESC, b.id DESC
+                    LIMIT 1
+                ) lb ON true
                 WHERE (a.userid = $1 OR a.user_id = $1)
                   AND (a.archived IS NULL OR a.archived = false)
                 ORDER BY a.name ASC

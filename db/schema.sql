@@ -657,6 +657,7 @@ CREATE TABLE public.user_access (
     email character varying(255),
     status character varying(255) NOT NULL,
     userid character varying(255) NOT NULL,
+    user_id character varying(255),
     username character varying(255),
     created_at timestamp without time zone DEFAULT now(),
     updated_at timestamp without time zone DEFAULT now()
@@ -1155,6 +1156,39 @@ CREATE INDEX idxq0mhe35p8xx9bd8pup6a7wks5 ON public.bank_transaction USING btree
 --
 
 CREATE INDEX idxrolgvgehmsujuj0abx1afg124 ON public.bank_transaction USING btree ("timestamp");
+
+
+--
+-- Performance & time-series indexes
+--
+
+CREATE INDEX IF NOT EXISTS idx_balance_account_ts_asc ON public.balance USING btree (account_id, "timestamp" ASC, id ASC) INCLUDE (value);
+CREATE INDEX IF NOT EXISTS idx_balance_account_ts_sec_desc ON public.balance USING btree (account_id, (CASE WHEN "timestamp" > 100000000000 THEN "timestamp" / 1000 ELSE "timestamp" END) DESC, id DESC) INCLUDE (value, "timestamp");
+CREATE INDEX IF NOT EXISTS idx_balance_userid_ts_desc ON public.balance USING btree (userid, "timestamp" DESC, id DESC) INCLUDE (account_id, value);
+CREATE INDEX IF NOT EXISTS idx_balance_userid_ts_sec_asc ON public.balance USING btree (userid, (CASE WHEN "timestamp" > 100000000000 THEN "timestamp" / 1000 ELSE "timestamp" END) ASC, id ASC) INCLUDE (account_id, value, "timestamp");
+CREATE INDEX IF NOT EXISTS idx_balance_coalesce_user_ts_desc ON public.balance USING btree ((COALESCE(user_id, userid, "userId")), "timestamp" DESC, id DESC) INCLUDE (account_id, value);
+CREATE INDEX IF NOT EXISTS idx_balance_coalesce_user_account_ts ON public.balance USING btree ((COALESCE(user_id, userid, "userId")), account_id, "timestamp" ASC, id ASC) INCLUDE (value);
+CREATE INDEX IF NOT EXISTS idx_account_userid_archived_id ON public.account USING btree (userid, archived, id);
+CREATE INDEX IF NOT EXISTS idx_account_coalesce_user_archived_id ON public.account USING btree ((COALESCE(user_id, userid, "userId")), archived, id);
+CREATE INDEX IF NOT EXISTS idx_outgoing_account_id ON public.outgoing USING btree (account_id);
+CREATE INDEX IF NOT EXISTS idx_outgoing_userid_active ON public.outgoing USING btree (userid, archived, paused, outgoingmonth, outgoingday);
+CREATE INDEX IF NOT EXISTS idx_outgoing_coalesce_user_active ON public.outgoing USING btree ((COALESCE(user_id, userid, "userId")), archived, paused);
+CREATE INDEX IF NOT EXISTS idx_incoming_account_id ON public.incoming USING btree (account_id);
+CREATE INDEX IF NOT EXISTS idx_incoming_userid_active ON public.incoming USING btree (userid, archived, payday, id);
+CREATE INDEX IF NOT EXISTS idx_incoming_coalesce_user_active ON public.incoming USING btree ((COALESCE(user_id, userid, "userId")), archived, incomingmonthday, id);
+CREATE INDEX IF NOT EXISTS idx_pot_userid_type_archived ON public.pot USING btree (userid, type, archived, createdat DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_pot_accounts_pot_id ON public.pot_accounts USING btree (pot_id, account_id);
+CREATE INDEX IF NOT EXISTS idx_pot_accounts_account_id ON public.pot_accounts USING btree (account_id);
+CREATE INDEX IF NOT EXISTS idx_nw_asset_userid_archived ON public.net_worth_asset USING btree (userid, archived, asset_value DESC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_savings_plan_userid_archived ON public.savings_plan USING btree (userid, archived, id DESC);
+CREATE INDEX IF NOT EXISTS idx_spi_plan_archived_priority ON public.savings_plan_item USING btree (savings_plan_id, archived, priority ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_spi_account_id ON public.savings_plan_item USING btree (account_id);
+CREATE INDEX IF NOT EXISTS idx_user_access_lower_username ON public.user_access USING btree (lower(username));
+CREATE INDEX IF NOT EXISTS idx_user_access_lower_email ON public.user_access USING btree (lower(email));
+CREATE INDEX IF NOT EXISTS idx_user_access_user_id_col ON public.user_access USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_bt_userid_ts_desc ON public.bank_transaction USING btree (userid, "timestamp" DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_bt_account_ts_desc ON public.bank_transaction USING btree (account_id, "timestamp" DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_ps_userid_status_created ON public.pending_statement USING btree (userid, status, created_at DESC);
 
 
 --

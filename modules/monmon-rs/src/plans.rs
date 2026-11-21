@@ -147,14 +147,15 @@ pub async fn get_plans_page(
 
         let acc_rows = sqlx::query(
             r#"
-            WITH latest_b AS (
-                SELECT DISTINCT ON (account_id) account_id, value
-                FROM balance
-                ORDER BY account_id, timestamp DESC
-            )
             SELECT COALESCE(SUM(b.value), 0.0)::real AS total_balance, count(pa.account_id) AS acc_count
             FROM pot_accounts pa
-            LEFT JOIN latest_b b ON b.account_id = pa.account_id
+            LEFT JOIN LATERAL (
+                SELECT value
+                FROM balance
+                WHERE account_id = pa.account_id
+                ORDER BY timestamp DESC, id DESC
+                LIMIT 1
+            ) b ON true
             WHERE pa.pot_id = $1
             "#,
         )

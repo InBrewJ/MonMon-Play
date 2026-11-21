@@ -301,14 +301,15 @@ pub async fn get_monthly_pot_page(
     // 1. Load all accounts with their latest balances
     let acc_rows = sqlx::query(
         r#"
-        WITH latest_b AS (
-            SELECT DISTINCT ON (account_id) account_id, value
-            FROM balance
-            ORDER BY account_id, timestamp DESC
-        )
         SELECT a.id, a.name, a.type, COALESCE(b.value, 0.0)::real AS latest_balance
         FROM account a
-        LEFT JOIN latest_b b ON b.account_id = a.id
+        LEFT JOIN LATERAL (
+            SELECT value
+            FROM balance
+            WHERE account_id = a.id
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 1
+        ) b ON true
         WHERE (a.userid = $1 OR a.user_id = $1)
           AND (a.archived IS NULL OR a.archived = false)
         ORDER BY a.name ASC
@@ -375,15 +376,16 @@ pub async fn get_monthly_pot_page(
         // Load linked accounts
         let linked_acc_rows = sqlx::query(
             r#"
-            WITH latest_b AS (
-                SELECT DISTINCT ON (account_id) account_id, value
-                FROM balance
-                ORDER BY account_id, timestamp DESC
-            )
             SELECT a.id, a.name, a.type, COALESCE(b.value, 0.0)::real AS latest_balance
             FROM pot_accounts pa
             JOIN account a ON a.id = pa.account_id
-            LEFT JOIN latest_b b ON b.account_id = a.id
+            LEFT JOIN LATERAL (
+                SELECT value
+                FROM balance
+                WHERE account_id = a.id
+                ORDER BY timestamp DESC, id DESC
+                LIMIT 1
+            ) b ON true
             WHERE pa.pot_id = $1
             ORDER BY a.name ASC
             "#,
