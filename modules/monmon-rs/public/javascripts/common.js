@@ -185,7 +185,7 @@
             }
 
             if (canBeNegative) {
-                inp.setAttribute('pattern', '[-+]?[0-9]*[.,]?[0-9]*');
+                inp.setAttribute('pattern', '[+\\-]?[0-9]*[.,]?[0-9]*');
                 if (inp.type === 'number' && !inp.hasAttribute('min')) {
                     inp.type = 'text';
                 }

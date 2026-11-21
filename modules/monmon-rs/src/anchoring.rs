@@ -146,32 +146,53 @@ pub fn get_actual_payday_date(nominal_payday: i32, year: i32, month: u32) -> Nai
     get_last_working_day_on_or_before(pay_date)
 }
 
+fn add_months_ym(year: i32, month: u32, delta: i32) -> (i32, u32) {
+    let total = (year * 12 + (month as i32 - 1)) + delta;
+    let new_year = total.div_euclid(12);
+    let new_month = (total.rem_euclid(12) + 1) as u32;
+    (new_year, new_month)
+}
+
 pub fn find_last_payday_date(as_of: NaiveDate, nominal_payday: i32) -> NaiveDate {
-    let current_month_payday = get_actual_payday_date(nominal_payday, as_of.year(), as_of.month());
-    if as_of >= current_month_payday {
-        current_month_payday
-    } else {
-        let (prev_year, prev_month) = if as_of.month() == 1 {
-            (as_of.year() - 1, 12)
-        } else {
-            (as_of.year(), as_of.month() - 1)
-        };
-        get_actual_payday_date(nominal_payday, prev_year, prev_month)
+    // A nominal payday on the 1st/2nd can shift backward across a month boundary into the
+    // previous calendar month (e.g. Sun 1 Nov 2026 -> Fri 30 Oct 2026). Check prev, current,
+    // and next nominal months and pick the latest actual payday <= as_of.
+    let mut best: Option<NaiveDate> = None;
+    for delta in -1..=1 {
+        let (y, m) = add_months_ym(as_of.year(), as_of.month(), delta);
+        let candidate = get_actual_payday_date(nominal_payday, y, m);
+        if candidate <= as_of {
+            best = Some(match best {
+                Some(b) => b.max(candidate),
+                None => candidate,
+            });
+        }
     }
+    best.unwrap_or_else(|| {
+        let (y, m) = add_months_ym(as_of.year(), as_of.month(), -1);
+        get_actual_payday_date(nominal_payday, y, m)
+    })
 }
 
 pub fn find_next_payday_date(as_of: NaiveDate, nominal_payday: i32) -> NaiveDate {
-    let current_month_payday = get_actual_payday_date(nominal_payday, as_of.year(), as_of.month());
-    if as_of < current_month_payday {
-        current_month_payday
-    } else {
-        let (next_year, next_month) = if as_of.month() == 12 {
-            (as_of.year() + 1, 1)
-        } else {
-            (as_of.year(), as_of.month() + 1)
-        };
-        get_actual_payday_date(nominal_payday, next_year, next_month)
+    // Check current, next, and +2 nominal months and pick the earliest actual payday strictly > as_of,
+    // so a shifted payday landing on `as_of` itself (e.g. Fri 30 Oct 2026 for Sun 1 Nov 2026)
+    // advances cleanly to Dec 2026 instead of returning `as_of`.
+    let mut best: Option<NaiveDate> = None;
+    for delta in 0..=2 {
+        let (y, m) = add_months_ym(as_of.year(), as_of.month(), delta);
+        let candidate = get_actual_payday_date(nominal_payday, y, m);
+        if candidate > as_of {
+            best = Some(match best {
+                Some(b) => b.min(candidate),
+                None => candidate,
+            });
+        }
     }
+    best.unwrap_or_else(|| {
+        let (y, m) = add_months_ym(as_of.year(), as_of.month(), 1);
+        get_actual_payday_date(nominal_payday, y, m)
+    })
 }
 
 /// Rules 2 & 3: Outgoings Anchoring
@@ -310,5 +331,26 @@ mod tests {
         // Rule 3 forbids rolling forward into next month -> anchors back to Friday May 29th!
         let out_may_30 = get_actual_outgoing_date(30, 2026, 5);
         assert_eq!(out_may_30, NaiveDate::from_ymd_opt(2026, 5, 29).unwrap());
+    }
+
+    #[test]
+    fn test_payday_1st_shifted_across_month_boundary_never_produces_zero_day_cycle() {
+        // Sunday 1 Nov 2026 shifts back to Friday 30 Oct 2026
+        let oct_30 = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let oct_29 = NaiveDate::from_ymd_opt(2026, 10, 29).unwrap();
+        let nov_21 = NaiveDate::from_ymd_opt(2026, 11, 21).unwrap();
+        let oct_01 = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+        let dec_01 = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
+
+        assert_eq!(find_last_payday_date(nov_21, 1), oct_30);
+        assert_eq!(find_next_payday_date(nov_21, 1), dec_01);
+
+        // Starting from the shifted payday itself (30 Oct) must advance to 1 Dec (not return 30 Oct!)
+        assert_eq!(find_last_payday_date(oct_30, 1), oct_30);
+        assert_eq!(find_next_payday_date(oct_30, 1), dec_01);
+
+        // One day before shifted payday (29 Oct) belongs to 1 Oct -> 30 Oct cycle
+        assert_eq!(find_last_payday_date(oct_29, 1), oct_01);
+        assert_eq!(find_next_payday_date(oct_29, 1), oct_30);
     }
 }
