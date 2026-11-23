@@ -431,6 +431,49 @@ describe('Monzo OAuth & Webhooks Contract Tests', () => {
     assert.equal(toggle2.status, 200);
     const t2 = await toggle2.json();
     assert.equal(t2.ledgerMode, t1.ledgerMode === 'TBL' ? 'ABL' : 'TBL', 'second toggle must flip ledgerMode back');
+
+    // ABL-first copy & guard: non-Monzo account cannot be switched to TBL
+    assert.ok(html.includes('MonMon is ABL-first'), 'page must clearly state MonMon is ABL-first');
+    // Ensure Barclays is in ABL first (test helper /internal/accounts may start in TBL), then verify toggling to TBL is rejected
+    const b1 = await fetch(`${MONMON_URL}/bank/account/${barclays.id}/toggle-mode`, {
+      method: 'POST',
+      headers: { ...cookieHeader, Accept: 'application/json' }
+    });
+    if (b1.status === 200) {
+      const b1Json = await b1.json();
+      assert.equal(b1Json.ledgerMode, 'ABL', 'non-Monzo account may only switch back to ABL');
+      const b2 = await fetch(`${MONMON_URL}/bank/account/${barclays.id}/toggle-mode`, {
+        method: 'POST',
+        headers: { ...cookieHeader, Accept: 'application/json' }
+      });
+      assert.equal(b2.status, 400, 'non-Monzo account must be blocked from switching to TBL');
+    } else {
+      assert.equal(b1.status, 400, 'non-Monzo account already in ABL must be blocked from switching to TBL');
+    }
+
+    // Ingest one Monzo Debit tx and one Monzo Flex tx and verify Recent Synced Transactions labels Debit vs Flex
+    const postWh = (qs, data) => fetch(`${MONMON_URL}/api/monzo/webhook?userId=${user}${qs}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'transaction.created', data: { created: new Date().toISOString(), ...data } })
+    });
+    assert.equal((await postWh('&accountType=debit', {
+      id: `tx_ui_debit_${Date.now()}`, account_id: 'acc_ui_debit', amount: -550, description: 'Debit Coffee'
+    })).status, 200);
+    assert.equal((await postWh('&accountType=flex', {
+      id: `tx_ui_flex_${Date.now()}`, account_id: 'acc_ui_flex', amount: -4905, description: 'Flex Shop',
+      metadata: { is_flex_direct_virtual_card_tx: 'true' }
+    })).status, 200);
+
+    const txJson = await (await fetch(`${MONMON_URL}/bank/transactions?userId=${user}`)).json();
+    const debitTx = txJson.find(t => t.description === 'Debit Coffee');
+    const flexTx = txJson.find(t => t.description === 'Flex Shop');
+    assert.equal(debitTx?.monzoRail, 'DEBIT', 'Monzo debit transaction must report monzoRail=DEBIT');
+    assert.equal(flexTx?.monzoRail, 'FLEX', 'Monzo flex transaction must report monzoRail=FLEX');
+
+    const htmlWithTxs = await (await fetch(`${MONMON_URL}/bank?userId=${user}`, { headers: cookieHeader })).text();
+    assert.ok(htmlWithTxs.includes(`data-tx-id="${debitTx.id}" data-tx-rail="DEBIT"`), 'Debit tx row must carry data-tx-rail="DEBIT"');
+    assert.ok(htmlWithTxs.includes(`data-tx-id="${flexTx.id}" data-tx-rail="FLEX"`), 'Flex tx row must carry data-tx-rail="FLEX"');
   });
 
 });

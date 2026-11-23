@@ -38,6 +38,9 @@ pub struct BankTransactionDto {
     pub id: i64,
     pub user_id: String,
     pub account_id: Option<i64>,
+    pub account_name: Option<String>,
+    pub account_type: Option<String>,
+    pub monzo_rail: Option<String>,
     pub external_id: Option<String>,
     pub timestamp: i64,
     pub date: String,
@@ -51,6 +54,103 @@ pub struct BankTransactionDto {
     pub merchant_emoji: Option<String>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
+}
+
+impl BankTransactionDto {
+    pub fn is_flex(&self) -> bool {
+        self.monzo_rail.as_deref() == Some("FLEX")
+    }
+
+    pub fn is_debit(&self) -> bool {
+        self.monzo_rail.as_deref() == Some("DEBIT")
+    }
+
+    pub fn rail_code(&self) -> &str {
+        self.monzo_rail.as_deref().unwrap_or("OTHER")
+    }
+
+    pub fn rail_label(&self) -> &str {
+        match self.monzo_rail.as_deref() {
+            Some("FLEX") => "Monzo Flex",
+            Some("DEBIT") => "Monzo Debit",
+            _ => self
+                .account_name
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(&self.source),
+        }
+    }
+
+    pub fn is_inflow(&self) -> bool {
+        self.amount < 0.0
+    }
+
+    pub fn formatted_amount(&self) -> String {
+        if self.amount < 0.0 {
+            format!("+£{:.2}", self.amount.abs())
+        } else {
+            format!("£{:.2}", self.amount)
+        }
+    }
+}
+
+/// Classifies a stored `bank_transaction` row into `Some("DEBIT")` or `Some("FLEX")` for Monzo
+/// transactions (or `None` for non-Monzo/statement transactions).
+pub fn classify_tx_monzo_rail(
+    source: &str,
+    account_name: Option<&str>,
+    account_type: Option<&str>,
+    raw_data: Option<&str>,
+    cached_debit_id: Option<&str>,
+    cached_flex_id: Option<&str>,
+) -> Option<String> {
+    if !source.eq_ignore_ascii_case("MONZO") {
+        return None;
+    }
+
+    let parsed_raw = raw_data
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| serde_json::from_str::<Value>(s).ok());
+
+    // 1. Authoritative check: raw_data.account_id vs cached Monzo Debit / Flex account IDs
+    if let Some(ref raw) = parsed_raw {
+        if let Some(m_acc) = raw.get("account_id").and_then(|v| v.as_str()).map(|s| s.trim()) {
+            if !m_acc.is_empty() {
+                if cached_flex_id.map(|id| id.trim() == m_acc).unwrap_or(false) {
+                    return Some("FLEX".to_string());
+                }
+                if cached_debit_id.map(|id| id.trim() == m_acc).unwrap_or(false) {
+                    return Some("DEBIT".to_string());
+                }
+            }
+        }
+    }
+
+    // 2. Linked MonMon account type / name
+    if let (Some(name), Some(atype)) = (account_name, account_type) {
+        if let Some(kind) = classify_monmon_account_monzo_kind(name, atype) {
+            return Some(match kind {
+                MonzoAccountKind::Flex => "FLEX".to_string(),
+                MonzoAccountKind::Debit => "DEBIT".to_string(),
+            });
+        }
+        if atype.eq_ignore_ascii_case("CREDIT") {
+            return Some("FLEX".to_string());
+        }
+        if atype.eq_ignore_ascii_case("DEBIT") {
+            return Some("DEBIT".to_string());
+        }
+    }
+
+    // 3. Fallback to raw_data Flex signals (for legacy rows with NULL account_id)
+    if let Some(ref raw) = parsed_raw {
+        if payload_has_flex_signals(raw) {
+            return Some("FLEX".to_string());
+        }
+        return Some("DEBIT".to_string());
+    }
+
+    None
 }
 
 #[derive(Debug, Clone, Default)]
@@ -556,19 +656,36 @@ async fn list_bank_transactions_internal(
     pool: &sqlx::PgPool,
     user_id: &str,
 ) -> Result<Vec<BankTransactionDto>, sqlx::Error> {
+    let conn_opt = get_monzo_connection(pool, user_id).await.unwrap_or(None);
+    let cached_debit_id = conn_opt.as_ref().and_then(|c| c.monzo_debit_account_id.as_deref());
+    let cached_flex_id = conn_opt.as_ref().and_then(|c| c.monzo_flex_account_id.as_deref());
+
     let rows = sqlx::query(
         r#"
         SELECT 
-            id, userid, COALESCE(account_id, accountid) AS account_id,
-            externalid, timestamp, date, amount, description,
-            COALESCE(merchant_name, merchantname) AS merchant_name,
-            category, source, pending,
-            COALESCE(merchant_address, merchantaddress) AS merchant_address,
-            COALESCE(merchant_emoji, merchantemoji) AS merchant_emoji,
-            latitude, longitude
-        FROM bank_transaction
-        WHERE (userid = $1 OR user_id = $1)
-        ORDER BY timestamp DESC NULLS LAST, id DESC
+            bt.id,
+            bt.userid,
+            COALESCE(bt.account_id, bt.accountid, bt."accountId") AS account_id,
+            a.name AS account_name,
+            a.type AS account_type,
+            bt.raw_data,
+            bt.externalid,
+            bt.timestamp,
+            bt.date,
+            bt.amount,
+            bt.description,
+            COALESCE(bt.merchant_name, bt.merchantname) AS merchant_name,
+            bt.category,
+            bt.source,
+            bt.pending,
+            COALESCE(bt.merchant_address, bt.merchantaddress) AS merchant_address,
+            COALESCE(bt.merchant_emoji, bt.merchantemoji) AS merchant_emoji,
+            bt.latitude,
+            bt.longitude
+        FROM bank_transaction bt
+        LEFT JOIN account a ON COALESCE(bt.account_id, bt.accountid, bt."accountId") = a.id
+        WHERE (bt.userid = $1 OR bt.user_id = $1)
+        ORDER BY bt.timestamp DESC NULLS LAST, bt.id DESC
         LIMIT 100
         "#,
     )
@@ -578,23 +695,40 @@ async fn list_bank_transactions_internal(
 
     Ok(rows
         .into_iter()
-        .map(|r| BankTransactionDto {
-            id: r.get("id"),
-            user_id: r.get("userid"),
-            account_id: r.get("account_id"),
-            external_id: r.get("externalid"),
-            timestamp: r.get("timestamp"),
-            date: r.get("date"),
-            amount: r.get("amount"),
-            description: r.get("description"),
-            merchant_name: r.get("merchant_name"),
-            category: r.get("category"),
-            source: r.get("source"),
-            pending: r.get("pending"),
-            merchant_address: r.get("merchant_address"),
-            merchant_emoji: r.get("merchant_emoji"),
-            latitude: r.get("latitude"),
-            longitude: r.get("longitude"),
+        .map(|r| {
+            let source: String = r.get("source");
+            let account_name: Option<String> = r.get("account_name");
+            let account_type: Option<String> = r.get("account_type");
+            let raw_data: Option<String> = r.get("raw_data");
+            let monzo_rail = classify_tx_monzo_rail(
+                &source,
+                account_name.as_deref(),
+                account_type.as_deref(),
+                raw_data.as_deref(),
+                cached_debit_id,
+                cached_flex_id,
+            );
+            BankTransactionDto {
+                id: r.get("id"),
+                user_id: r.get("userid"),
+                account_id: r.get("account_id"),
+                account_name,
+                account_type,
+                monzo_rail,
+                external_id: r.get("externalid"),
+                timestamp: r.get("timestamp"),
+                date: r.get("date"),
+                amount: r.get("amount"),
+                description: r.get("description"),
+                merchant_name: r.get("merchant_name"),
+                category: r.get("category"),
+                source,
+                pending: r.get("pending"),
+                merchant_address: r.get("merchant_address"),
+                merchant_emoji: r.get("merchant_emoji"),
+                latitude: r.get("latitude"),
+                longitude: r.get("longitude"),
+            }
         })
         .collect())
 }
@@ -1885,12 +2019,35 @@ pub async fn toggle_account_ledger_mode(
     };
 
     let name: String = acc.get("name");
+    let acc_type: String = acc.get("type");
     let current_mode: String = acc.get("ledger_mode");
     let next_mode = if current_mode.eq_ignore_ascii_case("TBL") {
         "ABL"
     } else {
         "TBL"
     };
+
+    // MonMon is ABL-first: only Monzo Debit / Flex accounts can be switched into TBL mode.
+    // Non-Monzo accounts may still be switched back to ABL if previously set to TBL.
+    if next_mode == "TBL" && classify_monmon_account_monzo_kind(&name, &acc_type).is_none() {
+        let msg = format!(
+            "{} uses ABL (MonMon is ABL-first; only Monzo Debit & Flex support live TBL streaming — upload statements via LegMon to update ABL balances).",
+            name
+        );
+        let wants_json = headers
+            .get(axum::http::header::ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.contains("application/json"))
+            .unwrap_or(false);
+        if wants_json {
+            return Ok((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": msg, "ledgerMode": "ABL" })),
+            )
+                .into_response());
+        }
+        return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&msg))).into_response());
+    }
     let now_ms = Utc::now().timestamp_millis();
 
     sqlx::query(
@@ -2594,5 +2751,40 @@ mod tests {
         assert!(list[2].is_monzo_account);
         assert!(!list[3].is_monzo_account);
         assert!(list[5].is_manual_only);
+    }
+
+    #[test]
+    fn classify_tx_monzo_rail_distinguishes_debit_flex_and_statements() {
+        // Cached Monzo account_id in raw_data beats metadata (e.g. Flex repayment on Debit)
+        let debit_repay_raw = r#"{"account_id":"acc_debit","scheme":"monzo_flex","metadata":{"monzo_flex_id":"f1"}}"#;
+        assert_eq!(
+            classify_tx_monzo_rail("MONZO", Some("Monzo"), Some("DEBIT"), Some(debit_repay_raw), Some("acc_debit"), Some("acc_flex")).as_deref(),
+            Some("DEBIT")
+        );
+
+        // Flex purchase linked to Flex CREDIT account (even without raw_data)
+        assert_eq!(
+            classify_tx_monzo_rail("MONZO", Some("Flex"), Some("CREDIT"), None, Some("acc_debit"), Some("acc_flex")).as_deref(),
+            Some("FLEX")
+        );
+
+        // Debit purchase linked to Monzo DEBIT account (even without raw_data)
+        assert_eq!(
+            classify_tx_monzo_rail("MONZO", Some("Monzo"), Some("DEBIT"), None, Some("acc_debit"), Some("acc_flex")).as_deref(),
+            Some("DEBIT")
+        );
+
+        // Legacy row with NULL account_id but raw_data present
+        let flex_raw = r#"{"account_id":"acc_flex","metadata":{"is_flex_direct_virtual_card_tx":"true"}}"#;
+        assert_eq!(
+            classify_tx_monzo_rail("MONZO", None, None, Some(flex_raw), Some("acc_debit"), Some("acc_flex")).as_deref(),
+            Some("FLEX")
+        );
+
+        // Statement transaction is not a Monzo rail
+        assert_eq!(
+            classify_tx_monzo_rail("STATEMENT", Some("Natwest"), Some("DEBIT"), None, None, None),
+            None
+        );
     }
 }
