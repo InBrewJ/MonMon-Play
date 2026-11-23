@@ -535,6 +535,18 @@ async fn main() {
             post(bank_sync::refresh_monzo_balances),
         )
         .route(
+            "/bank/account/:id/toggle-mode",
+            post(bank_sync::toggle_account_ledger_mode),
+        )
+        .route(
+            "/bank/sync/account/:id",
+            post(bank_sync::sync_single_monzo_account),
+        )
+        .route(
+            "/bank/transactions/clear/:id",
+            post(bank_sync::clear_account_transactions),
+        )
+        .route(
             "/bank/monzo/webhooks/status",
             get(bank_sync::get_monzo_webhook_status_api),
         )

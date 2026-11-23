@@ -141,12 +141,85 @@ pub struct AccountOptionDto {
     pub name: String,
     pub account_type: String,
     pub ledger_mode: String,
+    pub is_monzo_account: bool,
+    pub is_monzo_connected: bool,
+    pub monzo_kind: Option<String>,
+    pub monzo_account_id: Option<String>,
+    pub is_manual_only: bool,
 }
 
 impl AccountOptionDto {
     pub fn is_matched(&self, matched: &Option<i64>) -> bool {
         *matched == Some(self.id)
     }
+
+    pub fn is_tbl(&self) -> bool {
+        self.ledger_mode.eq_ignore_ascii_case("TBL")
+    }
+
+    pub fn is_monzo_flex(&self) -> bool {
+        self.monzo_kind.as_deref() == Some("FLEX")
+    }
+
+    pub fn is_monzo_debit(&self) -> bool {
+        self.monzo_kind.as_deref() == Some("DEBIT")
+    }
+
+    pub fn monzo_badge_label(&self) -> &'static str {
+        if self.is_monzo_flex() {
+            "Monzo Flex"
+        } else if self.is_monzo_debit() {
+            "Monzo Debit"
+        } else {
+            "Monzo"
+        }
+    }
+}
+
+/// Identifies whether a MonMon account corresponds to Monzo Debit (`uk_retail`),
+/// Monzo Flex (`uk_monzo_flex`), or neither.
+pub fn classify_monmon_account_monzo_kind(name: &str, account_type: &str) -> Option<MonzoAccountKind> {
+    let lower = name.to_ascii_lowercase();
+    if account_type.eq_ignore_ascii_case("CREDIT")
+        && (lower.contains("flex") || lower.contains("monzo"))
+    {
+        Some(MonzoAccountKind::Flex)
+    } else if account_type.eq_ignore_ascii_case("DEBIT")
+        && lower.contains("monzo")
+        && !lower.contains("flex")
+    {
+        Some(MonzoAccountKind::Debit)
+    } else {
+        None
+    }
+}
+
+pub fn is_monzo_display_account(name: &str, account_type: &str) -> bool {
+    classify_monmon_account_monzo_kind(name, account_type).is_some()
+        || name.to_ascii_lowercase().contains("monzo")
+}
+
+/// Orders accounts for the `/bank` Configured Ledger Accounts list:
+/// Monzo Debit first, Monzo Flex second, any other Monzo-named accounts third (regardless of
+/// whether Monzo is currently connected), then all remaining accounts alphabetically.
+pub fn sort_bank_sync_accounts(accounts: &mut [AccountOptionDto]) {
+    accounts.sort_by(|a, b| {
+        let rank = |acc: &AccountOptionDto| -> u8 {
+            if acc.is_monzo_debit() {
+                0
+            } else if acc.is_monzo_flex() {
+                1
+            } else if acc.is_monzo_account {
+                2
+            } else {
+                3
+            }
+        };
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
+            .then_with(|| a.id.cmp(&b.id))
+    });
 }
 
 #[derive(Template)]
@@ -167,6 +240,8 @@ pub struct BankSyncTemplate {
     pub webhook_flex_id: Option<String>,
     pub last_received_text: String,
     pub accounts_count: usize,
+    pub monzo_accounts_count: usize,
+    pub tbl_accounts_count: usize,
     pub txs_count: usize,
     pub recent_transactions: Vec<BankTransactionDto>,
     pub pending_statements: Vec<PendingStatementDto>,
@@ -400,15 +475,46 @@ pub async fn get_bank_sync_page(
     .unwrap_or_default();
 
     let accounts_count = acc_rows.len();
-    let accounts: Vec<AccountOptionDto> = acc_rows
+    let cached_debit_id = conn_opt.as_ref().and_then(|c| c.monzo_debit_account_id.clone());
+    let cached_flex_id = conn_opt.as_ref().and_then(|c| c.monzo_flex_account_id.clone());
+
+    let mut accounts: Vec<AccountOptionDto> = acc_rows
         .into_iter()
-        .map(|r| AccountOptionDto {
-            id: r.get("id"),
-            name: r.get("name"),
-            account_type: r.get("type"),
-            ledger_mode: r.get("ledger_mode"),
+        .map(|r| {
+            let id: i64 = r.get("id");
+            let name: String = r.get("name");
+            let account_type: String = r.get("type");
+            let ledger_mode: String = r.get("ledger_mode");
+            let kind = classify_monmon_account_monzo_kind(&name, &account_type);
+            let is_monzo_account = is_monzo_display_account(&name, &account_type);
+            let monzo_kind = kind.map(|k| match k {
+                MonzoAccountKind::Debit => "DEBIT".to_string(),
+                MonzoAccountKind::Flex => "FLEX".to_string(),
+            });
+            let monzo_account_id = match kind {
+                Some(MonzoAccountKind::Debit) if is_monzo_connected => cached_debit_id.clone(),
+                Some(MonzoAccountKind::Flex) if is_monzo_connected => cached_flex_id.clone(),
+                _ => None,
+            };
+            let acc_monzo_connected = is_monzo_connected && kind.is_some();
+            let is_manual_only = account_type.eq_ignore_ascii_case("PENSION")
+                || account_type.eq_ignore_ascii_case("LOAN");
+            AccountOptionDto {
+                id,
+                name,
+                account_type,
+                ledger_mode,
+                is_monzo_account,
+                is_monzo_connected: acc_monzo_connected,
+                monzo_kind,
+                monzo_account_id,
+                is_manual_only,
+            }
         })
         .collect();
+    sort_bank_sync_accounts(&mut accounts);
+    let monzo_accounts_count = accounts.iter().filter(|a| a.is_monzo_account).count();
+    let tbl_accounts_count = accounts.iter().filter(|a| a.is_tbl() && !a.is_manual_only).count();
     let accounts_json = serde_json::to_string(&accounts).unwrap_or_else(|_| "[]".to_string());
 
     // Query transactions
@@ -428,6 +534,8 @@ pub async fn get_bank_sync_page(
         webhook_flex_id,
         last_received_text,
         accounts_count,
+        monzo_accounts_count,
+        tbl_accounts_count,
         txs_count,
         recent_transactions: txs.into_iter().take(20).collect(),
         pending_statements,
@@ -1745,6 +1853,198 @@ pub fn format_refresh_message(refreshed: &[(i64, String, f64)]) -> String {
     format!("Refreshed available balance from Monzo: {}.", parts.join(", "))
 }
 
+pub async fn toggle_account_ledger_mode(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Response, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let row = sqlx::query(
+        r#"
+        SELECT id, name, type, COALESCE(ledger_mode, 'ABL') AS ledger_mode
+        FROM account
+        WHERE id = $1
+          AND COALESCE(user_id, userid, "userId") = $2
+          AND (archived IS NULL OR archived = false)
+        LIMIT 1
+        "#,
+    )
+    .bind(id)
+    .bind(&resolved)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let Some(acc) = row else {
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!("Account #{} not found or belongs to another user.", id),
+        ));
+    };
+
+    let name: String = acc.get("name");
+    let current_mode: String = acc.get("ledger_mode");
+    let next_mode = if current_mode.eq_ignore_ascii_case("TBL") {
+        "ABL"
+    } else {
+        "TBL"
+    };
+    let now_ms = Utc::now().timestamp_millis();
+
+    sqlx::query(
+        r#"
+        UPDATE account
+        SET ledger_mode = $1, updated_at = $2
+        WHERE id = $3 AND COALESCE(user_id, userid, "userId") = $4
+        "#,
+    )
+    .bind(next_mode)
+    .bind(now_ms)
+    .bind(id)
+    .bind(&resolved)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let wants_json = headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("application/json"))
+        .unwrap_or(false);
+    if wants_json {
+        return Ok(Json(serde_json::json!({
+            "id": id,
+            "name": name,
+            "ledgerMode": next_mode
+        }))
+        .into_response());
+    }
+
+    let mode_label = if next_mode == "TBL" {
+        "Transaction-Based Ledger (TBL / Accurate Mode)"
+    } else {
+        "Available-Based Ledger (ABL / Balance Delta)"
+    };
+    let msg = format!(
+        "Switched {} to {}. All historical balances and transactions remain preserved.",
+        name, mode_label
+    );
+    Ok(Redirect::to(&format!("/bank?info={}", urlencoding::encode(&msg))).into_response())
+}
+
+pub async fn sync_single_monzo_account(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Response, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let row = sqlx::query(
+        r#"
+        SELECT id, name, type, COALESCE(account_limit, 0.0)::real AS account_limit
+        FROM account
+        WHERE id = $1
+          AND COALESCE(user_id, userid, "userId") = $2
+          AND (archived IS NULL OR archived = false)
+        LIMIT 1
+        "#,
+    )
+    .bind(id)
+    .bind(&resolved)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let Some(acc) = row else {
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!("Account #{} not found or belongs to another user.", id),
+        ));
+    };
+
+    let name: String = acc.get("name");
+    let acc_type: String = acc.get("type");
+    let acc_limit: f64 = acc.get::<f32, _>("account_limit") as f64;
+
+    let Some(kind) = classify_monmon_account_monzo_kind(&name, &acc_type) else {
+        let msg = format!(
+            "{} is not linked to Monzo Debit or Monzo Flex — nothing refreshed.",
+            name
+        );
+        return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&msg))).into_response());
+    };
+
+    let conn = get_monzo_connection(&state.pool, &resolved).await.unwrap_or(None);
+    let mut monzo_acc_id = match kind {
+        MonzoAccountKind::Debit => conn.as_ref().and_then(|c| c.monzo_debit_account_id.clone()),
+        MonzoAccountKind::Flex => conn.as_ref().and_then(|c| c.monzo_flex_account_id.clone()),
+    };
+
+    if monzo_acc_id.is_none() {
+        if let Ok((status, monzo_accounts)) = fetch_monzo_accounts_and_cache(&state.pool, &resolved).await {
+            if status.is_success() {
+                monzo_acc_id = match_monzo_account_id_for_kind(kind, &monzo_accounts);
+            }
+        }
+    }
+
+    let Some(mid) = monzo_acc_id else {
+        let msg = format!("Could not resolve {} on Monzo.", kind.display_name());
+        return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&msg))).into_response());
+    };
+
+    let Some(raw) = fetch_monzo_balance(&state.pool, &resolved, &mid).await else {
+        let msg = format!("Failed to fetch live balance for {} from Monzo.", name);
+        return Ok(Redirect::to(&format!("/bank?error={}", urlencoding::encode(&msg))).into_response());
+    };
+
+    let available = convert_to_available_for_kind(kind, &acc_type, acc_limit, raw);
+    let now_ms = Utc::now().timestamp_millis();
+    sqlx::query(
+        r#"INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at, archived)
+           VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5, FALSE)"#,
+    )
+    .bind(available as f32)
+    .bind(Utc::now().timestamp())
+    .bind(id)
+    .bind(&resolved)
+    .bind(now_ms)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let msg = format_refresh_message(&[(id, name, available)]);
+    Ok(Redirect::to(&format!("/bank?info={}", urlencoding::encode(&msg))).into_response())
+}
+
+pub async fn clear_account_transactions(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let raw_uid = crate::pot::get_user_id_from_headers_or_default(&headers, None);
+    let resolved = resolve_user_id(&state.pool, &raw_uid).await;
+
+    let res = sqlx::query(
+        r#"
+        DELETE FROM bank_transaction
+        WHERE COALESCE(account_id, accountid, "accountId") = $1
+          AND COALESCE(user_id, userid, "userId") = $2
+        "#,
+    )
+    .bind(id)
+    .bind(&resolved)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let msg = format!("Deleted {} transaction(s) for account #{}.", res.rows_affected(), id);
+    Ok(Redirect::to(&format!("/bank?info={}", urlencoding::encode(&msg))))
+}
+
 pub async fn refresh_monzo_balances(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -2253,5 +2553,46 @@ mod tests {
         assert!(is_declined_transaction(&serde_json::json!({ "decline_reason": "INSUFFICIENT_FUNDS" })));
         assert!(!is_declined_transaction(&serde_json::json!({ "decline_reason": "" })));
         assert!(!is_declined_transaction(&serde_json::json!({ "id": "tx_1" })));
+    }
+
+    #[test]
+    fn sort_bank_sync_accounts_pins_monzo_and_flex_first_even_when_disconnected() {
+        let mk = |id: i64, name: &str, acc_type: &str, connected: bool| {
+            let kind = classify_monmon_account_monzo_kind(name, acc_type);
+            AccountOptionDto {
+                id,
+                name: name.to_string(),
+                account_type: acc_type.to_string(),
+                ledger_mode: "ABL".to_string(),
+                is_monzo_account: is_monzo_display_account(name, acc_type),
+                is_monzo_connected: connected && kind.is_some(),
+                monzo_kind: kind.map(|k| match k {
+                    MonzoAccountKind::Debit => "DEBIT".to_string(),
+                    MonzoAccountKind::Flex => "FLEX".to_string(),
+                }),
+                monzo_account_id: None,
+                is_manual_only: acc_type == "PENSION" || acc_type == "LOAN",
+            }
+        };
+
+        let mut list = vec![
+            mk(1, "Barclays", "DEBIT", false),
+            mk(2, "Flex", "CREDIT", false),
+            mk(3, "Amex", "CREDIT", false),
+            mk(4, "Monzo", "DEBIT", false),
+            mk(5, "Monzo Holiday Pot", "SHORT_TERM_SAVINGS", false),
+            mk(6, "Vanguard SIPP", "PENSION", false),
+        ];
+        sort_bank_sync_accounts(&mut list);
+        let names: Vec<&str> = list.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["Monzo", "Flex", "Monzo Holiday Pot", "Amex", "Barclays", "Vanguard SIPP"]
+        );
+        assert!(list[0].is_monzo_debit());
+        assert!(list[1].is_monzo_flex());
+        assert!(list[2].is_monzo_account);
+        assert!(!list[3].is_monzo_account);
+        assert!(list[5].is_manual_only);
     }
 }

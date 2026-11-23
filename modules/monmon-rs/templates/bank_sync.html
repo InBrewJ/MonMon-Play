@@ -400,15 +400,225 @@
             {% endif %}
         </div>
 
-        <!-- Accounts Card -->
-        <div class="deck-card w3-card w3-round" id="card-bank-accounts" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px; border-radius: 8px;">
-            <h3 style="margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700; color: var(--text-main);">
-                <i class="fas fa-university" style="color: var(--primary); margin-right: 6px;"></i>
-                Configured Ledger Accounts ({{ accounts_count }})
-            </h3>
-            <p style="color: var(--text-muted); font-size: 0.9rem;">
-                Switch individual accounts between Transaction-Based Ledger (TBL) and Available-Based Ledger (ABL).
-            </p>
+        <!-- Accounts Card (Expandable, default closed, Monzo/Flex accounts pinned at top) -->
+        <div class="deck-card w3-card w3-round" id="card-bank-accounts" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 0; border-radius: 8px; overflow: hidden;">
+            <style>
+                #configured-ledger-accounts-details > summary {
+                    list-style: none;
+                    cursor: pointer;
+                    padding: 18px 20px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    user-select: none;
+                }
+                #configured-ledger-accounts-details > summary::-webkit-details-marker {
+                    display: none;
+                }
+                #configured-ledger-accounts-details > summary:hover {
+                    background: var(--card-bg-subtle);
+                }
+                #configured-ledger-accounts-details .accounts-chevron {
+                    transition: transform 0.2s ease;
+                    color: var(--text-muted);
+                }
+                #configured-ledger-accounts-details[open] .accounts-chevron {
+                    transform: rotate(180deg);
+                }
+                #configured-ledger-accounts-details[open] .accounts-toggle-label::after {
+                    content: "Hide";
+                }
+                #configured-ledger-accounts-details:not([open]) .accounts-toggle-label::after {
+                    content: "Expand";
+                }
+            </style>
+            <details id="configured-ledger-accounts-details">
+                <summary aria-controls="configured-ledger-accounts-body">
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-university" style="color: var(--primary);"></i>
+                            <span>Configured Ledger Accounts ({{ accounts_count }})</span>
+                        </h3>
+                        <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.85rem;">
+                            Switch individual accounts between Transaction-Based Ledger (TBL) and Available-Based Ledger (ABL). Monzo accounts are pinned at the top.
+                        </p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        {% if monzo_accounts_count > 0 %}
+                            <span class="badge" style="background: rgba(234, 88, 12, 0.14); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.35); padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 700;">
+                                <i class="fas fa-bolt"></i> {{ monzo_accounts_count }} Monzo
+                            </span>
+                        {% endif %}
+                        <span class="badge" style="background: rgba(16, 185, 129, 0.14); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 700;">
+                            {{ tbl_accounts_count }} TBL
+                        </span>
+                        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 9999px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.8rem; font-weight: 600;">
+                            <span class="accounts-toggle-label"></span>
+                            <i class="fas fa-chevron-down accounts-chevron"></i>
+                        </span>
+                    </div>
+                </summary>
+
+                <div id="configured-ledger-accounts-body" style="padding: 0 20px 20px 20px; border-top: 1px solid var(--border-color);">
+                    {% if accounts.is_empty() %}
+                        <p style="color: var(--text-muted); font-size: 0.9rem; margin: 16px 0 0 0;">No active accounts configured yet.</p>
+                    {% else %}
+                        <!-- Desktop Table View -->
+                        <div class="desktop-view" style="overflow-x: auto; margin-top: 14px;">
+                            <table class="w3-table w3-striped w3-bordered" style="color: var(--text-main); width: 100%;">
+                                <thead>
+                                    <tr style="background: var(--table-stripe, var(--card-bg-subtle)); color: var(--text-muted); border-bottom: 2px solid var(--border-color);">
+                                        <th style="padding: 10px 12px;">Account</th>
+                                        <th style="padding: 10px 12px;">Type</th>
+                                        <th style="padding: 10px 12px;">Ledger Mode</th>
+                                        <th style="padding: 10px 12px;">Sync Source</th>
+                                        <th style="text-align: right; padding: 10px 12px;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for acc in accounts %}
+                                    <tr data-bank-account-id="{{ acc.id }}" data-is-monzo="{{ acc.is_monzo_account }}" style="border-bottom: 1px solid var(--border-color);{% if acc.is_monzo_account %} background: rgba(234, 88, 12, 0.05);{% endif %}">
+                                        <td style="padding: 10px 12px;">
+                                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                                <strong style="color: var(--text-main);">{{ acc.name }}</strong>
+                                                {% if acc.is_monzo_account %}
+                                                    <span class="badge" style="background: rgba(234, 88, 12, 0.16); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.35); padding: 2px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 700;">
+                                                        <i class="fas fa-bolt"></i> {{ acc.monzo_badge_label() }}
+                                                    </span>
+                                                {% endif %}
+                                            </div>
+                                            {% if let Some(mid) = acc.monzo_account_id %}
+                                                <div style="font-family: monospace; font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">{{ mid }}</div>
+                                            {% endif %}
+                                        </td>
+                                        <td style="padding: 10px 12px;">
+                                            <span class="badge" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 6px; font-size: 0.78rem;">
+                                                {{ acc.account_type }}
+                                            </span>
+                                        </td>
+                                        <td style="padding: 10px 12px;">
+                                            {% if acc.is_manual_only %}
+                                                <span style="color: var(--text-muted); font-size: 0.85rem;"><i class="fas fa-hand-paper"></i> ABL (Manual Delta)</span>
+                                            {% else if !acc.is_tbl() %}
+                                                <span style="color: var(--warning); font-weight: 600; font-size: 0.85rem;"><i class="fas fa-coins"></i> ABL (Balance Delta)</span>
+                                            {% else %}
+                                                <span style="color: var(--success); font-weight: 600; font-size: 0.85rem;"><i class="fas fa-check"></i> TBL (Accurate Mode)</span>
+                                            {% endif %}
+                                        </td>
+                                        <td style="padding: 10px 12px;">
+                                            {% if acc.is_monzo_connected %}
+                                                <div>
+                                                    <span style="color: var(--success); font-weight: 600; font-size: 0.85rem;"><i class="fas fa-satellite-dish"></i> Monzo Webhook (Push)</span>
+                                                    <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 2px;">
+                                                        <i class="fas fa-bolt" style="color: #ea580c;"></i> {{ last_received_text }}
+                                                    </div>
+                                                </div>
+                                            {% else if acc.is_monzo_account %}
+                                                <span style="color: var(--warning); font-weight: 600; font-size: 0.85rem;"><i class="fas fa-unlink"></i> Monzo (Not Connected)</span>
+                                            {% else if acc.is_manual_only %}
+                                                <span style="color: var(--text-muted); font-size: 0.85rem;">Manual Entry</span>
+                                            {% else if !acc.is_tbl() %}
+                                                <span style="color: var(--text-muted); font-size: 0.85rem;">Balance Snapshots</span>
+                                            {% else %}
+                                                <span style="color: var(--text-muted); font-size: 0.85rem;">Statement / Manual</span>
+                                            {% endif %}
+                                        </td>
+                                        <td style="text-align: right; padding: 10px 12px;">
+                                            {% if !acc.is_manual_only %}
+                                                <div style="display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+                                                    <form action="/bank/account/{{ acc.id }}/toggle-mode" method="POST" style="margin: 0;">
+                                                        {% if !acc.is_tbl() %}
+                                                            <button type="submit" class="w3-button w3-tiny w3-round" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); font-weight: 600;" title="Switch to TBL Accurate Mode (retains all balance history)">
+                                                                <i class="fas fa-exchange-alt"></i> Use TBL
+                                                            </button>
+                                                        {% else %}
+                                                            <button type="submit" class="w3-button w3-tiny w3-round" style="background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.3); font-weight: 600;" title="Switch to ABL Balance Mode (retains all transaction history)">
+                                                                <i class="fas fa-exchange-alt"></i> Use ABL
+                                                            </button>
+                                                        {% endif %}
+                                                    </form>
+                                                    {% if acc.is_monzo_connected %}
+                                                        <form action="/bank/sync/account/{{ acc.id }}" method="POST" style="margin: 0;">
+                                                            <button type="submit" class="w3-button w3-tiny w3-round" style="background: #ea580c; color: white; font-weight: 600;" title="Refresh live available balance from Monzo">
+                                                                <i class="fas fa-bolt"></i> Balance
+                                                            </button>
+                                                        </form>
+                                                    {% endif %}
+                                                    <form action="/bank/transactions/clear/{{ acc.id }}" method="POST" style="margin: 0;" onsubmit="return confirm('Clear all synced transactions for this account?');">
+                                                        <button type="submit" class="w3-button w3-tiny w3-round" style="background: rgba(239, 68, 68, 0.14); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.35);" title="Clear synced transactions">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Mobile Stacked Action Cards View (/myAccounts primitive) -->
+                        <div class="mobile-cards-view" style="display: none; margin-top: 14px;">
+                            {% for acc in accounts %}
+                            <div class="item-card" data-bank-account-card-id="{{ acc.id }}" data-is-monzo="{{ acc.is_monzo_account }}" style="background: var(--card-bg); border: 1px solid {% if acc.is_monzo_account %}rgba(234, 88, 12, 0.4){% else %}var(--border-color){% endif %}; border-radius: 8px; padding: 12px;">
+                                <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <div class="item-card-title" style="font-weight: 700; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                        {% if acc.is_monzo_account %}<i class="fas fa-bolt" style="color: #fb923c; margin-right: 4px;"></i>{% endif %}{{ acc.name }}
+                                    </div>
+                                    <span class="badge-pill" style="flex-shrink: 0; background: {% if acc.is_monzo_account %}rgba(234, 88, 12, 0.16){% else %}var(--card-bg-subtle){% endif %}; color: {% if acc.is_monzo_account %}#fb923c{% else %}var(--text-muted){% endif %}; border: 1px solid {% if acc.is_monzo_account %}rgba(234, 88, 12, 0.35){% else %}var(--border-color){% endif %}; font-size: 0.72rem; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+                                        {% if acc.is_monzo_account %}{{ acc.monzo_badge_label() }}{% else %}{{ acc.account_type }}{% endif %}
+                                    </span>
+                                </div>
+                                <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.82rem; margin-bottom: {% if !acc.is_manual_only %}10px{% else %}0{% endif %}; background: var(--card-bg-subtle); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                    <div class="stat-cell">
+                                        <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.72rem;">Ledger Mode</div>
+                                        <div class="stat-cell-val" style="font-weight: 600; color: {% if acc.is_manual_only %}var(--text-muted){% else if acc.is_tbl() %}var(--success){% else %}var(--warning){% endif %};">
+                                            {% if acc.is_manual_only %}ABL (Manual){% else if acc.is_tbl() %}TBL (Accurate){% else %}ABL (Delta){% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="stat-cell">
+                                        <div class="stat-cell-label" style="color: var(--text-muted); font-size: 0.72rem;">Sync Source</div>
+                                        <div class="stat-cell-val" style="font-weight: 600; color: {% if acc.is_monzo_connected %}var(--success){% else if acc.is_monzo_account %}var(--warning){% else %}var(--text-main){% endif %};">
+                                            {% if acc.is_monzo_connected %}Monzo Webhook{% else if acc.is_monzo_account %}Not Connected{% else if acc.is_manual_only %}Manual Entry{% else if !acc.is_tbl() %}Snapshots{% else %}Statement{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% if !acc.is_manual_only %}
+                                <div class="item-card-actions" style="display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border-color); padding-top: 8px;">
+                                    <form action="/bank/account/{{ acc.id }}/toggle-mode" method="POST" style="margin: 0;">
+                                        {% if !acc.is_tbl() %}
+                                            <button type="submit" class="btn-action" style="padding: 5px 10px; background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 4px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+                                                <i class="fas fa-exchange-alt"></i> Use TBL
+                                            </button>
+                                        {% else %}
+                                            <button type="submit" class="btn-action" style="padding: 5px 10px; background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+                                                <i class="fas fa-exchange-alt"></i> Use ABL
+                                            </button>
+                                        {% endif %}
+                                    </form>
+                                    {% if acc.is_monzo_connected %}
+                                        <form action="/bank/sync/account/{{ acc.id }}" method="POST" style="margin: 0;">
+                                            <button type="submit" class="btn-action" style="padding: 5px 10px; background: #ea580c; color: #fff; border: none; border-radius: 4px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+                                                <i class="fas fa-bolt"></i> Balance
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                    <form action="/bank/transactions/clear/{{ acc.id }}" method="POST" style="margin: 0;" onsubmit="return confirm('Clear all synced transactions for this account?');">
+                                        <button type="submit" class="btn-action" style="padding: 5px 10px; background: rgba(239, 68, 68, 0.14); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 4px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+                                            <i class="fas fa-trash"></i> Clear Txs
+                                        </button>
+                                    </form>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </details>
         </div>
 
         <!-- Transactions Card -->

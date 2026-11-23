@@ -382,4 +382,55 @@ describe('Monzo OAuth & Webhooks Contract Tests', () => {
     assert.equal(debitStmt.matchedAccountId, monzoDebit.id, 'Monzo statement must auto-match Monzo DEBIT, not Flex CREDIT');
   });
 
+  it('GET /bank renders expandable default-closed Configured Ledger Accounts with Monzo/Flex pinned at top and working ABL/TBL toggle', async () => {
+    const CORE_URL = process.env.CORE_URL || MONMON_URL;
+    const user = `bank_accounts_ui_${Date.now()}`;
+    const cookieHeader = { Cookie: `user_id=${user}; authenticated=true` };
+    const mk = async (type, name, limit) => (await fetch(`${CORE_URL}/internal/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, userId: user, accountLimit: limit, interestRate: 0 })
+    })).json();
+
+    const amex = await mk('CREDIT', 'Amex Platinum', 3000);
+    const barclays = await mk('DEBIT', 'Barclays Current', 0);
+    const flex = await mk('CREDIT', 'Flex', 2500);
+    const monzo = await mk('DEBIT', 'Monzo', 100);
+
+    const html = await (await fetch(`${MONMON_URL}/bank?userId=${user}`, { headers: cookieHeader })).text();
+
+    // Expandable and default closed (<details ...> without `open`)
+    assert.ok(html.includes('<details id="configured-ledger-accounts-details">'), 'Configured Ledger Accounts must be a default-closed <details> element');
+    assert.ok(html.includes('Configured Ledger Accounts (4)'), 'Heading must show total account count');
+    assert.ok(html.includes('2 Monzo'), 'Collapsed summary must show Monzo count pill');
+
+    // Monzo Debit and Flex must appear BEFORE Amex and Barclays even when Monzo is not connected
+    const posMonzo = html.indexOf(`data-bank-account-id="${monzo.id}"`);
+    const posFlex = html.indexOf(`data-bank-account-id="${flex.id}"`);
+    const posAmex = html.indexOf(`data-bank-account-id="${amex.id}"`);
+    const posBarclays = html.indexOf(`data-bank-account-id="${barclays.id}"`);
+    assert.ok(posMonzo > 0 && posFlex > 0 && posAmex > 0 && posBarclays > 0, 'all 4 accounts must render in Configured Ledger Accounts');
+    assert.ok(posMonzo < posFlex, 'Monzo Debit must appear before Monzo Flex');
+    assert.ok(posFlex < posAmex && posFlex < posBarclays, 'Monzo & Flex must be pinned above non-Monzo accounts');
+    assert.ok(posAmex < posBarclays, 'non-Monzo accounts must be sorted alphabetically');
+    assert.ok(html.includes('Monzo (Not Connected)'), 'disconnected Monzo accounts must clearly show Not Connected status');
+
+    // Toggle ledger mode round-trip (ABL <-> TBL)
+    const toggle1 = await fetch(`${MONMON_URL}/bank/account/${monzo.id}/toggle-mode`, {
+      method: 'POST',
+      headers: { ...cookieHeader, Accept: 'application/json' }
+    });
+    assert.equal(toggle1.status, 200);
+    const t1 = await toggle1.json();
+    assert.ok(t1.ledgerMode === 'TBL' || t1.ledgerMode === 'ABL', `unexpected ledgerMode: ${t1.ledgerMode}`);
+
+    const toggle2 = await fetch(`${MONMON_URL}/bank/account/${monzo.id}/toggle-mode`, {
+      method: 'POST',
+      headers: { ...cookieHeader, Accept: 'application/json' }
+    });
+    assert.equal(toggle2.status, 200);
+    const t2 = await toggle2.json();
+    assert.equal(t2.ledgerMode, t1.ledgerMode === 'TBL' ? 'ABL' : 'TBL', 'second toggle must flip ledgerMode back');
+  });
+
 });

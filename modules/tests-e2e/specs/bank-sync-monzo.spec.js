@@ -46,6 +46,13 @@ test.describe('Bank Sync & Monzo Dashboard E2E', () => {
     const accountsCard = page.locator('#card-bank-accounts');
     await expect(accountsCard).toBeVisible();
 
+    // Configured Ledger Accounts should be expandable and default closed
+    const accountsDetails = page.locator('#configured-ledger-accounts-details');
+    await expect(accountsDetails).toBeVisible();
+    await expect(accountsDetails).not.toHaveAttribute('open', '');
+    await accountsDetails.locator('summary').click();
+    await expect(accountsDetails).toHaveAttribute('open', '');
+
     const txCard = page.locator('#card-bank-txs');
     await expect(txCard).toBeVisible();
 
