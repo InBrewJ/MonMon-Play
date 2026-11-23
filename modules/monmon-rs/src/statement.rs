@@ -234,6 +234,30 @@ pub fn normalize_intraday_deltas(txs: &[ParsedStatementTx]) -> Vec<TransactionDe
     result
 }
 
+/// Returns `(like_pattern, optional_required_account_type, optional_exclude_pattern)` for
+/// auto-matching a statement's extracted bank name to a MonMon account.
+/// Keeps Monzo Debit and Monzo Flex strictly separated.
+pub fn statement_bank_match_rule(
+    bank: &str,
+) -> Option<(&'static str, Option<&'static str>, Option<&'static str>)> {
+    let b_lower = bank.to_lowercase();
+    if b_lower.contains("ns&i") || b_lower.contains("premium bonds") || b_lower.contains("nsandi") {
+        Some(("%premium bonds%", None, None))
+    } else if b_lower.contains("first direct") || b_lower.contains("1st direct") {
+        Some(("%first direct%", None, None))
+    } else if b_lower.contains("natwest") {
+        Some(("%natwest%", None, None))
+    } else if b_lower.contains("lloyds") {
+        Some(("%lloyds%", None, None))
+    } else if b_lower.contains("flex") {
+        Some(("%flex%", Some("CREDIT"), None))
+    } else if b_lower.contains("monzo") {
+        Some(("%monzo%", Some("DEBIT"), Some("%flex%")))
+    } else {
+        None
+    }
+}
+
 pub async fn handle_statement_webhook_api(
     State(state): State<Arc<AppState>>,
     Query(q): Query<StatementQuery>,
@@ -299,27 +323,19 @@ pub async fn handle_statement_webhook_api(
         .or(q.account_id);
 
     if target_acc_id.is_none() {
-        let b_lower = bank.to_lowercase();
-        let pattern = if b_lower.contains("ns&i") || b_lower.contains("premium bonds") || b_lower.contains("nsandi") {
-            Some("%premium bonds%")
-        } else if b_lower.contains("first direct") || b_lower.contains("1st direct") {
-            Some("%first direct%")
-        } else if b_lower.contains("natwest") {
-            Some("%natwest%")
-        } else if b_lower.contains("lloyds") {
-            Some("%lloyds%")
-        } else if b_lower.contains("monzo") {
-            Some("%monzo%")
-        } else {
-            None
-        };
-
-        if let Some(p) = pattern {
+        if let Some((pattern, required_type, exclude_pattern)) = statement_bank_match_rule(bank) {
             if let Ok(matched_row) = sqlx::query(
-                "SELECT id FROM account WHERE (userid = $1 OR user_id = $1) AND (LOWER(name) LIKE $2 OR LOWER(nickname) LIKE $2) ORDER BY archived ASC, id ASC LIMIT 1"
+                r#"SELECT id FROM account
+                   WHERE (userid = $1 OR user_id = $1)
+                     AND (LOWER(name) LIKE $2 OR LOWER(nickname) LIKE $2)
+                     AND ($3::text IS NULL OR UPPER(type) = $3)
+                     AND ($4::text IS NULL OR (LOWER(name) NOT LIKE $4 AND LOWER(COALESCE(nickname, '')) NOT LIKE $4))
+                   ORDER BY archived ASC, id ASC LIMIT 1"#,
             )
             .bind(&resolved)
-            .bind(p)
+            .bind(pattern)
+            .bind(required_type)
+            .bind(exclude_pattern)
             .fetch_optional(&state.pool)
             .await {
                 target_acc_id = matched_row.map(|r| r.get("id"));
@@ -1333,5 +1349,25 @@ mod tests {
         assert_eq!(val, 1222.0);
         assert_eq!(ts, 1730246400);
         assert_eq!(aid, 42);
+    }
+
+    #[test]
+    fn test_statement_bank_match_rule_separates_monzo_and_flex() {
+        assert_eq!(
+            statement_bank_match_rule("Monzo Flex"),
+            Some(("%flex%", Some("CREDIT"), None))
+        );
+        assert_eq!(
+            statement_bank_match_rule("Flex Credit Card"),
+            Some(("%flex%", Some("CREDIT"), None))
+        );
+        assert_eq!(
+            statement_bank_match_rule("Monzo"),
+            Some(("%monzo%", Some("DEBIT"), Some("%flex%")))
+        );
+        assert_eq!(
+            statement_bank_match_rule("Monzo Current Account"),
+            Some(("%monzo%", Some("DEBIT"), Some("%flex%")))
+        );
     }
 }

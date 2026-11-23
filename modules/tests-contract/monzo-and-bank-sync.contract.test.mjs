@@ -209,4 +209,177 @@ describe('Monzo OAuth & Webhooks Contract Tests', () => {
     assert.ok(Math.abs(on(flex)[0].value - 1500) < 0.005);
   });
 
+  it('POST /api/monzo/webhook separates Flex when is_flex_direct_virtual_card_tx is string "true" (real Monzo payload format)', async () => {
+    const CORE_URL = process.env.CORE_URL || MONMON_URL;
+    const user = `flex_str_bool_${Date.now()}`;
+    const mk = async (type, name, limit) => (await fetch(`${CORE_URL}/internal/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, userId: user, accountLimit: limit, interestRate: 0 })
+    })).json();
+    const debit = await mk('DEBIT', 'Monzo', 100);
+    const flex = await mk('CREDIT', 'Flex', 2500);
+
+    const res = await fetch(`${MONMON_URL}/api/monzo/webhook?userId=${user}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'transaction.created',
+        data: {
+          id: `tx_flex_str_${Date.now()}`,
+          account_id: 'acc_0000BAnOMUDOHXnBCLSLZ6',
+          amount: -4905,
+          account_balance: -216777, // £2167.77 owed on Flex -> £332.23 available
+          created: new Date().toISOString(),
+          description: "Sainsbury's",
+          category: 'groceries',
+          metadata: { is_flex_direct_virtual_card_tx: 'true' }
+        }
+      })
+    });
+    assert.equal(res.status, 200);
+
+    const balances = await (await fetch(`${CORE_URL}/internal/balances?userId=${user}`)).json();
+    assert.equal(balances.filter(b => b.accountId === debit.id).length, 0, 'Monzo DEBIT must NEVER receive a Flex balance');
+    const flexBals = balances.filter(b => b.accountId === flex.id);
+    assert.equal(flexBals.length, 1, 'Flex CREDIT must receive the converted available balance');
+    assert.ok(Math.abs(flexBals[0].value - 332.23) < 0.01, `expected Flex available 332.23, got ${flexBals[0].value}`);
+  });
+
+  it('POST /api/monzo/webhook with accountType=flex routes to Flex even without metadata', async () => {
+    const CORE_URL = process.env.CORE_URL || MONMON_URL;
+    const user = `flex_hint_${Date.now()}`;
+    const mk = async (type, name, limit) => (await fetch(`${CORE_URL}/internal/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, userId: user, accountLimit: limit, interestRate: 0 })
+    })).json();
+    const debit = await mk('DEBIT', 'Monzo', 100);
+    const flex = await mk('CREDIT', 'Flex', 2500);
+
+    const res = await fetch(`${MONMON_URL}/api/monzo/webhook?userId=${user}&accountType=flex`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'transaction.created',
+        data: {
+          id: `tx_flex_hint_${Date.now()}`,
+          account_id: 'acc_flex_unknown',
+          amount: -4905,
+          account_balance: -216777,
+          created: new Date().toISOString(),
+          description: "Sainsbury's",
+          category: 'groceries'
+        }
+      })
+    });
+    assert.equal(res.status, 200);
+
+    const balances = await (await fetch(`${CORE_URL}/internal/balances?userId=${user}`)).json();
+    assert.equal(balances.filter(b => b.accountId === debit.id).length, 0, 'Monzo DEBIT must be untouched');
+    const flexBals = balances.filter(b => b.accountId === flex.id);
+    assert.equal(flexBals.length, 1, 'Flex CREDIT must receive the balance');
+    assert.ok(Math.abs(flexBals[0].value - 332.23) < 0.01, `expected 332.23, got ${flexBals[0].value}`);
+  });
+
+  it('POST /api/monzo/webhook deduplicates repeated deliveries of the same transaction ID and ignores declined txs', async () => {
+    const CORE_URL = process.env.CORE_URL || MONMON_URL;
+    const user = `dedupe_declined_${Date.now()}`;
+    const mk = async (type, name, limit) => (await fetch(`${CORE_URL}/internal/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, userId: user, accountLimit: limit, interestRate: 0 })
+    })).json();
+    const flex = await mk('CREDIT', 'Flex', 2500);
+
+    const txId = `tx_dup_${Date.now()}`;
+    const payload = {
+      type: 'transaction.created',
+      data: {
+        id: txId,
+        account_id: 'acc_flex_dup',
+        amount: -1500,
+        account_balance: -50000,
+        created: new Date().toISOString(),
+        description: 'Scotmid',
+        category: 'groceries',
+        metadata: { monzo_flex_id: 'monzoflex_1' }
+      }
+    };
+
+    // Deliver the exact same webhook 3 times (simulating Monzo retry / duplicate delivery)
+    for (let i = 0; i < 3; i++) {
+      const r = await fetch(`${MONMON_URL}/api/monzo/webhook?userId=${user}&accountType=flex`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      assert.equal(r.status, 200);
+    }
+
+    // Also deliver a declined transaction
+    const decRes = await fetch(`${MONMON_URL}/api/monzo/webhook?userId=${user}&accountType=flex`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'transaction.created',
+        data: {
+          id: `tx_declined_${Date.now()}`,
+          account_id: 'acc_flex_dup',
+          amount: -9999,
+          account_balance: -99999,
+          decline_reason: 'INSUFFICIENT_FUNDS',
+          created: new Date().toISOString(),
+          description: 'Declined Shop',
+          metadata: { monzo_flex_id: 'monzoflex_1' }
+        }
+      })
+    });
+    assert.equal(decRes.status, 200);
+
+    const balances = (await (await fetch(`${CORE_URL}/internal/balances?userId=${user}`)).json())
+      .filter(b => b.accountId === flex.id);
+    assert.equal(balances.length, 1, `expected exactly 1 balance (deduped, declined skipped), got ${balances.length}`);
+    assert.ok(Math.abs(balances[0].value - 2000) < 0.01);
+  });
+
+  it('POST /api/statement/webhook auto-matches Monzo Flex to CREDIT Flex and Monzo to DEBIT Monzo', async () => {
+    const CORE_URL = process.env.CORE_URL || MONMON_URL;
+    const user = `stmt_monzo_flex_${Date.now()}`;
+    const mk = async (type, name, limit) => (await fetch(`${CORE_URL}/internal/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, userId: user, accountLimit: limit, interestRate: 0 })
+    })).json();
+    const monzoDebit = await mk('DEBIT', 'Monzo', 100);
+    const monzoFlex = await mk('CREDIT', 'Flex', 2500);
+
+    const postStmt = async (bank) => {
+      const r = await fetch(`${MONMON_URL}/api/statement/webhook?userId=${user}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user, jobId: `job_${bank}_${Date.now()}`, bank,
+          startDate: '2026-10-01', endDate: '2026-10-31',
+          openingBalance: 100, closingBalance: 90,
+          transactions: [{ date: '2026-10-05', description: 'Shop', amount: -10 }]
+        })
+      });
+      assert.equal(r.status, 200);
+      return r.json();
+    };
+
+    const flexHook = await postStmt('Monzo Flex');
+    const debitHook = await postStmt('Monzo');
+
+    const pending = await (await fetch(`${MONMON_URL}/api/bank/statement/pending?userId=${user}`)).json();
+    const list = Array.isArray(pending) ? pending : (pending.pendingStatements || pending.statements || []);
+    const flexStmt = list.find(s => s.id === flexHook.statementId);
+    const debitStmt = list.find(s => s.id === debitHook.statementId);
+    assert.ok(flexStmt, 'Flex statement must be pending');
+    assert.ok(debitStmt, 'Monzo debit statement must be pending');
+    assert.equal(flexStmt.matchedAccountId, monzoFlex.id, 'Monzo Flex statement must auto-match Flex CREDIT, not Monzo DEBIT');
+    assert.equal(debitStmt.matchedAccountId, monzoDebit.id, 'Monzo statement must auto-match Monzo DEBIT, not Flex CREDIT');
+  });
+
 });

@@ -615,7 +615,9 @@ CREATE TABLE public.monzo_connection (
     webhook_url character varying(500),
     last_received_at bigint,
     created_at bigint,
-    updated_at bigint
+    updated_at bigint,
+    monzo_debit_account_id character varying(255),
+    monzo_flex_account_id character varying(255)
 );
 
 
