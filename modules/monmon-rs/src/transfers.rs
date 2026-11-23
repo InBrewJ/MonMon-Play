@@ -83,6 +83,310 @@ pub struct DirectOverdraftItemDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DirectPotItemDto {
+    pub id: String,
+    pub heading: String,
+    pub title: String,
+    pub amount: f32,
+    pub amount_formatted: String,
+    pub account_id: i64,
+    pub account_name: String,
+    pub description: String,
+}
+
+fn parse_json_f64(val: Option<&Value>) -> Option<f64> {
+    val.and_then(|v| {
+        v.as_f64()
+            .or_else(|| v.as_str().and_then(|s| s.trim().parse::<f64>().ok()))
+    })
+}
+
+fn parse_json_i64(val: Option<&Value>) -> Option<i64> {
+    val.and_then(|v| {
+        v.as_i64()
+            .or_else(|| v.as_str().and_then(|s| s.trim().parse::<i64>().ok()))
+    })
+    .filter(|&id| id > 0)
+}
+
+pub fn format_direct_commitments_heading(has_bills: bool, has_overdraft: bool, has_pot: bool) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if has_bills {
+        parts.push("Bills");
+    }
+    if has_overdraft {
+        parts.push("Overdraft");
+    }
+    if has_pot {
+        parts.push("Monthly Pot");
+    }
+    match parts.len() {
+        0 => "Direct Commitments".to_string(),
+        1 => format!("Direct {}", parts[0]),
+        2 => format!("Direct {} & {}", parts[0], parts[1]),
+        _ => format!("Direct {}, {} & {}", parts[0], parts[1], parts[2]),
+    }
+}
+
+pub fn format_direct_commitments_short_label(has_bills: bool, has_overdraft: bool, has_pot: bool) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if has_bills {
+        parts.push("direct bills");
+    }
+    if has_overdraft {
+        parts.push(if has_bills || has_pot { "overdraft" } else { "overdraft payoff" });
+    }
+    if has_pot {
+        parts.push("monthly pot");
+    }
+    match parts.len() {
+        0 => "direct commitments".to_string(),
+        1 => parts[0].to_string(),
+        2 => format!("{} & {}", parts[0], parts[1]),
+        _ => format!("{}, {} & {}", parts[0], parts[1], parts[2]),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_monthly_pot_allocations(
+    pot_id: i64,
+    max_pot_allowance: f32,
+    sp_sections_json: Option<&str>,
+    legacy_amounts: (Option<f32>, Option<f32>, Option<f32>, Option<f32>),
+    legacy_account_ids: (Option<i64>, Option<i64>, Option<i64>, Option<i64>),
+    linked_pot_acc_ids: &[i64],
+    source_acc_id: Option<i64>,
+    source_acc_name: &str,
+    acc_map: &std::collections::HashMap<i64, (String, String, f32)>,
+) -> (Vec<PaydayTransferItemDto>, Vec<DirectPotItemDto>) {
+    let mut pot_items = Vec::new();
+    let mut direct_pot_items = Vec::new();
+
+    let (sp_food, sp_fuel, sp_trans, sp_fun) = legacy_amounts;
+    let (food_acc_id, fuel_acc_id, trans_acc_id, fun_acc_id) = legacy_account_ids;
+
+    struct RawSection {
+        heading: String,
+        amount: f32,
+        account_id: Option<i64>,
+    }
+    let mut raw_sections: Vec<RawSection> = Vec::new();
+
+    if let Some(j) = sp_sections_json {
+        if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
+            for s in parsed {
+                let heading = s
+                    .get("heading")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                let amount = parse_json_f64(s.get("amount")).unwrap_or(0.0) as f32;
+                let acc_id = parse_json_i64(s.get("accountId").or_else(|| s.get("account_id")));
+                if !heading.is_empty() && amount >= 0.005 {
+                    raw_sections.push(RawSection {
+                        heading,
+                        amount,
+                        account_id: acc_id,
+                    });
+                }
+            }
+        }
+    }
+
+    if raw_sections.is_empty() {
+        if let Some(f) = sp_food {
+            if f >= 0.005 {
+                raw_sections.push(RawSection {
+                    heading: "Food".to_string(),
+                    amount: f,
+                    account_id: food_acc_id,
+                });
+            }
+        }
+        if let Some(f) = sp_fuel {
+            if f >= 0.005 {
+                raw_sections.push(RawSection {
+                    heading: "Fuel".to_string(),
+                    amount: f,
+                    account_id: fuel_acc_id,
+                });
+            }
+        }
+        if let Some(t) = sp_trans {
+            if t >= 0.005 {
+                raw_sections.push(RawSection {
+                    heading: "Transport".to_string(),
+                    amount: t,
+                    account_id: trans_acc_id,
+                });
+            }
+        }
+        if let Some(f) = sp_fun {
+            if f >= 0.005 {
+                raw_sections.push(RawSection {
+                    heading: "Fun".to_string(),
+                    amount: f,
+                    account_id: fun_acc_id,
+                });
+            }
+        }
+    }
+
+    let is_source_account = |acc_id: i64| -> bool {
+        if Some(acc_id) == source_acc_id {
+            return true;
+        }
+        acc_map
+            .get(&acc_id)
+            .map(|(name, _, _)| name == source_acc_name)
+            .unwrap_or(false)
+    };
+
+    // Prefer an active non-source account as the primary transfer destination for unassigned sections/remainder
+    let primary_external_pot_acc_id = food_acc_id
+        .filter(|aid| acc_map.contains_key(aid) && !is_source_account(*aid))
+        .or_else(|| {
+            raw_sections.iter().find_map(|s| {
+                s.account_id
+                    .filter(|aid| acc_map.contains_key(aid) && !is_source_account(*aid))
+            })
+        })
+        .or_else(|| {
+            linked_pot_acc_ids
+                .iter()
+                .find(|aid| acc_map.contains_key(aid) && !is_source_account(**aid))
+                .copied()
+        });
+
+    // If no external pot account exists, fall back to the source account when the pot includes it
+    let pot_uses_source_acc = source_acc_id.map_or(false, |sid| {
+        food_acc_id == Some(sid)
+            || fuel_acc_id == Some(sid)
+            || trans_acc_id == Some(sid)
+            || fun_acc_id == Some(sid)
+            || raw_sections.iter().any(|s| s.account_id == Some(sid))
+            || linked_pot_acc_ids.contains(&sid)
+    });
+
+    let fallback_pot_acc_id = primary_external_pot_acc_id.or_else(|| {
+        if pot_uses_source_acc {
+            source_acc_id
+        } else {
+            None
+        }
+    });
+
+    let mut allocated_pot_total = 0.0f32;
+    for (idx, sec) in raw_sections.into_iter().enumerate() {
+        let target_acc_id = sec
+            .account_id
+            .filter(|aid| acc_map.contains_key(aid) || is_source_account(*aid))
+            .or(fallback_pot_acc_id);
+
+        if let Some(dest_id) = target_acc_id {
+            let amt = (sec.amount * 100.0).round() / 100.0;
+            if amt < 0.005 {
+                continue;
+            }
+
+            if is_source_account(dest_id) {
+                allocated_pot_total += amt;
+                let desc = format!(
+                    "Monthly pot living allowance for {} retained in {}",
+                    sec.heading, source_acc_name
+                );
+                direct_pot_items.push(DirectPotItemDto {
+                    id: format!("direct_pot_{}_{}", pot_id, idx + 1),
+                    heading: sec.heading.clone(),
+                    title: format!("{} (Monthly Pot)", sec.heading),
+                    amount: amt,
+                    amount_formatted: format!("{:.2}", amt),
+                    account_id: dest_id,
+                    account_name: source_acc_name.to_string(),
+                    description: desc,
+                });
+            } else if let Some((dest_name, dest_type, dest_bal)) = acc_map.get(&dest_id) {
+                allocated_pot_total += amt;
+                let desc = format!("Monthly pot living allowance for {}", sec.heading);
+
+                pot_items.push(PaydayTransferItemDto {
+                    id: format!("monthly_pot_{}_{}", pot_id, idx + 1),
+                    priority: -5,
+                    title: format!("{} (Monthly Pot)", sec.heading),
+                    category: "MONTHLY_POT".to_string(),
+                    source_account_id: source_acc_id,
+                    source_account_name: source_acc_name.to_string(),
+                    destination_account_id: Some(dest_id),
+                    destination_account_name: dest_name.clone(),
+                    destination_account_type: dest_type.clone(),
+                    amount: amt,
+                    amount_formatted: format!("{:.2}", amt),
+                    target_amount: Some(amt),
+                    target_amount_formatted: Some(format!("{:.2}", amt)),
+                    current_destination_balance: Some(*dest_bal),
+                    current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
+                    progress_pct: None,
+                    description: desc,
+                    breakdown: Vec::new(),
+                });
+            }
+        }
+    }
+
+    // If configured sections sum to less than MAX / mo living allowance, allocate remainder to primary pot account
+    if max_pot_allowance > allocated_pot_total + 0.005 {
+        let remainder = ((max_pot_allowance - allocated_pot_total) * 100.0).round() / 100.0;
+        if let Some(dest_id) = fallback_pot_acc_id {
+            if is_source_account(dest_id) {
+                let desc = format!(
+                    "Remaining living allowance to reach MAX / mo (£{:.2}), retained in {}",
+                    max_pot_allowance, source_acc_name
+                );
+                direct_pot_items.push(DirectPotItemDto {
+                    id: format!("direct_pot_{}_remainder", pot_id),
+                    heading: "Remaining Living Allowance".to_string(),
+                    title: "Remaining Living Allowance (Monthly Pot)".to_string(),
+                    amount: remainder,
+                    amount_formatted: format!("{:.2}", remainder),
+                    account_id: dest_id,
+                    account_name: source_acc_name.to_string(),
+                    description: desc,
+                });
+            } else if let Some((dest_name, dest_type, dest_bal)) = acc_map.get(&dest_id) {
+                let desc = format!(
+                    "Remaining living allowance to reach MAX / mo (£{:.2})",
+                    max_pot_allowance
+                );
+                pot_items.push(PaydayTransferItemDto {
+                    id: format!("monthly_pot_{}_remainder", pot_id),
+                    priority: -4,
+                    title: "Remaining Living Allowance (Monthly Pot)".to_string(),
+                    category: "MONTHLY_POT".to_string(),
+                    source_account_id: source_acc_id,
+                    source_account_name: source_acc_name.to_string(),
+                    destination_account_id: Some(dest_id),
+                    destination_account_name: dest_name.clone(),
+                    destination_account_type: dest_type.clone(),
+                    amount: remainder,
+                    amount_formatted: format!("{:.2}", remainder),
+                    target_amount: Some(remainder),
+                    target_amount_formatted: Some(format!("{:.2}", remainder)),
+                    current_destination_balance: Some(*dest_bal),
+                    current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
+                    progress_pct: None,
+                    description: desc,
+                    breakdown: Vec::new(),
+                });
+            }
+        }
+    }
+
+    (pot_items, direct_pot_items)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OutgoingsFundingStepDto {
     pub from_savings_account_id: i64,
     pub from_savings_account_name: String,
@@ -193,6 +497,10 @@ pub struct PaydayWindowDto {
     pub direct_outgoings_count: usize,
     pub direct_outgoings_items: Vec<DirectOutgoingItemDto>,
     pub direct_overdraft_item: Option<DirectOverdraftItemDto>,
+    pub direct_pot_total: f32,
+    pub direct_pot_total_formatted: String,
+    pub direct_pot_count: usize,
+    pub direct_pot_items: Vec<DirectPotItemDto>,
     pub direct_commitments_total: f32,
     pub direct_commitments_total_formatted: String,
     pub direct_commitments_count: usize,
@@ -233,6 +541,30 @@ pub struct PaydayWindowDto {
     pub pot_items: Vec<PaydayTransferItemDto>,
     pub savings_items: Vec<PaydayTransferItemDto>,
     pub items: Vec<PaydayTransferItemDto>,
+}
+
+impl PaydayWindowDto {
+    pub fn has_direct_commitments(&self) -> bool {
+        !self.direct_outgoings_items.is_empty()
+            || self.direct_overdraft_item.is_some()
+            || !self.direct_pot_items.is_empty()
+    }
+
+    pub fn direct_commitments_heading(&self) -> String {
+        format_direct_commitments_heading(
+            !self.direct_outgoings_items.is_empty(),
+            self.direct_overdraft_item.is_some(),
+            !self.direct_pot_items.is_empty(),
+        )
+    }
+
+    pub fn direct_commitments_short_label(&self) -> String {
+        format_direct_commitments_short_label(
+            !self.direct_outgoings_items.is_empty(),
+            self.direct_overdraft_item.is_some(),
+            !self.direct_pot_items.is_empty(),
+        )
+    }
 }
 
 #[derive(Template)]
@@ -454,6 +786,7 @@ pub async fn calculate_payday_window(
 
     // 3. Monthly Pot Transfers (Living Allowance / MAX per month)
     let mut pot_items = Vec::new();
+    let mut direct_pot_items: Vec<DirectPotItemDto> = Vec::new();
 
     let active_savings_plan_dto = crate::savings_plan::get_or_create_active_plan(pool, resolved_uid).await.ok();
     let max_pot_allowance = active_savings_plan_dto
@@ -461,188 +794,86 @@ pub async fn calculate_payday_window(
         .map(|p| p.breadline_month())
         .unwrap_or(0.0);
 
-    if max_pot_allowance >= 0.005 {
-        let active_pot_row = sqlx::query(
+    let active_pot_row = sqlx::query(
+        r#"
+        SELECT p.id, p.spending_plan_name, p.spending_plan_food, p.spending_plan_fuel,
+               p.spending_plan_transport, p.spending_plan_fun, p.spending_plan_sections_json,
+               p.food_account_id, p.fun_account_id, p.fuel_account_id, p.transport_account_id
+        FROM pot p
+        WHERE (p.userid = $1 OR p.user_id = $1)
+          AND (p.archived IS NULL OR p.archived = false)
+          AND p.type = 'MONTHLY'
+        ORDER BY p.createdat DESC NULLS LAST, p.id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(resolved_uid)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(pr) = active_pot_row {
+        let pot_id: i64 = pr.get("id");
+        let sp_sections_json: Option<String> = pr.get("spending_plan_sections_json");
+        let sp_food: Option<f32> = pr.get("spending_plan_food");
+        let sp_fuel: Option<f32> = pr.get("spending_plan_fuel");
+        let sp_trans: Option<f32> = pr.get("spending_plan_transport");
+        let sp_fun: Option<f32> = pr.get("spending_plan_fun");
+        let food_acc_id: Option<i64> = pr.get("food_account_id");
+        let fuel_acc_id: Option<i64> = pr.get("fuel_account_id");
+        let trans_acc_id: Option<i64> = pr.get("transport_account_id");
+        let fun_acc_id: Option<i64> = pr.get("fun_account_id");
+
+        let linked_pot_acc_ids: Vec<i64> = sqlx::query_scalar(
+            "SELECT account_id FROM pot_accounts WHERE pot_id = $1 ORDER BY account_id ASC"
+        )
+        .bind(pot_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        // Load account details (name, type, latest balance) for lookup
+        let all_user_acc_rows = sqlx::query(
             r#"
-            SELECT p.id, p.spending_plan_name, p.spending_plan_food, p.spending_plan_fuel,
-                   p.spending_plan_transport, p.spending_plan_fun, p.spending_plan_sections_json,
-                   p.food_account_id, p.fun_account_id, p.fuel_account_id, p.transport_account_id
-            FROM pot p
-            WHERE (p.userid = $1 OR p.user_id = $1)
-              AND (p.archived IS NULL OR p.archived = false)
-              AND p.type = 'MONTHLY'
-            ORDER BY p.createdat DESC NULLS LAST, p.id DESC
-            LIMIT 1
+            SELECT a.id, a.name, a.type,
+                   COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
+            FROM account a
+            WHERE (a.userid = $1 OR a.user_id = $1)
+              AND (a.archived IS NULL OR a.archived = false)
             "#,
         )
         .bind(resolved_uid)
-        .fetch_optional(pool)
-        .await?;
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
 
-        if let Some(pr) = active_pot_row {
-            let pot_id: i64 = pr.get("id");
-            let sp_sections_json: Option<String> = pr.get("spending_plan_sections_json");
-            let food_acc_id: Option<i64> = pr.get("food_account_id");
-            let fuel_acc_id: Option<i64> = pr.get("fuel_account_id");
-            let trans_acc_id: Option<i64> = pr.get("transport_account_id");
-            let fun_acc_id: Option<i64> = pr.get("fun_account_id");
-
-            let linked_pot_acc_ids: Vec<i64> = sqlx::query_scalar(
-                "SELECT account_id FROM pot_accounts WHERE pot_id = $1 ORDER BY account_id ASC"
-            )
-            .bind(pot_id)
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
-
-            // Load account details (name, type, latest balance) for lookup
-            let all_user_acc_rows = sqlx::query(
-                r#"
-                SELECT a.id, a.name, a.type,
-                       COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
-                FROM account a
-                WHERE (a.userid = $1 OR a.user_id = $1)
-                  AND (a.archived IS NULL OR a.archived = false)
-                "#,
-            )
-            .bind(resolved_uid)
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
-
-            let mut acc_map: std::collections::HashMap<i64, (String, String, f32)> = std::collections::HashMap::new();
-            for ar in all_user_acc_rows {
-                let aid: i64 = ar.get("id");
-                let aname: String = ar.get("name");
-                let atype: String = ar.get("type");
-                let abal: f32 = ar.get("bal");
-                acc_map.insert(aid, (aname, atype, abal));
-            }
-
-            struct RawSection {
-                heading: String,
-                amount: f32,
-                account_id: Option<i64>,
-            }
-            let mut raw_sections: Vec<RawSection> = Vec::new();
-
-            if let Some(ref j) = sp_sections_json {
-                if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
-                    for s in parsed {
-                        let heading = s.get("heading").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-                        let amount = s.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                        let acc_id = s.get("accountId").and_then(|v| v.as_i64());
-                        if !heading.is_empty() && amount >= 0.005 {
-                            raw_sections.push(RawSection { heading, amount, account_id: acc_id });
-                        }
-                    }
-                }
-            }
-
-            if raw_sections.is_empty() {
-                if let Some(f) = pr.get::<Option<f32>, _>("spending_plan_food") {
-                    if f >= 0.005 {
-                        raw_sections.push(RawSection { heading: "Food".to_string(), amount: f, account_id: food_acc_id });
-                    }
-                }
-                if let Some(f) = pr.get::<Option<f32>, _>("spending_plan_fuel") {
-                    if f >= 0.005 {
-                        raw_sections.push(RawSection { heading: "Fuel".to_string(), amount: f, account_id: fuel_acc_id });
-                    }
-                }
-                if let Some(t) = pr.get::<Option<f32>, _>("spending_plan_transport") {
-                    if t >= 0.005 {
-                        raw_sections.push(RawSection { heading: "Transport".to_string(), amount: t, account_id: trans_acc_id });
-                    }
-                }
-                if let Some(f) = pr.get::<Option<f32>, _>("spending_plan_fun") {
-                    if f >= 0.005 {
-                        raw_sections.push(RawSection { heading: "Fun".to_string(), amount: f, account_id: fun_acc_id });
-                    }
-                }
-            }
-
-            // Identify primary pot account
-            let primary_pot_acc_id = food_acc_id
-                .filter(|aid| Some(*aid) != source_acc_id)
-                .or_else(|| {
-                    raw_sections.iter().find_map(|s| {
-                        s.account_id.filter(|aid| Some(*aid) != source_acc_id)
-                    })
-                })
-                .or_else(|| {
-                    linked_pot_acc_ids.iter().find(|aid| Some(**aid) != source_acc_id).copied()
-                });
-
-            let mut allocated_pot_total = 0.0f32;
-            for (idx, sec) in raw_sections.into_iter().enumerate() {
-                let target_acc_id = sec.account_id.or(primary_pot_acc_id);
-                if let Some(dest_id) = target_acc_id {
-                    if Some(dest_id) == source_acc_id {
-                        continue;
-                    }
-                    if let Some((dest_name, dest_type, dest_bal)) = acc_map.get(&dest_id) {
-                        let amt = (sec.amount * 100.0).round() / 100.0;
-                        allocated_pot_total += amt;
-                        let desc = format!("Monthly pot living allowance for {}", sec.heading);
-
-                        pot_items.push(PaydayTransferItemDto {
-                            id: format!("monthly_pot_{}_{}", pot_id, idx + 1),
-                            priority: -5,
-                            title: format!("{} (Monthly Pot)", sec.heading),
-                            category: "MONTHLY_POT".to_string(),
-                            source_account_id: source_acc_id,
-                            source_account_name: source_acc_name.clone(),
-                            destination_account_id: Some(dest_id),
-                            destination_account_name: dest_name.clone(),
-                            destination_account_type: dest_type.clone(),
-                            amount: amt,
-                            amount_formatted: format!("{:.2}", amt),
-                            target_amount: Some(amt),
-                            target_amount_formatted: Some(format!("{:.2}", amt)),
-                            current_destination_balance: Some(*dest_bal),
-                            current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
-                            progress_pct: None,
-                            description: desc,
-                            breakdown: Vec::new(),
-                        });
-                    }
-                }
-            }
-
-            // If configured sections sum to less than MAX / mo living allowance, allocate remainder to primary pot account
-            if max_pot_allowance > allocated_pot_total + 0.005 {
-                let remainder = ((max_pot_allowance - allocated_pot_total) * 100.0).round() / 100.0;
-                if let Some(dest_id) = primary_pot_acc_id {
-                    if Some(dest_id) != source_acc_id {
-                        if let Some((dest_name, dest_type, dest_bal)) = acc_map.get(&dest_id) {
-                            let desc = format!("Remaining living allowance to reach MAX / mo (£{:.2})", max_pot_allowance);
-                            pot_items.push(PaydayTransferItemDto {
-                                id: format!("monthly_pot_{}_remainder", pot_id),
-                                priority: -4,
-                                title: "Remaining Living Allowance (Monthly Pot)".to_string(),
-                                category: "MONTHLY_POT".to_string(),
-                                source_account_id: source_acc_id,
-                                source_account_name: source_acc_name.clone(),
-                                destination_account_id: Some(dest_id),
-                                destination_account_name: dest_name.clone(),
-                                destination_account_type: dest_type.clone(),
-                                amount: remainder,
-                                amount_formatted: format!("{:.2}", remainder),
-                                target_amount: Some(remainder),
-                                target_amount_formatted: Some(format!("{:.2}", remainder)),
-                                current_destination_balance: Some(*dest_bal),
-                                current_destination_balance_formatted: Some(format!("{:.2}", dest_bal)),
-                                progress_pct: None,
-                                description: desc,
-                                breakdown: Vec::new(),
-                            });
-                        }
-                    }
-                }
-            }
+        let mut acc_map: std::collections::HashMap<i64, (String, String, f32)> = std::collections::HashMap::new();
+        for ar in all_user_acc_rows {
+            let aid: i64 = ar.get("id");
+            let aname: String = ar.get("name");
+            let atype: String = ar.get("type");
+            let abal: f32 = ar.get("bal");
+            acc_map.insert(aid, (aname, atype, abal));
         }
+
+        let (built_pot_items, built_direct_pot_items) = build_monthly_pot_allocations(
+            pot_id,
+            max_pot_allowance,
+            sp_sections_json.as_deref(),
+            (sp_food, sp_fuel, sp_trans, sp_fun),
+            (food_acc_id, fuel_acc_id, trans_acc_id, fun_acc_id),
+            &linked_pot_acc_ids,
+            source_acc_id,
+            &source_acc_name,
+            &acc_map,
+        );
+        pot_items = built_pot_items;
+        direct_pot_items = built_direct_pot_items;
     }
+
+    direct_pot_items.retain(|it| it.amount >= 0.005);
+    let direct_pot_total: f32 = ((direct_pot_items.iter().map(|it| it.amount).sum::<f32>() * 100.0).round()) / 100.0;
+    let direct_pot_total_formatted = format!("{:.2}", direct_pot_total);
+    let direct_pot_count = direct_pot_items.len();
 
     let mut savings_items = Vec::new();
 
@@ -917,9 +1148,11 @@ pub async fn calculate_payday_window(
     }
 
     let direct_overdraft_amount = source_overdraft_item.as_ref().map(|it| it.amount).unwrap_or(0.0);
-    let direct_commitments_total = ((direct_outgoings_total + direct_overdraft_amount) * 100.0).round() / 100.0;
+    let direct_commitments_total = ((direct_outgoings_total + direct_overdraft_amount + direct_pot_total) * 100.0).round() / 100.0;
     let direct_commitments_total_formatted = format!("{:.2}", direct_commitments_total);
-    let direct_commitments_count = direct_outgoings_count + if source_overdraft_item.is_some() { 1 } else { 0 };
+    let direct_commitments_count = direct_outgoings_count
+        + if source_overdraft_item.is_some() { 1 } else { 0 }
+        + direct_pot_count;
 
     // Sort savings items by priority (Yearly Bills Autosave #0 first, then Savings Plan priorities #1, #2...)
     savings_items.sort_by_key(|it| it.priority);
@@ -1113,13 +1346,11 @@ pub async fn calculate_payday_window(
             let badge = format!("£{:.2} from Savings", topup);
             let desc = if monthly_income_rounded > 0.005 {
                 if direct_commitments_total > 0.005 {
-                    let direct_label = if source_overdraft_item.is_some() && direct_outgoings_total > 0.005 {
-                        "direct bills & overdraft"
-                    } else if source_overdraft_item.is_some() {
-                        "overdraft payoff"
-                    } else {
-                        "direct bills"
-                    };
+                    let direct_label = format_direct_commitments_short_label(
+                        direct_outgoings_total > 0.005,
+                        source_overdraft_item.is_some(),
+                        direct_pot_total > 0.005,
+                    );
                     format!(
                         "Incoming (£{:.2}) covers part of the £{:.2} commitments (£{:.2} transfers + £{:.2} {}) • £{:.2} needed from savings to top up (Available Savings: £{:.2})",
                         monthly_income_rounded, total_commitments_rounded, total_transfers_rounded, direct_commitments_total, direct_label, topup, total_savings
@@ -1253,6 +1484,10 @@ pub async fn calculate_payday_window(
         direct_outgoings_count,
         direct_outgoings_items,
         direct_overdraft_item: source_overdraft_item,
+        direct_pot_total,
+        direct_pot_total_formatted,
+        direct_pot_count,
+        direct_pot_items,
         direct_commitments_total,
         direct_commitments_total_formatted,
         direct_commitments_count,
@@ -2067,5 +2302,297 @@ mod tests {
         assert_eq!(calc.breakdown[0].name, "[godaddy] negroni.club");
         assert_eq!(calc.breakdown[0].monthly_saving, 32.50);
         assert_eq!(calc.monthly_saving, 32.50);
+    }
+
+    #[test]
+    fn test_custom_monthly_pot_with_source_account_items_routes_to_direct_and_keeps_exact_remainder() {
+        // Exact scenario from jason@urawizard.com on greenstreet (pot 12635):
+        // Source/salary account: 2 (Natwest Reward Debit)
+        // 6 custom sections: Food £305 (Monzo 8638), Fuel £110 (Natwest 2), Transport £125 (Monzo 8638),
+        //                    Campsite £150 (Natwest 2), Fun £60 (Revolut 94), Vape £100 (Monzo 8638).
+        // Sum of all 6 sections = £850.00; MAX / mo living allowance = £868.86.
+        // Expected:
+        // - 4 external transfers + 1 remainder (£18.86 to Monzo) in pot_items (sum £608.86)
+        // - 2 retained items (Fuel £110, Campsite £150) in direct_pot_items (sum £260.00)
+        // - Total across both = £868.86 (never inflated to £278.86 remainder!).
+        let mut acc_map = std::collections::HashMap::new();
+        acc_map.insert(2i64, ("Natwest Reward Debit".to_string(), "DEBIT".to_string(), -226.89f32));
+        acc_map.insert(8638i64, ("Monzo".to_string(), "DEBIT".to_string(), -19.61f32));
+        acc_map.insert(94i64, ("Revolut".to_string(), "DEBIT".to_string(), 0.0f32));
+
+        let sections_json = r#"[{"heading":"Food","amount":305,"accountId":8638},{"heading":"Fuel","amount":110,"accountId":2},{"heading":"Transport","amount":125,"accountId":8638},{"heading":"Campsite","amount":150,"accountId":2},{"heading":"Fun","amount":60,"accountId":94},{"heading":"Vape","amount":100,"accountId":8638}]"#;
+
+        let (pot_items, direct_pot_items) = build_monthly_pot_allocations(
+            12635,
+            868.86,
+            Some(sections_json),
+            (Some(305.0), Some(110.0), Some(125.0), Some(60.0)),
+            (None, None, None, None),
+            &[2, 94, 8638],
+            Some(2),
+            "Natwest Reward Debit",
+            &acc_map,
+        );
+
+        assert_eq!(direct_pot_items.len(), 2, "Fuel and Campsite on salary account must be retained as direct pot items");
+        assert_eq!(direct_pot_items[0].heading, "Fuel");
+        assert_eq!(direct_pot_items[0].amount, 110.0);
+        assert_eq!(direct_pot_items[0].account_id, 2);
+        assert_eq!(direct_pot_items[1].heading, "Campsite");
+        assert_eq!(direct_pot_items[1].amount, 150.0);
+        assert_eq!(direct_pot_items[1].account_id, 2);
+
+        assert_eq!(pot_items.len(), 5, "4 external pot categories + 1 remainder transfer");
+        let pot_titles: Vec<&str> = pot_items.iter().map(|it| it.title.as_str()).collect();
+        assert_eq!(
+            pot_titles,
+            vec![
+                "Food (Monthly Pot)",
+                "Transport (Monthly Pot)",
+                "Fun (Monthly Pot)",
+                "Vape (Monthly Pot)",
+                "Remaining Living Allowance (Monthly Pot)",
+            ]
+        );
+        assert_eq!(pot_items[4].amount, 18.86, "Remainder must be 868.86 - 850.00 = 18.86, not 278.86");
+        assert_eq!(pot_items[4].destination_account_id, Some(8638));
+
+        let transferred_sum: f32 = ((pot_items.iter().map(|i| i.amount).sum::<f32>()) * 100.0).round() / 100.0;
+        let retained_sum: f32 = ((direct_pot_items.iter().map(|i| i.amount).sum::<f32>()) * 100.0).round() / 100.0;
+        assert_eq!(transferred_sum, 608.86);
+        assert_eq!(retained_sum, 260.0);
+        assert_eq!(((transferred_sum + retained_sum) * 100.0).round() / 100.0, 868.86);
+    }
+
+    #[test]
+    fn test_custom_monthly_pot_all_external_accounts_shows_all_six_in_pot_transfers() {
+        let mut acc_map = std::collections::HashMap::new();
+        acc_map.insert(2i64, ("Natwest Reward Debit".to_string(), "DEBIT".to_string(), -226.89f32));
+        acc_map.insert(8638i64, ("Monzo".to_string(), "DEBIT".to_string(), -19.61f32));
+        acc_map.insert(94i64, ("Revolut".to_string(), "DEBIT".to_string(), 0.0f32));
+
+        let sections_json = r#"[{"heading":"Food","amount":305,"accountId":8638},{"heading":"Fuel","amount":110,"accountId":8638},{"heading":"Transport","amount":125,"accountId":8638},{"heading":"Campsite","amount":150,"accountId":94},{"heading":"Fun","amount":60,"accountId":94},{"heading":"Vape","amount":100,"accountId":8638}]"#;
+
+        let (pot_items, direct_pot_items) = build_monthly_pot_allocations(
+            12638,
+            868.86,
+            Some(sections_json),
+            (Some(305.0), Some(110.0), Some(125.0), Some(60.0)),
+            (None, None, None, None),
+            &[94, 8638],
+            Some(2),
+            "Natwest Reward Debit",
+            &acc_map,
+        );
+
+        assert!(direct_pot_items.is_empty());
+        assert_eq!(pot_items.len(), 7);
+        assert_eq!(pot_items[6].title, "Remaining Living Allowance (Monthly Pot)");
+        assert_eq!(pot_items[6].amount, 18.86);
+    }
+
+    #[test]
+    fn test_custom_monthly_pot_all_source_account_retains_sections_and_remainder_directly() {
+        let mut acc_map = std::collections::HashMap::new();
+        acc_map.insert(2i64, ("Natwest Reward Debit".to_string(), "DEBIT".to_string(), 100.0f32));
+
+        let sections_json = r#"[{"heading":"Food","amount":200,"accountId":2},{"heading":"Fuel","amount":50,"accountId":null}]"#;
+
+        let (pot_items, direct_pot_items) = build_monthly_pot_allocations(
+            500,
+            300.0,
+            Some(sections_json),
+            (None, None, None, None),
+            (None, None, None, None),
+            &[2],
+            Some(2),
+            "Natwest Reward Debit",
+            &acc_map,
+        );
+
+        assert!(pot_items.is_empty());
+        assert_eq!(direct_pot_items.len(), 3);
+        assert_eq!(direct_pot_items[0].heading, "Food");
+        assert_eq!(direct_pot_items[0].amount, 200.0);
+        assert_eq!(direct_pot_items[1].heading, "Fuel");
+        assert_eq!(direct_pot_items[1].amount, 50.0);
+        assert_eq!(direct_pot_items[2].title, "Remaining Living Allowance (Monthly Pot)");
+        assert_eq!(direct_pot_items[2].amount, 50.0);
+    }
+
+    #[test]
+    fn test_custom_monthly_pot_parses_string_numbers_and_snake_case_account_id() {
+        let mut acc_map = std::collections::HashMap::new();
+        acc_map.insert(2i64, ("Natwest Reward Debit".to_string(), "DEBIT".to_string(), 100.0f32));
+        acc_map.insert(8638i64, ("Monzo".to_string(), "DEBIT".to_string(), 25.0f32));
+
+        let sections_json = r#"[{"heading":"Groceries","amount":"150.50","account_id":"8638"},{"heading":"Petrol","amount":"49.50","accountId":"2"}]"#;
+
+        let (pot_items, direct_pot_items) = build_monthly_pot_allocations(
+            501,
+            200.0,
+            Some(sections_json),
+            (None, None, None, None),
+            (None, None, None, None),
+            &[2, 8638],
+            Some(2),
+            "Natwest Reward Debit",
+            &acc_map,
+        );
+
+        assert_eq!(pot_items.len(), 1);
+        assert_eq!(pot_items[0].title, "Groceries (Monthly Pot)");
+        assert_eq!(pot_items[0].amount, 150.50);
+        assert_eq!(pot_items[0].destination_account_id, Some(8638));
+
+        assert_eq!(direct_pot_items.len(), 1);
+        assert_eq!(direct_pot_items[0].heading, "Petrol");
+        assert_eq!(direct_pot_items[0].amount, 49.50);
+        assert_eq!(direct_pot_items[0].account_id, 2);
+    }
+
+    #[test]
+    fn test_custom_monthly_pot_shows_configured_sections_even_when_breadline_is_zero() {
+        let mut acc_map = std::collections::HashMap::new();
+        acc_map.insert(2i64, ("Natwest Reward Debit".to_string(), "DEBIT".to_string(), 100.0f32));
+        acc_map.insert(8638i64, ("Monzo".to_string(), "DEBIT".to_string(), 25.0f32));
+
+        let sections_json = r#"[{"heading":"Food","amount":200,"accountId":8638},{"heading":"Fuel","amount":50,"accountId":2}]"#;
+
+        let (pot_items, direct_pot_items) = build_monthly_pot_allocations(
+            502,
+            0.0,
+            Some(sections_json),
+            (None, None, None, None),
+            (None, None, None, None),
+            &[2, 8638],
+            Some(2),
+            "Natwest Reward Debit",
+            &acc_map,
+        );
+
+        assert_eq!(pot_items.len(), 1);
+        assert_eq!(pot_items[0].title, "Food (Monthly Pot)");
+        assert_eq!(pot_items[0].amount, 200.0);
+        assert_eq!(direct_pot_items.len(), 1);
+        assert_eq!(direct_pot_items[0].heading, "Fuel");
+        assert_eq!(direct_pot_items[0].amount, 50.0);
+    }
+
+    #[test]
+    fn test_direct_commitments_labels_and_transfers_template_render_all_six_pot_items() {
+        assert_eq!(format_direct_commitments_heading(true, false, false), "Direct Bills");
+        assert_eq!(format_direct_commitments_heading(false, true, false), "Direct Overdraft");
+        assert_eq!(format_direct_commitments_heading(false, false, true), "Direct Monthly Pot");
+        assert_eq!(format_direct_commitments_heading(true, true, false), "Direct Bills & Overdraft");
+        assert_eq!(format_direct_commitments_heading(true, false, true), "Direct Bills & Monthly Pot");
+        assert_eq!(format_direct_commitments_heading(true, true, true), "Direct Bills, Overdraft & Monthly Pot");
+
+        assert_eq!(format_direct_commitments_short_label(true, false, false), "direct bills");
+        assert_eq!(format_direct_commitments_short_label(false, true, false), "overdraft payoff");
+        assert_eq!(format_direct_commitments_short_label(false, false, true), "monthly pot");
+        assert_eq!(format_direct_commitments_short_label(true, true, true), "direct bills, overdraft & monthly pot");
+
+        let mut acc_map = std::collections::HashMap::new();
+        acc_map.insert(2i64, ("Natwest Reward Debit".to_string(), "DEBIT".to_string(), -226.89f32));
+        acc_map.insert(8638i64, ("Monzo".to_string(), "DEBIT".to_string(), -19.61f32));
+        acc_map.insert(94i64, ("Revolut".to_string(), "DEBIT".to_string(), 0.0f32));
+
+        let sections_json = r#"[{"heading":"Food","amount":305,"accountId":8638},{"heading":"Fuel","amount":110,"accountId":2},{"heading":"Transport","amount":125,"accountId":8638},{"heading":"Campsite","amount":150,"accountId":2},{"heading":"Fun","amount":60,"accountId":94},{"heading":"Vape","amount":100,"accountId":8638}]"#;
+
+        let (pot_items, direct_pot_items) = build_monthly_pot_allocations(
+            12635,
+            868.86,
+            Some(sections_json),
+            (Some(305.0), Some(110.0), Some(125.0), Some(60.0)),
+            (None, None, None, None),
+            &[2, 94, 8638],
+            Some(2),
+            "Natwest Reward Debit",
+            &acc_map,
+        );
+
+        let window = PaydayWindowDto {
+            cycle_type: "next".to_string(),
+            payday_date: "2026-11-30".to_string(),
+            payday_display: "Monday, 30 Nov 2026".to_string(),
+            is_today: false,
+            days_away: 7,
+            total_to_transfer: 608.86,
+            total_to_transfer_formatted: "608.86".to_string(),
+            transfers_count: pot_items.len(),
+            direct_outgoings_total: 0.0,
+            direct_outgoings_total_formatted: "0.00".to_string(),
+            direct_outgoings_count: 0,
+            direct_outgoings_items: vec![],
+            direct_overdraft_item: None,
+            direct_pot_total: 260.0,
+            direct_pot_total_formatted: "260.00".to_string(),
+            direct_pot_count: direct_pot_items.len(),
+            direct_pot_items,
+            direct_commitments_total: 260.0,
+            direct_commitments_total_formatted: "260.00".to_string(),
+            direct_commitments_count: 2,
+            total_commitments: 868.86,
+            total_commitments_formatted: "868.86".to_string(),
+            source_account_name: "Natwest Reward Debit".to_string(),
+            source_account_balance: -226.89,
+            source_account_balance_formatted: "-226.89".to_string(),
+            source_account_remaining_balance: -1095.75,
+            source_account_remaining_balance_formatted: "-1095.75".to_string(),
+            monthly_income: 2642.83,
+            monthly_income_formatted: "2642.83".to_string(),
+            savings_percentage: 0,
+            monthly_savings_budget: 0.0,
+            monthly_savings_budget_formatted: "0.00".to_string(),
+            available_liquid_funds: 1000.0,
+            available_liquid_funds_formatted: "1000.00".to_string(),
+            total_funding_capacity: 3642.83,
+            total_funding_capacity_formatted: "3642.83".to_string(),
+            funding_cushion: 1773.97,
+            funding_cushion_formatted: "1773.97".to_string(),
+            is_fully_covered: true,
+            show_coverage_indicator: false,
+            coverage_title: String::new(),
+            coverage_badge_text: String::new(),
+            coverage_badge_css: "pill-green".to_string(),
+            coverage_description: String::new(),
+            savings_needed_to_topup: 0.0,
+            savings_needed_to_topup_formatted: "0.00".to_string(),
+            total_savings: 1000.0,
+            total_savings_formatted: "1000.00".to_string(),
+            total_debit: 0.0,
+            total_debit_formatted: "0.00".to_string(),
+            total_credit: 0.0,
+            total_credit_formatted: "0.00".to_string(),
+            outgoings_funding_plan: vec![],
+            outgoings_items: vec![],
+            pot_items: pot_items.clone(),
+            savings_items: vec![],
+            items: pot_items,
+        };
+
+        let tmpl = TransfersTemplate {
+            username: "inbrewj".to_string(),
+            is_payday_today: false,
+            nominal_payday: 31,
+            next_window: window.clone(),
+            last_window: window,
+            selected_tab: "next".to_string(),
+        };
+
+        let html = tmpl.render().expect("TransfersTemplate should render cleanly");
+        assert!(html.contains("Direct Monthly Pot on Natwest Reward Debit (2)"));
+        assert!(html.contains("Fuel (Monthly Pot)"));
+        assert!(html.contains("Campsite (Monthly Pot)"));
+        assert!(html.contains("Monthly Pot (Retained)"));
+        assert!(html.contains("Monthly Pot Transfers (5)"));
+        assert!(html.contains("Food (Monthly Pot)"));
+        assert!(html.contains("Transport (Monthly Pot)"));
+        assert!(html.contains("Fun (Monthly Pot)"));
+        assert!(html.contains("Vape (Monthly Pot)"));
+        assert!(html.contains("Remaining Living Allowance (Monthly Pot)"));
+        assert!(html.contains("£18.86"));
+        assert!(!html.contains("£278.86"));
     }
 }

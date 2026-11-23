@@ -370,6 +370,17 @@ pub struct BalanceForm {
     pub datetime: Option<String>,
 }
 
+pub fn sort_accounts_by_type_and_name(accounts: &mut [Account]) {
+    accounts.sort_by(|a, b| {
+        a.account_type
+            .to_uppercase()
+            .cmp(&b.account_type.to_uppercase())
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+}
+
 pub async fn get_accounts_page(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -381,9 +392,10 @@ pub async fn get_accounts_page(
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
     let as_of = if is_time_travel { Some(effective_date) } else { None };
-    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
+    let mut accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
+    sort_accounts_by_type_and_name(&mut accounts);
 
     let tmpl = AccountsTemplate {
         accounts,
@@ -407,9 +419,10 @@ pub async fn get_edit_account_page(
     let user_id = resolve_user_id(&state.pool, &raw_uid).await;
     let (effective_date, is_time_travel) = crate::time_travel::get_effective_date(&headers);
     let as_of = if is_time_travel { Some(effective_date) } else { None };
-    let accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
+    let mut accounts = db::list_accounts_as_of(&state.pool, &user_id, as_of)
         .await
         .unwrap_or_default();
+    sort_accounts_by_type_and_name(&mut accounts);
     let editing_account = accounts.iter().find(|a| a.id == id).cloned();
     let editing = editing_account.is_some();
 
@@ -1822,5 +1835,49 @@ mod tests {
         assert_eq!(dtos[0].name, "Past Bill");
         assert_eq!(dtos[1].name, "Today Bill");
         assert_eq!(dtos[2].name, "Future Bill");
+    }
+
+    #[test]
+    fn test_sort_accounts_by_type_asc_then_name_asc() {
+        let mk = |id: i64, name: &str, account_type: &str| Account {
+            id,
+            name: name.to_string(),
+            nickname: None,
+            account_type: account_type.to_string(),
+            user_id: "u1".to_string(),
+            account_limit: None,
+            interest_rate: None,
+            ledger_mode: None,
+            archived: Some(false),
+        };
+
+        let mut accounts = vec![
+            mk(1, "Zebra Savings", "SHORT_TERM_SAVINGS"),
+            mk(2, "Natwest Reward Debit", "DEBIT"),
+            mk(3, "Lloyds Platinum", "CREDIT"),
+            mk(4, "Monzo", "DEBIT"),
+            mk(5, "alpha debit", "DEBIT"),
+            mk(6, "Flex", "CREDIT"),
+            mk(7, "Alpha Savings", "SHORT_TERM_SAVINGS"),
+        ];
+
+        sort_accounts_by_type_and_name(&mut accounts);
+
+        let ordered: Vec<(&str, &str)> = accounts
+            .iter()
+            .map(|a| (a.account_type.as_str(), a.name.as_str()))
+            .collect();
+        assert_eq!(
+            ordered,
+            vec![
+                ("CREDIT", "Flex"),
+                ("CREDIT", "Lloyds Platinum"),
+                ("DEBIT", "alpha debit"),
+                ("DEBIT", "Monzo"),
+                ("DEBIT", "Natwest Reward Debit"),
+                ("SHORT_TERM_SAVINGS", "Alpha Savings"),
+                ("SHORT_TERM_SAVINGS", "Zebra Savings"),
+            ]
+        );
     }
 }

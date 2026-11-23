@@ -468,7 +468,7 @@
                     <span class="kpi-value" style="color: #38bdf8;">£{{ next_window.total_to_transfer_formatted }}</span>
                     <span class="kpi-subtext">
                         {% if next_window.direct_commitments_total > 0.005 %}
-                        + £{{ next_window.direct_commitments_total_formatted }} direct bills & overdraft (£{{ next_window.total_commitments_formatted }} total)
+                        + £{{ next_window.direct_commitments_total_formatted }} {{ next_window.direct_commitments_short_label() }} (£{{ next_window.total_commitments_formatted }} total)
                         {% else %}
                         {{ next_window.transfers_count }} transfer destination{% if next_window.transfers_count != 1 %}s{% endif %}
                         {% endif %}
@@ -553,7 +553,7 @@
                         {% if next_window.direct_commitments_total > 0.005 %}
                         <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Total Commitments</span>
                         <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ next_window.total_commitments_formatted }}</span>
-                        <span style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); display: block;">£{{ next_window.total_to_transfer_formatted }} transfers + £{{ next_window.direct_commitments_total_formatted }} direct bills & overdraft</span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); display: block;">£{{ next_window.total_to_transfer_formatted }} transfers + £{{ next_window.direct_commitments_total_formatted }} {{ next_window.direct_commitments_short_label() }}</span>
                         {% else %}
                         <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Required Transfers</span>
                         <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ next_window.total_to_transfer_formatted }}</span>
@@ -637,8 +637,8 @@
             </div>
             {% endif %}
 
-            <!-- Direct Bills & Overdraft Retained Directly in Incoming Account -->
-            {% if !next_window.direct_outgoings_items.is_empty() || next_window.direct_overdraft_item.is_some() %}
+            <!-- Direct Bills, Overdraft & Monthly Pot Retained Directly in Incoming Account -->
+            {% if next_window.has_direct_commitments() %}
             <div style="margin-bottom: 2rem;">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -646,13 +646,7 @@
                             <i class="fas fa-receipt"></i>
                         </span>
                         <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-main, #f8fafc);">
-                            {% if next_window.direct_overdraft_item.is_some() && !next_window.direct_outgoings_items.is_empty() %}
-                            Direct Bills & Overdraft on {{ next_window.source_account_name }} ({{ next_window.direct_commitments_count }})
-                            {% else if next_window.direct_overdraft_item.is_some() %}
-                            Direct Overdraft on {{ next_window.source_account_name }} (1)
-                            {% else %}
-                            Direct Bills on {{ next_window.source_account_name }} ({{ next_window.direct_outgoings_count }})
-                            {% endif %}
+                            {{ next_window.direct_commitments_heading() }} on {{ next_window.source_account_name }} ({{ next_window.direct_commitments_count }})
                         </h3>
                     </div>
                     <span style="font-size: 0.85rem; font-weight: 800; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.25);">
@@ -663,7 +657,7 @@
                 <div style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin-bottom: 12px; background: rgba(15, 23, 42, 0.5); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, #334155); display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-info-circle" style="color: #38bdf8;"></i>
                     <span>
-                        Debited straight from or retained in <strong>{{ next_window.source_account_name }}</strong> (standing orders, direct debits & overdraft reserve). No inter-account transfer is needed, but £{{ next_window.direct_commitments_total_formatted }} must stay in this account.
+                        Debited straight from or retained in <strong>{{ next_window.source_account_name }}</strong> (standing orders, direct debits, overdraft reserve &amp; monthly pot allowances). No inter-account transfer is needed, but £{{ next_window.direct_commitments_total_formatted }} must stay in this account.
                     </span>
                 </div>
 
@@ -765,6 +759,53 @@
                         </div>
                     </div>
                     {% endif %}
+
+                    {% for item in next_window.direct_pot_items %}
+                    <div class="transfer-card" id="card-{{ item.id }}" data-item-id="{{ item.id }}" data-window="next">
+                        <div class="transfer-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="transfer-chk-box" title="Mark monthly pot allowance as tracked" onclick="event.stopPropagation();">
+                                    <input type="checkbox" id="chk-next-{{ item.id }}" onchange="toggleTransferDone('next', '{{ item.id }}')">
+                                    <span class="transfer-chk-mark"><i class="fas fa-check"></i></span>
+                                </label>
+                                <h4 class="transfer-title">
+                                    {{ item.title }}
+                                </h4>
+                            </div>
+                            <span class="badge-transfer-type" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);">
+                                <i class="fas fa-shopping-basket"></i> Monthly Pot (Retained)
+                            </span>
+                        </div>
+
+                        <div class="transfer-flow-row">
+                            <span>Account:</span>
+                            <span class="account-pill" style="border-color: rgba(16, 185, 129, 0.4);"><i class="fas fa-wallet" style="color: #10b981;"></i> {{ item.account_name }}</span>
+                        </div>
+
+                        <div class="transfer-stats-grid">
+                            <div>
+                                <span class="stat-item-label">Pot Allowance</span>
+                                <div class="stat-item-val" style="color: #10b981; font-size: 1.15rem;">£{{ item.amount_formatted }}</div>
+                            </div>
+                            <div>
+                                <span class="stat-item-label">Action</span>
+                                <div class="stat-item-val" style="font-size: 0.9rem; color: var(--text-muted, #94a3b8);">Retained in {{ item.account_name }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Stacked Action Bar -->
+                        <div class="transfer-actions-bar">
+                            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                                {{ item.description }}
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                    <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
             </div>
             {% endif %}
@@ -1092,7 +1133,7 @@
                     <span class="kpi-value" style="color: #38bdf8;">£{{ last_window.total_to_transfer_formatted }}</span>
                     <span class="kpi-subtext">
                         {% if last_window.direct_commitments_total > 0.005 %}
-                        + £{{ last_window.direct_commitments_total_formatted }} direct bills & overdraft (£{{ last_window.total_commitments_formatted }} total)
+                        + £{{ last_window.direct_commitments_total_formatted }} {{ last_window.direct_commitments_short_label() }} (£{{ last_window.total_commitments_formatted }} total)
                         {% else %}
                         {{ last_window.transfers_count }} transfer destination{% if last_window.transfers_count != 1 %}s{% endif %}
                         {% endif %}
@@ -1173,7 +1214,7 @@
                         {% if last_window.direct_commitments_total > 0.005 %}
                         <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Total Commitments</span>
                         <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ last_window.total_commitments_formatted }}</span>
-                        <span style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); display: block;">£{{ last_window.total_to_transfer_formatted }} transfers + £{{ last_window.direct_commitments_total_formatted }} direct bills & overdraft</span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted, #94a3b8); display: block;">£{{ last_window.total_to_transfer_formatted }} transfers + £{{ last_window.direct_commitments_total_formatted }} {{ last_window.direct_commitments_short_label() }}</span>
                         {% else %}
                         <span style="font-size: 0.74rem; color: var(--text-muted, #94a3b8); display: block; text-transform: uppercase; font-weight: 700;">Required Transfers</span>
                         <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">£{{ last_window.total_to_transfer_formatted }}</span>
@@ -1257,8 +1298,8 @@
             </div>
             {% endif %}
 
-            <!-- Direct Bills & Overdraft Retained Directly in Incoming Account -->
-            {% if !last_window.direct_outgoings_items.is_empty() || last_window.direct_overdraft_item.is_some() %}
+            <!-- Direct Bills, Overdraft & Monthly Pot Retained Directly in Incoming Account -->
+            {% if last_window.has_direct_commitments() %}
             <div style="margin-bottom: 2rem;">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -1266,13 +1307,7 @@
                             <i class="fas fa-receipt"></i>
                         </span>
                         <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--text-main, #f8fafc);">
-                            {% if last_window.direct_overdraft_item.is_some() && !last_window.direct_outgoings_items.is_empty() %}
-                            Direct Bills & Overdraft on {{ last_window.source_account_name }} ({{ last_window.direct_commitments_count }})
-                            {% else if last_window.direct_overdraft_item.is_some() %}
-                            Direct Overdraft on {{ last_window.source_account_name }} (1)
-                            {% else %}
-                            Direct Bills on {{ last_window.source_account_name }} ({{ last_window.direct_outgoings_count }})
-                            {% endif %}
+                            {{ last_window.direct_commitments_heading() }} on {{ last_window.source_account_name }} ({{ last_window.direct_commitments_count }})
                         </h3>
                     </div>
                     <span style="font-size: 0.85rem; font-weight: 800; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.25);">
@@ -1283,7 +1318,7 @@
                 <div style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin-bottom: 12px; background: rgba(15, 23, 42, 0.5); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, #334155); display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-info-circle" style="color: #38bdf8;"></i>
                     <span>
-                        Debited straight from or retained in <strong>{{ last_window.source_account_name }}</strong> (standing orders, direct debits & overdraft reserve). No inter-account transfer is needed, but £{{ last_window.direct_commitments_total_formatted }} must stay in this account.
+                        Debited straight from or retained in <strong>{{ last_window.source_account_name }}</strong> (standing orders, direct debits, overdraft reserve &amp; monthly pot allowances). No inter-account transfer is needed, but £{{ last_window.direct_commitments_total_formatted }} must stay in this account.
                     </span>
                 </div>
 
@@ -1385,6 +1420,53 @@
                         </div>
                     </div>
                     {% endif %}
+
+                    {% for item in last_window.direct_pot_items %}
+                    <div class="transfer-card" id="card-last-{{ item.id }}" data-item-id="{{ item.id }}" data-window="last">
+                        <div class="transfer-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="transfer-chk-box" title="Mark monthly pot allowance as tracked" onclick="event.stopPropagation();">
+                                    <input type="checkbox" id="chk-last-{{ item.id }}" onchange="toggleTransferDone('last', '{{ item.id }}')">
+                                    <span class="transfer-chk-mark"><i class="fas fa-check"></i></span>
+                                </label>
+                                <h4 class="transfer-title">
+                                    {{ item.title }}
+                                </h4>
+                            </div>
+                            <span class="badge-transfer-type" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);">
+                                <i class="fas fa-shopping-basket"></i> Monthly Pot (Retained)
+                            </span>
+                        </div>
+
+                        <div class="transfer-flow-row">
+                            <span>Account:</span>
+                            <span class="account-pill" style="border-color: rgba(16, 185, 129, 0.4);"><i class="fas fa-wallet" style="color: #10b981;"></i> {{ item.account_name }}</span>
+                        </div>
+
+                        <div class="transfer-stats-grid">
+                            <div>
+                                <span class="stat-item-label">Pot Allowance</span>
+                                <div class="stat-item-val" style="color: #10b981; font-size: 1.15rem;">£{{ item.amount_formatted }}</div>
+                            </div>
+                            <div>
+                                <span class="stat-item-label">Action</span>
+                                <div class="stat-item-val" style="font-size: 0.9rem; color: var(--text-muted, #94a3b8);">Retained in {{ item.account_name }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Stacked Action Bar -->
+                        <div class="transfer-actions-bar">
+                            <span style="font-size: 0.78rem; color: var(--text-muted, #94a3b8);">
+                                {{ item.description }}
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-copy-amt" data-offline-allowed="true" onclick="copyTransferAmount('{{ item.amount_formatted }}', this)">
+                                    <i class="fas fa-copy"></i> Copy £{{ item.amount_formatted }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
             </div>
             {% endif %}
