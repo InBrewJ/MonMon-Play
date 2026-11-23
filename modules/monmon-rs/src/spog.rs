@@ -199,6 +199,17 @@ pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetr
     calculate_spog_as_of(pool, raw_user_id, None).await
 }
 
+fn resolve_spending_section_account_name(
+    all_account_statuses: &[SpogAccountStatusDto],
+    account_id: i64,
+) -> Option<String> {
+    all_account_statuses
+        .iter()
+        .find(|a| a.id == account_id)
+        .map(|a| a.name.trim().to_string())
+        .filter(|name| !name.is_empty())
+}
+
 pub async fn calculate_spog_as_of(
     pool: &PgPool,
     raw_user_id: &str,
@@ -816,12 +827,10 @@ pub async fn calculate_spog_as_of(
 
                             let (actual_spent, remaining, account_name) =
                                 if let Some(aid) = account_id {
-                                    let acc_name = all_account_statuses
-                                        .iter()
-                                        .find(|a| a.id == aid)
-                                        .map(|a| {
-                                            a.nickname.clone().unwrap_or_else(|| a.name.clone())
-                                        });
+                                    let acc_name = resolve_spending_section_account_name(
+                                        &all_account_statuses,
+                                        aid,
+                                    );
                                     let spent = balance_map
                                         .get(&aid)
                                         .map(|b| {
@@ -875,10 +884,10 @@ pub async fn calculate_spog_as_of(
                     }
                     for (heading, amount, aid_opt) in legacy_defs {
                         let (actual_spent, remaining, account_name) = if let Some(aid) = aid_opt {
-                            let acc_name = all_account_statuses
-                                .iter()
-                                .find(|a| a.id == aid)
-                                .map(|a| a.nickname.clone().unwrap_or_else(|| a.name.clone()));
+                            let acc_name = resolve_spending_section_account_name(
+                                &all_account_statuses,
+                                aid,
+                            );
                             let spent = balance_map
                                 .get(&aid)
                                 .map(|b| {
@@ -1558,5 +1567,55 @@ mod tests {
         assert!(true_surplus > Pence::ZERO);
         let max_per_day = true_surplus.checked_div_days(31);
         assert_eq!(format!("{}", max_per_day), "11.24");
+    }
+
+    #[test]
+    fn test_spending_section_account_name_uses_account_name_not_nickname() {
+        let statuses = vec![
+            SpogAccountStatusDto {
+                id: 8638,
+                name: "Monzo".to_string(),
+                nickname: Some("".to_string()),
+                account_type: "DEBIT".to_string(),
+                latest_balance: Pence::ZERO,
+                latest_balance_timestamp: None,
+                time_ago: String::new(),
+                already_paid: Pence::ZERO,
+                pending: Pence::ZERO,
+                adjusted_available: Pence::ZERO,
+                limit: Pence::ZERO,
+                interest_rate: None,
+                freshness_status: String::new(),
+                freshness_message: String::new(),
+            },
+            SpogAccountStatusDto {
+                id: 94,
+                name: "Revolut 🧿".to_string(),
+                nickname: Some("Revo".to_string()),
+                account_type: "DEBIT".to_string(),
+                latest_balance: Pence::ZERO,
+                latest_balance_timestamp: None,
+                time_ago: String::new(),
+                already_paid: Pence::ZERO,
+                pending: Pence::ZERO,
+                adjusted_available: Pence::ZERO,
+                limit: Pence::ZERO,
+                interest_rate: None,
+                freshness_status: String::new(),
+                freshness_message: String::new(),
+            },
+        ];
+
+        assert_eq!(
+            resolve_spending_section_account_name(&statuses, 8638).as_deref(),
+            Some("Monzo"),
+            "Empty nickname must not produce () — should always show account name"
+        );
+        assert_eq!(
+            resolve_spending_section_account_name(&statuses, 94).as_deref(),
+            Some("Revolut 🧿"),
+            "Should show account name rather than nickname"
+        );
+        assert_eq!(resolve_spending_section_account_name(&statuses, 999), None);
     }
 }
