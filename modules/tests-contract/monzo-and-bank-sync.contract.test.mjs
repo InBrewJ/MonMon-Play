@@ -392,7 +392,8 @@ describe('Monzo OAuth & Webhooks Contract Tests', () => {
       body: JSON.stringify({ name, type, userId: user, accountLimit: limit, interestRate: 0 })
     })).json();
 
-    const amex = await mk('CREDIT', 'Amex Platinum', 3000);
+    const zebraCredit = await mk('CREDIT', 'Zebra Credit', 3000);
+    const alphaDebit = await mk('DEBIT', 'Alpha Debit', 0);
     const barclays = await mk('DEBIT', 'Barclays Current', 0);
     const flex = await mk('CREDIT', 'Flex', 2500);
     const monzo = await mk('DEBIT', 'Monzo', 100);
@@ -401,18 +402,20 @@ describe('Monzo OAuth & Webhooks Contract Tests', () => {
 
     // Expandable and default closed (<details ...> without `open`)
     assert.ok(html.includes('<details id="configured-ledger-accounts-details">'), 'Configured Ledger Accounts must be a default-closed <details> element');
-    assert.ok(html.includes('Configured Ledger Accounts (4)'), 'Heading must show total account count');
+    assert.ok(html.includes('Configured Ledger Accounts (5)'), 'Heading must show total account count');
     assert.ok(html.includes('2 Monzo'), 'Collapsed summary must show Monzo count pill');
 
-    // Monzo Debit and Flex must appear BEFORE Amex and Barclays even when Monzo is not connected
+    // Ordering: Monzo Debit -> Monzo Flex -> non-Monzo by type ASC (CREDIT before DEBIT), then name ASC
     const posMonzo = html.indexOf(`data-bank-account-id="${monzo.id}"`);
     const posFlex = html.indexOf(`data-bank-account-id="${flex.id}"`);
-    const posAmex = html.indexOf(`data-bank-account-id="${amex.id}"`);
+    const posZebraCredit = html.indexOf(`data-bank-account-id="${zebraCredit.id}"`);
+    const posAlphaDebit = html.indexOf(`data-bank-account-id="${alphaDebit.id}"`);
     const posBarclays = html.indexOf(`data-bank-account-id="${barclays.id}"`);
-    assert.ok(posMonzo > 0 && posFlex > 0 && posAmex > 0 && posBarclays > 0, 'all 4 accounts must render in Configured Ledger Accounts');
+    assert.ok(posMonzo > 0 && posFlex > 0 && posZebraCredit > 0 && posAlphaDebit > 0 && posBarclays > 0, 'all 5 accounts must render in Configured Ledger Accounts');
     assert.ok(posMonzo < posFlex, 'Monzo Debit must appear before Monzo Flex');
-    assert.ok(posFlex < posAmex && posFlex < posBarclays, 'Monzo & Flex must be pinned above non-Monzo accounts');
-    assert.ok(posAmex < posBarclays, 'non-Monzo accounts must be sorted alphabetically');
+    assert.ok(posFlex < posZebraCredit && posFlex < posAlphaDebit, 'Monzo & Flex must be pinned above non-Monzo accounts');
+    assert.ok(posZebraCredit < posAlphaDebit, 'non-Monzo accounts must sort by type ASC (CREDIT before DEBIT)');
+    assert.ok(posAlphaDebit < posBarclays, 'within the same type, accounts must sort by name ASC');
     assert.ok(html.includes('Monzo (Not Connected)'), 'disconnected Monzo accounts must clearly show Not Connected status');
 
     // Toggle ledger mode round-trip (ABL <-> TBL)

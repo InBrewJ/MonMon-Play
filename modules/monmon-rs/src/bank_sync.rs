@@ -301,7 +301,8 @@ pub fn is_monzo_display_account(name: &str, account_type: &str) -> bool {
 
 /// Orders accounts for the `/bank` Configured Ledger Accounts list:
 /// Monzo Debit first, Monzo Flex second, any other Monzo-named accounts third (regardless of
-/// whether Monzo is currently connected), then all remaining accounts alphabetically.
+/// whether Monzo is currently connected), then remaining accounts by `account_type` ASC,
+/// then account `name` ASC.
 pub fn sort_bank_sync_accounts(accounts: &mut [AccountOptionDto]) {
     accounts.sort_by(|a, b| {
         let rank = |acc: &AccountOptionDto| -> u8 {
@@ -317,6 +318,7 @@ pub fn sort_bank_sync_accounts(accounts: &mut [AccountOptionDto]) {
         };
         rank(a)
             .cmp(&rank(b))
+            .then_with(|| a.account_type.to_ascii_lowercase().cmp(&b.account_type.to_ascii_lowercase()))
             .then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
             .then_with(|| a.id.cmp(&b.id))
     });
@@ -2733,24 +2735,38 @@ mod tests {
         };
 
         let mut list = vec![
-            mk(1, "Barclays", "DEBIT", false),
+            mk(1, "Alpha Debit", "DEBIT", false),
             mk(2, "Flex", "CREDIT", false),
-            mk(3, "Amex", "CREDIT", false),
+            mk(3, "Zebra Credit", "CREDIT", false),
             mk(4, "Monzo", "DEBIT", false),
             mk(5, "Monzo Holiday Pot", "SHORT_TERM_SAVINGS", false),
             mk(6, "Vanguard SIPP", "PENSION", false),
+            mk(7, "Amex", "CREDIT", false),
+            mk(8, "1st Direct Loan", "LOAN", false),
+            mk(9, "Barclays", "DEBIT", false),
         ];
         sort_bank_sync_accounts(&mut list);
         let names: Vec<&str> = list.iter().map(|a| a.name.as_str()).collect();
         assert_eq!(
             names,
-            vec!["Monzo", "Flex", "Monzo Holiday Pot", "Amex", "Barclays", "Vanguard SIPP"]
+            vec![
+                "Monzo",
+                "Flex",
+                "Monzo Holiday Pot",
+                "Amex",
+                "Zebra Credit",
+                "Alpha Debit",
+                "Barclays",
+                "1st Direct Loan",
+                "Vanguard SIPP"
+            ]
         );
         assert!(list[0].is_monzo_debit());
         assert!(list[1].is_monzo_flex());
         assert!(list[2].is_monzo_account);
         assert!(!list[3].is_monzo_account);
-        assert!(list[5].is_manual_only);
+        assert!(list[7].is_manual_only);
+        assert!(list[8].is_manual_only);
     }
 
     #[test]
