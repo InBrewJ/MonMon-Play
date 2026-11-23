@@ -355,6 +355,11 @@ test.describe('Exhaustive Delete & Bin Confirmation Dialogs E2E (with REST API A
           list.some((b) => b.id === balanceId),
           `Balance #${balanceId} must remain in /internal/balances after Cancel`
         ).toBe(true);
+        const bin = await apiGetJson(page, '/api/waste-bin');
+        expect(
+          (bin.items || []).find((i) => i.entity_type === 'balance' && i.id === balanceId),
+          `Balance #${balanceId} must NOT be in /api/waste-bin after Cancel`
+        ).toBeFalsy();
       },
       assertDeletedAfterAccept: async () => {
         const list = await apiGetJson(page, '/internal/balances?userId=demo');
@@ -362,6 +367,11 @@ test.describe('Exhaustive Delete & Bin Confirmation Dialogs E2E (with REST API A
           list.some((b) => b.id === balanceId),
           `Balance #${balanceId} must be removed from /internal/balances after OK`
         ).toBe(false);
+        const bin = await apiGetJson(page, '/api/waste-bin');
+        expect(
+          (bin.items || []).find((i) => i.entity_type === 'balance' && i.id === balanceId),
+          `Balance #${balanceId} must appear in /api/waste-bin under entity_type=balance after OK`
+        ).toBeTruthy();
       },
     });
   });

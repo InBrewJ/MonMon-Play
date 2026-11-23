@@ -511,7 +511,7 @@ pub async fn get_or_create_active_plan(pool: &PgPool, user_id: &str) -> Result<S
             a.name AS account_name,
             a.type AS account_type,
             COALESCE(a.account_limit, 0.0)::real AS account_limit,
-            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_balance
+            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = a.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_balance
         FROM savings_plan_item i
         LEFT JOIN account a ON a.id = i.account_id
         WHERE i.savings_plan_id = $1
@@ -1013,6 +1013,7 @@ pub async fn get_active_monthly_pot(pool: &PgPool, user_id: &str) -> Option<Mont
             SELECT value
             FROM balance
             WHERE account_id = pa.account_id
+              AND (archived IS NULL OR archived = false)
             ORDER BY timestamp DESC, id DESC
             LIMIT 1
         ) b ON true
@@ -1060,7 +1061,7 @@ pub async fn get_savings_plan_page(
             id, 
             name, 
             type, 
-            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance, 
+            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance, 
             COALESCE(account_limit, 0.0)::real AS limit
         FROM account
         WHERE (userid = $1 OR user_id = $1)
@@ -1116,7 +1117,7 @@ pub async fn get_edit_savings_plan_item_page(
             id, 
             name, 
             type, 
-            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance, 
+            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance, 
             COALESCE(account_limit, 0.0)::real AS limit
         FROM account
         WHERE (userid = $1 OR user_id = $1)
@@ -1411,7 +1412,7 @@ async fn load_account_simples(pool: &PgPool, user_id: &str) -> Vec<AccountSimple
     sqlx::query(
         r#"
         SELECT id, name, type,
-            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance,
+            COALESCE((SELECT b.value FROM balance b WHERE b.account_id = account.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS balance,
             COALESCE(account_limit, 0.0)::real AS limit
         FROM account
         WHERE (userid = $1 OR user_id = $1)

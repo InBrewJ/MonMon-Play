@@ -39,12 +39,41 @@ pub struct WasteBinTemplate {
     pub items: Vec<WasteBinItem>,
     pub total_count: usize,
     pub accounts_count: usize,
+    pub balances_count: usize,
     pub incomings_count: usize,
     pub outgoings_count: usize,
     pub net_worth_count: usize,
     pub plans_count: usize,
     pub recovered_banner: bool,
     pub active_filter: String,
+}
+
+fn format_gbp_signed(val: f32) -> String {
+    if val < 0.0 {
+        format!("-£{:.2}", val.abs())
+    } else {
+        format!("£{:.2}", val)
+    }
+}
+
+fn format_balance_waste_item(
+    account_name: &str,
+    account_type: &str,
+    val: f32,
+    recorded_ts: i64,
+) -> (String, String) {
+    let name = format!("{} — {}", account_name, format_gbp_signed(val));
+    let recorded_str = if recorded_ts > 0 {
+        format_archived_date(normalize_ts_ms(recorded_ts))
+    } else {
+        "Unknown date".to_string()
+    };
+    let details = if account_type.trim().is_empty() {
+        format!("Recorded {}", recorded_str)
+    } else {
+        format!("{} • Recorded {}", account_type, recorded_str)
+    };
+    (name, details)
 }
 
 fn normalize_ts_ms(ts: i64) -> i64 {
@@ -381,6 +410,47 @@ pub async fn list_waste_bin_items(pool: &PgPool, user_id: &str) -> Result<Vec<Wa
         });
     }
 
+    // 10. Balances
+    let bal_rows = sqlx::query(
+        r#"
+        SELECT b.id,
+               COALESCE(b.value, 0.0)::real AS val,
+               COALESCE(b.timestamp, 0)::bigint AS recorded_ts,
+               COALESCE(a.name, 'Unknown Account') AS account_name,
+               COALESCE(a.type, '') AS account_type,
+               b.archived_at
+        FROM balance b
+        LEFT JOIN account a ON b.account_id = a.id
+        WHERE COALESCE(b.user_id, b.userid, b."userId") = $1
+          AND b.archived = TRUE
+          AND b.archived_at IS NOT NULL
+          AND (CASE WHEN b.archived_at > 100000000000 THEN b.archived_at ELSE b.archived_at * 1000 END) >= $2
+        "#,
+    )
+    .bind(user_id)
+    .bind(cutoff_ms)
+    .fetch_all(pool)
+    .await?;
+
+    for r in bal_rows {
+        let ts = normalize_ts_ms(r.get::<i64, _>("archived_at"));
+        let val: f32 = r.get("val");
+        let recorded_ts: i64 = r.get("recorded_ts");
+        let account_name: String = r.get("account_name");
+        let account_type: String = r.get("account_type");
+        let (name, details) = format_balance_waste_item(&account_name, &account_type, val, recorded_ts);
+        items.push(WasteBinItem {
+            id: r.get("id"),
+            entity_type: "balance".to_string(),
+            entity_label: "Balance".to_string(),
+            name,
+            details,
+            archived_at_ms: ts,
+            archived_date: format_archived_date(ts),
+            days_remaining: compute_days_remaining(ts, now_ms),
+        });
+    }
+
     sort_waste_bin_items_desc(&mut items);
     Ok(items)
 }
@@ -573,6 +643,27 @@ pub async fn recover_waste_bin_item(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             ("CustomSpendingPlan", res.rows_affected())
         }
+        "balance" => {
+            let res = sqlx::query(
+                r#"
+                UPDATE balance
+                SET archived = FALSE, archived_at = NULL, updated_at = $1
+                WHERE id = $2
+                  AND COALESCE(user_id, userid, "userId") = $3
+                  AND archived = TRUE
+                  AND archived_at IS NOT NULL
+                  AND (CASE WHEN archived_at > 100000000000 THEN archived_at ELSE archived_at * 1000 END) >= $4
+                "#,
+            )
+            .bind(now_ms)
+            .bind(id)
+            .bind(user_id)
+            .bind(cutoff_ms)
+            .execute(pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ("Balance", res.rows_affected())
+        }
         "plan" => {
             let res = sqlx::query(
                 r#"
@@ -619,6 +710,7 @@ pub async fn get_waste_bin_page(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let accounts_count = all_items.iter().filter(|i| i.entity_type == "account").count();
+    let balances_count = all_items.iter().filter(|i| i.entity_type == "balance").count();
     let incomings_count = all_items.iter().filter(|i| i.entity_type == "incoming").count();
     let outgoings_count = all_items.iter().filter(|i| i.entity_type == "outgoing").count();
     let net_worth_count = all_items.iter().filter(|i| i.entity_type == "net_worth_asset").count();
@@ -656,6 +748,7 @@ pub async fn get_waste_bin_page(
         total_count: all_items.len(),
         items: filtered_items,
         accounts_count,
+        balances_count,
         incomings_count,
         outgoings_count,
         net_worth_count,
@@ -759,5 +852,16 @@ mod tests {
         assert_eq!(compute_days_remaining(now_ms, now_ms), 30);
         assert_eq!(compute_days_remaining(now_ms - 29 * ONE_DAY_MS, now_ms), 1);
         assert_eq!(compute_days_remaining(now_ms - 31 * ONE_DAY_MS, now_ms), 0);
+    }
+
+    #[test]
+    fn test_format_balance_waste_item_handles_positive_and_negative() {
+        let (neg_name, neg_details) = format_balance_waste_item("Monzo", "DEBIT", -2167.77, 1_795_458_275);
+        assert_eq!(neg_name, "Monzo — -£2167.77");
+        assert!(neg_details.starts_with("DEBIT • Recorded "));
+
+        let (pos_name, pos_details) = format_balance_waste_item("Flex", "CREDIT", 332.23, 1_795_458_275_000);
+        assert_eq!(pos_name, "Flex — £332.23");
+        assert!(pos_details.starts_with("CREDIT • Recorded "));
     }
 }

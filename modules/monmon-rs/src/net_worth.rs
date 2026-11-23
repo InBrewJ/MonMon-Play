@@ -247,6 +247,7 @@ pub async fn calculate_net_worth_as_of(
                     SELECT b.value AS val
                     FROM balance b
                     WHERE b.account_id = a.id
+                      AND (b.archived IS NULL OR b.archived = false)
                       AND b.timestamp IS NOT NULL
                       AND (CASE WHEN b.timestamp > 100000000000 THEN b.timestamp/1000 ELSE b.timestamp END) <= $2
                     ORDER BY (CASE WHEN b.timestamp > 100000000000 THEN b.timestamp/1000 ELSE b.timestamp END) DESC, b.id DESC
@@ -279,6 +280,7 @@ pub async fn calculate_net_worth_as_of(
                     SELECT b.value AS val
                     FROM balance b
                     WHERE b.account_id = a.id
+                      AND (b.archived IS NULL OR b.archived = false)
                       AND b.timestamp IS NOT NULL
                     ORDER BY b.timestamp DESC, b.id DESC
                     LIMIT 1
@@ -519,6 +521,7 @@ pub async fn calculate_history_points_as_of(
                (CASE WHEN timestamp > 100000000000 THEN timestamp/1000 ELSE timestamp END) as ts_sec
         FROM balance
         WHERE (userid = $1 OR user_id = $1)
+          AND (archived IS NULL OR archived = false)
           AND (timestamp IS NULL OR (CASE WHEN timestamp > 100000000000 THEN timestamp/1000 ELSE timestamp END) <= $2)
         ORDER BY timestamp ASC, id ASC
         "#,

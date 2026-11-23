@@ -314,6 +314,7 @@ pub async fn load_account_balances(
         FROM balance
         WHERE account_id = ANY($1)
           AND value IS NOT NULL
+          AND (archived IS NULL OR archived = false)
         ORDER BY account_id, timestamp ASC, id ASC
         "#,
     )

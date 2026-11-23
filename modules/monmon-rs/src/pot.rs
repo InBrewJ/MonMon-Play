@@ -307,6 +307,7 @@ pub async fn get_monthly_pot_page(
             SELECT value
             FROM balance
             WHERE account_id = a.id
+              AND (archived IS NULL OR archived = false)
             ORDER BY timestamp DESC, id DESC
             LIMIT 1
         ) b ON true
@@ -383,6 +384,7 @@ pub async fn get_monthly_pot_page(
                 SELECT value
                 FROM balance
                 WHERE account_id = a.id
+                  AND (archived IS NULL OR archived = false)
                 ORDER BY timestamp DESC, id DESC
                 LIMIT 1
             ) b ON true

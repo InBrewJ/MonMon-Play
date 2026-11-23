@@ -598,7 +598,7 @@ pub async fn get_outgoings_page(
 
     let target_balance: f32 = match yearly_bills_account_id {
         Some(acc_id) => sqlx::query_scalar(
-            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
+            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 AND (archived IS NULL OR archived = false) ORDER BY timestamp DESC LIMIT 1"
         )
         .bind(acc_id)
         .fetch_optional(&state.pool)
@@ -785,7 +785,7 @@ pub async fn get_edit_outgoing_page(
 
     let target_balance: f32 = match yearly_bills_account_id {
         Some(acc_id) => sqlx::query_scalar(
-            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
+            "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 AND (archived IS NULL OR archived = false) ORDER BY timestamp DESC LIMIT 1"
         )
         .bind(acc_id)
         .fetch_optional(&state.pool)
@@ -1308,6 +1308,7 @@ pub async fn get_balances_page(
             FROM balance b
             LEFT JOIN account a ON b.account_id = a.id
             WHERE (b.user_id = $1 OR b.userid = $1 OR b."userId" = $1)
+              AND (b.archived IS NULL OR b.archived = false)
               AND (CASE WHEN b.timestamp > 100000000000 THEN b.timestamp / 1000 ELSE b.timestamp END) <= $2
             ORDER BY b.timestamp DESC NULLS LAST, b.id DESC
             "#,
@@ -1330,6 +1331,7 @@ pub async fn get_balances_page(
             FROM balance b
             LEFT JOIN account a ON b.account_id = a.id
             WHERE (b.user_id = $1 OR b.userid = $1 OR b."userId" = $1)
+              AND (b.archived IS NULL OR b.archived = false)
             ORDER BY b.timestamp DESC NULLS LAST, b.id DESC
             "#,
         )

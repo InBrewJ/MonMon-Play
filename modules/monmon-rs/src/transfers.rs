@@ -594,7 +594,7 @@ pub async fn calculate_payday_window(
     let source_acc_row = sqlx::query(
         r#"
         SELECT a.id, a.name, a.type,
-               COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
+               COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
         FROM account a
         WHERE (a.userid = $1 OR a.user_id = $1)
           AND (a.archived IS NULL OR a.archived = false)
@@ -638,7 +638,7 @@ pub async fn calculate_payday_window(
             a.id AS account_id,
             a.name AS account_name,
             a.type AS account_type,
-            COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_bal,
+            COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_bal,
             o.id AS outgoing_id,
             o.name AS outgoing_name,
             o.cost::real AS outgoing_cost,
@@ -835,7 +835,7 @@ pub async fn calculate_payday_window(
         let all_user_acc_rows = sqlx::query(
             r#"
             SELECT a.id, a.name, a.type,
-                   COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
+                   COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
             FROM account a
             WHERE (a.userid = $1 OR a.user_id = $1)
               AND (a.archived IS NULL OR a.archived = false)
@@ -891,7 +891,7 @@ pub async fn calculate_payday_window(
         let target_acc_row = sqlx::query(
             r#"
             SELECT a.name, a.type,
-                   COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
+                   COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
             FROM account a
             WHERE a.id = $1
             "#,
@@ -1038,7 +1038,7 @@ pub async fn calculate_payday_window(
                 a.id AS account_id,
                 a.name AS account_name,
                 a.type AS account_type,
-                COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_bal
+                COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS current_bal
             FROM savings_plan_item i
             LEFT JOIN account a ON a.id = i.account_id
             WHERE i.savings_plan_id = $1
@@ -1193,7 +1193,7 @@ pub async fn calculate_payday_window(
         SELECT COALESCE(SUM(latest_bal), 0.0)::real
         FROM (
             SELECT a.id,
-                   COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS latest_bal
+                   COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS latest_bal
             FROM account a
             WHERE (a.userid = $1 OR a.user_id = $1)
               AND (a.archived IS NULL OR a.archived = false)
@@ -1217,7 +1217,7 @@ pub async fn calculate_payday_window(
     let funding_account_rows = sqlx::query(
         r#"
         SELECT a.id, a.name, a.type,
-               COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
+               COALESCE((SELECT value FROM balance b WHERE b.account_id = a.id AND (b.archived IS NULL OR b.archived = false) ORDER BY b.timestamp DESC LIMIT 1), 0.0)::real AS bal
         FROM account a
         WHERE (a.userid = $1 OR a.user_id = $1)
           AND (a.archived IS NULL OR a.archived = false)

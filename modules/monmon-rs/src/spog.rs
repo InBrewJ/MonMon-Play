@@ -439,7 +439,7 @@ pub async fn calculate_spog_as_of(
         // Fetch latest balance for this account as of cutoff (if time traveling)
         let bal_row = if let Some(cutoff) = as_of_epoch_end {
             sqlx::query(
-                "SELECT COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp FROM balance WHERE account_id = $1 AND (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) <= $2 ORDER BY (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) DESC, id DESC LIMIT 1",
+                "SELECT COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp FROM balance WHERE account_id = $1 AND (archived IS NULL OR archived = false) AND (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) <= $2 ORDER BY (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) DESC, id DESC LIMIT 1",
             )
             .bind(acc_id)
             .bind(cutoff)
@@ -448,7 +448,7 @@ pub async fn calculate_spog_as_of(
             .unwrap_or(None)
         } else {
             sqlx::query(
-                "SELECT COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp FROM balance WHERE account_id = $1 ORDER BY timestamp DESC, id DESC LIMIT 1",
+                "SELECT COALESCE(value, 0.0)::real AS value, COALESCE(timestamp, 0)::bigint AS timestamp FROM balance WHERE account_id = $1 AND (archived IS NULL OR archived = false) ORDER BY timestamp DESC, id DESC LIMIT 1",
             )
             .bind(acc_id)
             .fetch_optional(pool)
@@ -970,7 +970,7 @@ pub async fn calculate_spog_as_of(
     if let Some(Some(yearly_acc_id)) = yearly_account_row.map(|r| r.get::<Option<i64>, _>("yearly_bills_account_id")) {
         let dest_bal: f32 = if let Some(cutoff) = as_of_epoch_end {
             sqlx::query_scalar(
-                "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 AND (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) <= $2 ORDER BY (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) DESC, id DESC LIMIT 1"
+                "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 AND (archived IS NULL OR archived = false) AND (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) <= $2 ORDER BY (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) DESC, id DESC LIMIT 1"
             )
             .bind(yearly_acc_id)
             .bind(cutoff)
@@ -979,7 +979,7 @@ pub async fn calculate_spog_as_of(
             .unwrap_or(0.0)
         } else {
             sqlx::query_scalar(
-                "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 ORDER BY timestamp DESC LIMIT 1"
+                "SELECT COALESCE(value, 0.0)::real FROM balance WHERE account_id = $1 AND (archived IS NULL OR archived = false) ORDER BY timestamp DESC LIMIT 1"
             )
             .bind(yearly_acc_id)
             .fetch_optional(pool)

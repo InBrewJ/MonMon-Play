@@ -74,7 +74,9 @@ CREATE TABLE public.balance (
     user_id character varying(255),
     "userId" character varying(255),
     created_at bigint,
-    updated_at bigint
+    updated_at bigint,
+    archived boolean DEFAULT false,
+    archived_at bigint
 );
 
 

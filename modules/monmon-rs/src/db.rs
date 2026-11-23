@@ -27,6 +27,8 @@ pub async fn run_schema_migrations(pool: &PgPool) {
         r#"ALTER TABLE app_user ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()"#,
         r#"ALTER TABLE balance ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
         r#"ALTER TABLE balance ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
+        r#"ALTER TABLE balance ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE"#,
+        r#"ALTER TABLE balance ADD COLUMN IF NOT EXISTS archived_at BIGINT"#,
         r#"ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS created_at BIGINT"#,
         r#"ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS updated_at BIGINT"#,
         r#"ALTER TABLE bank_transaction ADD COLUMN IF NOT EXISTS raw_data TEXT"#,
@@ -82,6 +84,8 @@ pub async fn run_schema_migrations(pool: &PgPool) {
         r#"CREATE INDEX IF NOT EXISTS idx_balance_userid_ts_sec_asc ON balance (userid, (CASE WHEN timestamp > 100000000000 THEN timestamp / 1000 ELSE timestamp END) ASC, id ASC) INCLUDE (account_id, value, timestamp)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_balance_coalesce_user_ts_desc ON balance ((COALESCE(user_id, userid, "userId")), timestamp DESC, id DESC) INCLUDE (account_id, value)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_balance_coalesce_user_account_ts ON balance ((COALESCE(user_id, userid, "userId")), account_id, timestamp ASC, id ASC) INCLUDE (value)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_balance_account_active_ts_desc ON balance (account_id, timestamp DESC, id DESC) INCLUDE (value) WHERE (archived IS NULL OR archived = false)"#,
+        r#"CREATE INDEX IF NOT EXISTS idx_balance_user_archived_at ON balance ((COALESCE(user_id, userid, "userId")), archived_at DESC) WHERE archived = TRUE"#,
         r#"CREATE INDEX IF NOT EXISTS idx_account_userid_archived_id ON account (userid, archived, id)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_account_coalesce_user_archived_id ON account ((COALESCE(user_id, userid, "userId")), archived, id)"#,
         r#"CREATE INDEX IF NOT EXISTS idx_outgoing_account_id ON outgoing (account_id)"#,
@@ -812,6 +816,7 @@ pub async fn list_balances(pool: &PgPool, user_id: &str) -> Result<Vec<Balance>,
             COALESCE(user_id, userid, "userId") as user_id
         FROM balance
         WHERE COALESCE(user_id, userid, "userId") = $1
+          AND (archived IS NULL OR archived = false)
         ORDER BY timestamp DESC, id DESC
         "#,
     )
@@ -825,8 +830,8 @@ pub async fn create_balance(pool: &PgPool, bal: &NewBalance) -> Result<Balance, 
     let now_epoch = Utc::now().timestamp_millis();
     sqlx::query_as::<_, Balance>(
         r#"
-        INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at)
-        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5)
+        INSERT INTO balance (id, value, timestamp, account_id, user_id, userid, "userId", created_at, updated_at, archived)
+        VALUES (nextval('hibernate_sequence'), $1, $2, $3, $4, $4, $4, $5, $5, FALSE)
         RETURNING 
             id, value, timestamp, account_id,
             COALESCE(user_id, userid, "userId") as user_id
@@ -842,12 +847,17 @@ pub async fn create_balance(pool: &PgPool, bal: &NewBalance) -> Result<Balance, 
 }
 
 pub async fn delete_balance(pool: &PgPool, id: i64, user_id: &str) -> Result<bool, sqlx::Error> {
+    let now_epoch = Utc::now().timestamp_millis();
     let res = sqlx::query(
         r#"
-        DELETE FROM balance
-        WHERE id = $1 AND COALESCE(user_id, userid, "userId") = $2
+        UPDATE balance
+        SET archived = TRUE, archived_at = $1, updated_at = $1
+        WHERE id = $2
+          AND COALESCE(user_id, userid, "userId") = $3
+          AND (archived IS NULL OR archived = false)
         "#,
     )
+    .bind(now_epoch)
     .bind(id)
     .bind(user_id)
     .execute(pool)
@@ -875,6 +885,7 @@ pub async fn find_erratic_balances(
             FROM balance b
             JOIN account a ON b.account_id = a.id
             WHERE COALESCE(b.user_id, b.userid, b."userId") = $1
+              AND (b.archived IS NULL OR b.archived = false)
         )
         SELECT 
             account_id,

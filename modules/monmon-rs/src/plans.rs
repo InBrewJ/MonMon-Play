@@ -153,6 +153,7 @@ pub async fn get_plans_page(
                 SELECT value
                 FROM balance
                 WHERE account_id = pa.account_id
+                  AND (archived IS NULL OR archived = false)
                 ORDER BY timestamp DESC, id DESC
                 LIMIT 1
             ) b ON true

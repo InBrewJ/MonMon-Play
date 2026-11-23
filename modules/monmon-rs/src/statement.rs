@@ -508,7 +508,7 @@ pub async fn get_statement_preview_api(
         }
 
         if let Ok(count_row) = sqlx::query(
-            "SELECT count(*) as cnt FROM balance WHERE account_id = $1 AND (user_id = $2 OR userid = $2) AND timestamp >= $3 AND timestamp <= $4"
+            "SELECT count(*) as cnt FROM balance WHERE account_id = $1 AND (user_id = $2 OR userid = $2) AND (archived IS NULL OR archived = false) AND timestamp >= $3 AND timestamp <= $4"
         )
         .bind(acc_id)
         .bind(&resolved)
@@ -791,11 +791,12 @@ pub async fn confirm_statement_api(
             .sum();
         let calculated_closing = anchor_val + forward_sum;
 
-        // Fetch existing balances in this range before deleting so we can store them in backup!
+        // Fetch existing balances in this range before soft-deleting so we can store them in backup!
         let existing_bals = sqlx::query(
             r#"SELECT id, value, timestamp, account_id
                FROM balance
                WHERE account_id = $1 AND (user_id = $2 OR userid = $2)
+                 AND (archived IS NULL OR archived = false)
                  AND timestamp >= $3 AND timestamp <= $4
                ORDER BY timestamp ASC"#
         )
@@ -830,16 +831,19 @@ pub async fn confirm_statement_api(
         .execute(&state.pool)
         .await;
 
-        // Delete existing balances in this range for this account
+        // Soft-delete existing balances in this range for this account
         let _ = sqlx::query(
-            r#"DELETE FROM balance
+            r#"UPDATE balance
+               SET archived = TRUE, archived_at = $5, updated_at = $5
                WHERE account_id = $1 AND (user_id = $2 OR userid = $2)
+                 AND (archived IS NULL OR archived = false)
                  AND timestamp >= $3 AND timestamp <= $4"#
         )
         .bind(acc_id)
         .bind(&resolved)
         .bind(eff_start_ts)
         .bind(eff_end_ts)
+        .bind(now_ms_bal)
         .execute(&state.pool)
         .await;
 
@@ -1018,19 +1022,20 @@ pub async fn revert_statement_handler(
         .unwrap_or(Utc::now().timestamp());
 
     if let Some(aid) = acc_id {
-        // 1. Delete imported balances in range for this account (with margin for anchor date adjustments)
+        let now_ms_undo = Utc::now().timestamp_millis();
+        // 1. Soft-delete imported balances in range for this account (with margin for anchor date adjustments)
         let _ = sqlx::query(
-            "DELETE FROM balance WHERE account_id = $1 AND (user_id = $2 OR userid = $2) AND timestamp >= $3 AND timestamp <= $4"
+            "UPDATE balance SET archived = TRUE, archived_at = $5, updated_at = $5 WHERE account_id = $1 AND (user_id = $2 OR userid = $2) AND (archived IS NULL OR archived = false) AND timestamp >= $3 AND timestamp <= $4"
         )
         .bind(aid)
         .bind(&resolved)
         .bind(start_ts - 86400 * 5)
         .bind(end_ts + 86400 * 5)
+        .bind(now_ms_undo)
         .execute(&state.pool)
         .await;
 
         // 2. Restore backed up balances
-        let now_ms_undo = Utc::now().timestamp_millis();
         if let Some(json_str) = backup_json {
             if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&json_str) {
                 for item in items {
