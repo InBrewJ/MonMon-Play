@@ -401,7 +401,7 @@
         </div>
 
         <!-- Accounts Card (Expandable, default closed, Monzo/Flex accounts pinned at top) -->
-        <div class="deck-card w3-card w3-round" id="card-bank-accounts" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 0; border-radius: 8px; overflow: hidden;">
+        <div class="deck-card w3-card w3-round" id="card-bank-accounts" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 0; border-radius: 8px; overflow: visible;">
             <style>
                 #configured-ledger-accounts-details > summary {
                     list-style: none;
@@ -413,6 +413,11 @@
                     flex-wrap: wrap;
                     gap: 10px;
                     user-select: none;
+                    border-radius: 8px;
+                }
+                #configured-ledger-accounts-details[open] > summary {
+                    border-bottom-left-radius: 0;
+                    border-bottom-right-radius: 0;
                 }
                 #configured-ledger-accounts-details > summary::-webkit-details-marker {
                     display: none;
@@ -433,6 +438,60 @@
                 #configured-ledger-accounts-details:not([open]) .accounts-toggle-label::after {
                     content: "Expand";
                 }
+                .abl-tbl-help-wrap {
+                    position: relative;
+                    display: inline-block;
+                    margin-left: 4px;
+                }
+                .abl-tbl-help-link {
+                    color: var(--primary, #818cf8);
+                    text-decoration: underline;
+                    text-underline-offset: 2px;
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+                .abl-tbl-help-link:hover,
+                .abl-tbl-help-link:focus {
+                    color: #a5b4fc;
+                    outline: none;
+                }
+                .abl-tbl-help-tooltip {
+                    position: absolute;
+                    left: 0;
+                    top: calc(100% + 8px);
+                    z-index: 950;
+                    width: min(460px, calc(100vw - 32px));
+                    padding: 14px 16px;
+                    border-radius: 10px;
+                    background: var(--card-bg, #1e293b);
+                    color: var(--text-muted, #cbd5e1);
+                    border: 1px solid var(--border-color, #334155);
+                    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+                    font-size: 0.82rem;
+                    line-height: 1.55;
+                    text-align: left;
+                    font-weight: 400;
+                    white-space: normal;
+                    cursor: default;
+                    user-select: text;
+                    opacity: 0;
+                    visibility: hidden;
+                    pointer-events: none;
+                    transition: opacity 0.16s ease, visibility 0.16s ease;
+                }
+                .abl-tbl-help-wrap.is-open .abl-tbl-help-tooltip,
+                .abl-tbl-help-wrap:focus-within .abl-tbl-help-tooltip {
+                    opacity: 1;
+                    visibility: visible;
+                    pointer-events: auto;
+                }
+                @media (hover: hover) {
+                    .abl-tbl-help-wrap:hover .abl-tbl-help-tooltip {
+                        opacity: 1;
+                        visibility: visible;
+                        pointer-events: auto;
+                    }
+                }
             </style>
             <details id="configured-ledger-accounts-details">
                 <summary aria-controls="configured-ledger-accounts-body">
@@ -443,6 +502,21 @@
                         </h3>
                         <p style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.85rem;">
                             MonMon is ABL-first across the whole app — only Monzo accounts support live transaction streaming (TBL), while LegMon translates uploaded statements into ABL snapshots for every other account. Monzo accounts are pinned at the top.
+                            <span class="abl-tbl-help-wrap" id="abl-tbl-help-wrap">
+                                <a href="#abl-tbl-help" id="abl-tbl-help-trigger" class="abl-tbl-help-link" role="button" aria-expanded="false" aria-controls="abl-tbl-help-tooltip">What is ABL? What is TBL?</a>
+                                <span id="abl-tbl-help-tooltip" class="abl-tbl-help-tooltip" role="tooltip">
+                                    <strong style="display: block; color: var(--text-main); margin-bottom: 6px; font-size: 0.86rem;">ABL vs. TBL in MonMon</strong>
+                                    <span style="display: block; margin-bottom: 8px;">
+                                        <strong style="color: var(--warning, #fbbf24);">ABL (Available-Based Ledger)</strong> tracks an account using periodic snapshots of its available balance&mdash;entered manually or translated from uploaded statements by LegMon. MonMon calculates spending from the gap between snapshots. It is simple and universal, which is why the whole app is ABL-first, though sparse snapshots can blur timing or hide offsetting inflows and outflows between updates.
+                                    </span>
+                                    <span style="display: block; margin-bottom: 8px;">
+                                        <strong style="color: var(--success, #34d399);">TBL (Transaction-Based Ledger)</strong> builds the ledger from every individual transaction instead. When anchored to a known, verified balance, TBL knows the exact amount, timestamp, and direction of every spend, refund, and transfer. That makes spending pace, cycle boundaries, and day-by-day history far more accurate&mdash;there is no guesswork about what happened between two snapshots, and transfers or refunds are never conflated with everyday spending.
+                                    </span>
+                                    <span style="display: block;">
+                                        <strong style="color: #fb923c;">Why Monzo makes this easy:</strong> Most banks still require manual PDF statements, which LegMon converts into ABL snapshots. Monzo's API, by contrast, pushes live webhooks the moment a Debit or Flex transaction occurs and exposes a real-time balance endpoint alongside each event. That gives MonMon both the continuous transaction stream and an authoritative balance anchor automatically&mdash;making accurate TBL effortless while keeping every account aligned with MonMon's ABL view.
+                                    </span>
+                                </span>
+                            </span>
                         </p>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">

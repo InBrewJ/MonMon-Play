@@ -434,6 +434,9 @@ describe('Monzo OAuth & Webhooks Contract Tests', () => {
 
     // ABL-first copy & guard: non-Monzo account cannot be switched to TBL
     assert.ok(html.includes('MonMon is ABL-first'), 'page must clearly state MonMon is ABL-first');
+    assert.ok(html.includes('id="abl-tbl-help-trigger"'), 'page must render the ABL/TBL help link trigger');
+    assert.ok(html.includes('What is ABL? What is TBL?'), 'page must include the "What is ABL? What is TBL?" link text');
+    assert.ok(html.includes('id="abl-tbl-help-tooltip"'), 'page must render the ABL/TBL explanation tooltip');
     // Ensure Barclays is in ABL first (test helper /internal/accounts may start in TBL), then verify toggling to TBL is rejected
     const b1 = await fetch(`${MONMON_URL}/bank/account/${barclays.id}/toggle-mode`, {
       method: 'POST',
