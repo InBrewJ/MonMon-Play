@@ -7,7 +7,7 @@ use axum::{
 use chrono::{Datelike, Local, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use crate::money::Pence;
 use crate::AppState;
@@ -378,6 +378,15 @@ impl AccountBalanceSnapshotDto {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SynthesizedPotAccountDto {
+    pub account_id: i64,
+    pub account_name: String,
+    pub account_type: String,
+    pub amount_spent_pence: Pence,
+    pub is_full_cycle: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoricPotSnapshotDto {
     pub plan_summary: String,
@@ -461,6 +470,8 @@ pub struct HistoricCycleDto {
     pub pot_account_ids: Vec<i64>,
     pub account_breakdowns: Vec<AccountSpentDto>,
     pub pots_in_period: Vec<HistoricPotSnapshotDto>,
+    pub synthesized_pot_accounts: Vec<SynthesizedPotAccountDto>,
+    pub show_synthesized_breakdown: bool,
     pub has_multiple_pots: bool,
     pub has_pot_data: bool,
 }
@@ -523,22 +534,22 @@ pub fn compute_account_cycle_net(
     (signed_start, signed_end, net_spent, is_liability)
 }
 
-/// Computes per-pot window snapshots and total cycle monthly-pot outflow spend using SPOG's
-/// negative-delta outflow helper (`calculate_account_spent_window`).
-pub fn compute_cycle_pot_snapshots(
+/// Computes unified monthly-pot spend (final pot accounts scanned full-cycle + earlier-only
+/// pot accounts scanned across their active pot windows) together with the reconciling
+/// synthesized account breakdown and per-pot history snapshots.
+pub fn compute_cycle_synthesized_pot_spend(
     intervals: &[ActivePotInterval],
     balance_map: &HashMap<i64, Vec<(i64, f32)>>,
     account_names_map: &HashMap<i64, (String, String)>,
-    debit_account_ids: &[i64],
     start_sec: i64,
     end_sec: i64,
     effective_end_sec: i64,
     is_current: bool,
-) -> (Pence, Vec<HistoricPotSnapshotDto>) {
+) -> (Pence, Vec<SynthesizedPotAccountDto>, Vec<HistoricPotSnapshotDto>) {
     if intervals.is_empty() {
         // Do NOT fall back to all debit accounts (which include salary/transfer hubs
         // and would distort Monthly Pot history with non-pot transfers).
-        return (Pence::ZERO, Vec::new());
+        return (Pence::ZERO, Vec::new(), Vec::new());
     }
 
     // In the current cycle, SPOG only considers unarchived MONTHLY pots. If every pot overlapping
@@ -546,12 +557,50 @@ pub fn compute_cycle_pot_snapshots(
     // showing contradictory non-zero archived pot rows underneath a £0.00 headline.
     let has_active_unarchived_pot = intervals.iter().any(|i| !i.pot.archived);
     if is_current && !has_active_unarchived_pot {
-        return (Pence::ZERO, Vec::new());
+        return (Pence::ZERO, Vec::new(), Vec::new());
     }
 
     let num_display = intervals.len();
     let mut pots_in_period = Vec::with_capacity(num_display);
-    let mut total_pot_spent = Pence::ZERO;
+
+    // 1. Identify final pot accounts (deduplicated, preserving order) and compute full-cycle spend.
+    let final_interval = intervals.last().unwrap();
+    let final_win_end = if final_interval.end < effective_end_sec {
+        final_interval.end
+    } else {
+        effective_end_sec
+    };
+
+    let mut final_acc_set: HashSet<i64> = HashSet::new();
+    let mut final_acc_order: Vec<i64> = Vec::new();
+    for &aid in &final_interval.pot.accounts {
+        if final_acc_set.insert(aid) {
+            final_acc_order.push(aid);
+        }
+    }
+
+    let mut synthesized_accounts: Vec<SynthesizedPotAccountDto> = Vec::new();
+    for &aid in &final_acc_order {
+        let empty_vec = Vec::new();
+        let bals = balance_map.get(&aid).unwrap_or(&empty_vec);
+        let (acc_name, acc_type) = account_names_map
+            .get(&aid)
+            .cloned()
+            .unwrap_or_else(|| ("Account".to_string(), "DEBIT".to_string()));
+        let spent_f32 = calculate_account_spent_window(bals, start_sec, final_win_end, true);
+        synthesized_accounts.push(SynthesizedPotAccountDto {
+            account_id: aid,
+            account_name: acc_name,
+            account_type: acc_type,
+            amount_spent_pence: Pence::from_pounds_f32(spent_f32),
+            is_full_cycle: true,
+        });
+    }
+
+    // 2. Accumulate earlier-only pot accounts across their active pot windows,
+    //    and build per-pot window display snapshots for pot history.
+    let mut earlier_acc_order: Vec<i64> = Vec::new();
+    let mut earlier_acc_spent: HashMap<i64, Pence> = HashMap::new();
 
     for (idx, interval) in intervals.iter().enumerate() {
         let p = &interval.pot;
@@ -615,17 +664,14 @@ pub fn compute_cycle_pot_snapshots(
             (effective_end_sec, true)
         };
 
-        let p_accounts: &[i64] = if !p.accounts.is_empty() {
-            &p.accounts
-        } else {
-            let _ = debit_account_ids;
-            &[]
-        };
-
+        let mut seen_in_pot: HashSet<i64> = HashSet::new();
         let mut account_snapshots = Vec::new();
         let mut pot_window_spent = Pence::ZERO;
 
-        for &pa_id in p_accounts {
+        for &pa_id in &p.accounts {
+            if !seen_in_pot.insert(pa_id) {
+                continue;
+            }
             let empty_vec = Vec::new();
             let bals = balance_map.get(&pa_id).unwrap_or(&empty_vec);
             let (acc_name, acc_type) = account_names_map
@@ -645,6 +691,13 @@ pub fn compute_cycle_pot_snapshots(
             let bal_on_date_pence = Pence::from_pounds_f32(bal_on_date_f32);
             pot_window_spent += pa_spent_pence;
 
+            if !is_last && !final_acc_set.contains(&pa_id) {
+                if !earlier_acc_spent.contains_key(&pa_id) {
+                    earlier_acc_order.push(pa_id);
+                }
+                *earlier_acc_spent.entry(pa_id).or_insert(Pence::ZERO) += pa_spent_pence;
+            }
+
             account_snapshots.push(AccountBalanceSnapshotDto {
                 account_name: acc_name,
                 account_type: acc_type,
@@ -654,8 +707,6 @@ pub fn compute_cycle_pot_snapshots(
                 amount_spent_pence: pa_spent_pence,
             });
         }
-
-        total_pot_spent += pot_window_spent;
 
         // Omit transient <1h edit-click pots that had £0.00 spend from UI display
         let actual_duration_sec = (win_end - interval.start.max(start_sec)).max(0);
@@ -678,6 +729,29 @@ pub fn compute_cycle_pot_snapshots(
         });
     }
 
+    // Emit earlier-only accounts that actually had > £0.00 spend during their active pot windows
+    for aid in earlier_acc_order {
+        let spent = earlier_acc_spent.get(&aid).copied().unwrap_or(Pence::ZERO);
+        if spent.is_positive() {
+            let (acc_name, acc_type) = account_names_map
+                .get(&aid)
+                .cloned()
+                .unwrap_or_else(|| ("Account".to_string(), "DEBIT".to_string()));
+            synthesized_accounts.push(SynthesizedPotAccountDto {
+                account_id: aid,
+                account_name: acc_name,
+                account_type: acc_type,
+                amount_spent_pence: spent,
+                is_full_cycle: false,
+            });
+        }
+    }
+
+    let total_pot_spent: Pence = synthesized_accounts
+        .iter()
+        .map(|a| a.amount_spent_pence)
+        .sum();
+
     let kept = pots_in_period.len();
     for (i, snap) in pots_in_period.iter_mut().enumerate() {
         snap.is_first_pot = i == 0;
@@ -685,6 +759,31 @@ pub fn compute_cycle_pot_snapshots(
         snap.is_intermediary_pot = !snap.is_first_pot && !snap.is_last_pot;
     }
 
+    (total_pot_spent, synthesized_accounts, pots_in_period)
+}
+
+/// Computes per-pot window snapshots and total cycle monthly-pot outflow spend using the
+/// unified synthesized monthly-pot calculation.
+#[allow(dead_code)]
+pub fn compute_cycle_pot_snapshots(
+    intervals: &[ActivePotInterval],
+    balance_map: &HashMap<i64, Vec<(i64, f32)>>,
+    account_names_map: &HashMap<i64, (String, String)>,
+    _debit_account_ids: &[i64],
+    start_sec: i64,
+    end_sec: i64,
+    effective_end_sec: i64,
+    is_current: bool,
+) -> (Pence, Vec<HistoricPotSnapshotDto>) {
+    let (total_pot_spent, _synthesized, pots_in_period) = compute_cycle_synthesized_pot_spend(
+        intervals,
+        balance_map,
+        account_names_map,
+        start_sec,
+        end_sec,
+        effective_end_sec,
+        is_current,
+    );
     (total_pot_spent, pots_in_period)
 }
 
@@ -1070,6 +1169,115 @@ pub fn find_active_pots_in_cycle(
         .collect()
 }
 
+/// Resolves active monthly pot intervals for a single pay cycle, shared by both
+/// `/historicSpent#pots` and SPOG (`spent_this_month`, including `as_of` time-travel).
+pub fn resolve_cycle_pot_intervals(
+    all_pots: &[PotRecord],
+    cycle_start_sec: i64,
+    cycle_end_sec: i64,
+    is_current: bool,
+    as_of_cutoff_sec: Option<i64>,
+) -> Vec<ActivePotInterval> {
+    // Compute intervals across ALL monthly pots first so legacy empty-account pots still bound
+    // preceding pots accurately (e.g. a 2024 pot won't stretch across 2 years until 2026).
+    let mut intervals: Vec<ActivePotInterval> = compute_pot_intervals(all_pots)
+        .into_iter()
+        .filter(|i| !i.pot.accounts.is_empty())
+        .collect();
+
+    let effective_window_end = if let Some(cutoff) = as_of_cutoff_sec {
+        intervals = intervals
+            .into_iter()
+            .filter(|i| i.start <= cutoff)
+            .map(|mut i| {
+                if i.end > cutoff {
+                    i.pot.archived = false;
+                    i.end = i64::MAX;
+                }
+                i
+            })
+            .collect();
+        cycle_end_sec.min(cutoff)
+    } else {
+        cycle_end_sec
+    };
+
+    let mut active = find_active_pots_in_cycle(&intervals, cycle_start_sec, effective_window_end);
+    if is_current {
+        if let Some(unarchived_pos) = active.iter().rposition(|i| !i.pot.archived) {
+            if unarchived_pos + 1 < active.len() {
+                let active_int = active.remove(unarchived_pos);
+                active.push(active_int);
+            }
+        }
+    }
+    active
+}
+
+/// Loads all MONTHLY pots (including archived history) and their `pot_accounts` for a user.
+pub async fn load_user_monthly_pots(
+    pool: &PgPool,
+    user_id: &str,
+) -> Result<Vec<PotRecord>, sqlx::Error> {
+    let pot_rows = sqlx::query(
+        r#"
+        SELECT id, spending_plan_name, createdat,
+               COALESCE(archived_at, updated_at, lastupdated) AS lastupdated,
+               COALESCE(archived, false) AS archived,
+               spending_plan_food, spending_plan_fuel, spending_plan_transport, spending_plan_fun
+        FROM pot
+        WHERE (userid = $1 OR user_id = $1)
+          AND type = 'MONTHLY'
+        ORDER BY createdat ASC NULLS LAST, id ASC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let pot_ids: Vec<i64> = pot_rows.iter().filter_map(|r| r.try_get("id").ok()).collect();
+    let pot_accounts_rows = if !pot_ids.is_empty() {
+        sqlx::query(
+            r#"
+            SELECT pot_id, account_id
+            FROM pot_accounts
+            WHERE pot_id = ANY($1)
+            "#,
+        )
+        .bind(&pot_ids)
+        .fetch_all(pool)
+        .await?
+    } else {
+        Vec::new()
+    };
+
+    let mut pot_accounts_map: HashMap<i64, Vec<i64>> = HashMap::new();
+    for r in pot_accounts_rows {
+        if let (Ok(pid), Ok(aid)) = (r.try_get::<i64, _>("pot_id"), r.try_get::<i64, _>("account_id")) {
+            pot_accounts_map.entry(pid).or_default().push(aid);
+        }
+    }
+
+    let mut pots: Vec<PotRecord> = Vec::with_capacity(pot_rows.len());
+    for r in pot_rows {
+        let pid: i64 = r.try_get("id").unwrap_or(0);
+        let accounts = pot_accounts_map.get(&pid).cloned().unwrap_or_default();
+        pots.push(PotRecord {
+            id: pid,
+            name: r.try_get::<Option<String>, _>("spending_plan_name").ok().flatten().unwrap_or_default(),
+            created_at: r.try_get("createdat").ok(),
+            last_updated: r.try_get("lastupdated").ok(),
+            archived: r.try_get("archived").unwrap_or(false),
+            food: r.try_get("spending_plan_food").ok(),
+            fuel: r.try_get("spending_plan_fuel").ok(),
+            transport: r.try_get("spending_plan_transport").ok(),
+            fun: r.try_get("spending_plan_fun").ok(),
+            accounts,
+        });
+    }
+    Ok(pots)
+}
+
 pub fn find_active_pot_for_cycle(
     monthly_pots: &[PotRecord],
     cycle_start_sec: i64,
@@ -1260,65 +1468,8 @@ pub async fn calculate_historic_cycles(
         }
     }
 
-    // Load monthly pots for user (preferring archived_at / updated_at over legacy lastupdated)
-    let pot_rows = sqlx::query(
-        r#"
-        SELECT id, spending_plan_name, createdat,
-               COALESCE(archived_at, updated_at, lastupdated) AS lastupdated,
-               COALESCE(archived, false) AS archived,
-               spending_plan_food, spending_plan_fuel, spending_plan_transport, spending_plan_fun
-        FROM pot
-        WHERE (userid = $1 OR user_id = $1)
-          AND type = 'MONTHLY'
-        ORDER BY createdat ASC NULLS LAST, id ASC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-
-    let pot_ids: Vec<i64> = pot_rows.iter().filter_map(|r| r.try_get("id").ok()).collect();
-    let pot_accounts_rows = if !pot_ids.is_empty() {
-        sqlx::query(
-            r#"
-            SELECT pot_id, account_id
-            FROM pot_accounts
-            WHERE pot_id = ANY($1)
-            "#,
-        )
-        .bind(&pot_ids)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-
-    let mut pot_accounts_map: HashMap<i64, Vec<i64>> = HashMap::new();
-    for r in pot_accounts_rows {
-        if let (Ok(pid), Ok(aid)) = (r.try_get::<i64, _>("pot_id"), r.try_get::<i64, _>("account_id")) {
-            pot_accounts_map.entry(pid).or_default().push(aid);
-        }
-    }
-
-    let mut pots: Vec<PotRecord> = Vec::new();
-    for r in pot_rows {
-        let pid: i64 = r.try_get("id").unwrap_or(0);
-        let accounts = pot_accounts_map.get(&pid).cloned().unwrap_or_default();
-        pots.push(PotRecord {
-            id: pid,
-            name: r.try_get::<Option<String>, _>("spending_plan_name").ok().flatten().unwrap_or_default(),
-            created_at: r.try_get("createdat").ok(),
-            last_updated: r.try_get("lastupdated").ok(),
-            archived: r.try_get("archived").unwrap_or(false),
-            food: r.try_get("spending_plan_food").ok(),
-            fuel: r.try_get("spending_plan_fuel").ok(),
-            transport: r.try_get("spending_plan_transport").ok(),
-            fun: r.try_get("spending_plan_fun").ok(),
-            accounts,
-        });
-    }
+    // Load monthly pots for user via shared loader
+    let pots = load_user_monthly_pots(pool, user_id).await.unwrap_or_default();
 
     // Load all incomings (including archived & history)
     let incoming_rows = sqlx::query(
@@ -1422,8 +1573,8 @@ pub async fn calculate_historic_cycles(
     // Also load names/types and balances for any archived account referenced in historical pot_accounts
     let mut all_balance_account_ids = ledger_account_ids.clone();
     let mut missing_pot_account_ids: Vec<i64> = Vec::new();
-    for acc_list in pot_accounts_map.values() {
-        for &aid in acc_list {
+    for p in &pots {
+        for &aid in &p.accounts {
             if !all_balance_account_ids.contains(&aid) {
                 all_balance_account_ids.push(aid);
             }
@@ -1479,14 +1630,6 @@ pub async fn calculate_historic_cycles(
     let max_allowed = today - chrono::Months::new(24);
     let earliest_date = if earliest_date < max_allowed { max_allowed } else { earliest_date };
 
-    // Compute intervals across ALL monthly pots first so legacy empty-account pots still bound
-    // the end of preceding pots (e.g. a 2024 pot won't stretch across 2 years until 2026),
-    // then discard intervals with empty pot_accounts so they don't create false gaps or leak debit hubs.
-    let pot_intervals: Vec<ActivePotInterval> = compute_pot_intervals(&pots)
-        .into_iter()
-        .filter(|i| !i.pot.accounts.is_empty())
-        .collect();
-
     let mut cycles = Vec::new();
     let current_cycle_start = find_last_payday_date(today, nominal_payday);
     let mut curr_cycle_start = current_cycle_start;
@@ -1524,18 +1667,8 @@ pub async fn calculate_historic_cycles(
             days_in_cycle
         };
 
-        // Determine active pot for this cycle. For the current cycle, match spog.rs by preferring
-        // the latest unarchived MONTHLY pot so a newer archived pot never shadows an active older pot.
-        let mut active_intervals_in_cycle = find_active_pots_in_cycle(&pot_intervals, start_sec, end_sec);
-        if is_current {
-            if let Some(unarchived_pos) = active_intervals_in_cycle.iter().rposition(|i| !i.pot.archived) {
-                // Ensure the active unarchived pot is last in display/window ordering if newer pots were archived
-                if unarchived_pos + 1 < active_intervals_in_cycle.len() {
-                    let active_int = active_intervals_in_cycle.remove(unarchived_pos);
-                    active_intervals_in_cycle.push(active_int);
-                }
-            }
-        }
+        // Determine active pot intervals for this cycle via shared resolver (matches SPOG).
+        let active_intervals_in_cycle = resolve_cycle_pot_intervals(&pots, start_sec, end_sec, is_current, None);
         let active_pot = if is_current {
             active_intervals_in_cycle
                 .iter()
@@ -1684,17 +1817,17 @@ pub async fn calculate_historic_cycles(
         let cycle_spent = all_accounts_net_spent.to_pounds_f32();
         starting_pot_budget = ((starting_pot_budget * 100.0).round()) / 100.0;
 
-        // Monthly Pots (SPOG-parity outflow calculation across all active pot windows in cycle)
-        let (pot_spent_pence, pots_in_period) = compute_cycle_pot_snapshots(
-            &active_intervals_in_cycle,
-            &balance_map,
-            &account_names_map,
-            &debit_account_ids,
-            start_sec,
-            end_sec,
-            effective_end_sec,
-            is_current,
-        );
+        // Monthly Pots (unified SPOG-parity synthesized calculation across all active pots in cycle)
+        let (pot_spent_pence, synthesized_pot_accounts, pots_in_period) =
+            compute_cycle_synthesized_pot_spend(
+                &active_intervals_in_cycle,
+                &balance_map,
+                &account_names_map,
+                start_sec,
+                end_sec,
+                effective_end_sec,
+                is_current,
+            );
         let pot_spent = pot_spent_pence.to_pounds_f32();
 
         // Pot Allowance / Budget
@@ -1742,6 +1875,10 @@ pub async fn calculate_historic_cycles(
 
         let has_multiple_pots = pots_in_period.len() > 1;
         let has_pot_data = !pots_in_period.is_empty();
+        let displayed_pot_window_sum: Pence = pots_in_period.iter().map(|p| p.pot_spent_pence).sum();
+        let show_synthesized_breakdown = has_multiple_pots
+            || synthesized_pot_accounts.iter().any(|a| !a.is_full_cycle)
+            || displayed_pot_window_sum != pot_spent_pence;
 
         cycles.push(HistoricCycleDto {
             cycle_start_date: curr_cycle_start,
@@ -1776,6 +1913,8 @@ pub async fn calculate_historic_cycles(
             pot_account_ids,
             account_breakdowns,
             pots_in_period,
+            synthesized_pot_accounts,
+            show_synthesized_breakdown,
             has_multiple_pots,
             has_pot_data,
         });
@@ -2673,6 +2812,8 @@ mod tests {
                 pot_account_ids: vec![],
                 account_breakdowns: vec![],
                 pots_in_period: vec![],
+                synthesized_pot_accounts: vec![],
+                show_synthesized_breakdown: false,
                 has_multiple_pots: false,
                 has_pot_data: true,
             }
@@ -2705,5 +2846,210 @@ mod tests {
         assert!(all_sum.lowest_is_net_inflow);
         assert_eq!(all_sum.lowest_abs_net_change, Some(Pence::from_pounds_f64(600.0)));
         assert_eq!(all_sum.lowest_spent_range.as_deref(), Some("Oct 2026"));
+    }
+
+    #[test]
+    fn test_synthesized_pot_spend_catches_pre_addition_card_and_ignores_brief_hub_pot() {
+        let day = 86_400;
+        let start_sec = 1_793_318_400; // 2026-10-30 00:00 UTC
+        let t_oct29 = start_sec - 23_000;
+        let t_oct30_1304 = start_sec + 13 * 3600 + 278;
+        let t_oct30_1309 = start_sec + 13 * 3600 + 571;
+        let t_oct31_1209 = start_sec + day + 12 * 3600 + 584;
+        let t_nov21_1800 = start_sec + 22 * day + 18 * 3600;
+        let t_nov22_1128 = start_sec + 23 * day + 11 * 3600 + 28 * 60;
+        let t_nov23_1456 = start_sec + 24 * day + 14 * 3600 + 56 * 60;
+        let t_nov23_1551 = start_sec + 24 * day + 15 * 3600 + 51 * 60;
+        let end_sec = start_sec + 31 * day;
+
+        let make_pot = |id: i64, name: &str, created: i64, updated: i64, archived: bool, accounts: Vec<i64>| PotRecord {
+            id,
+            name: name.to_string(),
+            created_at: Some(created),
+            last_updated: Some(updated),
+            archived,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts,
+        };
+
+        let pots = vec![
+            make_pot(10723, "Hunkering in Winchburgh", t_oct29, t_oct30_1304, true, vec![94, 8638]),
+            make_pot(10811, "Hunkering in Winchburgh", t_oct30_1304, t_oct31_1209, true, vec![8638]),
+            make_pot(10842, "Hunkering in Winchburgh", t_oct31_1209, t_nov22_1128, true, vec![95, 8638]),
+            make_pot(12635, "Hunkering + Camden Collective", t_nov23_1456, t_nov23_1551, true, vec![2, 94, 8638]),
+            make_pot(12641, "Hunkering in Winchburgh", t_nov23_1551, t_nov23_1551, false, vec![95, 8638, 8787]),
+        ];
+
+        let intervals = resolve_cycle_pot_intervals(&pots, start_sec, end_sec, true, None);
+        let mut balance_map: HashMap<i64, Vec<(i64, f32)>> = HashMap::new();
+        // Natwest (2): huge salary/bills outflow earlier in cycle, zero during the 54-min Pot 12635 window
+        balance_map.insert(2, vec![(start_sec - 100, 3000.0), (start_sec + 3600, 106.82)]);
+        // Revolut (94): -33.41 dropped 5 mins AFTER it was removed from Pot 10723
+        balance_map.insert(94, vec![(start_sec - 100, 33.41), (t_oct30_1309, 0.0)]);
+        // CASH MONEY (95): -24.00 total
+        balance_map.insert(95, vec![(start_sec - 100, 25.0), (start_sec + 8 * day, 1.0)]);
+        // Monzo (8638): -481.87 total
+        balance_map.insert(8638, vec![(start_sec - 100, 600.0), (start_sec + 5 * day, 118.13)]);
+        // Flex (8787): -15.45 BEFORE Pot 12641 (21 Nov 18:00), plus -31.72 and -49.05 after
+        balance_map.insert(
+            8787,
+            vec![
+                (start_sec - 100, 428.45),
+                (t_nov21_1800, 413.00),             // -15.45
+                (t_nov22_1128 + 3600 * 4, 381.28),  // -31.72
+                (t_nov23_1551 + 3600 * 3, 332.23),  // -49.05
+            ],
+        );
+
+        let mut names = HashMap::new();
+        names.insert(2, ("Natwest Reward Debit".to_string(), "DEBIT".to_string()));
+        names.insert(94, ("Revolut".to_string(), "DEBIT".to_string()));
+        names.insert(95, ("CASH MONEY".to_string(), "DEBIT".to_string()));
+        names.insert(8638, ("Monzo".to_string(), "DEBIT".to_string()));
+        names.insert(8787, ("Flex".to_string(), "CREDIT".to_string()));
+
+        let (total, synth, _snaps) = compute_cycle_synthesized_pot_spend(
+            &intervals,
+            &balance_map,
+            &names,
+            start_sec,
+            end_sec,
+            end_sec,
+            true,
+        );
+
+        assert_eq!(total, Pence::from_pounds_f64(602.09));
+        assert_eq!(synth.len(), 3);
+        let ids: Vec<i64> = synth.iter().map(|a| a.account_id).collect();
+        assert_eq!(ids, vec![95, 8638, 8787]);
+        assert!(synth.iter().all(|a| a.is_full_cycle));
+        assert_eq!(synth[2].amount_spent_pence, Pence::from_pounds_f64(96.22));
+    }
+
+    #[test]
+    fn test_synthesized_pot_spend_rotation_123_to_1234_to_45_captures_all_five() {
+        let day = 86_400;
+        let start_sec = 1_000_000;
+        let t_day20 = start_sec + 20 * day;
+        let t_day28 = start_sec + 28 * day;
+        let end_sec = start_sec + 30 * day;
+
+        let make_pot = |id: i64, created: i64, updated: i64, archived: bool, accounts: Vec<i64>| PotRecord {
+            id,
+            name: format!("Pot {}", id),
+            created_at: Some(created),
+            last_updated: Some(updated),
+            archived,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts,
+        };
+
+        let pots = vec![
+            make_pot(1, start_sec - 100, t_day20, true, vec![1, 2, 3]),
+            make_pot(2, t_day20, t_day28, true, vec![1, 2, 3, 4]),
+            make_pot(3, t_day28, t_day28, false, vec![4, 5]),
+        ];
+        let intervals = resolve_cycle_pot_intervals(&pots, start_sec, end_sec, true, None);
+
+        let mut balance_map: HashMap<i64, Vec<(i64, f32)>> = HashMap::new();
+        // Account 1: £40 in Pot A, £10 in Pot B, £100 after removal (excluded!)
+        balance_map.insert(1, vec![(start_sec - 10, 500.0), (start_sec + 5 * day, 460.0), (start_sec + 22 * day, 450.0), (start_sec + 29 * day, 350.0)]);
+        // Account 2: £30 in Pot A
+        balance_map.insert(2, vec![(start_sec - 10, 200.0), (start_sec + 10 * day, 170.0)]);
+        // Account 3: £20 in Pot A
+        balance_map.insert(3, vec![(start_sec - 10, 200.0), (start_sec + 12 * day, 180.0)]);
+        // Account 4: £15 on Day 18 (before Pot B), £25 on Day 24 -> £40 full cycle
+        balance_map.insert(4, vec![(start_sec - 10, 300.0), (start_sec + 18 * day, 285.0), (start_sec + 24 * day, 260.0)]);
+        // Account 5: £12 on Day 5 (before Pot C), £50 on Day 29 -> £62 full cycle
+        balance_map.insert(5, vec![(start_sec - 10, 300.0), (start_sec + 5 * day, 288.0), (start_sec + 29 * day, 238.0)]);
+
+        let mut names = HashMap::new();
+        for id in 1..=5 {
+            names.insert(id, (format!("Acc {}", id), "DEBIT".to_string()));
+        }
+
+        let (total, synth, _snaps) = compute_cycle_synthesized_pot_spend(
+            &intervals,
+            &balance_map,
+            &names,
+            start_sec,
+            end_sec,
+            end_sec,
+            true,
+        );
+
+        // 50 + 30 + 20 + 40 + 62 = 202.00
+        assert_eq!(total, Pence::from_pounds_f64(202.00));
+        assert_eq!(synth.len(), 5);
+
+        let by_id: HashMap<i64, &SynthesizedPotAccountDto> = synth.iter().map(|a| (a.account_id, a)).collect();
+        assert!(by_id[&4].is_full_cycle);
+        assert_eq!(by_id[&4].amount_spent_pence, Pence::from_pounds_f64(40.00));
+        assert!(by_id[&5].is_full_cycle);
+        assert_eq!(by_id[&5].amount_spent_pence, Pence::from_pounds_f64(62.00));
+        assert!(!by_id[&1].is_full_cycle);
+        assert_eq!(by_id[&1].amount_spent_pence, Pence::from_pounds_f64(50.00));
+        assert!(!by_id[&2].is_full_cycle);
+        assert_eq!(by_id[&2].amount_spent_pence, Pence::from_pounds_f64(30.00));
+        assert!(!by_id[&3].is_full_cycle);
+        assert_eq!(by_id[&3].amount_spent_pence, Pence::from_pounds_f64(20.00));
+    }
+
+    #[test]
+    fn test_synthesized_pot_spend_deduplicates_accounts_and_readded_account() {
+        let day = 86_400;
+        let start_sec = 1_000_000;
+        let t_mid1 = start_sec + 10 * day;
+        let t_mid2 = start_sec + 20 * day;
+        let end_sec = start_sec + 30 * day;
+
+        let make_pot = |id: i64, created: i64, updated: i64, archived: bool, accounts: Vec<i64>| PotRecord {
+            id,
+            name: format!("Pot {}", id),
+            created_at: Some(created),
+            last_updated: Some(updated),
+            archived,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts,
+        };
+
+        // Pot 1 has duplicate 10 and 20; Pot 2 removes 20; Pot 3 re-adds 20 (duplicated)
+        let pots = vec![
+            make_pot(1, start_sec - 10, t_mid1, true, vec![10, 10, 20]),
+            make_pot(2, t_mid1, t_mid2, true, vec![10]),
+            make_pot(3, t_mid2, t_mid2, false, vec![10, 20, 20]),
+        ];
+        let intervals = resolve_cycle_pot_intervals(&pots, start_sec, end_sec, true, None);
+
+        let mut balance_map: HashMap<i64, Vec<(i64, f32)>> = HashMap::new();
+        balance_map.insert(10, vec![(start_sec - 10, 200.0), (start_sec + 5 * day, 180.0), (start_sec + 15 * day, 165.0)]); // 20 + 15 = 35
+        balance_map.insert(20, vec![(start_sec - 10, 200.0), (start_sec + 5 * day, 170.0), (start_sec + 25 * day, 145.0)]); // 30 + 25 = 55
+
+        let mut names = HashMap::new();
+        names.insert(10, ("Acc 10".to_string(), "DEBIT".to_string()));
+        names.insert(20, ("Acc 20".to_string(), "CREDIT".to_string()));
+
+        let (total, synth, _snaps) = compute_cycle_synthesized_pot_spend(
+            &intervals,
+            &balance_map,
+            &names,
+            start_sec,
+            end_sec,
+            end_sec,
+            true,
+        );
+
+        assert_eq!(total, Pence::from_pounds_f64(90.00));
+        assert_eq!(synth.len(), 2);
+        assert!(synth.iter().all(|a| a.is_full_cycle));
     }
 }
