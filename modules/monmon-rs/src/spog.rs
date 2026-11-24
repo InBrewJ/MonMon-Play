@@ -195,6 +195,37 @@ pub async fn resolve_user_id(pool: &PgPool, user_id_or_name: &str) -> String {
     clean.to_string()
 }
 
+/// Computes SPOG's "Spent This Month" using the exact same synthesized pot spend engine
+/// as `/historicSpent#pots` (final pot's accounts scanned full-cycle + earlier-only pot
+/// accounts scanned within their active windows), guaranteeing penny-exact parity.
+pub fn compute_spog_spent_this_month(
+    monthly_pots: &[crate::historic_spent::PotRecord],
+    balance_map: &std::collections::HashMap<i64, Vec<(i64, f32)>>,
+    cycle_start_sec: i64,
+    cycle_end_sec: i64,
+    now_sec: i64,
+    as_of_epoch_end: Option<i64>,
+) -> Pence {
+    let cycle_intervals = crate::historic_spent::resolve_cycle_pot_intervals(
+        monthly_pots,
+        cycle_start_sec,
+        cycle_end_sec,
+        true,
+        as_of_epoch_end,
+    );
+    let empty_names = std::collections::HashMap::new();
+    let (spent_this_month, _, _) = crate::historic_spent::compute_cycle_synthesized_pot_spend(
+        &cycle_intervals,
+        balance_map,
+        &empty_names,
+        cycle_start_sec,
+        cycle_end_sec,
+        now_sec,
+        true,
+    );
+    spent_this_month.max(Pence::ZERO)
+}
+
 pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetrics, sqlx::Error> {
     calculate_spog_as_of(pool, raw_user_id, None).await
 }
@@ -691,33 +722,67 @@ pub async fn calculate_spog_as_of(
     };
 
     // 5. Monthly Pot Left Per Day & Baseline Cash Difference (Card 1)
-    let active_pot_id_row = sqlx::query(
-        r#"
-        SELECT id
-        FROM pot
-        WHERE (userid = $1 OR user_id = $1)
-          AND (archived IS NULL OR archived = false)
-          AND type = 'MONTHLY'
-        ORDER BY createdat DESC NULLS LAST, id DESC
-        LIMIT 1
-        "#,
-    )
-    .bind(&user_id)
-    .fetch_optional(pool)
-    .await?;
+    let cycle_start_sec = cycle_start
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_local_timezone(chrono::Utc)
+        .unwrap()
+        .timestamp();
+    let cycle_end_sec = cycle_end
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_local_timezone(chrono::Utc)
+        .unwrap()
+        .timestamp();
+    let now_sec = as_of_epoch_end.unwrap_or_else(|| chrono::Utc::now().timestamp());
 
-    let pot_account_ids: Vec<i64> = if let Some(pr) = active_pot_id_row {
-        let pot_id: i64 = pr.get("id");
-        sqlx::query("SELECT account_id FROM pot_accounts WHERE pot_id = $1")
-            .bind(pot_id)
-            .fetch_all(pool)
-            .await
+    let monthly_pots = crate::historic_spent::load_user_monthly_pots(pool, &user_id)
+        .await
+        .unwrap_or_default();
+    let cycle_intervals = crate::historic_spent::resolve_cycle_pot_intervals(
+        &monthly_pots,
+        cycle_start_sec,
+        cycle_end_sec,
+        true,
+        as_of_epoch_end,
+    );
+
+    // Card 1 ("Left per day" / pot_balance) stays strictly on the currently active pot's accounts.
+    let pot_account_ids: Vec<i64> = if as_of_epoch_end.is_some() {
+        cycle_intervals
+            .last()
+            .filter(|i| !i.pot.archived)
+            .map(|i| i.pot.accounts.clone())
             .unwrap_or_default()
-            .iter()
-            .map(|r| r.get::<i64, _>("account_id"))
-            .collect()
     } else {
-        Vec::new()
+        let active_pot_id_row = sqlx::query(
+            r#"
+            SELECT id
+            FROM pot
+            WHERE (userid = $1 OR user_id = $1)
+              AND (archived IS NULL OR archived = false)
+              AND type = 'MONTHLY'
+            ORDER BY createdat DESC NULLS LAST, id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(&user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some(pr) = active_pot_id_row {
+            let pot_id: i64 = pr.get("id");
+            sqlx::query("SELECT account_id FROM pot_accounts WHERE pot_id = $1")
+                .bind(pot_id)
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default()
+                .iter()
+                .map(|r| r.get::<i64, _>("account_id"))
+                .collect()
+        } else {
+            Vec::new()
+        }
     };
 
     let pot_balance: Pence = all_account_statuses
@@ -754,15 +819,14 @@ pub async fn calculate_spog_as_of(
     .fetch_optional(pool)
     .await?;
 
-    let cycle_start_sec = cycle_start
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_local_timezone(chrono::Utc)
-        .unwrap()
-        .timestamp();
-    let now_sec = as_of_epoch_end.unwrap_or_else(|| chrono::Utc::now().timestamp());
-
     let mut balance_acc_ids = pot_account_ids.clone();
+    for interval in &cycle_intervals {
+        for &aid in &interval.pot.accounts {
+            if !balance_acc_ids.contains(&aid) {
+                balance_acc_ids.push(aid);
+            }
+        }
+    }
     if let Some(ref pr) = active_pot_row {
         if let Some(ref j) = pr.get::<Option<String>, _>("spending_plan_sections_json") {
             if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
@@ -793,14 +857,14 @@ pub async fn calculate_spog_as_of(
         .await
         .unwrap_or_default();
 
-    let mut pot_spent = 0.0f32;
-    for pid in &pot_account_ids {
-        if let Some(bals) = balance_map.get(pid) {
-            pot_spent +=
-                crate::historic_spent::calculate_account_spent(bals, cycle_start_sec, now_sec);
-        }
-    }
-    let spent_this_month = Pence::from_pounds_f32(pot_spent.max(0.0));
+    let spent_this_month = compute_spog_spent_this_month(
+        &monthly_pots,
+        &balance_map,
+        cycle_start_sec,
+        cycle_end_sec,
+        now_sec,
+        as_of_epoch_end,
+    );
 
     let spending_plan = if let Some(ref pr) = active_pot_row {
         let sp_name: Option<String> = pr.get("spending_plan_name");
@@ -1617,5 +1681,153 @@ mod tests {
             "Should show account name rather than nickname"
         );
         assert_eq!(resolve_spending_section_account_name(&statuses, 999), None);
+    }
+
+    #[test]
+    fn test_spog_and_historic_spent_share_exact_synthesized_pot_spend() {
+        let day = 86_400;
+        let start_sec = 1_000_000;
+        let t_day15 = start_sec + 15 * day;
+        let now_sec = start_sec + 25 * day;
+        let end_sec = start_sec + 30 * day;
+
+        let pot1 = crate::historic_spent::PotRecord {
+            id: 1,
+            name: "Pot 1".to_string(),
+            created_at: Some(start_sec - 100),
+            last_updated: Some(t_day15),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![1, 2],
+        };
+        let pot2 = crate::historic_spent::PotRecord {
+            id: 2,
+            name: "Pot 2".to_string(),
+            created_at: Some(t_day15),
+            last_updated: Some(t_day15),
+            archived: false,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![2, 3],
+        };
+        let pots = vec![pot1, pot2];
+
+        let mut balance_map: std::collections::HashMap<i64, Vec<(i64, f32)>> =
+            std::collections::HashMap::new();
+        // Account 1: £40 while in Pot 1, £50 on Day 20 after removal (must be excluded)
+        balance_map.insert(
+            1,
+            vec![
+                (start_sec - 10, 200.0),
+                (start_sec + 5 * day, 160.0),
+                (start_sec + 20 * day, 110.0),
+            ],
+        );
+        // Account 2: £30 in Pot 1
+        balance_map.insert(
+            2,
+            vec![(start_sec - 10, 200.0), (start_sec + 8 * day, 170.0)],
+        );
+        // Account 3: £15.45 on Day 14 (before Pot 2) + £31.72 on Day 16
+        balance_map.insert(
+            3,
+            vec![
+                (start_sec - 10, 428.45),
+                (start_sec + 14 * day, 413.00),
+                (start_sec + 16 * day, 381.28),
+            ],
+        );
+
+        let spog_spent =
+            compute_spog_spent_this_month(&pots, &balance_map, start_sec, end_sec, now_sec, None);
+
+        let historic_intervals = crate::historic_spent::resolve_cycle_pot_intervals(
+            &pots, start_sec, end_sec, false, None,
+        );
+        let (historic_spent, _, _) = crate::historic_spent::compute_cycle_synthesized_pot_spend(
+            &historic_intervals,
+            &balance_map,
+            &std::collections::HashMap::new(),
+            start_sec,
+            end_sec,
+            now_sec,
+            false,
+        );
+
+        assert_eq!(spog_spent, Pence::from_pounds_f64(117.17));
+        assert_eq!(spog_spent, historic_spent);
+    }
+
+    #[test]
+    fn test_resolve_cycle_pot_intervals_respects_as_of_time_travel_cutoff() {
+        let day = 86_400;
+        let start_sec = 1_000_000;
+        let t_day10 = start_sec + 10 * day;
+        let t_day20 = start_sec + 20 * day;
+        let end_sec = start_sec + 30 * day;
+
+        let pot1 = crate::historic_spent::PotRecord {
+            id: 1,
+            name: "Pot 1".to_string(),
+            created_at: Some(start_sec),
+            last_updated: Some(t_day20),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![10],
+        };
+        let pot2 = crate::historic_spent::PotRecord {
+            id: 2,
+            name: "Pot 2".to_string(),
+            created_at: Some(t_day20),
+            last_updated: Some(t_day20),
+            archived: false,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![10, 20],
+        };
+        let pots = vec![pot1, pot2];
+
+        let intervals = crate::historic_spent::resolve_cycle_pot_intervals(
+            &pots,
+            start_sec,
+            end_sec,
+            true,
+            Some(t_day10),
+        );
+        assert_eq!(intervals.len(), 1);
+        assert_eq!(intervals[0].pot.id, 1);
+        assert!(!intervals[0].pot.archived);
+
+        let mut balance_map: std::collections::HashMap<i64, Vec<(i64, f32)>> =
+            std::collections::HashMap::new();
+        balance_map.insert(
+            10,
+            vec![(start_sec - 10, 200.0), (start_sec + 5 * day, 175.0)], // -25
+        );
+        // Account 20 spent £50 on Day 4, but wasn't in any pot as of Day 10!
+        balance_map.insert(
+            20,
+            vec![(start_sec - 10, 300.0), (start_sec + 4 * day, 250.0)],
+        );
+
+        let spog_as_of_day10 = compute_spog_spent_this_month(
+            &pots,
+            &balance_map,
+            start_sec,
+            end_sec,
+            t_day10,
+            Some(t_day10),
+        );
+        assert_eq!(spog_as_of_day10, Pence::from_pounds_f64(25.00));
     }
 }
