@@ -762,6 +762,20 @@ pub fn compute_cycle_synthesized_pot_spend(
     (total_pot_spent, synthesized_accounts, pots_in_period)
 }
 
+/// Determines whether `/historicSpent#pots` should render the reconciling Synthesized Pot
+/// Breakdown above Pot History (true when multiple pots exist, earlier-only accounts contributed,
+/// or the displayed pot windows do not sum to the synthesized cycle total).
+pub fn should_show_synthesized_breakdown(
+    pots_in_period: &[HistoricPotSnapshotDto],
+    synthesized_pot_accounts: &[SynthesizedPotAccountDto],
+    pot_spent_pence: Pence,
+) -> bool {
+    let displayed_pot_window_sum: Pence = pots_in_period.iter().map(|p| p.pot_spent_pence).sum();
+    pots_in_period.len() > 1
+        || synthesized_pot_accounts.iter().any(|a| !a.is_full_cycle)
+        || displayed_pot_window_sum != pot_spent_pence
+}
+
 /// Computes per-pot window snapshots and total cycle monthly-pot outflow spend using the
 /// unified synthesized monthly-pot calculation.
 #[allow(dead_code)]
@@ -1875,10 +1889,11 @@ pub async fn calculate_historic_cycles(
 
         let has_multiple_pots = pots_in_period.len() > 1;
         let has_pot_data = !pots_in_period.is_empty();
-        let displayed_pot_window_sum: Pence = pots_in_period.iter().map(|p| p.pot_spent_pence).sum();
-        let show_synthesized_breakdown = has_multiple_pots
-            || synthesized_pot_accounts.iter().any(|a| !a.is_full_cycle)
-            || displayed_pot_window_sum != pot_spent_pence;
+        let show_synthesized_breakdown = should_show_synthesized_breakdown(
+            &pots_in_period,
+            &synthesized_pot_accounts,
+            pot_spent_pence,
+        );
 
         cycles.push(HistoricCycleDto {
             cycle_start_date: curr_cycle_start,
@@ -3051,5 +3066,162 @@ mod tests {
         assert_eq!(total, Pence::from_pounds_f64(90.00));
         assert_eq!(synth.len(), 2);
         assert!(synth.iter().all(|a| a.is_full_cycle));
+    }
+
+    #[test]
+    fn test_show_synthesized_breakdown_true_when_transient_pot_hidden_leaves_one_card_with_pre_pot_spend() {
+        let start_sec = 1_000_000;
+        let t_pot2 = start_sec + 1800; // 30 minutes later (<1h)
+        let end_sec = start_sec + 86_400 * 30;
+
+        let pot1 = PotRecord {
+            id: 1,
+            name: "Initial Pot".to_string(),
+            created_at: Some(start_sec),
+            last_updated: Some(t_pot2),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![10],
+        };
+        let pot2 = PotRecord {
+            id: 2,
+            name: "Updated Pot".to_string(),
+            created_at: Some(t_pot2),
+            last_updated: Some(t_pot2),
+            archived: false,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![10, 20],
+        };
+
+        let intervals = resolve_cycle_pot_intervals(&[pot1, pot2], start_sec, end_sec, true, None);
+        let mut balance_map: HashMap<i64, Vec<(i64, f32)>> = HashMap::new();
+        balance_map.insert(10, vec![(start_sec - 10, 500.0)]);
+        // Account 20 spent £15.45 BEFORE Pot 2 was created, £0 after
+        balance_map.insert(20, vec![(start_sec - 10, 428.45), (start_sec + 900, 413.00)]);
+
+        let mut names = HashMap::new();
+        names.insert(10, ("Monzo".to_string(), "DEBIT".to_string()));
+        names.insert(20, ("Flex".to_string(), "CREDIT".to_string()));
+
+        let (total, synth, snaps) = compute_cycle_synthesized_pot_spend(
+            &intervals,
+            &balance_map,
+            &names,
+            start_sec,
+            end_sec,
+            end_sec,
+            true,
+        );
+
+        assert_eq!(snaps.len(), 1);
+        assert_eq!(snaps[0].pot_spent_pence, Pence::ZERO);
+        assert_eq!(total, Pence::from_pounds_f64(15.45));
+        assert!(should_show_synthesized_breakdown(&snaps, &synth, total));
+    }
+
+    #[test]
+    fn test_historic_spent_template_renders_synthesized_breakdown_and_pot_history() {
+        let cycle = HistoricCycleDto {
+            cycle_start_date: NaiveDate::from_ymd_opt(2026, 10, 30).unwrap(),
+            cycle_end_date: NaiveDate::from_ymd_opt(2026, 11, 30).unwrap(),
+            cycle_date_range: "30 Oct 2026 – 30 Nov 2026".to_string(),
+            is_current_cycle: true,
+            days_elapsed: 25,
+            days_in_cycle: 31,
+            total_spent: 136.22,
+            monthly_income: 2642.83,
+            monthly_income_pence: Pence::from_pounds_f64(2642.83),
+            pot_allowance: 366.72,
+            pot_allowance_pence: Pence::from_pounds_f64(366.72),
+            pot_spent: 136.22,
+            pot_spent_pence: Pence::from_pounds_f64(136.22),
+            pot_daily_pace: Pence::from_pounds_f64(5.45),
+            pot_max_per_day: Pence::from_pounds_f64(11.83),
+            is_pot_overspent_daily: false,
+            absolute_pot_daily_overspend: Pence::from_pounds_f64(6.38),
+            starting_total_balance: 1000.0,
+            starting_total_balance_pence: Pence::from_pounds_f64(1000.0),
+            ending_total_balance: 863.78,
+            ending_total_balance_pence: Pence::from_pounds_f64(863.78),
+            all_accounts_net_spent: Pence::from_pounds_f64(136.22),
+            all_accounts_is_net_inflow: false,
+            all_accounts_abs_net_change: Pence::from_pounds_f64(136.22),
+            actual_daily_spend: 5.45,
+            is_over_pot_allowance: false,
+            absolute_pot_overspend: 230.50,
+            absolute_pot_overspend_pence: Pence::from_pounds_f64(230.50),
+            budget_utilization_percent: 37.1,
+            pot_account_ids: vec![8787],
+            account_breakdowns: vec![],
+            pots_in_period: vec![
+                HistoricPotSnapshotDto {
+                    plan_summary: "Earlier Pot".to_string(),
+                    created_at_human_readable: "30 Oct 2026".to_string(),
+                    is_first_pot: true,
+                    is_last_pot: false,
+                    is_intermediary_pot: false,
+                    is_archived_in_period: true,
+                    archived_date_human_readable: "22 Nov 2026".to_string(),
+                    pot_spent: 40.00,
+                    pot_spent_pence: Pence::from_pounds_f64(40.00),
+                    account_snapshots: vec![],
+                },
+                HistoricPotSnapshotDto {
+                    plan_summary: "Current Pot".to_string(),
+                    created_at_human_readable: "22 Nov 2026".to_string(),
+                    is_first_pot: false,
+                    is_last_pot: true,
+                    is_intermediary_pot: false,
+                    is_archived_in_period: false,
+                    archived_date_human_readable: "Active".to_string(),
+                    pot_spent: 80.77,
+                    pot_spent_pence: Pence::from_pounds_f64(80.77),
+                    account_snapshots: vec![],
+                },
+            ],
+            synthesized_pot_accounts: vec![
+                SynthesizedPotAccountDto {
+                    account_id: 8787,
+                    account_name: "Flex".to_string(),
+                    account_type: "CREDIT".to_string(),
+                    amount_spent_pence: Pence::from_pounds_f64(96.22),
+                    is_full_cycle: true,
+                },
+                SynthesizedPotAccountDto {
+                    account_id: 1,
+                    account_name: "Card A".to_string(),
+                    account_type: "DEBIT".to_string(),
+                    amount_spent_pence: Pence::from_pounds_f64(40.00),
+                    is_full_cycle: false,
+                },
+            ],
+            show_synthesized_breakdown: true,
+            has_multiple_pots: true,
+            has_pot_data: true,
+        };
+
+        let (pots_summary, all_accounts_summary) = compute_historic_summaries(&[cycle.clone()]);
+        let tmpl = HistoricSpentTemplate {
+            has_history: true,
+            pots_summary,
+            all_accounts_summary,
+            cycles: vec![cycle],
+        };
+        let html = tmpl.render().expect("template should render");
+
+        assert!(html.contains("Synthesized Pot Breakdown"));
+        assert!(html.contains("Full cycle"));
+        assert!(html.contains("Earlier pot window"));
+        assert!(html.contains("£96.22"));
+        assert!(html.contains("£40.00"));
+        assert!(html.contains("£136.22"));
+        assert!(!html.contains("pots summed"));
+        assert!(html.contains("2 pots in cycle"));
     }
 }

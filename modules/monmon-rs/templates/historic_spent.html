@@ -151,7 +151,7 @@
                                     <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">
                                         <i class="fas fa-archive" style="color: var(--primary); margin-right: 5px;"></i>Monthly Pots in this Cycle
                                         {% if c.has_multiple_pots %}
-                                            <span class="badge-pill" style="font-size: 0.7rem; background: var(--primary-light); color: var(--primary); margin-left: 4px;">{{ c.pots_in_period.len() }} pots summed</span>
+                                            <span class="badge-pill" style="font-size: 0.7rem; background: var(--primary-light); color: var(--primary); margin-left: 4px;">{% if c.show_synthesized_breakdown %}{{ c.pots_in_period.len() }} pots in cycle{% else %}{{ c.pots_in_period.len() }} pots summed{% endif %}</span>
                                         {% endif %}
                                     </span>
                                     <span style="font-size: 0.8rem; color: var(--text-muted);">
@@ -163,6 +163,82 @@
                                         {% endif %}
                                     </span>
                                 </div>
+
+                                {% if c.show_synthesized_breakdown && !c.synthesized_pot_accounts.is_empty() %}
+                                    <div style="border: 1px solid var(--primary); border-radius: 6px; padding: 0.65rem 0.85rem; margin-bottom: 0.65rem; background: var(--card-bg);">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.45rem;">
+                                            <span style="font-weight: 700; font-size: 0.82rem; color: var(--text-main);">
+                                                <i class="fas fa-layer-group" style="color: var(--primary); margin-right: 5px;"></i>Synthesized Pot Breakdown
+                                            </span>
+                                            <span style="font-size: 0.76rem; color: var(--text-muted);">
+                                                Final pot accounts (full cycle) + earlier pot accounts (active window)
+                                            </span>
+                                        </div>
+
+                                        <!-- Desktop Synthesized Table -->
+                                        <div class="historic-desktop-table">
+                                            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                                                <thead>
+                                                    <tr style="color: var(--text-muted); border-bottom: 1px dashed var(--border-color); text-align: left;">
+                                                        <th style="padding: 4px;">Account</th>
+                                                        <th style="padding: 4px;">Scope</th>
+                                                        <th style="padding: 4px; text-align: right;">Outflow</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for sa in c.synthesized_pot_accounts %}
+                                                        <tr style="border-bottom: 1px solid var(--border-color);">
+                                                            <td style="padding: 5px 4px;"><b>{{ sa.account_name }}</b> <span style="color: var(--text-muted); font-size: 0.72rem;">({{ sa.account_type }})</span></td>
+                                                            <td style="padding: 5px 4px;">
+                                                                {% if sa.is_full_cycle %}
+                                                                    <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.68rem;">Full cycle</span>
+                                                                {% else %}
+                                                                    <span class="badge-pill" style="background: var(--card-bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.68rem;">Earlier pot window</span>
+                                                                {% endif %}
+                                                            </td>
+                                                            <td style="padding: 5px 4px; text-align: right; font-weight: 700;">£{{ sa.amount_spent_pence }}</td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                    <tr style="font-weight: 800; background: var(--card-bg-subtle);">
+                                                        <td colspan="2" style="padding: 6px 4px;">Total Pot Spend</td>
+                                                        <td style="padding: 6px 4px; text-align: right; color: var(--primary);">£{{ c.pot_spent_pence }}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <!-- Mobile Stacked Action Cards (Synthesized Accounts) -->
+                                        <div class="historic-mobile-cards" style="margin-top: 0.4rem;">
+                                            {% for sa in c.synthesized_pot_accounts %}
+                                                <div class="item-card" style="background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+                                                    <div class="item-card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                                        <div class="item-card-title" style="font-weight: 700; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ sa.account_name }}</div>
+                                                        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                                                            <span class="badge-pill" style="background: var(--card-bg); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.66rem;">{{ sa.account_type }}</span>
+                                                            {% if sa.is_full_cycle %}
+                                                                <span class="badge-pill" style="background: var(--primary-light); color: var(--primary); font-size: 0.66rem;">Full cycle</span>
+                                                            {% else %}
+                                                                <span class="badge-pill" style="background: var(--card-bg); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.66rem;">Earlier pot window</span>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                    <div class="item-card-stats-grid" style="display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 0.82rem; background: var(--card-bg); padding: 7px 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                                        <div class="stat-cell" style="display: flex; justify-content: space-between; align-items: center;">
+                                                            <span class="stat-cell-label" style="color: var(--text-muted); font-size: 0.72rem;">Outflow</span>
+                                                            <span class="stat-cell-val" style="font-weight: 700; color: var(--text-main);">£{{ sa.amount_spent_pence }}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            {% endfor %}
+                                            <div class="item-card" style="background: var(--card-bg-subtle); border: 1px solid var(--primary); border-radius: 8px; padding: 9px 10px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                    <span style="font-weight: 800; color: var(--text-main); font-size: 0.84rem;">Total Pot Spend</span>
+                                                    <span style="font-weight: 800; color: var(--primary); font-size: 0.9rem;">£{{ c.pot_spent_pence }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
 
                                 {% if c.pots_in_period.is_empty() %}
                                     <div style="font-size: 0.83rem; color: var(--text-muted); padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--card-bg-subtle); border: 1px solid var(--border-color);">
