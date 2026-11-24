@@ -439,13 +439,52 @@ pub async fn create_incoming(pool: &PgPool, inc: &NewIncoming) -> Result<Incomin
     .await
 }
 
+pub fn resolve_recreated_gross_value(requested: Option<f32>, previous: Option<f32>) -> Option<f32> {
+    requested.or(previous)
+}
+
 pub async fn update_incoming(pool: &PgPool, id: i64, user_id: &str, inc: &UpdateIncoming) -> Result<Incoming, sqlx::Error> {
     let now_epoch = Utc::now().timestamp_millis();
-    sqlx::query_as::<_, Incoming>(
+    let mut tx = pool.begin().await?;
+
+    let archived_old = sqlx::query(
         r#"
         UPDATE incoming
-        SET name = $1, netvalue = $2, grossvalue = $3, incomingmonthday = $4, payday = $5, account_id = $6, updated_at = $7
-        WHERE id = $8 AND COALESCE(user_id, userid, "userId") = $9
+        SET archived = TRUE, archived_at = $1, updated_at = $1
+        WHERE id = $2
+          AND COALESCE(user_id, userid, "userId") = $3
+          AND (archived IS FALSE OR archived IS NULL)
+        RETURNING type as incoming_type, grossvalue as gross_value
+        "#,
+    )
+    .bind(now_epoch)
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let old_row = match archived_old {
+        Some(row) => row,
+        None => {
+            let _ = tx.rollback().await;
+            return Err(sqlx::Error::RowNotFound);
+        }
+    };
+
+    let old_type: Option<String> = old_row.get("incoming_type");
+    let old_gross: Option<f32> = old_row.get("gross_value");
+    let effective_gross = resolve_recreated_gross_value(inc.gross_value, old_gross);
+
+    let recreated = sqlx::query_as::<_, Incoming>(
+        r#"
+        INSERT INTO incoming (
+            id, name, netvalue, grossvalue, incomingmonthday, payday, type,
+            user_id, userid, "userId", account_id, created_at, updated_at, archived
+        )
+        VALUES (
+            nextval('hibernate_sequence'), $1, $2, $3, $4, $5, $6,
+            $7, $7, $7, $8, $9, $9, FALSE
+        )
         RETURNING 
             id, name, netvalue as net_value, grossvalue as gross_value,
             incomingmonthday as incoming_month_day, payday, type as incoming_type,
@@ -455,15 +494,18 @@ pub async fn update_incoming(pool: &PgPool, id: i64, user_id: &str, inc: &Update
     )
     .bind(&inc.name)
     .bind(inc.net_value)
-    .bind(inc.gross_value)
+    .bind(effective_gross)
     .bind(inc.incoming_month_day)
     .bind(inc.payday.unwrap_or(false))
+    .bind(&old_type)
+    .bind(user_id)
     .bind(inc.account_id)
     .bind(now_epoch)
-    .bind(id)
-    .bind(user_id)
-    .fetch_one(pool)
-    .await
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(recreated)
 }
 
 pub async fn archive_incoming(pool: &PgPool, id: i64, user_id: &str) -> Result<Incoming, sqlx::Error> {
@@ -924,4 +966,16 @@ pub async fn find_erratic_balances(
         .collect();
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_recreated_gross_value_preserves_previous_when_omitted() {
+        assert_eq!(resolve_recreated_gross_value(None, Some(4500.0)), Some(4500.0));
+        assert_eq!(resolve_recreated_gross_value(Some(5000.0), Some(4500.0)), Some(5000.0));
+        assert_eq!(resolve_recreated_gross_value(None, None), None);
+    }
 }

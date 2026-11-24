@@ -587,7 +587,7 @@ pub async fn get_outgoings_page(
     .flatten();
 
     let nominal_payday: i32 = sqlx::query_scalar(
-        "SELECT incomingmonthday FROM incoming WHERE (userid = $1 OR user_id = $1) AND payday = true LIMIT 1"
+        "SELECT incomingmonthday FROM incoming WHERE (userid = $1 OR user_id = $1) AND (archived IS NULL OR archived = false) AND payday = true ORDER BY id ASC LIMIT 1"
     )
     .bind(&user_id)
     .fetch_optional(&state.pool)
@@ -774,7 +774,7 @@ pub async fn get_edit_outgoing_page(
     .flatten();
 
     let nominal_payday: i32 = sqlx::query_scalar(
-        "SELECT incomingmonthday FROM incoming WHERE (userid = $1 OR user_id = $1) AND payday = true LIMIT 1"
+        "SELECT incomingmonthday FROM incoming WHERE (userid = $1 OR user_id = $1) AND (archived IS NULL OR archived = false) AND payday = true ORDER BY id ASC LIMIT 1"
     )
     .bind(&user_id)
     .fetch_optional(&state.pool)

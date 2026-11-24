@@ -1069,6 +1069,44 @@ pub fn get_effective_start_sec(inc: &IncomingRecord, all_incomings: &[IncomingRe
     0
 }
 
+/// Determines whether an incoming record was active during a completed historical pay cycle.
+pub fn is_incoming_active_for_past_cycle(
+    inc: &IncomingRecord,
+    all_incomings: &[IncomingRecord],
+    curr_cycle_start: NaiveDate,
+    start_sec: i64,
+) -> bool {
+    let start_sec_eff = get_effective_start_sec(inc, all_incomings);
+    let pay_sec = if inc.payday {
+        start_sec
+    } else {
+        let day = inc.get_effective_incoming_month_day(curr_cycle_start);
+        let mut pay_date = curr_cycle_start.with_day(day as u32).unwrap_or(curr_cycle_start);
+        if pay_date < curr_cycle_start {
+            let next_m = curr_cycle_start + chrono::Duration::days(32);
+            pay_date = next_m.with_day(day.min(28) as u32).unwrap_or(curr_cycle_start);
+        }
+        pay_date
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_local_timezone(chrono::Utc)
+            .unwrap()
+            .timestamp()
+    };
+    if start_sec_eff > pay_sec + 86400 {
+        return false;
+    }
+    if inc.archived {
+        let arch_sec = normalize_to_epoch_sec(inc.archived_at);
+        match arch_sec {
+            Some(as_sec) => as_sec > pay_sec + 86400,
+            None => false,
+        }
+    } else {
+        true
+    }
+}
+
 pub fn get_account_payday_inflow(
     acc_id: i64,
     cycle_incomings: &[&IncomingRecord],
@@ -1743,37 +1781,7 @@ pub async fn calculate_historic_cycles(
         } else {
             incomings
                 .iter()
-                .filter(|i| {
-                    let start_sec_eff = get_effective_start_sec(i, &incomings);
-                    let pay_sec = if i.payday {
-                        start_sec
-                    } else {
-                        let day = i.get_effective_incoming_month_day(curr_cycle_start);
-                        let mut pay_date = curr_cycle_start.with_day(day as u32).unwrap_or(curr_cycle_start);
-                        if pay_date < curr_cycle_start {
-                            let next_m = curr_cycle_start + chrono::Duration::days(32);
-                            pay_date = next_m.with_day(day.min(28) as u32).unwrap_or(curr_cycle_start);
-                        }
-                        pay_date
-                            .and_hms_opt(0, 0, 0)
-                            .unwrap()
-                            .and_local_timezone(chrono::Utc)
-                            .unwrap()
-                            .timestamp()
-                    };
-                    if start_sec_eff > pay_sec + 86400 {
-                        return false;
-                    }
-                    if i.archived {
-                        let arch_sec = normalize_to_epoch_sec(i.archived_at);
-                        match arch_sec {
-                            Some(as_sec) => as_sec > pay_sec + 86400,
-                            None => false,
-                        }
-                    } else {
-                        true
-                    }
-                })
+                .filter(|i| is_incoming_active_for_past_cycle(i, &incomings, curr_cycle_start, start_sec))
                 .collect()
         };
 
@@ -3332,5 +3340,84 @@ mod tests {
             vec![95, 8638, 8787]
         );
         assert_eq!(dedup_account_ids(&[]), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn test_archive_recreate_incoming_chain_separates_cycles_without_double_count() {
+        let ts = |y: i32, m: u32, d: u32, h: u32| {
+            NaiveDate::from_ymd_opt(y, m, d)
+                .unwrap()
+                .and_hms_opt(h, 0, 0)
+                .unwrap()
+                .and_local_timezone(chrono::Utc)
+                .unwrap()
+                .timestamp()
+        };
+
+        let sep1_ms = ts(2026, 9, 1, 0) * 1000;
+        let nov15_ms = ts(2026, 11, 15, 12) * 1000;
+
+        let old_inc = IncomingRecord {
+            id: 10,
+            name: "Salary v1".to_string(),
+            net_value: 3000.0,
+            gross_value: Some(4200.0),
+            incoming_month_day: 30,
+            payday: true,
+            account_id: Some(1),
+            created_at: Some(sep1_ms),
+            archived_at: Some(nov15_ms),
+            archived: true,
+            history_json: None,
+        };
+        let new_inc = IncomingRecord {
+            id: 11,
+            name: "Salary v2".to_string(),
+            net_value: 3500.0,
+            gross_value: Some(4800.0),
+            incoming_month_day: 30,
+            payday: true,
+            account_id: Some(1),
+            created_at: Some(nov15_ms),
+            archived_at: None,
+            archived: false,
+            history_json: None,
+        };
+        let all = vec![old_inc.clone(), new_inc.clone()];
+
+        assert_eq!(get_effective_start_sec(&old_inc, &all), ts(2026, 9, 1, 0));
+        assert_eq!(get_effective_start_sec(&new_inc, &all), ts(2026, 11, 15, 12));
+
+        // Oct cycle (start 30 Sep 2026): ONLY old_inc active (£3,000)
+        let sep30 = NaiveDate::from_ymd_opt(2026, 9, 30).unwrap();
+        let sep30_sec = ts(2026, 9, 30, 0);
+        let active_oct: Vec<i64> = all
+            .iter()
+            .filter(|i| is_incoming_active_for_past_cycle(i, &all, sep30, sep30_sec))
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(active_oct, vec![10]);
+
+        // Dec cycle (start 30 Nov 2026): ONLY new_inc active (£3,500)
+        let nov30 = NaiveDate::from_ymd_opt(2026, 11, 30).unwrap();
+        let nov30_sec = ts(2026, 11, 30, 0);
+        let active_dec: Vec<i64> = all
+            .iter()
+            .filter(|i| is_incoming_active_for_past_cycle(i, &all, nov30, nov30_sec))
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(active_dec, vec![11]);
+
+        // Same-day payday edit (archived_at == created_at == payday + 1h): ONLY new_inc active
+        let payday_plus_1h_ms = (nov30_sec + 3600) * 1000;
+        let old_payday = IncomingRecord { archived_at: Some(payday_plus_1h_ms), ..old_inc };
+        let new_payday = IncomingRecord { created_at: Some(payday_plus_1h_ms), ..new_inc };
+        let all_payday = vec![old_payday, new_payday];
+        let active_payday: Vec<i64> = all_payday
+            .iter()
+            .filter(|i| is_incoming_active_for_past_cycle(i, &all_payday, nov30, nov30_sec))
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(active_payday, vec![11]);
     }
 }
