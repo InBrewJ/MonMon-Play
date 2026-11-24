@@ -195,6 +195,16 @@ pub async fn resolve_user_id(pool: &PgPool, user_id_or_name: &str) -> String {
     clean.to_string()
 }
 
+/// Resolves the active monthly pot ID as of a time-travel cutoff from `resolve_cycle_pot_intervals`.
+pub fn resolve_as_of_active_pot_id(
+    cycle_intervals: &[crate::historic_spent::ActivePotInterval],
+) -> Option<i64> {
+    cycle_intervals
+        .last()
+        .filter(|i| !i.pot.archived)
+        .map(|i| i.pot.id)
+}
+
 /// Computes SPOG's "Spent This Month" using the exact same synthesized pot spend engine
 /// as `/historicSpent#pots` (final pot's accounts scanned full-cycle + earlier-only pot
 /// accounts scanned within their active windows), guaranteeing penny-exact parity.
@@ -801,23 +811,45 @@ pub async fn calculate_spog_as_of(
     let (baseline_diff_total, is_behind_baseline, absolute_baseline_diff_total) =
         compute_pot_baseline_diff(monthly_pot_left_per_day, max_per_day, days_left);
 
-    // 6. Active Pot Spending Plan & Mini Spending Plan
-    let active_pot_row = sqlx::query(
-        r#"
-        SELECT p.id, p.spending_plan_name, p.spending_plan_food, p.spending_plan_fuel,
-               p.spending_plan_transport, p.spending_plan_fun, p.spending_plan_sections_json,
-               p.food_account_id, p.fun_account_id, p.fuel_account_id, p.transport_account_id
-        FROM pot p
-        WHERE (p.userid = $1 OR p.user_id = $1)
-          AND (p.archived IS NULL OR p.archived = false)
-          AND p.type = 'MONTHLY'
-        ORDER BY p.createdat DESC NULLS LAST, p.id DESC
-        LIMIT 1
-        "#,
-    )
-    .bind(&user_id)
-    .fetch_optional(pool)
-    .await?;
+    // 6. Active Pot Spending Plan & Mini Spending Plan (respecting as_of time-travel cutoff)
+    let active_pot_row = if as_of_epoch_end.is_some() {
+        if let Some(pid) = resolve_as_of_active_pot_id(&cycle_intervals) {
+            sqlx::query(
+                r#"
+                SELECT p.id, p.spending_plan_name, p.spending_plan_food, p.spending_plan_fuel,
+                       p.spending_plan_transport, p.spending_plan_fun, p.spending_plan_sections_json,
+                       p.food_account_id, p.fun_account_id, p.fuel_account_id, p.transport_account_id
+                FROM pot p
+                WHERE p.id = $1
+                  AND (p.userid = $2 OR p.user_id = $2)
+                LIMIT 1
+                "#,
+            )
+            .bind(pid)
+            .bind(&user_id)
+            .fetch_optional(pool)
+            .await?
+        } else {
+            None
+        }
+    } else {
+        sqlx::query(
+            r#"
+            SELECT p.id, p.spending_plan_name, p.spending_plan_food, p.spending_plan_fuel,
+                   p.spending_plan_transport, p.spending_plan_fun, p.spending_plan_sections_json,
+                   p.food_account_id, p.fun_account_id, p.fuel_account_id, p.transport_account_id
+            FROM pot p
+            WHERE (p.userid = $1 OR p.user_id = $1)
+              AND (p.archived IS NULL OR p.archived = false)
+              AND p.type = 'MONTHLY'
+            ORDER BY p.createdat DESC NULLS LAST, p.id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(&user_id)
+        .fetch_optional(pool)
+        .await?
+    };
 
     let mut balance_acc_ids = pot_account_ids.clone();
     for interval in &cycle_intervals {
@@ -1829,5 +1861,71 @@ mod tests {
             Some(t_day10),
         );
         assert_eq!(spog_as_of_day10, Pence::from_pounds_f64(25.00));
+    }
+
+    #[test]
+    fn test_resolve_as_of_active_pot_id_returns_historical_pot_or_none() {
+        let day = 86_400;
+        let start_sec = 1_000_000;
+        let t_day5 = start_sec + 5 * day;
+        let t_day10 = start_sec + 10 * day;
+        let t_day20 = start_sec + 20 * day;
+        let end_sec = start_sec + 30 * day;
+
+        let pot1 = crate::historic_spent::PotRecord {
+            id: 101,
+            name: "Historical Pot".to_string(),
+            created_at: Some(start_sec),
+            last_updated: Some(t_day20),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![10],
+        };
+        let pot2 = crate::historic_spent::PotRecord {
+            id: 202,
+            name: "Future Pot".to_string(),
+            created_at: Some(t_day20),
+            last_updated: Some(t_day20),
+            archived: false,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![10, 20],
+        };
+
+        let intervals_day10 = crate::historic_spent::resolve_cycle_pot_intervals(
+            &[pot1.clone(), pot2],
+            start_sec,
+            end_sec,
+            true,
+            Some(t_day10),
+        );
+        assert_eq!(resolve_as_of_active_pot_id(&intervals_day10), Some(101));
+
+        // If the only pot was already archived before Day 10, there is NO active pot as of Day 10
+        let archived_early = crate::historic_spent::PotRecord {
+            id: 101,
+            name: "Archived Early".to_string(),
+            created_at: Some(start_sec),
+            last_updated: Some(t_day5),
+            archived: true,
+            food: None,
+            fuel: None,
+            transport: None,
+            fun: None,
+            accounts: vec![10],
+        };
+        let intervals_none = crate::historic_spent::resolve_cycle_pot_intervals(
+            &[archived_early],
+            start_sec,
+            end_sec,
+            true,
+            Some(t_day10),
+        );
+        assert_eq!(resolve_as_of_active_pot_id(&intervals_none), None);
     }
 }
