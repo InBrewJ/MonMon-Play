@@ -168,11 +168,30 @@ describe('Incoming Archive-and-Recreate History (Real PostgreSQL + MonMon-rs)', 
     assert.notEqual(third.id, created.id);
     assert.equal(third.name, 'Form Salary');
     assert.equal(third.netValue, 3750.0);
+    assert.equal(third.grossValue, 4200.0, 'HTML form edit must preserve original grossValue');
     assert.equal(third.incomingMonthDay, 15);
+
+    // Stale-ID guard on HTML form endpoint POST /updateIncoming/:id
+    const staleFormRes = await fetch(`${MONMON_URL}/updateIncoming/${created.id}`, {
+      method: 'POST',
+      headers: {
+        ...cookieHeader,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: formBody.toString(),
+      redirect: 'manual'
+    });
+    assert.equal(staleFormRes.status, 403, 'HTML form edit of archived incoming must return 403');
 
     const spogAfterForm = await (await fetch(`${MONMON_URL}/api/spog/metrics?userId=${user}`)).json();
     assert.ok(Math.abs(spogAfterForm.incomingTotal - 3750.0) < 0.05);
     assert.equal(spogAfterForm.nextPayDay, 15);
+
+    // /myOutgoings must load cleanly and /api/transfers must not double-count archived incomings
+    const outgoingsHtml = await (await fetch(`${MONMON_URL}/myOutgoings`, { headers: cookieHeader })).text();
+    assert.ok(outgoingsHtml.includes('Outgoings'), '/myOutgoings must render after payday shift');
+    const transfersRes = await fetch(`${MONMON_URL}/api/transfers`, { headers: cookieHeader });
+    assert.equal(transfersRes.status, 200);
   });
 
   it('preserves historical income across Time Travel (monmon_time_travel) and /historicSpent cycles after salary raise', async () => {
@@ -196,11 +215,12 @@ describe('Incoming Archive-and-Recreate History (Real PostgreSQL + MonMon-rs)', 
 
     const nowSec = Math.floor(Date.now() / 1000);
     const daySec = 86400;
+    // Use balance figures distinct from salary values (2500 / 3200) so /historicSpent income assertions cannot collide
     for (const [offsetDays, value] of [
-      [65, 2500.0],
-      [40, 2100.0],
-      [10, 3200.0],
-      [0, 2900.0]
+      [65, 2410.0],
+      [40, 1980.0],
+      [10, 3110.0],
+      [0, 2810.0]
     ]) {
       const bRes = await fetch(`${CORE_URL}/internal/balances`, {
         method: 'POST',
@@ -278,10 +298,10 @@ describe('Incoming Archive-and-Recreate History (Real PostgreSQL + MonMon-rs)', 
     assert.ok(ttHtml.includes('2500'), `Time Travel (${ttDate}) /myIncomings must show £2500`);
     assert.ok(!ttHtml.includes('Promoted Job'), `Time Travel (${ttDate}) /myIncomings must not show future Promoted Job`);
 
-    // 6. /historicSpent shows £2500.00 for previous completed cycle AND £3200.00 for current cycle (never £5700.00)
+    // 6. /historicSpent renders exact income labels £2500.00 (previous cycle) AND £3200.00 (current cycle), never £5700.00
     const historicHtml = await (await fetch(`${MONMON_URL}/historicSpent`, { headers: cookieHeader })).text();
-    assert.ok(historicHtml.includes('2500.00'), '/historicSpent must retain £2500.00 income for previous cycle');
-    assert.ok(historicHtml.includes('3200.00'), '/historicSpent must show £3200.00 income for current cycle');
-    assert.ok(!historicHtml.includes('5700.00'), '/historicSpent must never double-count old + new salary (£5700.00)');
+    assert.ok(historicHtml.includes('Income: <b>£2500.00</b>'), '/historicSpent must retain Income: £2500.00 for previous cycle');
+    assert.ok(historicHtml.includes('Income: <b>£3200.00</b>'), '/historicSpent must show Income: £3200.00 for current cycle');
+    assert.ok(!historicHtml.includes('Income: <b>£5700.00</b>'), '/historicSpent must never double-count old + new salary (£5700.00)');
   });
 });

@@ -1134,7 +1134,7 @@ pub async fn post_update_incoming_form(
     let update = crate::models::UpdateIncoming {
         name: form.name,
         net_value: form.net_value,
-        gross_value: Some(form.net_value),
+        gross_value: None,
         incoming_month_day: form.incoming_month_day,
         user_id: Some(user_id.clone()),
         account_id: form.account_id,
@@ -1161,7 +1161,7 @@ pub async fn post_update_incoming_form_direct(
         let update = crate::models::UpdateIncoming {
             name: form.name,
             net_value: form.net_value,
-            gross_value: Some(form.net_value),
+            gross_value: None,
             incoming_month_day: form.incoming_month_day,
             user_id: Some(user_id.clone()),
             account_id: form.account_id,
