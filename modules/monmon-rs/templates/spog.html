@@ -317,6 +317,18 @@
                             </td>
                         </tr>
                         {% endfor %}
+                        <tr id="spog-plan-sections-total" style="border-top: 1px dashed var(--border-color);">
+                            <td style="padding: 4px 0 3px; color: var(--text-muted); font-weight: 600;">Planned categories total</td>
+                            <td style="padding: 4px 0 3px; text-align: right; font-weight: 700;">
+                                <span style="color: {% if sp.allowance_comparison.is_over_allowance %}var(--danger, #ef4444){% else %}var(--text-main){% endif %};">£{{ sp.planned_sections_total }}</span>
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">/ £{{ sp.max_monthly_allowance }}</span>
+                                {% if sp.allowance_comparison.is_over_allowance %}
+                                    <span style="font-size: 0.74rem; color: var(--danger, #ef4444); margin-left: 4px;">(Over by £{{ sp.allowance_comparison.absolute_difference }})</span>
+                                {% else %}
+                                    <span style="font-size: 0.74rem; color: var(--success, #10b981); margin-left: 4px;">(£{{ sp.allowance_comparison.difference }} left)</span>
+                                {% endif %}
+                            </td>
+                        </tr>
                         <tr>
                             <td style="padding: 3px 0; color: var(--text-muted);">Essentials still to cover</td>
                             <td style="padding: 3px 0; text-align: right; font-weight: 600;">−£{{ sp.remaining_essentials }}</td>

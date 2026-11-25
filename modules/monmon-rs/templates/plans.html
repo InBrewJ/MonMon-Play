@@ -78,6 +78,16 @@
                             {% endif %}
                         </div>
                         <div style="font-size: 0.78rem; margin-top: 4px;">{{ pot.accounts_count }} linked account(s) · £{{ pot.pot_total_balance }} total balance.</div>
+                        {% if pot.spending_plan_name.is_some() %}
+                        <div id="plans-hub-spending-total" style="font-size: 0.78rem; margin-top: 4px;">
+                            Planned: <strong>£{{ pot.planned_sections_total }}</strong> / £{{ pot.allowance_comparison.max_allowance }} max
+                            {% if pot.allowance_comparison.is_over_allowance %}
+                                <span style="color: var(--danger, #ef4444); font-weight: 700;">(Over by £{{ pot.allowance_comparison.absolute_difference }})</span>
+                            {% else %}
+                                <span style="color: var(--success, #16a34a); font-weight: 700;">(£{{ pot.allowance_comparison.difference }} left)</span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                     {% else %}
                         <div>Assign your day-to-day spending accounts to your monthly pot and set optional category limits.</div>
                     {% endif %}

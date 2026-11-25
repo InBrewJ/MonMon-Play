@@ -23,6 +23,8 @@ pub struct SpogSpendingPlanDto {
     pub spent_this_month: Pence,
     pub remaining_allowance: Pence,
     pub sections: Vec<SpogSpendingSectionDto>,
+    pub planned_sections_total: Pence,
+    pub allowance_comparison: crate::pot::AllowanceComparison,
     pub remaining_essentials: Pence,
     pub adjusted_fun: Pence,
     pub is_deficit: bool,
@@ -1015,6 +1017,9 @@ pub async fn calculate_spog_as_of(
                     }
                 }
 
+                let planned_sections_total: Pence = sections.iter().map(|s| s.planned_amount).sum();
+                let allowance_comparison =
+                    crate::pot::compare_to_allowance(planned_sections_total, surplus);
                 let remaining_essentials: Pence = sections.iter().map(|s| s.remaining).sum();
                 let remaining_allowance = (surplus - spent_this_month).max(Pence::ZERO);
                 let adjusted_fun = remaining_allowance - remaining_essentials;
@@ -1032,6 +1037,8 @@ pub async fn calculate_spog_as_of(
                     spent_this_month,
                     remaining_allowance,
                     sections,
+                    planned_sections_total,
+                    allowance_comparison,
                     remaining_essentials,
                     adjusted_fun,
                     is_deficit,
@@ -1927,5 +1934,53 @@ mod tests {
             Some(t_day10),
         );
         assert_eq!(resolve_as_of_active_pot_id(&intervals_none), None);
+    }
+
+    #[test]
+    fn test_spog_spending_plan_dto_totals() {
+        let sections = vec![
+            SpogSpendingSectionDto {
+                heading: "Food".to_string(),
+                planned_amount: Pence(20000),
+                actual_spent: Pence(5000),
+                remaining: Pence(15000),
+                account_name: None,
+            },
+            SpogSpendingSectionDto {
+                heading: "Fuel".to_string(),
+                planned_amount: Pence(9050),
+                actual_spent: Pence(0),
+                remaining: Pence(9050),
+                account_name: None,
+            },
+        ];
+        let planned_sections_total: Pence = sections.iter().map(|s| s.planned_amount).sum();
+        let max_monthly_allowance = Pence(50000);
+        let allowance_comparison =
+            crate::pot::compare_to_allowance(planned_sections_total, max_monthly_allowance);
+
+        let dto = SpogSpendingPlanDto {
+            name: "Standard".to_string(),
+            max_monthly_allowance,
+            spent_this_month: Pence(5000),
+            remaining_allowance: Pence(45000),
+            sections,
+            planned_sections_total,
+            allowance_comparison,
+            remaining_essentials: Pence(24050),
+            adjusted_fun: Pence(20950),
+            is_deficit: false,
+            absolute_deficit: Pence::ZERO,
+            fun_left_per_day: Pence(698),
+            days_until_next_payday: 30,
+            actual_monthly_pot_balance: Pence(40000),
+        };
+
+        let val = serde_json::to_value(&dto).expect("serialize SpogSpendingPlanDto");
+        assert_eq!(val["plannedSectionsTotal"], serde_json::json!(290.5));
+        assert_eq!(val["allowanceComparison"]["plannedTotal"], serde_json::json!(290.5));
+        assert_eq!(val["allowanceComparison"]["maxAllowance"], serde_json::json!(500.0));
+        assert_eq!(val["allowanceComparison"]["difference"], serde_json::json!(209.5));
+        assert_eq!(val["allowanceComparison"]["isOverAllowance"], serde_json::json!(false));
     }
 }

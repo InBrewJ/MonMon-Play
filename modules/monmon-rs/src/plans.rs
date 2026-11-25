@@ -1,5 +1,9 @@
-use crate::pot::get_user_id_from_headers_or_default;
-use crate::spog::resolve_user_id;
+use crate::money::Pence;
+use crate::pot::{
+    compare_to_allowance, get_user_id_from_headers_or_default, parse_sections_total_pence,
+    AllowanceComparison,
+};
+use crate::spog::{calculate_spog, resolve_user_id};
 use crate::AppState;
 use askama::Template;
 use axum::{
@@ -35,6 +39,8 @@ pub struct PotSummaryDto {
     pub spending_plan_name: Option<String>,
     pub accounts_count: usize,
     pub pot_total_balance: f32,
+    pub planned_sections_total: Pence,
+    pub allowance_comparison: AllowanceComparison,
 }
 
 #[derive(Template)]
@@ -133,17 +139,41 @@ pub async fn get_plans_page(
 
     // 2. Active Monthly Pot summary
     let pot_row = sqlx::query(
-        "SELECT id, type, spending_plan_name FROM pot WHERE (userid = $1 OR user_id = $1) AND type = 'MONTHLY' AND (archived IS NULL OR archived = false) LIMIT 1",
+        r#"
+        SELECT id, type, spending_plan_name,
+               spending_plan_sections_json, spending_plan_food, spending_plan_fuel, spending_plan_transport
+        FROM pot
+        WHERE (userid = $1 OR user_id = $1)
+          AND type = 'MONTHLY'
+          AND (archived IS NULL OR archived = false)
+        LIMIT 1
+        "#,
     )
     .bind(&resolved)
     .fetch_optional(&state.pool)
     .await
     .unwrap_or(None);
 
+    let max_allowance = calculate_spog(&state.pool, &user_id)
+        .await
+        .map(|m| m.surplus)
+        .unwrap_or(Pence::ZERO);
+
     let active_monthly_pot = if let Some(pr) = pot_row {
         let pid: i64 = pr.get("id");
         let ptype: String = pr.get("type");
         let sp_name: Option<String> = pr.get("spending_plan_name");
+        let sp_sections_json: Option<String> = pr.get("spending_plan_sections_json");
+        let sp_food: Option<f32> = pr.get("spending_plan_food");
+        let sp_fuel: Option<f32> = pr.get("spending_plan_fuel");
+        let sp_trans: Option<f32> = pr.get("spending_plan_transport");
+        let planned_sections_total = parse_sections_total_pence(
+            sp_sections_json.as_deref(),
+            sp_food,
+            sp_fuel,
+            sp_trans,
+        );
+        let allowance_comparison = compare_to_allowance(planned_sections_total, max_allowance);
 
         let acc_rows = sqlx::query(
             r#"
@@ -173,6 +203,8 @@ pub async fn get_plans_page(
             spending_plan_name: sp_name,
             accounts_count: acc_count as usize,
             pot_total_balance: total_bal,
+            planned_sections_total,
+            allowance_comparison,
         })
     } else {
         None
