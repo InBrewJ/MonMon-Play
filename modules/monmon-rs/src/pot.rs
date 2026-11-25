@@ -1,3 +1,4 @@
+use crate::money::Pence;
 use crate::spog::{calculate_spog, resolve_user_id};
 use crate::AppState;
 use askama::Template;
@@ -10,6 +11,78 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllowanceComparison {
+    pub planned_total: Pence,
+    pub max_allowance: Pence,
+    pub difference: Pence,
+    pub is_over_allowance: bool,
+    pub absolute_difference: Pence,
+}
+
+pub fn parse_sections_json(sections_json: Option<&str>) -> Vec<(String, Pence, Option<i64>)> {
+    let Some(raw) = sections_json else {
+        return Vec::new();
+    };
+    let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(raw) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(parsed.len());
+    for s in parsed {
+        let heading = s
+            .get("heading")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let amount_f64 = s
+            .get("amount")
+            .and_then(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|st| st.trim().parse::<f64>().ok()))
+            })
+            .filter(|n| n.is_finite())
+            .map(|n| n.max(0.0))
+            .unwrap_or(0.0);
+        let amount = Pence::from_pounds_f64(amount_f64);
+        let acc_id = s.get("accountId").and_then(|v| v.as_i64());
+        out.push((heading, amount, acc_id));
+    }
+    out
+}
+
+pub fn parse_sections_total_pence(
+    sections_json: Option<&str>,
+    legacy_food: Option<f32>,
+    legacy_fuel: Option<f32>,
+    legacy_transport: Option<f32>,
+) -> Pence {
+    let parsed = parse_sections_json(sections_json);
+    if !parsed.is_empty() {
+        return parsed.into_iter().map(|(_, amt, _)| amt).sum();
+    }
+    let mut total = Pence::ZERO;
+    for legacy in [legacy_food, legacy_fuel, legacy_transport].into_iter().flatten() {
+        if legacy.is_finite() && legacy > 0.0 {
+            total += Pence::from_pounds_f32(legacy);
+        }
+    }
+    total
+}
+
+pub fn compare_to_allowance(planned_total: Pence, max_allowance: Pence) -> AllowanceComparison {
+    let difference = max_allowance - planned_total;
+    let is_over_allowance = difference.is_negative();
+    let absolute_difference = difference.abs();
+    AllowanceComparison {
+        planned_total,
+        max_allowance,
+        difference,
+        is_over_allowance,
+        absolute_difference,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PotAccountDto {
     pub id: i64,
@@ -21,7 +94,7 @@ pub struct PotAccountDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpendingPlanSectionDto {
     pub heading: String,
-    pub amount: f32,
+    pub amount: Pence,
     pub account_id: Option<i64>,
     pub account_name: Option<String>,
 }
@@ -37,6 +110,8 @@ pub struct PotDto {
     pub spending_plan_transport: Option<f32>,
     pub spending_plan_fun: Option<f32>,
     pub sections: Vec<SpendingPlanSectionDto>,
+    pub sections_total: Pence,
+    pub allowance_comparison: AllowanceComparison,
     pub accounts: Vec<PotAccountDto>,
     pub pot_total_balance: f32,
     pub food_account_name: Option<String>,
@@ -50,6 +125,9 @@ pub struct CustomPlanDto {
     pub id: i64,
     pub name: String,
     pub sections_json: String,
+    pub sections_count: usize,
+    pub sections_total: Pence,
+    pub allowance_comparison: AllowanceComparison,
 }
 
 #[derive(Template)]
@@ -58,7 +136,7 @@ pub struct MonthlyPotTemplate {
     pub all_accounts: Vec<PotAccountDto>,
     pub active_pot: Option<PotDto>,
     pub archived_pots: Vec<PotDto>,
-    pub surplus: f32,
+    pub surplus: Pence,
     #[allow(dead_code)]
     pub spent_this_month: f32,
     pub saved_custom_plans: Vec<CustomPlanDto>,
@@ -338,6 +416,47 @@ pub async fn get_monthly_pot_page(
         all_accounts.push(dto);
     }
 
+    // Calculate SPOG metrics up front so every pot and saved preset compares against current max monthly allowance
+    let spog_metrics = calculate_spog(&state.pool, &user_id).await.unwrap_or_else(|_| crate::spog::SpogMetrics {
+        incoming_total: crate::money::Pence::ZERO,
+        outgoing_total: crate::money::Pence::ZERO,
+        surplus: crate::money::Pence::ZERO,
+        baseline: crate::money::Pence::ZERO,
+        bills_only_baseline: crate::money::Pence::ZERO,
+        savings_plan_total: crate::money::Pence::ZERO,
+        savings_plan_items: vec![],
+        next_pay_day: 1,
+        next_pay_date: "".to_string(),
+        days_between_paydays: 30,
+        max_per_day: crate::money::Pence::ZERO,
+        max_per_week: crate::money::Pence::ZERO,
+        max_per_month: crate::money::Pence::ZERO,
+        completed_outgoings: crate::money::Pence::ZERO,
+        pending_outgoings: crate::money::Pence::ZERO,
+        bills_cost: crate::money::Pence::ZERO,
+        rent_cost: crate::money::Pence::ZERO,
+        monthly_pot_left_per_day: crate::money::Pence::ZERO,
+        baseline_diff_total: crate::money::Pence::ZERO,
+        is_behind_baseline: false,
+        absolute_baseline_diff_total: crate::money::Pence::ZERO,
+        total_available_debit: crate::money::Pence::ZERO,
+        total_available_credit: crate::money::Pence::ZERO,
+        credit_balance: crate::money::Pence::ZERO,
+        credit_limit: crate::money::Pence::ZERO,
+        credit_usage: crate::money::Pence::ZERO,
+        liquid_savings_pot: crate::money::Pence::ZERO,
+        total_savings_pot: crate::money::Pence::ZERO,
+        account_groups: vec![],
+        spending_plan: None,
+        spent_this_month: crate::money::Pence::ZERO,
+        days_until_next_payday: 30,
+        days_since_last_payday: 1,
+        is_payday_today: false,
+        payday_transfers_count: 0,
+        payday_transfers_total: crate::money::Pence::ZERO,
+    });
+    let surplus_pence = spog_metrics.surplus;
+
     // 2. Load pots
     let pot_rows = sqlx::query(
         r#"
@@ -413,55 +532,49 @@ pub async fn get_monthly_pot_page(
             });
         }
 
-        let mut sections = Vec::new();
-        if let Some(ref j) = sp_sections_json {
-            if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
-                for s in parsed {
-                    let heading = s.get("heading").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let amount = s.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                    let acc_id = s.get("accountId").and_then(|v| v.as_i64());
-                    let acc_name = acc_id.and_then(|aid| acc_map.get(&aid).cloned());
-                    sections.push(SpendingPlanSectionDto {
-                        heading,
-                        amount,
-                        account_id: acc_id,
-                        account_name: acc_name,
-                    });
-                }
-            }
-        }
+        let mut sections: Vec<SpendingPlanSectionDto> = parse_sections_json(sp_sections_json.as_deref())
+            .into_iter()
+            .map(|(heading, amount, acc_id)| SpendingPlanSectionDto {
+                heading,
+                amount,
+                account_id: acc_id,
+                account_name: acc_id.and_then(|aid| acc_map.get(&aid).cloned()),
+            })
+            .collect();
         if sections.is_empty() {
             if let Some(f) = sp_food {
-                if f > 0.0 {
+                if f.is_finite() && f > 0.0 {
                     sections.push(SpendingPlanSectionDto {
                         heading: "Food".to_string(),
-                        amount: f,
+                        amount: Pence::from_pounds_f32(f),
                         account_id: food_acc_id,
                         account_name: food_acc_id.and_then(|aid| acc_map.get(&aid).cloned()),
                     });
                 }
             }
             if let Some(f) = sp_fuel {
-                if f > 0.0 {
+                if f.is_finite() && f > 0.0 {
                     sections.push(SpendingPlanSectionDto {
                         heading: "Fuel".to_string(),
-                        amount: f,
+                        amount: Pence::from_pounds_f32(f),
                         account_id: fuel_acc_id,
                         account_name: fuel_acc_id.and_then(|aid| acc_map.get(&aid).cloned()),
                     });
                 }
             }
             if let Some(t) = sp_trans {
-                if t > 0.0 {
+                if t.is_finite() && t > 0.0 {
                     sections.push(SpendingPlanSectionDto {
                         heading: "Transport".to_string(),
-                        amount: t,
+                        amount: Pence::from_pounds_f32(t),
                         account_id: trans_acc_id,
                         account_name: trans_acc_id.and_then(|aid| acc_map.get(&aid).cloned()),
                     });
                 }
             }
         }
+        let sections_total: Pence = sections.iter().map(|s| s.amount).sum();
+        let allowance_comparison = compare_to_allowance(sections_total, surplus_pence);
 
         let created_ts = if created_at > 100_000_000_000 {
             created_at / 1000
@@ -482,6 +595,8 @@ pub async fn get_monthly_pot_page(
             spending_plan_transport: sp_trans,
             spending_plan_fun: sp_fun,
             sections,
+            sections_total,
+            allowance_comparison,
             accounts: pot_accs,
             pot_total_balance: pot_sum,
             food_account_name: food_acc_id.and_then(|aid| acc_map.get(&aid).cloned()),
@@ -511,52 +626,19 @@ pub async fn get_monthly_pot_page(
         let cid: i64 = cr.get("id");
         let cname: String = cr.get("name");
         let cjson: String = cr.get("sec_json");
+        let parsed_sections = parse_sections_json(Some(&cjson));
+        let sections_count = parsed_sections.len();
+        let sections_total: Pence = parsed_sections.into_iter().map(|(_, amt, _)| amt).sum();
+        let allowance_comparison = compare_to_allowance(sections_total, surplus_pence);
         saved_custom_plans.push(CustomPlanDto {
             id: cid,
             name: cname,
             sections_json: cjson,
+            sections_count,
+            sections_total,
+            allowance_comparison,
         });
     }
-
-    // Calculate metrics & pace
-    let spog_metrics = calculate_spog(&state.pool, &user_id).await.unwrap_or_else(|_| crate::spog::SpogMetrics {
-        incoming_total: crate::money::Pence::ZERO,
-        outgoing_total: crate::money::Pence::ZERO,
-        surplus: crate::money::Pence::ZERO,
-        baseline: crate::money::Pence::ZERO,
-        bills_only_baseline: crate::money::Pence::ZERO,
-        savings_plan_total: crate::money::Pence::ZERO,
-        savings_plan_items: vec![],
-        next_pay_day: 1,
-        next_pay_date: "".to_string(),
-        days_between_paydays: 30,
-        max_per_day: crate::money::Pence::ZERO,
-        max_per_week: crate::money::Pence::ZERO,
-        max_per_month: crate::money::Pence::ZERO,
-        completed_outgoings: crate::money::Pence::ZERO,
-        pending_outgoings: crate::money::Pence::ZERO,
-        bills_cost: crate::money::Pence::ZERO,
-        rent_cost: crate::money::Pence::ZERO,
-        monthly_pot_left_per_day: crate::money::Pence::ZERO,
-        baseline_diff_total: crate::money::Pence::ZERO,
-        is_behind_baseline: false,
-        absolute_baseline_diff_total: crate::money::Pence::ZERO,
-        total_available_debit: crate::money::Pence::ZERO,
-        total_available_credit: crate::money::Pence::ZERO,
-        credit_balance: crate::money::Pence::ZERO,
-        credit_limit: crate::money::Pence::ZERO,
-        credit_usage: crate::money::Pence::ZERO,
-        liquid_savings_pot: crate::money::Pence::ZERO,
-        total_savings_pot: crate::money::Pence::ZERO,
-        account_groups: vec![],
-        spending_plan: None,
-        spent_this_month: crate::money::Pence::ZERO,
-        days_until_next_payday: 30,
-        days_since_last_payday: 1,
-        is_payday_today: false,
-        payday_transfers_count: 0,
-        payday_transfers_total: crate::money::Pence::ZERO,
-    });
 
     let pace = crate::spog::calculate_spending_pace(&state.pool, &user_id).await.unwrap_or_else(|_| crate::spog::SpendingPaceMetrics {
         spent_this_month: crate::money::Pence::ZERO,
@@ -576,7 +658,7 @@ pub async fn get_monthly_pot_page(
         all_accounts,
         active_pot,
         archived_pots,
-        surplus: spog_metrics.surplus.to_pounds_f32(),
+        surplus: surplus_pence,
         spent_this_month: pace.spent_this_month.to_pounds_f32(),
         saved_custom_plans,
         monthly_pot_total_balance,
@@ -1034,5 +1116,57 @@ mod tests {
         assert!(all_accounts.contains(&18));
         assert!(all_accounts.contains(&20));
         assert_eq!(all_accounts.len(), 6);
+    }
+
+    #[test]
+    fn test_compare_to_allowance_under_exact_over_and_negative_surplus() {
+        let under = compare_to_allowance(Pence(29000), Pence(50000));
+        assert!(!under.is_over_allowance);
+        assert_eq!(under.difference, Pence(21000));
+        assert_eq!(under.absolute_difference, Pence(21000));
+
+        let exact = compare_to_allowance(Pence(50000), Pence(50000));
+        assert!(!exact.is_over_allowance);
+        assert_eq!(exact.difference, Pence::ZERO);
+        assert_eq!(exact.absolute_difference, Pence::ZERO);
+
+        let over = compare_to_allowance(Pence(62550), Pence(50000));
+        assert!(over.is_over_allowance);
+        assert_eq!(over.difference, Pence(-12550));
+        assert_eq!(over.absolute_difference, Pence(12550));
+
+        let neg_surplus = compare_to_allowance(Pence(10000), Pence(-5000));
+        assert!(neg_surplus.is_over_allowance);
+        assert_eq!(neg_surplus.difference, Pence(-15000));
+        assert_eq!(neg_surplus.absolute_difference, Pence(15000));
+    }
+
+    #[test]
+    fn test_parse_sections_total_pence_precision_clamping_fallback_and_malformed() {
+        // Fractional pence precision (0.10 + 0.20 + 216.67 + 33.33 = 250.30)
+        let json = r#"[
+            {"heading":"A","amount":0.10},
+            {"heading":"B","amount":0.20},
+            {"heading":"C","amount":216.67},
+            {"heading":"D","amount":"33.33"}
+        ]"#;
+        assert_eq!(parse_sections_total_pence(Some(json), None, None, None), Pence(25030));
+
+        // Negative / invalid amounts clamped to 0
+        let weird = r#"[{"heading":"Neg","amount":-25},{"heading":"Bad","amount":"nope"},{"heading":"Ok","amount":40.5}]"#;
+        assert_eq!(parse_sections_total_pence(Some(weird), None, None, None), Pence(4050));
+
+        // Legacy fallback when sections_json is None or empty array
+        assert_eq!(
+            parse_sections_total_pence(None, Some(200.0), Some(50.0), Some(40.25)),
+            Pence(29025)
+        );
+        assert_eq!(
+            parse_sections_total_pence(Some("[]"), Some(216.67), Some(0.0), None),
+            Pence(21667)
+        );
+
+        // Malformed JSON without legacy columns safely returns 0
+        assert_eq!(parse_sections_total_pence(Some("{not-valid"), None, None, None), Pence::ZERO);
     }
 }
