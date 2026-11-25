@@ -238,6 +238,76 @@ pub fn compute_spog_spent_this_month(
     spent_this_month.max(Pence::ZERO)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn build_spog_spending_sections(
+    sp_sections_json: Option<&str>,
+    sp_food: Option<f32>,
+    sp_fuel: Option<f32>,
+    sp_trans: Option<f32>,
+    food_account_id: Option<i64>,
+    fuel_account_id: Option<i64>,
+    transport_account_id: Option<i64>,
+    all_account_statuses: &[SpogAccountStatusDto],
+    balance_map: &std::collections::HashMap<i64, Vec<(i64, f32)>>,
+    cycle_start_sec: i64,
+    now_sec: i64,
+    days_left: i32,
+    days_between_paydays: i32,
+) -> Vec<SpogSpendingSectionDto> {
+    let mut section_defs = crate::pot::parse_sections_json(sp_sections_json);
+    if section_defs.is_empty() {
+        if let Some(f) = sp_food {
+            if f.is_finite() && f > 0.0 {
+                section_defs.push(("Food".to_string(), Pence::from_pounds_f32(f), food_account_id));
+            }
+        }
+        if let Some(f) = sp_fuel {
+            if f.is_finite() && f > 0.0 {
+                section_defs.push(("Fuel".to_string(), Pence::from_pounds_f32(f), fuel_account_id));
+            }
+        }
+        if let Some(t) = sp_trans {
+            if t.is_finite() && t > 0.0 {
+                section_defs.push((
+                    "Transport".to_string(),
+                    Pence::from_pounds_f32(t),
+                    transport_account_id,
+                ));
+            }
+        }
+    }
+
+    let fraction = (days_left as f64 / days_between_paydays.max(1) as f64).clamp(0.0, 1.0);
+    section_defs
+        .into_iter()
+        .map(|(heading, amount, account_id)| {
+            let (actual_spent, remaining, account_name) = if let Some(aid) = account_id {
+                let acc_name = resolve_spending_section_account_name(all_account_statuses, aid);
+                let spent = balance_map
+                    .get(&aid)
+                    .map(|b| {
+                        crate::historic_spent::calculate_account_spent(b, cycle_start_sec, now_sec)
+                    })
+                    .unwrap_or(0.0);
+                let spent_p = Pence::from_pounds_f32(spent);
+                let rem = (amount - spent_p).max(Pence::ZERO);
+                (spent_p, rem, acc_name)
+            } else {
+                let rem = amount * fraction;
+                (Pence::ZERO, rem, None)
+            };
+
+            SpogSpendingSectionDto {
+                heading,
+                planned_amount: amount,
+                actual_spent,
+                remaining,
+                account_name,
+            }
+        })
+        .collect()
+}
+
 pub async fn calculate_spog(pool: &PgPool, raw_user_id: &str) -> Result<SpogMetrics, sqlx::Error> {
     calculate_spog_as_of(pool, raw_user_id, None).await
 }
@@ -908,114 +978,25 @@ pub async fn calculate_spog_as_of(
                 let sp_fuel: Option<f32> = pr.get("spending_plan_fuel");
                 let sp_trans: Option<f32> = pr.get("spending_plan_transport");
                 let sp_sections_json: Option<String> = pr.get("spending_plan_sections_json");
+                let food_account_id: Option<i64> = pr.get("food_account_id");
+                let fuel_account_id: Option<i64> = pr.get("fuel_account_id");
+                let transport_account_id: Option<i64> = pr.get("transport_account_id");
 
-                let mut sections = Vec::new();
-                if let Some(ref j) = sp_sections_json {
-                    if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(j) {
-                        for s in parsed {
-                            let heading = s
-                                .get("heading")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let amount = Pence::from_pounds_f64(
-                                s.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                            );
-                            let account_id = s.get("accountId").and_then(|v| v.as_i64());
-
-                            let (actual_spent, remaining, account_name) =
-                                if let Some(aid) = account_id {
-                                    let acc_name = resolve_spending_section_account_name(
-                                        &all_account_statuses,
-                                        aid,
-                                    );
-                                    let spent = balance_map
-                                        .get(&aid)
-                                        .map(|b| {
-                                            crate::historic_spent::calculate_account_spent(
-                                                b,
-                                                cycle_start_sec,
-                                                now_sec,
-                                            )
-                                        })
-                                        .unwrap_or(0.0);
-                                    let spent_p = Pence::from_pounds_f32(spent);
-                                    let rem = (amount - spent_p).max(Pence::ZERO);
-                                    (spent_p, rem, acc_name)
-                                } else {
-                                    let fraction = (days_left as f64
-                                        / days_between_paydays.max(1) as f64)
-                                        .clamp(0.0, 1.0);
-                                    let rem = amount * fraction;
-                                    (Pence::ZERO, rem, None)
-                                };
-
-                            sections.push(SpogSpendingSectionDto {
-                                heading,
-                                planned_amount: amount,
-                                actual_spent,
-                                remaining,
-                                account_name,
-                            });
-                        }
-                    }
-                }
-                if sections.is_empty() {
-                    let mut legacy_defs = Vec::new();
-                    if let Some(f) = sp_food {
-                        if f > 0.0 {
-                            let aid: Option<i64> = pr.get("food_account_id");
-                            legacy_defs.push(("Food", Pence::from_pounds_f32(f), aid));
-                        }
-                    }
-                    if let Some(f) = sp_fuel {
-                        if f > 0.0 {
-                            let aid: Option<i64> = pr.get("fuel_account_id");
-                            legacy_defs.push(("Fuel", Pence::from_pounds_f32(f), aid));
-                        }
-                    }
-                    if let Some(t) = sp_trans {
-                        if t > 0.0 {
-                            let aid: Option<i64> = pr.get("transport_account_id");
-                            legacy_defs.push(("Transport", Pence::from_pounds_f32(t), aid));
-                        }
-                    }
-                    for (heading, amount, aid_opt) in legacy_defs {
-                        let (actual_spent, remaining, account_name) = if let Some(aid) = aid_opt {
-                            let acc_name = resolve_spending_section_account_name(
-                                &all_account_statuses,
-                                aid,
-                            );
-                            let spent = balance_map
-                                .get(&aid)
-                                .map(|b| {
-                                    crate::historic_spent::calculate_account_spent(
-                                        b,
-                                        cycle_start_sec,
-                                        now_sec,
-                                    )
-                                })
-                                .unwrap_or(0.0);
-                            let spent_p = Pence::from_pounds_f32(spent);
-                            let rem = (amount - spent_p).max(Pence::ZERO);
-                            (spent_p, rem, acc_name)
-                        } else {
-                            let fraction = (days_left as f64
-                                / days_between_paydays.max(1) as f64)
-                                .clamp(0.0, 1.0);
-                            let rem = amount * fraction;
-                            (Pence::ZERO, rem, None)
-                        };
-
-                        sections.push(SpogSpendingSectionDto {
-                            heading: heading.to_string(),
-                            planned_amount: amount,
-                            actual_spent,
-                            remaining,
-                            account_name,
-                        });
-                    }
-                }
+                let sections = build_spog_spending_sections(
+                    sp_sections_json.as_deref(),
+                    sp_food,
+                    sp_fuel,
+                    sp_trans,
+                    food_account_id,
+                    fuel_account_id,
+                    transport_account_id,
+                    &all_account_statuses,
+                    &balance_map,
+                    cycle_start_sec,
+                    now_sec,
+                    days_left,
+                    days_between_paydays,
+                );
 
                 let planned_sections_total: Pence = sections.iter().map(|s| s.planned_amount).sum();
                 let allowance_comparison =
@@ -1982,5 +1963,37 @@ mod tests {
         assert_eq!(val["allowanceComparison"]["maxAllowance"], serde_json::json!(500.0));
         assert_eq!(val["allowanceComparison"]["difference"], serde_json::json!(209.5));
         assert_eq!(val["allowanceComparison"]["isOverAllowance"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn test_build_spog_spending_sections_matches_pot_parser_for_strings_and_negatives() {
+        let json = r#"[
+            {"heading":"Food","amount":216.67,"accountId":null},
+            {"heading":"Fuel","amount":"33.33","accountId":null},
+            {"heading":"Extra","amount":0.30,"accountId":null},
+            {"heading":"BadNeg","amount":-25,"accountId":null}
+        ]"#;
+        let sections = build_spog_spending_sections(
+            Some(json),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &[],
+            &std::collections::HashMap::new(),
+            0,
+            0,
+            15,
+            30,
+        );
+        let spog_total: Pence = sections.iter().map(|s| s.planned_amount).sum();
+        let pot_total = crate::pot::parse_sections_total_pence(Some(json), None, None, None);
+        assert_eq!(spog_total, Pence(25030));
+        assert_eq!(spog_total, pot_total);
+        assert_eq!(sections.len(), 4);
+        assert_eq!(sections[1].planned_amount, Pence(3333));
+        assert_eq!(sections[3].planned_amount, Pence::ZERO);
     }
 }

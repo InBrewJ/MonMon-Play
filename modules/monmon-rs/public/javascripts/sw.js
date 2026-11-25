@@ -34,6 +34,7 @@ const JS_PRECACHE_NAMES = [
   'balances-chart',
   'erratic-balances',
   'savingsPlan',
+  'monthly-pot',
   'transfers',
   'dig',
   'leaflet-heat',

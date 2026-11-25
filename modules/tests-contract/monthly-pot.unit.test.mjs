@@ -121,4 +121,17 @@ describe('monthly-pot.js calculateSectionsSummary', () => {
     const publicSrc = fs.readFileSync(PUBLIC_JS_PATH, 'utf8');
     assert.equal(monmonSrc, publicSrc);
   });
+
+  it('precaches monthly-pot in JS_PRECACHE_NAMES in both mirrored sw.js files', () => {
+    const monmonSw = fs.readFileSync(
+      path.join(ROOT_DIR, 'modules/monmon-rs/public/javascripts/sw.js'),
+      'utf8'
+    );
+    const publicSw = fs.readFileSync(
+      path.join(ROOT_DIR, 'public/javascripts/sw.js'),
+      'utf8'
+    );
+    assert.equal(monmonSw, publicSw);
+    assert.match(monmonSw, /'monthly-pot'/);
+  });
 });
