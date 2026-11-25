@@ -199,5 +199,67 @@
                 }
             });
         });
+
+        // "What is ABL? What is TBL?" hover + touch tooltip inside <summary>
+        var helpWrap = document.getElementById('abl-tbl-help-wrap');
+        var helpTrigger = document.getElementById('abl-tbl-help-trigger');
+        var helpTooltip = document.getElementById('abl-tbl-help-tooltip');
+        if (helpWrap && helpTrigger && helpTooltip) {
+            var positionHelpTooltip = function () {
+                helpTooltip.style.left = '0px';
+                var wrapRect = helpWrap.getBoundingClientRect();
+                var tipRect = helpTooltip.getBoundingClientRect();
+                var pad = 16;
+                var vw = window.innerWidth || document.documentElement.clientWidth || 1024;
+                var desiredLeft = 0;
+                if (wrapRect.left + tipRect.width > vw - pad) {
+                    desiredLeft = (vw - pad - tipRect.width) - wrapRect.left;
+                }
+                if (wrapRect.left + desiredLeft < pad) {
+                    desiredLeft = pad - wrapRect.left;
+                }
+                helpTooltip.style.left = Math.round(desiredLeft) + 'px';
+            };
+
+            var setHelpOpen = function (open) {
+                helpWrap.classList.toggle('is-open', open);
+                helpTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+                if (open) {
+                    positionHelpTooltip();
+                }
+            };
+
+            helpTrigger.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                setHelpOpen(!helpWrap.classList.contains('is-open'));
+            });
+
+            helpTooltip.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
+
+            helpWrap.addEventListener('mouseenter', positionHelpTooltip);
+            helpWrap.addEventListener('focusin', positionHelpTooltip);
+
+            document.addEventListener('click', function (e) {
+                if (helpWrap.classList.contains('is-open') && !helpWrap.contains(e.target)) {
+                    setHelpOpen(false);
+                }
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && helpWrap.classList.contains('is-open')) {
+                    setHelpOpen(false);
+                    helpTrigger.blur();
+                }
+            });
+
+            window.addEventListener('resize', function () {
+                if (helpWrap.classList.contains('is-open')) {
+                    positionHelpTooltip();
+                }
+            });
+        }
     });
 })();
