@@ -99,24 +99,41 @@
                             <i class="fas fa-clipboard-list" style="color: var(--primary); margin-right: 4px;"></i>
                             Spending plan: <span class="badge-pill" style="background: var(--warning-light, rgba(245, 158, 11, 0.15)); color: var(--warning, #d97706);">{{ sp_name }}</span>
                         </div>
-                        <table style="width: 100%; font-size: 0.85rem;">
-                            <tr><td style="color: var(--text-muted);">Max monthly allowance</td><td style="text-align: right; font-weight: 600;">£{{ surplus }}</td></tr>
+                        <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse;">
+                            <tr><td style="color: var(--text-muted); padding: 2px 0;">Max monthly allowance</td><td style="text-align: right; font-weight: 600; padding: 2px 0;">£{{ surplus }}</td></tr>
                             {% for sec in p.sections %}
                             <tr>
-                                <td style="color: var(--text-muted);">
+                                <td style="color: var(--text-muted); padding: 2px 0;">
                                     {{ sec.heading }}
                                     {% if let Some(acc) = sec.account_name %}
                                         <span style="font-size: 0.75rem; color: var(--primary);">({{ acc }})</span>
                                     {% endif %}
                                 </td>
-                                <td style="text-align: right; font-weight: 600;">£{{ sec.amount }}</td>
+                                <td style="text-align: right; font-weight: 600; padding: 2px 0;">£{{ sec.amount }}</td>
                             </tr>
                             {% endfor %}
+                            <tr style="border-top: 1px solid var(--border-color);">
+                                <td style="font-weight: 700; color: var(--text-main); padding: 4px 0 2px;">Total planned categories</td>
+                                <td id="active-plan-sections-total" style="text-align: right; font-weight: 700; color: {% if p.allowance_comparison.is_over_allowance %}var(--danger, #ef4444){% else %}var(--text-main){% endif %}; padding: 4px 0 2px;">£{{ p.sections_total }}</td>
+                            </tr>
+                            <tr id="active-plan-allowance-comparison">
+                                {% if p.allowance_comparison.is_over_allowance %}
+                                <td style="font-weight: 700; color: var(--danger, #ef4444); padding: 2px 0;">
+                                    <i class="fas fa-exclamation-triangle" style="margin-right: 4px;"></i>Over max allowance
+                                </td>
+                                <td style="text-align: right; font-weight: 800; color: var(--danger, #ef4444); padding: 2px 0;">−£{{ p.allowance_comparison.absolute_difference }}</td>
+                                {% else %}
+                                <td style="font-weight: 700; color: var(--success, #16a34a); padding: 2px 0;">Remaining for fun</td>
+                                <td style="text-align: right; font-weight: 800; color: var(--success, #16a34a); padding: 2px 0;">£{{ p.allowance_comparison.difference }}</td>
+                                {% endif %}
+                            </tr>
+                            {% if p.sections.is_empty() %}
                             {% if let Some(fun) = p.spending_plan_fun %}
                             <tr style="border-top: 1px solid var(--border-color);">
                                 <td style="font-weight: 700;"><b>Fun (planned)</b></td>
                                 <td style="text-align: right; font-weight: 700;"><b>£{{ fun }}</b></td>
                             </tr>
+                            {% endif %}
                             {% endif %}
                         </table>
                     </div>
@@ -143,9 +160,17 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                     {% for sp in saved_custom_plans %}
-                    <div style="display: flex; justify-content: space-between; align-items: center; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: var(--card-bg-subtle); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 0.75rem; gap: 8px;">
                         <div>
-                            <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-main);">{{ sp.name }}</span>
+                            <div style="font-weight: 700; font-size: 0.9rem; color: var(--text-main);">{{ sp.name }}</div>
+                            <div class="preset-total-summary" data-preset-total="{{ sp.sections_total }}" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+                                {{ sp.sections_count }} section{% if sp.sections_count != 1 %}s{% endif %} · <strong>£{{ sp.sections_total }}</strong> / £{{ surplus }} max ·
+                                {% if sp.allowance_comparison.is_over_allowance %}
+                                    <span style="color: var(--danger, #ef4444); font-weight: 700;">Over by £{{ sp.allowance_comparison.absolute_difference }}</span>
+                                {% else %}
+                                    <span style="color: var(--success, #16a34a); font-weight: 700;">£{{ sp.allowance_comparison.difference }} left</span>
+                                {% endif %}
+                            </div>
                         </div>
                         <div style="display: flex; gap: 6px; align-items: center;">
                             <button type="button" class="btn-action btn-edit-preset" data-preset-id="{{ sp.id }}" style="font-size: 0.8rem; padding: 4px 8px; cursor: pointer; border-radius: 4px; background: var(--card-bg); border: 1px solid var(--border-color); color: var(--primary);" title="Load & Edit Preset">
@@ -178,6 +203,16 @@
                             <div style="font-size: 0.8rem; color: var(--text-muted);">
                                 Accounts: {{ p.accounts.len() }} · Total: £{{ p.pot_total_balance }}
                             </div>
+                            {% if let Some(sp_name) = p.spending_plan_name %}
+                            <div class="archived-plan-total" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 3px;">
+                                Plan: <strong>{{ sp_name }}</strong> · <strong>£{{ p.sections_total }}</strong> / £{{ surplus }} max
+                                {% if p.allowance_comparison.is_over_allowance %}
+                                    <span style="color: var(--danger, #ef4444); font-weight: 700;">(Over by £{{ p.allowance_comparison.absolute_difference }})</span>
+                                {% else %}
+                                    <span style="color: var(--success, #16a34a); font-weight: 700;">(£{{ p.allowance_comparison.difference }} left)</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
                         </div>
                         {% endfor %}
                     </div>
@@ -198,7 +233,7 @@
                     <i class="fas fa-cog" style="color: var(--primary); margin-right: 6px;"></i> Configure Monthly Pot
                 </div>
 
-                <form method="POST" action="/pot" id="pot-config-form">
+                <form method="POST" action="/pot" id="pot-config-form" data-max-allowance-pence="{{ surplus.as_pence() }}">
                     <!-- Accounts Checklist -->
                     <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 0.4rem;">
                         Spending Accounts to Include in Pot:
@@ -284,7 +319,7 @@
                         </div>
                     </div>
 
-                    <select id="pot-preset" name="preset" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.9rem; margin-bottom: 1rem;">
+                    <select id="pot-preset" name="preset" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.9rem; margin-bottom: 0.75rem;">
                         <option value="none">None (just group accounts into pot)</option>
                         <option value="gruelling">Gruelling (£216.67/mo food)</option>
                         <option value="custom">Custom Spending Plan (New)</option>
@@ -292,6 +327,9 @@
                         <option value="saved_{{ sp.id }}" data-id="{{ sp.id }}" data-name="{{ sp.name }}" data-sections="{{ sp.sections_json }}">Saved: {{ sp.name }}</option>
                         {% endfor %}
                     </select>
+
+                    <!-- Gruelling Preset Allowance Comparison Preview -->
+                    <div id="gruelling-allowance-summary" style="display: none; padding: 0.65rem 0.85rem; margin-bottom: 1rem; border-radius: 6px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-main);"></div>
 
                     <!-- Custom Plan Fields -->
                     <div id="custom-plan-fields" style="display: none; border-top: 1px dashed var(--border-color); padding-top: 1rem; margin-bottom: 1rem;">
@@ -309,8 +347,24 @@
                             </button>
                         </div>
 
-                        <div id="sections-container" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
+                        <template id="pot-section-account-options">
+                            <option value="0">-- No Account --</option>
+                            {% for a in all_accounts %}
+                            <option value="{{ a.id }}">{{ a.name }}</option>
+                            {% endfor %}
+                        </template>
+
+                        <div id="sections-container" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
                             <!-- Dynamic sections -->
+                        </div>
+
+                        <!-- Live Category Sections Total vs Max Monthly Allowance -->
+                        <div id="plan-live-summary" data-over-allowance="false" style="padding: 0.75rem 0.9rem; margin-bottom: 1rem; border-radius: 6px; background: var(--card-bg-subtle); border: 1px solid var(--border-color); font-size: 0.86rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;">
+                                <span style="color: var(--text-muted);">Planned categories: <strong id="live-sections-total" style="color: var(--text-main); font-size: 0.95rem;">£0.00</strong></span>
+                                <span style="color: var(--text-muted);">Max allowance: <strong id="live-max-allowance" style="color: var(--text-main);">£{{ surplus }}</strong></span>
+                            </div>
+                            <div id="live-allowance-status" style="font-size: 0.84rem; font-weight: 600;"></div>
                         </div>
 
                         <input type="hidden" id="sections-json-input" name="sections_json" value="[]" />
@@ -344,291 +398,6 @@
 </div>
 
 {% include "nav_scripts.html" %}
-<script>
-(function() {
-    var presetSelect = document.getElementById('pot-preset');
-    var customFields = document.getElementById('custom-plan-fields');
-    var customPlanIdInput = document.getElementById('custom-plan-id');
-    var presetControlsBar = document.getElementById('preset-controls-bar');
-    var presetStatusLabel = document.getElementById('preset-status-label');
-    var templateSaveCheckboxWrap = document.getElementById('template-save-checkbox-wrap');
-    var presetUpdateModeWrap = document.getElementById('preset-update-mode-wrap');
-    var saveTemplateChk = document.getElementById('save-template-chk');
-    var sectionsContainer = document.getElementById('sections-container');
-    var sectionsJsonInput = document.getElementById('sections-json-input');
-    var btnAddSection = document.getElementById('btn-add-section');
-    var planNameInput = document.getElementById('plan-name-input');
-    var btnSavePresetDirect = document.getElementById('btn-save-preset-direct');
-    var btnDeletePresetDirect = document.getElementById('btn-delete-preset-direct');
-    var potConfigForm = document.getElementById('pot-config-form');
-
-    function autoSelectNominatedAccounts() {
-        var nominated = {};
-
-        // 1. Fixed category account dropdowns (Food, Fun, Transport, Fuel)
-        ['food_account_id', 'fun_account_id', 'transport_account_id', 'fuel_account_id'].forEach(function(id) {
-            var el = document.getElementById(id);
-            if (el && el.value && el.value !== '0') {
-                nominated[el.value] = true;
-            }
-        });
-
-        // 2. Custom plan sections in state
-        if (sectionsState && Array.isArray(sectionsState)) {
-            sectionsState.forEach(function(sec) {
-                if (sec && sec.accountId && sec.accountId > 0) {
-                    nominated[String(sec.accountId)] = true;
-                }
-            });
-        }
-
-        // 3. Custom plan select elements in DOM
-        var domSecAccSelects = document.querySelectorAll('.sec-account-inp');
-        for (var i = 0; i < domSecAccSelects.length; i++) {
-            var val = domSecAccSelects[i].value;
-            if (val && val !== '0') {
-                nominated[val] = true;
-            }
-        }
-
-        // Automatically check matching checkboxes in the Spending Accounts checklist
-        for (var accId in nominated) {
-            if (Object.prototype.hasOwnProperty.call(nominated, accId)) {
-                var chk = document.querySelector('input[name="accounts"][value="' + accId + '"]');
-                if (chk && !chk.checked) {
-                    chk.checked = true;
-                    var label = chk.closest('label');
-                    if (label) {
-                        label.style.transition = 'background-color 0.3s ease';
-                        label.style.backgroundColor = 'rgba(99, 102, 241, 0.2)';
-                        (function(lbl) {
-                            setTimeout(function() {
-                                lbl.style.backgroundColor = '';
-                            }, 600);
-                        })(label);
-                    }
-                }
-            }
-        }
-    }
-
-    ['food_account_id', 'fun_account_id', 'transport_account_id', 'fuel_account_id'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('change', autoSelectNominatedAccounts);
-        }
-    });
-
-    if (potConfigForm) {
-        potConfigForm.addEventListener('submit', function() {
-            autoSelectNominatedAccounts();
-        });
-    }
-
-    var accountOptionsHtml = '<option value="0">-- No Account --</option>';
-    {% for a in all_accounts %}
-    accountOptionsHtml += '<option value="{{ a.id }}">{{ a.name }}</option>';
-    {% endfor %}
-
-    var sectionsState = [
-        { heading: 'Food', amount: 200, accountId: null },
-        { heading: 'Fuel', amount: 50, accountId: null },
-        { heading: 'Transport', amount: 40, accountId: null }
-    ];
-
-    function serialize() {
-        if (sectionsJsonInput) {
-            sectionsJsonInput.value = JSON.stringify(sectionsState);
-        }
-    }
-
-    function renderSections() {
-        if (!sectionsContainer) return;
-        sectionsContainer.innerHTML = '';
-        sectionsState.forEach(function(sec, idx) {
-            var row = document.createElement('div');
-            row.style.display = 'grid';
-            row.style.gridTemplateColumns = '1.8fr 1fr 1.6fr auto';
-            row.style.gap = '6px';
-            row.style.alignItems = 'center';
-
-            row.innerHTML =
-                '<input type="text" class="sec-heading-inp" placeholder="Category" value="' + (sec.heading || '') + '" style="padding: 6px 8px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-main);" />' +
-                '<input type="number" step="0.01" class="sec-amount-inp" placeholder="£/mo" value="' + (sec.amount || 0) + '" style="padding: 6px 8px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-main);" />' +
-                '<select class="sec-account-inp" style="padding: 6px 4px; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-main);">' + accountOptionsHtml + '</select>' +
-                '<button type="button" class="btn-del-sec" style="background: transparent; border: none; color: var(--danger, #ef4444); cursor: pointer; padding: 4px 6px;"><i class="fas fa-trash-alt"></i></button>';
-
-            var hInp = row.querySelector('.sec-heading-inp');
-            var aInp = row.querySelector('.sec-amount-inp');
-            var accSel = row.querySelector('.sec-account-inp');
-            var bDel = row.querySelector('.btn-del-sec');
-
-            if (sec.accountId) {
-                accSel.value = sec.accountId;
-            }
-
-            hInp.addEventListener('input', function() {
-                sectionsState[idx].heading = hInp.value;
-                serialize();
-            });
-            aInp.addEventListener('input', function() {
-                sectionsState[idx].amount = parseFloat(aInp.value) || 0;
-                serialize();
-            });
-            accSel.addEventListener('change', function() {
-                var v = parseInt(accSel.value, 10);
-                sectionsState[idx].accountId = (v && v > 0) ? v : null;
-                serialize();
-                autoSelectNominatedAccounts();
-            });
-            bDel.addEventListener('click', function() {
-                sectionsState.splice(idx, 1);
-                renderSections();
-                serialize();
-            });
-
-            sectionsContainer.appendChild(row);
-        });
-        serialize();
-        autoSelectNominatedAccounts();
-    }
-
-    if (presetSelect) {
-        presetSelect.addEventListener('change', function() {
-            var val = presetSelect.value;
-            if (val === 'custom') {
-                if (customPlanIdInput) customPlanIdInput.value = '';
-                if (presetControlsBar) presetControlsBar.style.display = 'none';
-                if (presetUpdateModeWrap) presetUpdateModeWrap.style.display = 'none';
-                if (templateSaveCheckboxWrap) templateSaveCheckboxWrap.style.display = 'block';
-                if (saveTemplateChk) saveTemplateChk.checked = false;
-                customFields.style.display = 'block';
-                renderSections();
-            } else if (val.indexOf('saved_') === 0) {
-                var opt = presetSelect.options[presetSelect.selectedIndex];
-                var presetId = opt.getAttribute('data-id') || val.replace('saved_', '');
-                if (customPlanIdInput) customPlanIdInput.value = presetId;
-                if (presetStatusLabel) {
-                    presetStatusLabel.textContent = 'Editing Preset: ' + (opt.dataset.name || '');
-                }
-                if (presetControlsBar) presetControlsBar.style.display = 'flex';
-                if (presetUpdateModeWrap) presetUpdateModeWrap.style.display = 'block';
-                if (templateSaveCheckboxWrap) templateSaveCheckboxWrap.style.display = 'none';
-                if (saveTemplateChk) saveTemplateChk.checked = true;
-
-                customFields.style.display = 'block';
-                if (planNameInput && opt.dataset.name) {
-                    planNameInput.value = opt.dataset.name;
-                }
-                try {
-                    sectionsState = JSON.parse(opt.dataset.sections || '[]');
-                } catch(e) {
-                    sectionsState = [];
-                }
-                renderSections();
-            } else {
-                if (customPlanIdInput) customPlanIdInput.value = '';
-                if (presetControlsBar) presetControlsBar.style.display = 'none';
-                customFields.style.display = 'none';
-            }
-            autoSelectNominatedAccounts();
-        });
-    }
-
-    if (btnAddSection) {
-        btnAddSection.addEventListener('click', function() {
-            sectionsState.push({ heading: 'Category ' + (sectionsState.length + 1), amount: 0, accountId: null });
-            renderSections();
-        });
-    }
-
-    if (btnSavePresetDirect) {
-        btnSavePresetDirect.addEventListener('click', function() {
-            var presetId = customPlanIdInput ? customPlanIdInput.value : '';
-            var planName = planNameInput ? planNameInput.value.trim() : '';
-            if (!planName) planName = 'Custom Plan';
-            serialize();
-            var sectionsJson = sectionsJsonInput ? sectionsJsonInput.value : '[]';
-
-            var form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/pot/preset/save';
-
-            if (presetId) {
-                var idInput = document.createElement('input');
-                idInput.type = 'hidden';
-                idInput.name = 'id';
-                idInput.value = presetId;
-                form.appendChild(idInput);
-            }
-
-            var nameInput = document.createElement('input');
-            nameInput.type = 'hidden';
-            nameInput.name = 'plan_name';
-            nameInput.value = planName;
-            form.appendChild(nameInput);
-
-            var secInput = document.createElement('input');
-            secInput.type = 'hidden';
-            secInput.name = 'sections_json';
-            secInput.value = sectionsJson;
-            form.appendChild(secInput);
-
-            document.body.appendChild(form);
-            form.submit();
-        });
-    }
-
-    if (btnDeletePresetDirect) {
-        btnDeletePresetDirect.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-            if (typeof e.stopPropagation === 'function') e.stopPropagation();
-            if (document.body.classList.contains('is-offline')) {
-                if (window.monmonShowOfflineToast) window.monmonShowOfflineToast();
-                return;
-            }
-            var presetId = customPlanIdInput ? customPlanIdInput.value : '';
-            if (!presetId) return;
-            var planName = planNameInput ? planNameInput.value.trim() : 'this preset';
-            if (confirm('Are you sure you want to delete preset "' + planName + '"?')) {
-                if (window.showMonmonLoader) window.showMonmonLoader('Saving changes...', 'Updating MonMon');
-                fetch('/pot/preset/delete/' + encodeURIComponent(presetId), {
-                    method: 'DELETE',
-                    credentials: 'same-origin',
-                    headers: { 'Accept': 'application/json' }
-                }).then(function(res) {
-                    if (!res.ok) {
-                        return res.text().then(function(t) { throw new Error(t || 'Failed to delete preset'); });
-                    }
-                    return res.json();
-                }).then(function(data) {
-                    window.location.assign((data && data.redirect) ? data.redirect : '/myMonthlyPot');
-                }).catch(function(err) {
-                    if (window.hideMonmonLoader) window.hideMonmonLoader();
-                    alert((err && err.message) ? err.message : 'Failed to delete preset');
-                });
-            }
-        });
-    }
-
-    document.querySelectorAll('.btn-edit-preset').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var pid = btn.getAttribute('data-preset-id');
-            if (presetSelect) {
-                presetSelect.value = 'saved_' + pid;
-                presetSelect.dispatchEvent(new Event('change'));
-                var configForm = document.getElementById('pot-config-form');
-                if (configForm) {
-                    configForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            }
-        });
-    });
-
-    serialize();
-    autoSelectNominatedAccounts();
-})();
-</script>
+<script src="/assets/javascripts/monthly-pot.{{ crate::BUILD_HASH }}.js" type="text/javascript"></script>
 </body>
 </html>
